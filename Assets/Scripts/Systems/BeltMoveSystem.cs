@@ -30,18 +30,32 @@ public partial class BeltMoveSystem : SystemBase
         }
 
         int itemCount = _itemsQuery.CalculateEntityCount();
+        if (itemCount == 0)
+            return;
+
         NativeArray<Entity> itemEntities = _itemsQuery.ToEntityArray(Allocator.TempJob);
         NativeArray<LocalTransform> itemTransforms = _itemsQuery.ToComponentDataArray<LocalTransform>(Allocator.TempJob);
-        NativeList<float2> reservedPositions = new NativeList<float2>(itemCount, Allocator.TempJob);
+        NativeParallelMultiHashMap<int2, ItemSpatialEntry> itemsByCell = new NativeParallelMultiHashMap<int2, ItemSpatialEntry>(itemCount, Allocator.TempJob);
+        NativeParallelMultiHashMap<int2, float2> reservedPositionsByCell = new NativeParallelMultiHashMap<int2, float2>(itemCount, Allocator.TempJob);
+
+        for (int i = 0; i < itemEntities.Length; i++)
+        {
+            float3 position = itemTransforms[i].Position;
+            int2 cell = position.ToGridCell();
+            itemsByCell.Add(cell, new ItemSpatialEntry
+            {
+                Entity = itemEntities[i],
+                Position = new float2(position.x, position.y)
+            });
+        }
 
         MoveItemsOnBeltsJob job = new MoveItemsOnBeltsJob
         {
             DeltaTime = SystemAPI.Time.DeltaTime,
             ItemSpacing = itemSpacing,
             OccupiedCells = _gridOccupancy.GetOccupiedCellsReadOnly(),
-            ItemEntities = itemEntities,
-            ItemTransforms = itemTransforms,
-            ReservedPositions = reservedPositions,
+            ItemsByCell = itemsByCell,
+            ReservedPositionsByCell = reservedPositionsByCell,
             Belts = SystemAPI.GetComponentLookup<Belt>(true),
             Directions = SystemAPI.GetComponentLookup<Direction>(true)
         };
@@ -49,7 +63,14 @@ public partial class BeltMoveSystem : SystemBase
         Dependency = job.Schedule(Dependency);
         Dependency = itemEntities.Dispose(Dependency);
         Dependency = itemTransforms.Dispose(Dependency);
-        Dependency = reservedPositions.Dispose(Dependency);
+        Dependency = itemsByCell.Dispose(Dependency);
+        Dependency = reservedPositionsByCell.Dispose(Dependency);
+    }
+
+    private struct ItemSpatialEntry
+    {
+        public Entity Entity;
+        public float2 Position;
     }
 
     [BurstCompile]
@@ -62,12 +83,9 @@ public partial class BeltMoveSystem : SystemBase
         public NativeParallelHashMap<int2, Entity>.ReadOnly OccupiedCells;
 
         [ReadOnly]
-        public NativeArray<Entity> ItemEntities;
+        public NativeParallelMultiHashMap<int2, ItemSpatialEntry> ItemsByCell;
 
-        [ReadOnly]
-        public NativeArray<LocalTransform> ItemTransforms;
-
-        public NativeList<float2> ReservedPositions;
+        public NativeParallelMultiHashMap<int2, float2> ReservedPositionsByCell;
 
         [ReadOnly]
         public ComponentLookup<Belt> Belts;
@@ -121,7 +139,8 @@ public partial class BeltMoveSystem : SystemBase
             float3 targetPosition = new float3(moveTarget.targetCell.x, moveTarget.targetCell.y, itemPos.z);
             transform.Position = MoveTowardsWithSpacing(entity, itemPos, targetPosition, moveTarget.speed * DeltaTime);
 
-            ReservedPositions.Add(new float2(transform.Position.x, transform.Position.y));
+            float2 reservedPosition = new float2(transform.Position.x, transform.Position.y);
+            ReservedPositionsByCell.Add(transform.Position.ToGridCell(), reservedPosition);
 
             if (math.distancesq(transform.Position, targetPosition) == 0f)
                 moveTarget.isMoving = false;
@@ -139,25 +158,62 @@ public partial class BeltMoveSystem : SystemBase
             float moveDistance = math.min(distance, maxDistanceDelta);
             float2 current2 = new float2(current.x, current.y);
             float2 direction2 = new float2(direction.x, direction.y);
+            int2 currentCell = current.ToGridCell();
+            int2 targetCell = target.ToGridCell();
+            int2 directionCell = GetDirectionCell(direction2);
+            int2 nextCell = targetCell + directionCell;
 
-            for (int i = 0; i < ItemEntities.Length; i++)
-            {
-                if (ItemEntities[i] == entity)
-                    continue;
-
-                float3 otherPosition = ItemTransforms[i].Position;
-                moveDistance = LimitMoveDistance(moveDistance, current2, direction2, new float2(otherPosition.x, otherPosition.y));
-            }
-
-            for (int i = 0; i < ReservedPositions.Length; i++)
-            {
-                moveDistance = LimitMoveDistance(moveDistance, current2, direction2, ReservedPositions[i]);
-            }
+            moveDistance = LimitMoveDistanceInCell(moveDistance, entity, current2, direction2, currentCell);
+            moveDistance = LimitMoveDistanceInCell(moveDistance, entity, current2, direction2, targetCell);
+            moveDistance = LimitMoveDistanceInCell(moveDistance, entity, current2, direction2, nextCell);
 
             if (moveDistance <= 0f)
                 return current;
 
             return current + direction * moveDistance;
+        }
+
+        private int2 GetDirectionCell(float2 direction)
+        {
+            if (math.abs(direction.x) > math.abs(direction.y))
+                return new int2(direction.x > 0f ? 1 : -1, 0);
+
+            if (math.abs(direction.y) > 0f)
+                return new int2(0, direction.y > 0f ? 1 : -1);
+
+            return int2.zero;
+        }
+
+        private float LimitMoveDistanceInCell(float moveDistance, Entity entity, float2 current, float2 direction, int2 cell)
+        {
+            NativeParallelMultiHashMapIterator<int2> itemIterator;
+            ItemSpatialEntry itemEntry;
+
+            if (ItemsByCell.TryGetFirstValue(cell, out itemEntry, out itemIterator))
+            {
+                do
+                {
+                    if (itemEntry.Entity == entity)
+                        continue;
+
+                    moveDistance = LimitMoveDistance(moveDistance, current, direction, itemEntry.Position);
+                }
+                while (ItemsByCell.TryGetNextValue(out itemEntry, ref itemIterator));
+            }
+
+            NativeParallelMultiHashMapIterator<int2> reservedIterator;
+            float2 reservedPosition;
+
+            if (ReservedPositionsByCell.TryGetFirstValue(cell, out reservedPosition, out reservedIterator))
+            {
+                do
+                {
+                    moveDistance = LimitMoveDistance(moveDistance, current, direction, reservedPosition);
+                }
+                while (ReservedPositionsByCell.TryGetNextValue(out reservedPosition, ref reservedIterator));
+            }
+
+            return moveDistance;
         }
 
         private float LimitMoveDistance(float moveDistance, float2 current, float2 direction, float2 otherPosition)

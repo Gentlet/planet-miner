@@ -69,7 +69,7 @@ public partial class GridOccupancySystem : SystemBase
 
         return _reservedCells.Add(cell);
     }
-    private bool TryUnreserve(int2 cell)
+    public bool TryUnreserve(int2 cell)
     {
         if (!IsReserved(cell))
             return false;

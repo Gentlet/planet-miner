@@ -56,11 +56,14 @@ public class BuildingPlacementController : MonoBehaviour
         {
             Vector3 pos = Camera.main.ScreenToWorldPoint(Mouse.current.position.ReadValue());
 
-            _bpo.EvaluatePlacement(_gos);
             _preview.ShowPreview(_bpo, pos.ToGridCell());
+            _bpo.EvaluatePlacement(_gos);
 
             if (Mouse.current.leftButton.wasPressedThisFrame && _bpo.GetCanPlace)
             {
+                if (!TryReserveCandidates())
+                    return;
+
                 foreach (var candidate in _bpo.Candidates)
                 {
                     Entity request = _entityManager.CreateEntity();
@@ -73,6 +76,28 @@ public class BuildingPlacementController : MonoBehaviour
                 }
             }
         }
+    }
+
+    private bool TryReserveCandidates()
+    {
+        List<int2> reservedCells = new();
+
+        foreach (var candidate in _bpo.Candidates)
+        {
+            if (_gos.TryReserve(candidate.position))
+            {
+                reservedCells.Add(candidate.position);
+                continue;
+            }
+
+            foreach (int2 reservedCell in reservedCells)
+                _gos.TryUnreserve(reservedCell);
+
+            _bpo.EvaluatePlacement(_gos);
+            return false;
+        }
+
+        return true;
     }
 
     public void SetEnable(bool enable, BuildingPlacementOperation bpo)
