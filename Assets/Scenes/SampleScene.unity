@@ -149,6 +149,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b2160924d06ebc94b8739d84f1be9854, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BuildingPlacementPreview
+  previewPrefab: {fileID: 9106238281758111696, guid: e7e36e9a5a364494cb59e30cab94c87a, type: 3}
+  previewSprites:
+  - type: 0
+    sprite: {fileID: -6771482941915710753, guid: 85784dcd3d9113d4a978afd2c549289c, type: 3}
+  canPlaceColor: {r: 0, g: 1, b: 0, a: 0.5}
+  blockedColor: {r: 1, g: 0, b: 0, a: 0.5}
 --- !u!114 &50267807
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -161,7 +167,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2ee1f5fd91fe7b34fa681d51225c4c6c, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BuildingPlacementController
-  enable: 1
+  _preview: {fileID: 50267806}
+  _enable: 1
 --- !u!4 &50267808
 Transform:
   m_ObjectHideFlags: 0

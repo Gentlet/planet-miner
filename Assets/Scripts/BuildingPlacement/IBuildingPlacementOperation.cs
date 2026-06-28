@@ -15,12 +15,12 @@ public class BuildingPlacementOperation
         _candidates = candidates;
     }
 
-    public void EvaluatePlacement(int2 pivot, GridOccupancySystem occupancy)
+    public void EvaluatePlacement(GridOccupancySystem occupancy)
     {
         _canPlace = true;
         foreach (var candidate in _candidates)
         {
-            candidate.canPlace = !occupancy.IsOccupiedOrReserved(pivot + candidate.gridPosition);
+            candidate.canPlace = !occupancy.IsOccupiedOrReserved(candidate.position);
 
             if (candidate.canPlace == false)
                 _canPlace = false;

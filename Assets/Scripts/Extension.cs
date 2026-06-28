@@ -3,6 +3,10 @@ using UnityEngine;
 
 public static class DirectionExtension
 {
+    public static DirectionEnum NextDirection(this DirectionEnum dir, DirectionEnum next)
+    {
+        return (DirectionEnum)(((int)dir + (int)next) % (int)DirectionEnum.Count);
+    }
     public static DirectionEnum NextDirection(this DirectionEnum dir)
     {
         return (DirectionEnum)(((int)dir + 1) % (int)DirectionEnum.Count);
@@ -39,6 +43,22 @@ public static class DirectionExtension
                 return new Vector2(0, 0);
         }
     }
+    public static int2 ToInt2(this DirectionEnum dir)
+    {
+        switch (dir)
+        {
+            case DirectionEnum.Up:
+                return new int2(0, 1);
+            case DirectionEnum.Down:
+                return new int2(0, -1);
+            case DirectionEnum.Left:
+                return new int2(-1, 0);
+            case DirectionEnum.Right:
+                return new int2(1, 0);
+            default:
+                return int2.zero;
+        }
+    }
     
     public static int ToDegrees(this DirectionEnum dir)
     {
@@ -68,6 +88,17 @@ public static class VectorExtension
     {
         return new int2((int)v.x, (int)v.y);
     }
+    public static int2 ToInt2(this Vector3 v)
+    {
+        return new int2((int)v.x, (int)v.y);
+    }
+    public static int2 ToGridCell(this Vector3 v)
+    {
+        return new int2(
+            Mathf.FloorToInt(v.x + 0.5f),
+            Mathf.FloorToInt(v.y + 0.5f));
+    }
+   
 }
 
 public static class Int2Extension
@@ -75,5 +106,20 @@ public static class Int2Extension
     public static Vector2 ToVector2(this int2 i)
     {
         return new Vector2(i.x, i.y);
+    }
+}
+
+public static class Float3Extension
+{
+    public static int2 ToGridCell(this float3 v)
+    {
+        return new int2(
+            (int)math.floor(v.x + 0.5f),
+            (int)math.floor(v.y + 0.5f));
+    }
+    public static bool IsInsideCell(this float3 v, int2 cell)
+    {
+        return math.abs(v.x - cell.x) < 0.5f &&
+               math.abs(v.y - cell.y) < 0.5f;
     }
 }

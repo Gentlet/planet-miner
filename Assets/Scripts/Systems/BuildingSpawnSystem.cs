@@ -1,7 +1,9 @@
+using System;
 using Unity.Burst;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
+using UnityEngine;
 
 [BurstCompile]
 partial struct BuildingSpawnSystem : ISystem
@@ -33,11 +35,22 @@ partial struct BuildingSpawnSystem : ISystem
             int2 gridPosition = request.ValueRO.gridPosition;
             DirectionEnum dir = request.ValueRO.dir;
 
-            ecb.SetComponent(instance, LocalTransform.FromPositionRotation(new float3(gridPosition.x, gridPosition.y, 0f), quaternion.RotateZ(dir.ToDegrees())));
+            ecb.SetComponent(instance, LocalTransform.FromPositionRotation(new float3(gridPosition.x, gridPosition.y, 0f), quaternion.RotateZ(Mathf.Deg2Rad * dir.ToDegrees())));
             ecb.AddComponent(instance, new BuildingType { type = request.ValueRO.type });
             ecb.AddComponent(instance, new GridPosition { gridPosition = gridPosition });
             ecb.AddComponent(instance, new Direction { dir = dir });
             ecb.AddComponent(instance, new GridOccupantRequest { });
+
+            switch (request.ValueRO.type)
+            {
+                case BuildingTypeEnum.Belt:
+                    ecb.AddComponent(instance, new Belt { speed = 1f });
+                    break;
+                case BuildingTypeEnum.Craftor:
+                    break;
+                default:
+                    break;
+            }
 
 
             ecb.DestroyEntity(requestEntity);

@@ -31,16 +31,17 @@ public class BuildingPlacementPreview : MonoBehaviour
         EnsurePreviewObjectCount(bpo.Candidates.Count);
 
         transform.rotation = Quaternion.Euler(0,0, bpo.GetDirection.ToDegrees());
+        transform.position = pivot.ToVector2();
 
         for (int i = 0; i < bpo.Candidates.Count; i++)
         {
             BuildingPlacementCandidate candidate = bpo.Candidates[i];
             GameObject previewObject = _previewObjects[i];
 
-            int2 cell = pivot + candidate.gridPosition;
-
             previewObject.SetActive(true);
-            previewObject.transform.position = cell.ToVector2();
+
+            previewObject.transform.localPosition = candidate.gridPosition.ToVector2();
+            candidate.position = previewObject.transform.position.ToGridCell();
 
             SetSprite(previewObject, candidate.type);
             SetColor(previewObject, candidate.canPlace ? canPlaceColor : blockedColor);

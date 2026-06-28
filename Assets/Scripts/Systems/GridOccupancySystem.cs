@@ -55,6 +55,11 @@ public partial class GridOccupancySystem : SystemBase
         return _entityByCell.TryGetValue(cell, out entity);
     }
 
+    public NativeParallelHashMap<int2, Entity>.ReadOnly GetOccupiedCellsReadOnly()
+    {
+        return _entityByCell.AsReadOnly();
+    }
+
     public bool TryReserve(int2 cell)
     {
         if (IsOccupiedOrReserved(cell))

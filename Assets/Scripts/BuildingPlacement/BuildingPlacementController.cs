@@ -7,6 +7,7 @@ using UnityEngine.InputSystem;
 
 public class BuildingPlacementController : MonoBehaviour
 {
+    private EntityManager _entityManager;
     private GridOccupancySystem _gos;
 
     [SerializeField]
@@ -18,10 +19,13 @@ public class BuildingPlacementController : MonoBehaviour
 
     private void Start()
     {
+        _entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
+
         _bpo = new BuildingPlacementOperation(new List<BuildingPlacementCandidate>
         {
             new BuildingPlacementCandidate(
                 BuildingTypeEnum.Belt,
+                int2.zero,
                 int2.zero,
                 DirectionEnum.Up,
                 false)
@@ -50,15 +54,23 @@ public class BuildingPlacementController : MonoBehaviour
 
         if (Mouse.current != null && _gos != null && _preview != null)
         {
-            Vector2 pos = Camera.main.ScreenToWorldPoint(Mouse.current.position.ReadValue()) + (Vector3.one * 0.5f);
-            pos = pos.Floor();
+            Vector3 pos = Camera.main.ScreenToWorldPoint(Mouse.current.position.ReadValue());
 
-            _bpo.EvaluatePlacement(pos.ToInt2(), _gos);
-            _preview.ShowPreview(_bpo, pos.ToInt2());
+            _bpo.EvaluatePlacement(_gos);
+            _preview.ShowPreview(_bpo, pos.ToGridCell());
 
-            if (Mouse.current.leftButton.wasPressedThisFrame)
+            if (Mouse.current.leftButton.wasPressedThisFrame && _bpo.GetCanPlace)
             {
-                Debug.Log($"{pos} : Clicked!!!!!!");
+                foreach (var candidate in _bpo.Candidates)
+                {
+                    Entity request = _entityManager.CreateEntity();
+                    _entityManager.AddComponentData(request, 
+                        new BuildingSpawnRequest {
+                            type = candidate.type,
+                            gridPosition = candidate.position,
+                            dir = candidate.dir.NextDirection(_bpo.GetDirection)
+                        });
+                }
             }
         }
     }
