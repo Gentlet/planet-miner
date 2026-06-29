@@ -111,6 +111,11 @@ public static class Int2Extension
 
 public static class Float3Extension
 {
+    public static float2 ToFloat2(this float3 v)
+    {
+        return new float2(v.x, v.y);
+    }
+
     public static int2 ToGridCell(this float3 v)
     {
         return new int2(

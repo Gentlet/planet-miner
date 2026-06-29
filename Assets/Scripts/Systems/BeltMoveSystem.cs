@@ -36,7 +36,6 @@ public partial class BeltMoveSystem : SystemBase
         NativeArray<Entity> itemEntities = _itemsQuery.ToEntityArray(Allocator.TempJob);
         NativeArray<LocalTransform> itemTransforms = _itemsQuery.ToComponentDataArray<LocalTransform>(Allocator.TempJob);
         NativeParallelMultiHashMap<int2, ItemSpatialEntry> itemsByCell = new NativeParallelMultiHashMap<int2, ItemSpatialEntry>(itemCount, Allocator.TempJob);
-        NativeParallelMultiHashMap<int2, float2> reservedPositionsByCell = new NativeParallelMultiHashMap<int2, float2>(itemCount, Allocator.TempJob);
 
         for (int i = 0; i < itemEntities.Length; i++)
         {
@@ -44,54 +43,50 @@ public partial class BeltMoveSystem : SystemBase
             int2 cell = position.ToGridCell();
             itemsByCell.Add(cell, new ItemSpatialEntry
             {
-                Entity = itemEntities[i],
-                Position = new float2(position.x, position.y)
+                entity = itemEntities[i],
+                position = position.ToFloat2()
             });
         }
 
         MoveItemsOnBeltsJob job = new MoveItemsOnBeltsJob
         {
-            DeltaTime = SystemAPI.Time.DeltaTime,
-            ItemSpacing = itemSpacing,
-            OccupiedCells = _gridOccupancy.GetOccupiedCellsReadOnly(),
-            ItemsByCell = itemsByCell,
-            ReservedPositionsByCell = reservedPositionsByCell,
-            Belts = SystemAPI.GetComponentLookup<Belt>(true),
-            Directions = SystemAPI.GetComponentLookup<Direction>(true)
+            deltaTime = SystemAPI.Time.DeltaTime,
+            itemSpacing = itemSpacing,
+            occupiedCells = _gridOccupancy.GetOccupiedCellsReadOnly(),
+            itemsByCell = itemsByCell,
+            belts = SystemAPI.GetComponentLookup<Belt>(true),
+            directions = SystemAPI.GetComponentLookup<Direction>(true)
         };
 
-        Dependency = job.Schedule(Dependency);
+        Dependency = job.ScheduleParallel(Dependency);
         Dependency = itemEntities.Dispose(Dependency);
         Dependency = itemTransforms.Dispose(Dependency);
         Dependency = itemsByCell.Dispose(Dependency);
-        Dependency = reservedPositionsByCell.Dispose(Dependency);
     }
 
     private struct ItemSpatialEntry
     {
-        public Entity Entity;
-        public float2 Position;
+        public Entity entity;
+        public float2 position;
     }
 
     [BurstCompile]
     private partial struct MoveItemsOnBeltsJob : IJobEntity
     {
-        public float DeltaTime;
-        public float ItemSpacing;
+        public float deltaTime;
+        public float itemSpacing;
 
         [ReadOnly]
-        public NativeParallelHashMap<int2, Entity>.ReadOnly OccupiedCells;
+        public NativeParallelHashMap<int2, Entity>.ReadOnly occupiedCells;
 
         [ReadOnly]
-        public NativeParallelMultiHashMap<int2, ItemSpatialEntry> ItemsByCell;
-
-        public NativeParallelMultiHashMap<int2, float2> ReservedPositionsByCell;
+        public NativeParallelMultiHashMap<int2, ItemSpatialEntry> itemsByCell;
 
         [ReadOnly]
-        public ComponentLookup<Belt> Belts;
+        public ComponentLookup<Belt> belts;
 
         [ReadOnly]
-        public ComponentLookup<Direction> Directions;
+        public ComponentLookup<Direction> directions;
 
         private void Execute(Entity entity, ref LocalTransform transform, ref BeltMoveTarget moveTarget, in Item item)
         {
@@ -120,68 +115,47 @@ public partial class BeltMoveSystem : SystemBase
 
         private bool TryGetBelt(int2 cell, out Belt belt, out Direction direction)
         {
-            if (!OccupiedCells.TryGetValue(cell, out Entity beltEntity) ||
-                !Belts.HasComponent(beltEntity) ||
-                !Directions.HasComponent(beltEntity))
+            if (!occupiedCells.TryGetValue(cell, out Entity beltEntity) ||
+                !belts.HasComponent(beltEntity) ||
+                !directions.HasComponent(beltEntity))
             {
                 belt = default;
                 direction = default;
                 return false;
             }
 
-            belt = Belts[beltEntity];
-            direction = Directions[beltEntity];
+            belt = belts[beltEntity];
+            direction = directions[beltEntity];
             return true;
         }
 
         private void MoveToTarget(Entity entity, ref LocalTransform transform, ref BeltMoveTarget moveTarget, float3 itemPos)
         {
             float3 targetPosition = new float3(moveTarget.targetCell.x, moveTarget.targetCell.y, itemPos.z);
-            transform.Position = MoveTowardsWithSpacing(entity, itemPos, targetPosition, moveTarget.speed * DeltaTime);
 
-            float2 reservedPosition = new float2(transform.Position.x, transform.Position.y);
-            ReservedPositionsByCell.Add(transform.Position.ToGridCell(), reservedPosition);
-
-            if (math.distancesq(transform.Position, targetPosition) == 0f)
-                moveTarget.isMoving = false;
-        }
-
-        private float3 MoveTowardsWithSpacing(Entity entity, float3 current, float3 target, float maxDistanceDelta)
-        {
-            float3 offset = target - current;
+            float3 offset = targetPosition - itemPos;
             float distance = math.length(offset);
 
             if (distance == 0f)
-                return target;
+            {
+                transform.Position = targetPosition;
+                moveTarget.isMoving = false;
+                return;
+            }
 
             float3 direction = offset / distance;
-            float moveDistance = math.min(distance, maxDistanceDelta);
-            float2 current2 = new float2(current.x, current.y);
-            float2 direction2 = new float2(direction.x, direction.y);
-            int2 currentCell = current.ToGridCell();
-            int2 targetCell = target.ToGridCell();
-            int2 directionCell = GetDirectionCell(direction2);
-            int2 nextCell = targetCell + directionCell;
+            float moveDistance = math.min(distance, moveTarget.speed * deltaTime);
+            int2 currentCell = itemPos.ToGridCell();
+            int2 targetCell = targetPosition.ToGridCell();
 
-            moveDistance = LimitMoveDistanceInCell(moveDistance, entity, current2, direction2, currentCell);
-            moveDistance = LimitMoveDistanceInCell(moveDistance, entity, current2, direction2, targetCell);
-            moveDistance = LimitMoveDistanceInCell(moveDistance, entity, current2, direction2, nextCell);
+            moveDistance = LimitMoveDistanceInCell(moveDistance, entity, itemPos.ToFloat2(), direction.ToFloat2(), currentCell);
+            moveDistance = LimitMoveDistanceInCell(moveDistance, entity, itemPos.ToFloat2(), direction.ToFloat2(), targetCell);
 
-            if (moveDistance <= 0f)
-                return current;
+            if (moveDistance > 0f)
+                transform.Position = itemPos + direction * moveDistance;
 
-            return current + direction * moveDistance;
-        }
-
-        private int2 GetDirectionCell(float2 direction)
-        {
-            if (math.abs(direction.x) > math.abs(direction.y))
-                return new int2(direction.x > 0f ? 1 : -1, 0);
-
-            if (math.abs(direction.y) > 0f)
-                return new int2(0, direction.y > 0f ? 1 : -1);
-
-            return int2.zero;
+            if (math.distancesq(transform.Position, targetPosition) == 0f)
+                moveTarget.isMoving = false;
         }
 
         private float LimitMoveDistanceInCell(float moveDistance, Entity entity, float2 current, float2 direction, int2 cell)
@@ -189,28 +163,16 @@ public partial class BeltMoveSystem : SystemBase
             NativeParallelMultiHashMapIterator<int2> itemIterator;
             ItemSpatialEntry itemEntry;
 
-            if (ItemsByCell.TryGetFirstValue(cell, out itemEntry, out itemIterator))
+            if (itemsByCell.TryGetFirstValue(cell, out itemEntry, out itemIterator))
             {
                 do
                 {
-                    if (itemEntry.Entity == entity)
+                    if (itemEntry.entity == entity)
                         continue;
 
-                    moveDistance = LimitMoveDistance(moveDistance, current, direction, itemEntry.Position);
+                    moveDistance = LimitMoveDistance(moveDistance, current, direction, itemEntry.position);
                 }
-                while (ItemsByCell.TryGetNextValue(out itemEntry, ref itemIterator));
-            }
-
-            NativeParallelMultiHashMapIterator<int2> reservedIterator;
-            float2 reservedPosition;
-
-            if (ReservedPositionsByCell.TryGetFirstValue(cell, out reservedPosition, out reservedIterator))
-            {
-                do
-                {
-                    moveDistance = LimitMoveDistance(moveDistance, current, direction, reservedPosition);
-                }
-                while (ReservedPositionsByCell.TryGetNextValue(out reservedPosition, ref reservedIterator));
+                while (itemsByCell.TryGetNextValue(out itemEntry, ref itemIterator));
             }
 
             return moveDistance;
@@ -225,7 +187,7 @@ public partial class BeltMoveSystem : SystemBase
                 return moveDistance;
 
             float perpendicularDistanceSq = math.lengthsq(toOther - direction * projectedDistance);
-            float spacingSq = ItemSpacing * ItemSpacing;
+            float spacingSq = itemSpacing * itemSpacing;
 
             if (perpendicularDistanceSq >= spacingSq)
                 return moveDistance;
