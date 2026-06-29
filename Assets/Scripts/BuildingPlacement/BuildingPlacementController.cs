@@ -52,30 +52,54 @@ public class BuildingPlacementController : MonoBehaviour
             _bpo.Rotate();
         }
 
-        if (Mouse.current != null && _gos != null && _preview != null)
+        if (Mouse.current != null && _gos != null)
         {
             Vector3 pos = Camera.main.ScreenToWorldPoint(Mouse.current.position.ReadValue());
+            int2 gridCell = pos.ToGridCell();
 
-            _preview.ShowPreview(_bpo, pos.ToGridCell());
-            _bpo.EvaluatePlacement(_gos);
+            if (_preview != null)
+                _preview.ShowPreview(_bpo, gridCell);
 
-            if (Mouse.current.leftButton.wasPressedThisFrame && _bpo.GetCanPlace)
+            if (_bpo != null)
+                _bpo.EvaluatePlacement(_gos);
+
+            if (_bpo != null && Mouse.current.leftButton.wasPressedThisFrame && _bpo.GetCanPlace)
             {
-                if (!TryReserveCandidates())
-                    return;
+                CreateSpawnRequest();
+            }
 
-                foreach (var candidate in _bpo.Candidates)
-                {
-                    Entity request = _entityManager.CreateEntity();
-                    _entityManager.AddComponentData(request, 
-                        new BuildingSpawnRequest {
-                            type = candidate.type,
-                            gridPosition = candidate.position,
-                            dir = candidate.dir.NextDirection(_bpo.GetDirection)
-                        });
-                }
+            if (Mouse.current.rightButton.wasPressedThisFrame)
+            {
+                CreateDestroyRequest(gridCell);
             }
         }
+    }
+
+    private void CreateSpawnRequest()
+    {
+        if (!TryReserveCandidates())
+            return;
+
+        foreach (var candidate in _bpo.Candidates)
+        {
+            Entity request = _entityManager.CreateEntity();
+            _entityManager.AddComponentData(request,
+                new BuildingSpawnRequest
+                {
+                    type = candidate.type,
+                    gridPosition = candidate.position,
+                    dir = candidate.dir.NextDirection(_bpo.GetDirection)
+                });
+        }
+    }
+
+    private void CreateDestroyRequest(int2 gridCell)
+    {
+        Entity request = _entityManager.CreateEntity();
+        _entityManager.AddComponentData(request, new BuildingDestroyRequest
+        {
+            gridPosition = gridCell
+        });
     }
 
     private bool TryReserveCandidates()

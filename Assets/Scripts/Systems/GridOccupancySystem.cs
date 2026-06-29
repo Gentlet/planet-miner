@@ -8,8 +8,6 @@ public partial class GridOccupancySystem : SystemBase
     private const int initialCapacity = 1024;
     private NativeParallelHashMap<int2, Entity> _entityByCell;
     private NativeParallelHashSet<int2> _reservedCells;
-    public int Count => _entityByCell.Count();
-
 
     protected override void OnCreate()
     {
@@ -69,6 +67,7 @@ public partial class GridOccupancySystem : SystemBase
 
         return _reservedCells.Add(cell);
     }
+
     public bool TryUnreserve(int2 cell)
     {
         if (!IsReserved(cell))
@@ -104,7 +103,7 @@ public partial class GridOccupancySystem : SystemBase
         return true;
     }
 
-    private bool TryUnregister(int2 cell, Entity entity)
+    public bool TryUnregister(int2 cell, Entity entity)
     {
         if (!_entityByCell.TryGetValue(cell, out Entity registeredEntity))
             return false;

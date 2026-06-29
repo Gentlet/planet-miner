@@ -33,35 +33,27 @@ public partial class BeltMoveSystem : SystemBase
         if (itemCount == 0)
             return;
 
-        NativeArray<Entity> itemEntities = _itemsQuery.ToEntityArray(Allocator.TempJob);
-        NativeArray<LocalTransform> itemTransforms = _itemsQuery.ToComponentDataArray<LocalTransform>(Allocator.TempJob);
         NativeParallelMultiHashMap<int2, ItemSpatialEntry> itemsByCell = new NativeParallelMultiHashMap<int2, ItemSpatialEntry>(itemCount, Allocator.TempJob);
 
-        for (int i = 0; i < itemEntities.Length; i++)
+        BuildItemsByCellJob buildItemsByCellJob = new BuildItemsByCellJob
         {
-            float3 position = itemTransforms[i].Position;
-            int2 cell = position.ToGridCell();
-            itemsByCell.Add(cell, new ItemSpatialEntry
-            {
-                entity = itemEntities[i],
-                position = position.ToFloat2()
-            });
-        }
+            itemsByCell = itemsByCell.AsParallelWriter()
+        };
 
         MoveItemsOnBeltsJob job = new MoveItemsOnBeltsJob
         {
             deltaTime = SystemAPI.Time.DeltaTime,
-            itemSpacing = itemSpacing,
+            itemSpacingSq = itemSpacing * itemSpacing,
             occupiedCells = _gridOccupancy.GetOccupiedCellsReadOnly(),
             itemsByCell = itemsByCell,
             belts = SystemAPI.GetComponentLookup<Belt>(true),
             directions = SystemAPI.GetComponentLookup<Direction>(true)
         };
 
+        Dependency = buildItemsByCellJob.ScheduleParallel(Dependency);
         Dependency = job.ScheduleParallel(Dependency);
-        Dependency = itemEntities.Dispose(Dependency);
-        Dependency = itemTransforms.Dispose(Dependency);
         Dependency = itemsByCell.Dispose(Dependency);
+        Dependency.Complete();
     }
 
     private struct ItemSpatialEntry
@@ -71,10 +63,28 @@ public partial class BeltMoveSystem : SystemBase
     }
 
     [BurstCompile]
+    private partial struct BuildItemsByCellJob : IJobEntity
+    {
+        public NativeParallelMultiHashMap<int2, ItemSpatialEntry>.ParallelWriter itemsByCell;
+
+        private void Execute(Entity entity, in LocalTransform transform, in Item item)
+        {
+            float3 position = transform.Position;
+            int2 cell = position.ToGridCell();
+
+            itemsByCell.Add(cell, new ItemSpatialEntry
+            {
+                entity = entity,
+                position = position.ToFloat2()
+            });
+        }
+    }
+
+    [BurstCompile]
     private partial struct MoveItemsOnBeltsJob : IJobEntity
     {
         public float deltaTime;
-        public float itemSpacing;
+        public float itemSpacingSq;
 
         [ReadOnly]
         public NativeParallelHashMap<int2, Entity>.ReadOnly occupiedCells;
@@ -147,9 +157,13 @@ public partial class BeltMoveSystem : SystemBase
             float moveDistance = math.min(distance, moveTarget.speed * deltaTime);
             int2 currentCell = itemPos.ToGridCell();
             int2 targetCell = targetPosition.ToGridCell();
+            float2 current = itemPos.ToFloat2();
+            float2 moveDirection = direction.ToFloat2();
 
-            moveDistance = LimitMoveDistanceInCell(moveDistance, entity, itemPos.ToFloat2(), direction.ToFloat2(), currentCell);
-            moveDistance = LimitMoveDistanceInCell(moveDistance, entity, itemPos.ToFloat2(), direction.ToFloat2(), targetCell);
+            moveDistance = LimitMoveDistanceInCell(moveDistance, entity, current, moveDirection, currentCell);
+
+            if (moveDistance > 0f && !currentCell.Equals(targetCell))
+                moveDistance = LimitMoveDistanceInCell(moveDistance, entity, current, moveDirection, targetCell);
 
             if (moveDistance > 0f)
                 transform.Position = itemPos + direction * moveDistance;
@@ -187,12 +201,11 @@ public partial class BeltMoveSystem : SystemBase
                 return moveDistance;
 
             float perpendicularDistanceSq = math.lengthsq(toOther - direction * projectedDistance);
-            float spacingSq = itemSpacing * itemSpacing;
 
-            if (perpendicularDistanceSq >= spacingSq)
+            if (perpendicularDistanceSq >= itemSpacingSq)
                 return moveDistance;
 
-            float allowedDistance = projectedDistance - math.sqrt(spacingSq - perpendicularDistanceSq);
+            float allowedDistance = projectedDistance - math.sqrt(itemSpacingSq - perpendicularDistanceSq);
 
             return math.min(moveDistance, math.max(0f, allowedDistance));
         }
