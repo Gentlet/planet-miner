@@ -8,6 +8,7 @@ using Unity.Transforms;
 public partial class BeltMoveSystem : SystemBase
 {
     private const float itemSpacing = 0.25f;
+    private const float alignmentEpsilon = 0.001f;
     private GridOccupancySystem _gridOccupancy;
     private EntityQuery _itemsQuery;
 
@@ -15,7 +16,7 @@ public partial class BeltMoveSystem : SystemBase
     {
         _gridOccupancy = World.GetExistingSystemManaged<GridOccupancySystem>();
         _itemsQuery = SystemAPI.QueryBuilder()
-            .WithAll<Item, BeltMoveTarget, LocalTransform>()
+            .WithAll<Item, LocalTransform>()
             .Build();
         RequireForUpdate<Item>();
     }
@@ -98,16 +99,9 @@ public partial class BeltMoveSystem : SystemBase
         [ReadOnly]
         public ComponentLookup<Direction> directions;
 
-        private void Execute(Entity entity, ref LocalTransform transform, ref BeltMoveTarget moveTarget, in Item item)
+        private void Execute(Entity entity, ref LocalTransform transform, in Item item)
         {
             float3 itemPos = transform.Position;
-
-            if (moveTarget.isMoving)
-            {
-                MoveToTarget(entity, ref transform, ref moveTarget, itemPos);
-                return;
-            }
-
             int2 itemCell = itemPos.ToGridCell();
 
             if (!itemPos.IsInsideCell(itemCell))
@@ -116,11 +110,7 @@ public partial class BeltMoveSystem : SystemBase
             if (!TryGetBelt(itemCell, out Belt belt, out Direction direction))
                 return;
 
-            moveTarget.targetCell = itemCell + direction.dir.ToInt2();
-            moveTarget.speed = belt.speed;
-            moveTarget.isMoving = true;
-
-            MoveToTarget(entity, ref transform, ref moveTarget, itemPos);
+            MoveAlongBelt(entity, ref transform, itemPos, itemCell, belt, direction);
         }
 
         private bool TryGetBelt(int2 cell, out Belt belt, out Direction direction)
@@ -139,22 +129,50 @@ public partial class BeltMoveSystem : SystemBase
             return true;
         }
 
-        private void MoveToTarget(Entity entity, ref LocalTransform transform, ref BeltMoveTarget moveTarget, float3 itemPos)
+        private void MoveAlongBelt(Entity entity, ref LocalTransform transform, float3 itemPos, int2 itemCell, Belt belt, Direction beltDirection)
         {
-            float3 targetPosition = new float3(moveTarget.targetCell.x, moveTarget.targetCell.y, itemPos.z);
+            float3 alignmentTarget = GetAlignmentTarget(itemPos, itemCell, beltDirection);
 
+            if (math.distancesq(itemPos, alignmentTarget) > alignmentEpsilon * alignmentEpsilon)
+            {
+                MoveToPosition(entity, ref transform, itemPos, alignmentTarget, belt.speed);
+                return;
+            }
+
+            int2 targetCell = itemCell + beltDirection.dir.ToInt2();
+            float3 targetPosition = new float3(targetCell.x, targetCell.y, itemPos.z);
+
+            MoveToPosition(entity, ref transform, itemPos, targetPosition, belt.speed);
+        }
+
+        private float3 GetAlignmentTarget(float3 itemPos, int2 itemCell, Direction beltDirection)
+        {
+            switch (beltDirection.dir)
+            {
+                case DirectionEnum.Up:
+                case DirectionEnum.Down:
+                    return new float3(itemCell.x, itemPos.y, itemPos.z);
+                case DirectionEnum.Left:
+                case DirectionEnum.Right:
+                    return new float3(itemPos.x, itemCell.y, itemPos.z);
+                default:
+                    return itemPos;
+            }
+        }
+
+        private void MoveToPosition(Entity entity, ref LocalTransform transform, float3 itemPos, float3 targetPosition, float speed)
+        {
             float3 offset = targetPosition - itemPos;
             float distance = math.length(offset);
 
             if (distance == 0f)
             {
                 transform.Position = targetPosition;
-                moveTarget.isMoving = false;
                 return;
             }
 
             float3 direction = offset / distance;
-            float moveDistance = math.min(distance, moveTarget.speed * deltaTime);
+            float moveDistance = math.min(distance, speed * deltaTime);
             int2 currentCell = itemPos.ToGridCell();
             int2 targetCell = targetPosition.ToGridCell();
             float2 current = itemPos.ToFloat2();
@@ -167,9 +185,6 @@ public partial class BeltMoveSystem : SystemBase
 
             if (moveDistance > 0f)
                 transform.Position = itemPos + direction * moveDistance;
-
-            if (math.distancesq(transform.Position, targetPosition) == 0f)
-                moveTarget.isMoving = false;
         }
 
         private float LimitMoveDistanceInCell(float moveDistance, Entity entity, float2 current, float2 direction, int2 cell)

@@ -10,7 +10,6 @@ public class ItemAuthoring : MonoBehaviour
         {
             Entity entity = GetEntity(TransformUsageFlags.Dynamic);
             AddComponent<Item>(entity);
-            AddComponent<BeltMoveTarget>(entity);
         }
     }
 }
