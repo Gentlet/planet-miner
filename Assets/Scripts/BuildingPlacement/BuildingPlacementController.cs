@@ -8,7 +8,7 @@ using UnityEngine.InputSystem;
 public class BuildingPlacementController : MonoBehaviour
 {
     private EntityManager _entityManager;
-    private GridOccupancySystem _gos;
+    private ChunkMapSystem _chunkMap;
 
     [SerializeField]
     private BuildingPlacementPreview _preview;
@@ -34,11 +34,11 @@ public class BuildingPlacementController : MonoBehaviour
 
     private void Awake()
     {
-        _gos = World.DefaultGameObjectInjectionWorld.GetExistingSystemManaged<GridOccupancySystem>();
+        _chunkMap = World.DefaultGameObjectInjectionWorld.GetExistingSystemManaged<ChunkMapSystem>();
 
-        if (_gos == null)
+        if (_chunkMap == null)
         {
-            Debug.LogError("GridOccupancySystem not found.");
+            Debug.LogError("ChunkMapSystem not found.");
         }
     }
 
@@ -52,7 +52,7 @@ public class BuildingPlacementController : MonoBehaviour
             _bpo.Rotate();
         }
 
-        if (Mouse.current != null && _gos != null)
+        if (Mouse.current != null && _chunkMap != null)
         {
             Vector3 pos = Camera.main.ScreenToWorldPoint(Mouse.current.position.ReadValue());
             int2 gridCell = pos.ToGridCell();
@@ -61,7 +61,7 @@ public class BuildingPlacementController : MonoBehaviour
                 _preview.ShowPreview(_bpo, gridCell);
 
             if (_bpo != null)
-                _bpo.EvaluatePlacement(_gos);
+                _bpo.EvaluatePlacement(_chunkMap);
 
             if (_bpo != null && Mouse.current.leftButton.wasPressedThisFrame && _bpo.GetCanPlace)
             {
@@ -108,16 +108,16 @@ public class BuildingPlacementController : MonoBehaviour
 
         foreach (var candidate in _bpo.Candidates)
         {
-            if (_gos.TryReserve(candidate.position))
+            if (_chunkMap.TryReserveBuilding(candidate.position))
             {
                 reservedCells.Add(candidate.position);
                 continue;
             }
 
             foreach (int2 reservedCell in reservedCells)
-                _gos.TryUnreserve(reservedCell);
+                _chunkMap.TryUnreserveBuilding(reservedCell);
 
-            _bpo.EvaluatePlacement(_gos);
+            _bpo.EvaluatePlacement(_chunkMap);
             return false;
         }
 

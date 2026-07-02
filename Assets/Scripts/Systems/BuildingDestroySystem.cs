@@ -3,20 +3,20 @@ using Unity.Entities;
 [UpdateBefore(typeof(BeltMoveSystem))]
 public partial class BuildingDestroySystem : SystemBase
 {
-    private GridOccupancySystem _gridOccupancy;
+    private ChunkMapSystem _chunkMap;
 
     protected override void OnCreate()
     {
-        _gridOccupancy = World.GetExistingSystemManaged<GridOccupancySystem>();
+        _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
         RequireForUpdate<BuildingDestroyRequest>();
     }
 
     protected override void OnUpdate()
     {
-        if (_gridOccupancy == null)
+        if (_chunkMap == null)
         {
-            _gridOccupancy = World.GetExistingSystemManaged<GridOccupancySystem>();
-            if (_gridOccupancy == null)
+            _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
+            if (_chunkMap == null)
                 return;
         }
 
@@ -24,7 +24,7 @@ public partial class BuildingDestroySystem : SystemBase
 
         foreach (var (request, requestEntity) in SystemAPI.Query<RefRO<BuildingDestroyRequest>>().WithEntityAccess())
         {
-            if (!_gridOccupancy.TryGetEntity(request.ValueRO.gridPosition, out Entity targetEntity))
+            if (!_chunkMap.TryGetBuilding(request.ValueRO.gridPosition, out Entity targetEntity))
             {
                 ecb.DestroyEntity(requestEntity);
                 continue;
@@ -34,7 +34,7 @@ public partial class BuildingDestroySystem : SystemBase
                 EntityManager.Exists(targetEntity) &&
                 EntityManager.HasComponent<GridOccupant>(targetEntity))
             {
-                _gridOccupancy.TryUnregister(request.ValueRO.gridPosition, targetEntity);
+                _chunkMap.TryUnregisterBuilding(request.ValueRO.gridPosition, targetEntity);
                 ecb.DestroyEntity(targetEntity);
             }
 

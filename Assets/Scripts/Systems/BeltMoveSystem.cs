@@ -4,17 +4,17 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
 
-[UpdateAfter(typeof(GridOccupancySystem))]
+[UpdateAfter(typeof(ChunkMapSystem))]
 public partial class BeltMoveSystem : SystemBase
 {
     private const float itemSpacing = 0.25f;
     private const float alignmentEpsilon = 0.001f;
-    private GridOccupancySystem _gridOccupancy;
+    private ChunkMapSystem _chunkMap;
     private EntityQuery _itemsQuery;
 
     protected override void OnCreate()
     {
-        _gridOccupancy = World.GetExistingSystemManaged<GridOccupancySystem>();
+        _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
         _itemsQuery = SystemAPI.QueryBuilder()
             .WithAll<Item, LocalTransform>()
             .Build();
@@ -23,10 +23,10 @@ public partial class BeltMoveSystem : SystemBase
 
     protected override void OnUpdate()
     {
-        if (_gridOccupancy == null)
+        if (_chunkMap == null)
         {
-            _gridOccupancy = World.GetExistingSystemManaged<GridOccupancySystem>();
-            if (_gridOccupancy == null)
+            _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
+            if (_chunkMap == null)
                 return;
         }
 
@@ -45,7 +45,7 @@ public partial class BeltMoveSystem : SystemBase
         {
             deltaTime = SystemAPI.Time.DeltaTime,
             itemSpacingSq = itemSpacing * itemSpacing,
-            occupiedCells = _gridOccupancy.GetOccupiedCellsReadOnly(),
+            beltCells = _chunkMap.GetBeltCellsReadOnly(),
             itemsByCell = itemsByCell,
             belts = SystemAPI.GetComponentLookup<Belt>(true),
             directions = SystemAPI.GetComponentLookup<Direction>(true)
@@ -88,7 +88,7 @@ public partial class BeltMoveSystem : SystemBase
         public float itemSpacingSq;
 
         [ReadOnly]
-        public NativeParallelHashMap<int2, Entity>.ReadOnly occupiedCells;
+        public NativeParallelHashMap<int2, Entity>.ReadOnly beltCells;
 
         [ReadOnly]
         public NativeParallelMultiHashMap<int2, ItemSpatialEntry> itemsByCell;
@@ -115,7 +115,7 @@ public partial class BeltMoveSystem : SystemBase
 
         private bool TryGetBelt(int2 cell, out Belt belt, out Direction direction)
         {
-            if (!occupiedCells.TryGetValue(cell, out Entity beltEntity) ||
+            if (!beltCells.TryGetValue(cell, out Entity beltEntity) ||
                 !belts.HasComponent(beltEntity) ||
                 !directions.HasComponent(beltEntity))
             {
