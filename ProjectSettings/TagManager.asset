@@ -38,6 +38,9 @@ TagManager:
   - 
   - 
   m_SortingLayers:
+  - name: Resource
+    uniqueID: 2429130317
+    locked: 0
   - name: Belt
     uniqueID: 1771415321
     locked: 0

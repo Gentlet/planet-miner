@@ -23,6 +23,26 @@ public partial class ChunkMapSystem : SystemBase
         {
             TryRegisterBuilding(ecb, requestEntity);
         }
+
+        foreach (var (request, requestEntity) in SystemAPI.Query<RefRO<ResourceOccupantRequest>>().WithEntityAccess())
+        {
+            TryRegisterResource(ecb, requestEntity);
+        }
+
+        foreach (var (resourcePosition, entity) in SystemAPI.Query<RefRO<ResourcePosition>>().WithEntityAccess())
+        {
+            bool hasResource = EntityManager.HasComponent<ResourceDeposit>(entity);
+            bool hasGridPosition = EntityManager.HasComponent<GridPosition>(entity);
+
+            if (hasResource && hasGridPosition)
+                continue;
+
+            TryUnregisterResource(resourcePosition.ValueRO.gridPosition, entity);
+            ecb.RemoveComponent<ResourcePosition>(entity);
+
+            if (EntityManager.HasComponent<ResourceOccupant>(entity))
+                ecb.RemoveComponent<ResourceOccupant>(entity);
+        }
     }
 
     protected override void OnDestroy()
@@ -147,6 +167,17 @@ public partial class ChunkMapSystem : SystemBase
         return _chunks.TryGetValue(chunkPosition, out chunk);
     }
 
+    public Chunk GetOrCreateChunk(int2 chunkPosition)
+    {
+        if (!_chunks.TryGetValue(chunkPosition, out Chunk chunk))
+        {
+            chunk = new Chunk(chunkPosition);
+            _chunks.Add(chunkPosition, chunk);
+        }
+
+        return chunk;
+    }
+
     public bool TryGetCellData(int2 cell, out ChunkCell cellData)
     {
         int2 chunkPosition = ChunkUtility.ToChunkPosition(cell);
@@ -177,6 +208,41 @@ public partial class ChunkMapSystem : SystemBase
     public void SetFloor(int2 cell, FloorTypeEnum floor)
     {
         GetOrCreateCellData(cell).SetFloor(floor);
+    }
+
+    private bool TryRegisterResource(EntityCommandBuffer ecb, Entity entity)
+    {
+        if (!EntityManager.HasComponent<ResourceOccupantRequest>(entity))
+            return false;
+        if (!EntityManager.HasComponent<GridPosition>(entity))
+            return false;
+        if (!EntityManager.HasComponent<ResourceDeposit>(entity))
+            return false;
+
+        GridPosition pos = EntityManager.GetComponentData<GridPosition>(entity);
+        ResourceDeposit resource = EntityManager.GetComponentData<ResourceDeposit>(entity);
+        ChunkCell cellData = GetOrCreateCellData(pos.gridPosition);
+
+        if (!cellData.TrySetResource(resource.type, resource.amount, entity))
+        {
+            UnityEngine.Debug.LogError($"Failed ChunkCell.TrySetResource. Type : {resource.type}, Cell : {pos.gridPosition}");
+            ecb.DestroyEntity(entity);
+            return false;
+        }
+
+        ecb.RemoveComponent<ResourceOccupantRequest>(entity);
+        ecb.AddComponent<ResourceOccupant>(entity);
+        ecb.AddComponent(entity, new ResourcePosition { gridPosition = pos.gridPosition });
+
+        return true;
+    }
+
+    private bool TryUnregisterResource(int2 cell, Entity entity)
+    {
+        if (!TryGetCellData(cell, out ChunkCell cellData))
+            return false;
+
+        return cellData.TryRemoveResource(entity);
     }
 
     public int GetItemCount(int2 cell)
@@ -236,8 +302,7 @@ public partial class ChunkMapSystem : SystemBase
 
         if (!_chunks.TryGetValue(chunkPosition, out Chunk chunk))
         {
-            chunk = new Chunk(chunkPosition);
-            _chunks.Add(chunkPosition, chunk);
+            chunk = GetOrCreateChunk(chunkPosition);
         }
 
         return chunk.GetCellByWorldPosition(cell);

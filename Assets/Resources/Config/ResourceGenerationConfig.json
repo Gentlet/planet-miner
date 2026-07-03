@@ -1,0 +1,40 @@
+{
+  "configs": [
+    {
+      "type": "Iron",
+      "weight": 0.35,
+      "minPatchRadius": 2,
+      "maxPatchRadius": 5,
+      "cellFillChance": 0.7,
+      "minAmount": 100,
+      "maxAmount": 300
+    },
+    {
+      "type": "Copper",
+      "weight": 0.3,
+      "minPatchRadius": 2,
+      "maxPatchRadius": 5,
+      "cellFillChance": 0.7,
+      "minAmount": 100,
+      "maxAmount": 300
+    },
+    {
+      "type": "Coal",
+      "weight": 0.25,
+      "minPatchRadius": 3,
+      "maxPatchRadius": 6,
+      "cellFillChance": 0.65,
+      "minAmount": 120,
+      "maxAmount": 350
+    },
+    {
+      "type": "Stone",
+      "weight": 0.3,
+      "minPatchRadius": 1,
+      "maxPatchRadius": 4,
+      "cellFillChance": 0.75,
+      "minAmount": 80,
+      "maxAmount": 250
+    }
+  ]
+}
