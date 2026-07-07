@@ -25,7 +25,7 @@ public class BuildingPlacementController : MonoBehaviour
 
         for (int i = 0; i < 1; i++)
         {
-            for (int j = 0; j < 1; j++)
+            for (int j = 0; j < 20000; j++)
             {
                 _bpo.Candidates.Add(
                     new BuildingPlacementCandidate(

@@ -339,7 +339,9 @@ MonoBehaviour:
   _actionMapName: Player
   _moveActionName: Move
   _scrollActionName: ScrollWheel
+  _speedBoostActionName: Sprint
   _moveSpeed: 10
+  _speedBoostMultiplier: 2
   _zoomSpeed: 50
   _minOrthographicSize: 2
   _maxOrthographicSize: 20
