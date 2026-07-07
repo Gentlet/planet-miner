@@ -11,66 +11,59 @@ public enum FloorTypeEnum : byte
 
 public class ChunkCell
 {
+    private readonly int2 _worldPosition;
     private readonly List<Entity> _items = new();
+    private Entity _buildingEntity;
+    private Entity _resourceEntity;
+    private ResourceTypeEnum _resourceType;
+    private FloorTypeEnum _floor;
 
     public ChunkCell(int2 worldPosition)
     {
-        this.worldPosition = worldPosition;
-        building = Entity.Null;
-        resourceEntity = Entity.Null;
-        resourceType = ResourceTypeEnum.None;
-        resourceAmount = 0;
-        floor = FloorTypeEnum.Bare;
+        _worldPosition = worldPosition;
+        _buildingEntity = Entity.Null;
+        _resourceEntity = Entity.Null;
+        _resourceType = ResourceTypeEnum.None;
+        _floor = FloorTypeEnum.Bare;
     }
 
-    public int2 worldPosition { get; }
-    public Entity building { get; private set; }
-    public Entity resourceEntity { get; private set; }
-    public ResourceTypeEnum resourceType { get; private set; }
-    public int resourceAmount { get; private set; }
-    public FloorTypeEnum floor { get; private set; }
-    public IReadOnlyList<Entity> items => _items;
-    public bool hasBuilding => building != Entity.Null;
-    public bool hasResource => resourceType != ResourceTypeEnum.None && resourceAmount > 0;
-
-    public bool TrySetBuilding(Entity building)
+    public bool TrySetBuilding(Entity buildingEntity)
     {
         if (hasBuilding)
             return false;
 
-        this.building = building;
+        _buildingEntity = buildingEntity;
         return true;
     }
 
-    public bool TryRemoveBuilding(Entity building)
+    public bool TryRemoveBuilding(Entity buildingEntity)
     {
-        if (this.building != building)
+        if (_buildingEntity != buildingEntity)
             return false;
 
-        this.building = Entity.Null;
+        _buildingEntity = Entity.Null;
         return true;
     }
 
     public void SetFloor(FloorTypeEnum floor)
     {
-        this.floor = floor;
+        _floor = floor;
     }
 
-    public bool TrySetResource(ResourceTypeEnum type, int amount, Entity entity)
+    public bool TrySetResource(ResourceTypeEnum type, Entity entity)
     {
-        if (hasResource || type == ResourceTypeEnum.None || type >= ResourceTypeEnum.Count || amount <= 0)
+        if (hasResource || type == ResourceTypeEnum.None || type >= ResourceTypeEnum.Count)
             return false;
 
-        resourceType = type;
-        resourceAmount = amount;
-        resourceEntity = entity;
-        floor = FloorTypeEnum.PlacedResource;
+        _resourceType = type;
+        _resourceEntity = entity;
+        _floor = FloorTypeEnum.PlacedResource;
         return true;
     }
 
     public bool TryRemoveResource(Entity entity)
     {
-        if (resourceEntity != entity)
+        if (_resourceEntity != entity)
             return false;
 
         ClearResource();
@@ -79,10 +72,9 @@ public class ChunkCell
 
     public void ClearResource()
     {
-        resourceEntity = Entity.Null;
-        resourceType = ResourceTypeEnum.None;
-        resourceAmount = 0;
-        floor = FloorTypeEnum.Bare;
+        _resourceEntity = Entity.Null;
+        _resourceType = ResourceTypeEnum.None;
+        _floor = FloorTypeEnum.Bare;
     }
 
     public void AddItem(Entity item)
@@ -102,34 +94,43 @@ public class ChunkCell
     {
         _items.Clear();
     }
+
+    #region Properties
+    public int2 worldPosition { get => _worldPosition; }
+    public Entity buildingEntity { get => _buildingEntity; private set => _buildingEntity = value; }
+    public Entity resourceEntity { get => _resourceEntity; private set => _resourceEntity = value; }
+    public ResourceTypeEnum resourceType { get => _resourceType; private set => _resourceType = value; }
+    public FloorTypeEnum floor { get => _floor; private set => _floor = value; }
+    public IReadOnlyList<Entity> items { get => _items; }
+    public bool hasBuilding { get => _buildingEntity != Entity.Null; }
+    public bool hasResource { get => _resourceEntity != Entity.Null && _resourceType != ResourceTypeEnum.None; }
+    #endregion
 }
 
 public class Chunk
 {
+    private readonly int2 _chunkPosition;
     private readonly ChunkCell[] _cells = new ChunkCell[ChunkUtility.cellCount];
+    private bool _hasGeneratedResources;
 
     public Chunk(int2 chunkPosition)
     {
-        this.chunkPosition = chunkPosition;
+        _chunkPosition = chunkPosition;
 
-        for (int y = 0; y < ChunkUtility.chunkSize; y++)
+        for (int y = 0; y < GameConstants.chunkSize; y++)
         {
-            for (int x = 0; x < ChunkUtility.chunkSize; x++)
+            for (int x = 0; x < GameConstants.chunkSize; x++)
             {
                 int2 localCell = new int2(x, y);
-                int2 worldCell = chunkPosition * ChunkUtility.chunkSize + localCell;
+                int2 worldCell = chunkPosition * GameConstants.chunkSize + localCell;
                 _cells[ChunkUtility.ToCellIndex(localCell)] = new ChunkCell(worldCell);
             }
         }
     }
 
-    public int2 chunkPosition { get; }
-    public bool hasGeneratedResources { get; private set; }
-    public IReadOnlyList<ChunkCell> cells => _cells;
-
     public void MarkResourcesGenerated()
     {
-        hasGeneratedResources = true;
+        _hasGeneratedResources = true;
     }
 
     public ChunkCell GetCellByLocalPosition(int2 localCell)
@@ -147,4 +148,10 @@ public class Chunk
         for (int i = 0; i < _cells.Length; i++)
             _cells[i].ClearItems();
     }
+
+    #region Properties
+    public int2 chunkPosition { get => _chunkPosition; }
+    public bool hasGeneratedResources { get => _hasGeneratedResources; private set => _hasGeneratedResources = value; }
+    public IReadOnlyList<ChunkCell> cells { get => _cells; }
+    #endregion
 }

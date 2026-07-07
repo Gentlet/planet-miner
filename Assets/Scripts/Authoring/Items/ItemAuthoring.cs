@@ -10,6 +10,10 @@ public class ItemAuthoring : MonoBehaviour
         {
             Entity entity = GetEntity(TransformUsageFlags.Dynamic);
             AddComponent<Item>(entity);
+            AddComponent(entity, new GridPosition
+            {
+                gridPosition = authoring.transform.position.ToGridCell()
+            });
         }
     }
 }

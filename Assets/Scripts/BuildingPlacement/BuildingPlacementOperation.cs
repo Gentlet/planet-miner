@@ -31,7 +31,10 @@ public class BuildingPlacementOperation
         _dir = _dir.NextDirection();
         _canPlace = false;
     }
+
+    #region Properties
     public List<BuildingPlacementCandidate> Candidates { get => _candidates; }
     public DirectionEnum GetDirection { get => _dir; }
     public bool GetCanPlace { get => _canPlace; }
+    #endregion
 }

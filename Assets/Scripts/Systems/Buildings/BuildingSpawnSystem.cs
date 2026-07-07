@@ -39,7 +39,7 @@ partial struct BuildingSpawnSystem : ISystem
             ecb.AddComponent(instance, new BuildingType { type = request.ValueRO.type });
             ecb.AddComponent(instance, new GridPosition { gridPosition = gridPosition });
             ecb.AddComponent(instance, new Direction { dir = dir });
-            ecb.AddComponent(instance, new GridOccupantRequest { });
+            ecb.AddComponent(instance, new BuildingOccupantRequest { });
 
             switch (request.ValueRO.type)
             {

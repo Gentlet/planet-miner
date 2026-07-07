@@ -2,25 +2,24 @@ using Unity.Mathematics;
 
 public static class ChunkUtility
 {
-    public const int chunkSize = 16;
-    public const int cellCount = chunkSize * chunkSize;
+    public const int cellCount = GameConstants.chunkCellCount;
 
     public static int2 ToChunkPosition(int2 cell)
     {
         return new int2(
-            FloorDiv(cell.x, chunkSize),
-            FloorDiv(cell.y, chunkSize));
+            FloorDiv(cell.x, GameConstants.chunkSize),
+            FloorDiv(cell.y, GameConstants.chunkSize));
     }
 
     public static int2 ToLocalCell(int2 cell)
     {
         int2 chunkPosition = ToChunkPosition(cell);
-        return cell - chunkPosition * chunkSize;
+        return cell - chunkPosition * GameConstants.chunkSize;
     }
 
     public static int ToCellIndex(int2 localCell)
     {
-        return localCell.y * chunkSize + localCell.x;
+        return localCell.y * GameConstants.chunkSize + localCell.x;
     }
 
     private static int FloorDiv(int value, int divisor)

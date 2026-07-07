@@ -32,11 +32,6 @@ public struct ResourceOccupantRequest : IComponentData
 {
 }
 
-public struct ResourcePosition : ICleanupComponentData
-{
-    public int2 gridPosition;
-}
-
 public struct ResourcePrefabElement : IBufferElementData
 {
     public ResourceTypeEnum type;

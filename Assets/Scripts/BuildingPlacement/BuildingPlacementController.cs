@@ -21,15 +21,21 @@ public class BuildingPlacementController : MonoBehaviour
     {
         _entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
 
-        _bpo = new BuildingPlacementOperation(new List<BuildingPlacementCandidate>
+        _bpo = new BuildingPlacementOperation(new List<BuildingPlacementCandidate>());
+
+        for (int i = 0; i < 1; i++)
         {
-            new BuildingPlacementCandidate(
-                BuildingTypeEnum.Belt,
-                int2.zero,
-                int2.zero,
-                DirectionEnum.Up,
-                false)
-        });
+            for (int j = 0; j < 1; j++)
+            {
+                _bpo.Candidates.Add(
+                    new BuildingPlacementCandidate(
+                    BuildingTypeEnum.Belt,
+                    new int2(i, j),
+                    DirectionEnum.Up,
+                    false)
+                    );
+            }
+        }
     }
 
     private void Awake()
@@ -44,6 +50,9 @@ public class BuildingPlacementController : MonoBehaviour
 
     void Update()
     {
+        _preview.enabled = _enable;
+
+
         if (!_enable || _bpo == null)
             return;
 
@@ -128,11 +137,17 @@ public class BuildingPlacementController : MonoBehaviour
     {
         _enable = enable;
         _bpo = bpo;
+
+        _preview.enabled = _enable;
     }
     public void SetEnable(bool enable)
     {
         _enable = enable;
+
+        _preview.enabled = _enable;
     }
 
+    #region Properties
     public BuildingPlacementOperation Operation { get => _bpo; set => _bpo = value; }
+    #endregion
 }

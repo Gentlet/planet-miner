@@ -43,7 +43,7 @@ public class CameraChunkLoader : MonoBehaviour
         _lastCenterChunk = centerChunk;
         _hasLastCenterChunk = true;
 
-        int radiusInChunks = Mathf.CeilToInt(Mathf.Max(0, _loadRadiusInCells) / (float)ChunkUtility.chunkSize);
+        int radiusInChunks = Mathf.CeilToInt(Mathf.Max(0, _loadRadiusInCells) / (float)GameConstants.chunkSize);
 
         for (int y = -radiusInChunks; y <= radiusInChunks; y++)
         {

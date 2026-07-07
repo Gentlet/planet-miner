@@ -48,7 +48,7 @@ public partial class ResourceMapGenerationSystem : SystemBase
         DynamicBuffer<ResourceGenerationConfigElement> configs)
     {
         int maxPatchRadius = GetMaxPatchRadius(configs);
-        int neighborRange = maxPatchRadius / ChunkUtility.chunkSize + 1;
+        int neighborRange = maxPatchRadius / GameConstants.chunkSize + 1;
         var occupied = new NativeParallelHashSet<int2>(ChunkUtility.cellCount, Allocator.Temp);
 
         for (int y = -neighborRange; y <= neighborRange; y++)
@@ -92,9 +92,9 @@ public partial class ResourceMapGenerationSystem : SystemBase
         int minRadius = math.max(0, config.minPatchRadius);
         int maxRadius = math.max(minRadius, config.maxPatchRadius);
         int radius = random.NextInt(minRadius, maxRadius + 1);
-        int2 patchCenter = candidateChunk * ChunkUtility.chunkSize + new int2(
-            random.NextInt(0, ChunkUtility.chunkSize),
-            random.NextInt(0, ChunkUtility.chunkSize));
+        int2 patchCenter = candidateChunk * GameConstants.chunkSize + new int2(
+            random.NextInt(0, GameConstants.chunkSize),
+            random.NextInt(0, GameConstants.chunkSize));
 
         for (int y = -radius; y <= radius; y++)
         {
@@ -141,8 +141,8 @@ public partial class ResourceMapGenerationSystem : SystemBase
 
     private static bool IsInsideChunk(int2 cell, Chunk chunk)
     {
-        int2 min = chunk.chunkPosition * ChunkUtility.chunkSize;
-        int2 max = min + new int2(ChunkUtility.chunkSize - 1, ChunkUtility.chunkSize - 1);
+        int2 min = chunk.chunkPosition * GameConstants.chunkSize;
+        int2 max = min + new int2(GameConstants.chunkSize - 1, GameConstants.chunkSize - 1);
 
         return cell.x >= min.x &&
             cell.x <= max.x &&

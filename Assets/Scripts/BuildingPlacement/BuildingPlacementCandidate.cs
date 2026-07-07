@@ -12,13 +12,11 @@ public class BuildingPlacementCandidate
     public BuildingPlacementCandidate(
        BuildingTypeEnum type,
        int2 gridPosition,
-       int2 position,
        DirectionEnum dir,
        bool canPlace)
     {
         this.type = type;
         this.gridPosition = gridPosition;
-        this.position = position;
         this.dir = dir;
         this.canPlace = canPlace;
     }

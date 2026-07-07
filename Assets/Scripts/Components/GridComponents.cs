@@ -25,12 +25,12 @@ public struct Direction : IComponentData
     
 }
 
-public struct GridOccupant : IComponentData
+public struct BuildingOccupant : IComponentData
 {
 
 }
 
-public struct GridOccupantRequest : IComponentData
+public struct BuildingOccupantRequest : IComponentData
 {
 
 }

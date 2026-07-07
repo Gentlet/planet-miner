@@ -1,7 +1,7 @@
 using Unity.Entities;
 using UnityEngine;
 
-public partial class EntityCountDebugSystem : SystemBase
+public partial class EntityDebugSystem : SystemBase
 {
     private const double logIntervalSeconds = 1.0;
 

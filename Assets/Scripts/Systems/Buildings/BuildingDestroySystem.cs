@@ -32,7 +32,7 @@ public partial class BuildingDestroySystem : SystemBase
 
             if (targetEntity != Entity.Null &&
                 EntityManager.Exists(targetEntity) &&
-                EntityManager.HasComponent<GridOccupant>(targetEntity))
+                EntityManager.HasComponent<BuildingOccupant>(targetEntity))
             {
                 _chunkMap.TryUnregisterBuilding(request.ValueRO.gridPosition, targetEntity);
                 ecb.DestroyEntity(targetEntity);

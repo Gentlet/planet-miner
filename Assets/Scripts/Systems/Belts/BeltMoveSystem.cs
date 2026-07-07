@@ -7,8 +7,6 @@ using Unity.Transforms;
 [UpdateAfter(typeof(ChunkMapSystem))]
 public partial class BeltMoveSystem : SystemBase
 {
-    private const float itemSpacing = 0.25f;
-    private const float alignmentEpsilon = 0.001f;
     private ChunkMapSystem _chunkMap;
     private EntityQuery _itemsQuery;
 
@@ -44,13 +42,13 @@ public partial class BeltMoveSystem : SystemBase
         MoveItemsOnBeltsJob job = new MoveItemsOnBeltsJob
         {
             deltaTime = SystemAPI.Time.DeltaTime,
-            itemSpacingSq = itemSpacing * itemSpacing,
+            itemSpacingSq = GameConstants.itemSpacing * GameConstants.itemSpacing,
             beltCells = _chunkMap.GetBeltCellsReadOnly(),
             itemsByCell = itemsByCell,
             belts = SystemAPI.GetComponentLookup<Belt>(true),
             directions = SystemAPI.GetComponentLookup<Direction>(true)
         };
-
+        
         Dependency = buildItemsByCellJob.ScheduleParallel(Dependency);
         Dependency = job.ScheduleParallel(Dependency);
         Dependency = itemsByCell.Dispose(Dependency);
@@ -110,7 +108,7 @@ public partial class BeltMoveSystem : SystemBase
             if (!TryGetBelt(itemCell, out Belt belt, out Direction direction))
                 return;
 
-            MoveAlongBelt(entity, ref transform, itemPos, itemCell, belt, direction);
+            MoveItemOnBelt(entity, ref transform, itemPos, itemCell, belt, direction);
         }
 
         private bool TryGetBelt(int2 cell, out Belt belt, out Direction direction)
@@ -129,11 +127,11 @@ public partial class BeltMoveSystem : SystemBase
             return true;
         }
 
-        private void MoveAlongBelt(Entity entity, ref LocalTransform transform, float3 itemPos, int2 itemCell, Belt belt, Direction beltDirection)
+        private void MoveItemOnBelt(Entity entity, ref LocalTransform transform, float3 itemPos, int2 itemCell, Belt belt, Direction beltDirection)
         {
             float3 alignmentTarget = GetAlignmentTarget(itemPos, itemCell, beltDirection);
 
-            if (math.distancesq(itemPos, alignmentTarget) > alignmentEpsilon * alignmentEpsilon)
+            if (math.distancesq(itemPos, alignmentTarget) > GameConstants.alignmentEpsilon * GameConstants.alignmentEpsilon)
             {
                 MoveToPosition(entity, ref transform, itemPos, alignmentTarget, belt.speed);
                 return;

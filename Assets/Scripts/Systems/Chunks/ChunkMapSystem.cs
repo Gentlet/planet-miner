@@ -19,7 +19,7 @@ public partial class ChunkMapSystem : SystemBase
     protected override void OnUpdate()
     {
         EntityCommandBuffer ecb = SystemAPI.GetSingleton<EndSimulationEntityCommandBufferSystem.Singleton>().CreateCommandBuffer(World.Unmanaged);
-        foreach (var (request, requestEntity) in SystemAPI.Query<RefRO<GridOccupantRequest>>().WithEntityAccess())
+        foreach (var (request, requestEntity) in SystemAPI.Query<RefRO<BuildingOccupantRequest>>().WithEntityAccess())
         {
             TryRegisterBuilding(ecb, requestEntity);
         }
@@ -29,20 +29,6 @@ public partial class ChunkMapSystem : SystemBase
             TryRegisterResource(ecb, requestEntity);
         }
 
-        foreach (var (resourcePosition, entity) in SystemAPI.Query<RefRO<ResourcePosition>>().WithEntityAccess())
-        {
-            bool hasResource = EntityManager.HasComponent<ResourceDeposit>(entity);
-            bool hasGridPosition = EntityManager.HasComponent<GridPosition>(entity);
-
-            if (hasResource && hasGridPosition)
-                continue;
-
-            TryUnregisterResource(resourcePosition.ValueRO.gridPosition, entity);
-            ecb.RemoveComponent<ResourcePosition>(entity);
-
-            if (EntityManager.HasComponent<ResourceOccupant>(entity))
-                ecb.RemoveComponent<ResourceOccupant>(entity);
-        }
     }
 
     protected override void OnDestroy()
@@ -58,12 +44,10 @@ public partial class ChunkMapSystem : SystemBase
     {
         return TryGetCellData(cell, out ChunkCell cellData) && cellData.hasBuilding;
     }
-
     public bool IsBuildingReserved(int2 cell)
     {
         return _reservedCells.Contains(cell);
     }
-
     public bool IsBuildingOccupiedOrReserved(int2 cell)
     {
         return IsBuildingOccupied(cell) || IsBuildingReserved(cell);
@@ -77,7 +61,7 @@ public partial class ChunkMapSystem : SystemBase
             return false;
         }
 
-        entity = cellData.building;
+        entity = cellData.buildingEntity;
         return true;
     }
 
@@ -96,7 +80,6 @@ public partial class ChunkMapSystem : SystemBase
 
         return _reservedCells.Add(cell);
     }
-
     public bool TryUnreserveBuilding(int2 cell)
     {
         if (!IsBuildingReserved(cell))
@@ -107,7 +90,7 @@ public partial class ChunkMapSystem : SystemBase
 
     private bool TryRegisterBuilding(EntityCommandBuffer ecb, Entity entity)
     {
-        if (!EntityManager.HasComponent<GridOccupantRequest>(entity))
+        if (!EntityManager.HasComponent<BuildingOccupantRequest>(entity))
             return false;
         if (!EntityManager.HasComponent<GridPosition>(entity))
             return false;
@@ -140,18 +123,17 @@ public partial class ChunkMapSystem : SystemBase
             }
         }
 
-        ecb.RemoveComponent<GridOccupantRequest>(entity);
-        ecb.AddComponent<GridOccupant>(entity);
+        ecb.RemoveComponent<BuildingOccupantRequest>(entity);
+        ecb.AddComponent<BuildingOccupant>(entity);
 
         return true;
     }
-
     public bool TryUnregisterBuilding(int2 cell, Entity entity)
     {
         if (!TryGetCellData(cell, out ChunkCell cellData))
             return false;
 
-        if (cellData.building != entity)
+        if (cellData.buildingEntity != entity)
             return false;
 
         cellData.TryRemoveBuilding(entity);
@@ -166,7 +148,6 @@ public partial class ChunkMapSystem : SystemBase
     {
         return _chunks.TryGetValue(chunkPosition, out chunk);
     }
-
     public Chunk GetOrCreateChunk(int2 chunkPosition)
     {
         if (!_chunks.TryGetValue(chunkPosition, out Chunk chunk))
@@ -223,7 +204,7 @@ public partial class ChunkMapSystem : SystemBase
         ResourceDeposit resource = EntityManager.GetComponentData<ResourceDeposit>(entity);
         ChunkCell cellData = GetOrCreateCellData(pos.gridPosition);
 
-        if (!cellData.TrySetResource(resource.type, resource.amount, entity))
+        if (!cellData.TrySetResource(resource.type, entity))
         {
             UnityEngine.Debug.LogError($"Failed ChunkCell.TrySetResource. Type : {resource.type}, Cell : {pos.gridPosition}");
             ecb.DestroyEntity(entity);
@@ -232,7 +213,6 @@ public partial class ChunkMapSystem : SystemBase
 
         ecb.RemoveComponent<ResourceOccupantRequest>(entity);
         ecb.AddComponent<ResourceOccupant>(entity);
-        ecb.AddComponent(entity, new ResourcePosition { gridPosition = pos.gridPosition });
 
         return true;
     }
@@ -289,7 +269,6 @@ public partial class ChunkMapSystem : SystemBase
         if ( _reservedCells.Capacity <= _reservedCells.Count() )
             _reservedCells.Capacity *= 2;
     }
-
     private void EnsureBeltCapacity()
     {
         if (_beltByCell.Capacity <= _beltByCell.Count())
