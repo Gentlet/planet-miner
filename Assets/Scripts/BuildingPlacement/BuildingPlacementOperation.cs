@@ -20,7 +20,7 @@ public class BuildingPlacementOperation
         _canPlace = true;
         foreach (var candidate in _candidates)
         {
-            candidate.canPlace = !chunkMap.IsBuildingOccupiedOrReserved(candidate.position);
+            candidate.canPlace = !chunkMap.IsBuildingOccupiedOrReserved(candidate.position) && CanBuild(candidate, chunkMap);
 
             if (candidate.canPlace == false)
                 _canPlace = false;
@@ -30,6 +30,16 @@ public class BuildingPlacementOperation
     {
         _dir = _dir.NextDirection();
         _canPlace = false;
+    }
+
+    private bool CanBuild(BuildingPlacementCandidate candidate, ChunkMapSystem chunkMap)
+    {
+        if(candidate.type == BuildingTypeEnum.Miner && chunkMap.GetFloor(candidate.position) != FloorTypeEnum.PlacedResource)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     #region Properties

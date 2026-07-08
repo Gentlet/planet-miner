@@ -25,7 +25,7 @@ public class BuildingPlacementController : MonoBehaviour
 
         for (int i = 0; i < 1; i++)
         {
-            for (int j = 0; j < 20000; j++)
+            for (int j = 0; j < 1; j++)
             {
                 _bpo.Candidates.Add(
                     new BuildingPlacementCandidate(
@@ -72,12 +72,12 @@ public class BuildingPlacementController : MonoBehaviour
             if (_bpo != null)
                 _bpo.EvaluatePlacement(_chunkMap);
 
-            if (_bpo != null && Mouse.current.leftButton.wasPressedThisFrame && _bpo.GetCanPlace)
+            if (_bpo != null && PointerUtility.WasLeftClickPressed() && _bpo.GetCanPlace)
             {
                 CreateSpawnRequest();
             }
 
-            if (Mouse.current.rightButton.wasPressedThisFrame)
+            if (PointerUtility.WasRightClickPressed())
             {
                 CreateDestroyRequest(gridCell);
             }
