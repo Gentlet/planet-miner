@@ -4,6 +4,7 @@ using Unity.Mathematics;
 public enum BuildingTypeEnum : byte
 {
     Belt,
+    Miner,
     Craftor,
     Count
 }
