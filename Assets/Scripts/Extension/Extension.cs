@@ -144,7 +144,10 @@ public static class Float3Extension
     }
     public static bool IsInsideCell(this float3 v, int2 cell)
     {
-        return math.abs(v.x - cell.x) < 0.5f &&
-               math.abs(v.y - cell.y) < 0.5f;
+        const float cellHalfSize = 0.5f;
+        const float epsilon = 0.0001f;
+
+        return math.abs(v.x - cell.x) <= cellHalfSize + epsilon &&
+               math.abs(v.y - cell.y) <= cellHalfSize + epsilon;
     }
 }
