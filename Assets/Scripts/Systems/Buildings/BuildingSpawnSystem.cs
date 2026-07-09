@@ -46,6 +46,9 @@ partial struct BuildingSpawnSystem : ISystem
                 case BuildingTypeEnum.Belt:
                     ecb.AddComponent(instance, new Belt { speed = 1f });
                     break;
+                case BuildingTypeEnum.Miner:
+                    ecb.AddComponent(instance, new Miner { speed = 1f });
+                    break;
                 case BuildingTypeEnum.Craftor:
                     break;
                 default:

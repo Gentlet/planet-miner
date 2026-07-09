@@ -78,6 +78,26 @@ public static class DirectionExtension
     }
 }
 
+public static class ResourceTypeExtension
+{
+    public static ItemTypeEnum ToItemType(this ResourceTypeEnum resourceType)
+    {
+        switch (resourceType)
+        {
+            case ResourceTypeEnum.Iron:
+                return ItemTypeEnum.Iron;
+            case ResourceTypeEnum.Copper:
+                return ItemTypeEnum.Copper;
+            case ResourceTypeEnum.Coal:
+                return ItemTypeEnum.Coal;
+            case ResourceTypeEnum.Stone:
+                return ItemTypeEnum.Stone;
+            default:
+                return ItemTypeEnum.None;
+        }
+    }
+}
+
 public static class VectorExtension
 {
     public static Vector2 Floor(this Vector2 v)

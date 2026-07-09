@@ -217,7 +217,7 @@ public partial class ChunkMapSystem : SystemBase
         return true;
     }
 
-    private bool TryUnregisterResource(int2 cell, Entity entity)
+    public bool TryUnregisterResource(int2 cell, Entity entity)
     {
         if (!TryGetCellData(cell, out ChunkCell cellData))
             return false;

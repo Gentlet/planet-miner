@@ -5,4 +5,6 @@ public static class GameConstants
 
     public const float itemSpacing = 0.25f;
     public const float alignmentEpsilon = 0.001f;
+
+    public const int MaximumItemInCell = 5;
 }
