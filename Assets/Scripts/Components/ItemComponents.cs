@@ -3,8 +3,8 @@ using Unity.Entities;
 public enum ItemTypeEnum : byte
 {
     None,
-    Iron,
-    Copper,
+    Iron_Ore,
+    Copper_Ore,
     Coal,
     Stone,
     Count

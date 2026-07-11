@@ -84,10 +84,10 @@ public static class ResourceTypeExtension
     {
         switch (resourceType)
         {
-            case ResourceTypeEnum.Iron:
-                return ItemTypeEnum.Iron;
-            case ResourceTypeEnum.Copper:
-                return ItemTypeEnum.Copper;
+            case ResourceTypeEnum.Iron_Ore:
+                return ItemTypeEnum.Iron_Ore;
+            case ResourceTypeEnum.Copper_Ore:
+                return ItemTypeEnum.Copper_Ore;
             case ResourceTypeEnum.Coal:
                 return ItemTypeEnum.Coal;
             case ResourceTypeEnum.Stone:

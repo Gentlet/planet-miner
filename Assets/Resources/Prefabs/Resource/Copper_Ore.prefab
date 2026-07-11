@@ -12,7 +12,7 @@ GameObject:
   - component: {fileID: 3917026422457642572}
   - component: {fileID: 7869267647352796525}
   m_Layer: 0
-  m_Name: Copper
+  m_Name: Copper_Ore
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0

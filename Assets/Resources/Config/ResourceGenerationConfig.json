@@ -1,7 +1,7 @@
 {
   "configs": [
     {
-      "type": "Iron",
+      "type": "Iron_Ore",
       "weight": 0.35,
       "minPatchRadius": 1,
       "maxPatchRadius": 2,
@@ -10,7 +10,7 @@
       "maxAmount": 300
     },
     {
-      "type": "Copper",
+      "type": "Copper_Ore",
       "weight": 0.3,
       "minPatchRadius": 1,
       "maxPatchRadius": 2,

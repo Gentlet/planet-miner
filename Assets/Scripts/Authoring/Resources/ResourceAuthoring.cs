@@ -4,7 +4,7 @@ using UnityEngine;
 public class ResourceAuthoring : MonoBehaviour
 {
     [SerializeField]
-    private ResourceTypeEnum _type = ResourceTypeEnum.Iron;
+    private ResourceTypeEnum _type = ResourceTypeEnum.Iron_Ore;
 
     [SerializeField]
     private int _amount = 100;

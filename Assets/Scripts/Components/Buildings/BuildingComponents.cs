@@ -5,7 +5,7 @@ public enum BuildingTypeEnum : byte
 {
     Belt,
     Miner,
-    Craftor,
+    Crafter,
     Count
 }
 

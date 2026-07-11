@@ -49,7 +49,7 @@ partial struct BuildingSpawnSystem : ISystem
                 case BuildingTypeEnum.Miner:
                     ecb.AddComponent(instance, new Miner { speed = 1f });
                     break;
-                case BuildingTypeEnum.Craftor:
+                case BuildingTypeEnum.Crafter:
                     break;
                 default:
                     break;

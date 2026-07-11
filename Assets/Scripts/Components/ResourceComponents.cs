@@ -4,8 +4,8 @@ using Unity.Mathematics;
 public enum ResourceTypeEnum : byte
 {
     None,
-    Iron,
-    Copper,
+    Iron_Ore,
+    Copper_Ore,
     Coal,
     Stone,
     Count
