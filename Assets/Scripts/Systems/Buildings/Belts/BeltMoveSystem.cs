@@ -15,6 +15,7 @@ public partial class BeltMoveSystem : SystemBase
         _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
         _itemsQuery = SystemAPI.QueryBuilder()
             .WithAll<Item, LocalTransform>()
+            .WithNone<DepositedItem>()
             .Build();
         RequireForUpdate<Item>();
     }
@@ -62,6 +63,7 @@ public partial class BeltMoveSystem : SystemBase
     }
 
     [BurstCompile]
+    [WithNone(typeof(DepositedItem))]
     private partial struct BuildItemsByCellJob : IJobEntity
     {
         public NativeParallelMultiHashMap<int2, ItemSpatialEntry>.ParallelWriter itemsByCell;
@@ -80,6 +82,7 @@ public partial class BeltMoveSystem : SystemBase
     }
 
     [BurstCompile]
+    [WithNone(typeof(DepositedItem))]
     private partial struct MoveItemsOnBeltsJob : IJobEntity
     {
         public float deltaTime;

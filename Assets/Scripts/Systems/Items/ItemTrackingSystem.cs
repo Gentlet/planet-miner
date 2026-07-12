@@ -28,12 +28,15 @@ public partial class ItemTrackingSystem : SystemBase
             _hasInitializeItems = true;
         }
 
-        foreach (var (transform, gridPosition, entity) in SystemAPI.Query<RefRO<LocalTransform>, RefRW<GridPosition>>().WithAll<Item>().WithEntityAccess())
+        foreach (var (transform, gridPosition, entity) in SystemAPI.Query<RefRO<LocalTransform>, RefRW<GridPosition>>().WithAll<Item>().WithNone<DepositedItem>().WithEntityAccess())
         {
             int2 cell = transform.ValueRO.Position.ToGridCell();
 
             if (cell.Equals(gridPosition.ValueRO.gridPosition))
+            {
+                _chunkMap.RegisterItem(cell, entity);
                 continue;
+            }
 
             _chunkMap.TryUnregisterItem(gridPosition.ValueRO.gridPosition, entity);
             _chunkMap.RegisterItem(cell, entity);
@@ -43,7 +46,7 @@ public partial class ItemTrackingSystem : SystemBase
 
     private void InitializeItems()
     {
-        foreach (var (transform, gridPosition, entity) in SystemAPI.Query<RefRO<LocalTransform>, RefRW<GridPosition>>().WithAll<Item>().WithEntityAccess())
+        foreach (var (transform, gridPosition, entity) in SystemAPI.Query<RefRO<LocalTransform>, RefRW<GridPosition>>().WithAll<Item>().WithNone<DepositedItem>().WithEntityAccess())
         {
             int2 cell = transform.ValueRO.Position.ToGridCell();
 

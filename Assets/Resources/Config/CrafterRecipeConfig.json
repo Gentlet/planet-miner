@@ -1,0 +1,16 @@
+{
+  "recipes": [
+    {
+      "id": 1,
+      "outputItemType": "Iron",
+      "craftTime": 1.0,
+      "conditions": [],
+      "ingredients": [
+        {
+          "itemType": "Iron_Ore",
+          "amount": 1
+        }
+      ]
+    }
+  ]
+}

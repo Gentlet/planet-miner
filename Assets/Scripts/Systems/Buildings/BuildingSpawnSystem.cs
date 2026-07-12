@@ -50,6 +50,15 @@ partial struct BuildingSpawnSystem : ISystem
                     ecb.AddComponent(instance, new Miner { speed = 1f });
                     break;
                 case BuildingTypeEnum.Crafter:
+                    ItemTypeEnum selectedItemType = request.ValueRO.selectedItemType;
+                    ecb.AddComponent(instance, new Crafter
+                    {
+                        speed = 1f,
+                        selectedItemType = selectedItemType,
+                        progress = 0f,
+                        state = selectedItemType.IsValid() ? CrafterStateEnum.Idle : CrafterStateEnum.NoRecipe
+                    });
+                    ecb.AddBuffer<CrafterDepositedItemElement>(instance);
                     break;
                 default:
                     break;

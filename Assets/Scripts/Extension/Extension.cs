@@ -1,3 +1,4 @@
+using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine;
 
@@ -149,5 +150,136 @@ public static class Float3Extension
 
         return math.abs(v.x - cell.x) <= cellHalfSize + epsilon &&
                math.abs(v.y - cell.y) <= cellHalfSize + epsilon;
+    }
+}
+
+public static class ItemTypeExtension
+{
+    public static bool IsValid(this ItemTypeEnum type)
+    {
+        return type > ItemTypeEnum.None && type < ItemTypeEnum.Count;
+    }
+}
+
+public static class CrafterStateExtension
+{
+    public static bool CanReceiveItems(this CrafterStateEnum state)
+    {
+        return state != CrafterStateEnum.NoRecipe;
+    }
+}
+
+public static class CrafterRecipeExtension
+{
+    public static float GetCraftTime(this CrafterRecipeElement recipe, float speed)
+    {
+        if (speed <= 0f)
+            return float.PositiveInfinity;
+
+        return recipe.craftTime / speed;
+    }
+}
+
+
+public static class CrafterRecipeBufferExtension
+{
+    public static bool TryFindRecipe(
+        this DynamicBuffer<CrafterRecipeElement> recipes,
+        ItemTypeEnum outputItemType,
+        out CrafterRecipeElement recipe)
+    {
+        for (int i = 0; i < recipes.Length; i++)
+        {
+            if (recipes[i].outputItemType == outputItemType)
+            {
+                recipe = recipes[i];
+                return true;
+            }
+        }
+
+        recipe = default;
+        return false;
+    }
+
+    public static bool HasIngredient(
+        this DynamicBuffer<CrafterRecipeIngredientElement> ingredients,
+        int recipeId,
+        ItemTypeEnum itemType)
+    {
+        for (int i = 0; i < ingredients.Length; i++)
+        {
+            CrafterRecipeIngredientElement ingredient = ingredients[i];
+
+            if (ingredient.recipeId == recipeId && ingredient.itemType == itemType)
+                return true;
+        }
+
+        return false;
+    }
+}
+
+public static class CrafterDepositedItemBufferExtension
+{
+    public static bool HasIngredients(
+        this DynamicBuffer<CrafterDepositedItemElement> depositedItems,
+        DynamicBuffer<CrafterRecipeIngredientElement> ingredients,
+        int recipeId)
+    {
+        for (int i = 0; i < ingredients.Length; i++)
+        {
+            CrafterRecipeIngredientElement ingredient = ingredients[i];
+
+            if (ingredient.recipeId != recipeId)
+                continue;
+            if (depositedItems.CountItems(ingredient.itemType) < ingredient.amount)
+                return false;
+        }
+
+        return true;
+    }
+
+    public static bool HasExceptionItem(
+        this DynamicBuffer<CrafterDepositedItemElement> depositedItems,
+        DynamicBuffer<CrafterRecipeIngredientElement> ingredients,
+        int recipeId)
+    {
+        for (int i = 0; i < depositedItems.Length; i++)
+        {
+            if (!ingredients.HasIngredient(recipeId, depositedItems[i].type))
+                return true;
+        }
+
+        return false;
+    }
+
+    public static int CountItems(
+        this DynamicBuffer<CrafterDepositedItemElement> depositedItems,
+        ItemTypeEnum itemType)
+    {
+        int count = 0;
+
+        for (int i = 0; i < depositedItems.Length; i++)
+        {
+            if (depositedItems[i].type == itemType)
+                count++;
+        }
+
+        return count;
+    }
+}
+
+public static class ItemStorageLimitBufferExtension
+{
+    public static int GetStorageLimit(
+        this DynamicBuffer<ItemStorageLimitElement> storageLimits,
+        ItemTypeEnum itemType)
+    {
+        for (int i = 0; i < storageLimits.Length; i++)
+        {
+            if (storageLimits[i].itemType == itemType)
+                return storageLimits[i].maxAmount;
+        }
+
+        return 0;
     }
 }

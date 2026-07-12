@@ -1,0 +1,24 @@
+{
+  "limits": [
+    {
+      "itemType": "Iron_Ore",
+      "maxAmount": 10
+    },
+    {
+      "itemType": "Copper_Ore",
+      "maxAmount": 10
+    },
+    {
+      "itemType": "Coal",
+      "maxAmount": 10
+    },
+    {
+      "itemType": "Stone",
+      "maxAmount": 10
+    },
+    {
+      "itemType": "Iron",
+      "maxAmount": 10
+    }
+  ]
+}

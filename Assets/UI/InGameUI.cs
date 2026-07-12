@@ -8,8 +8,9 @@ public class InGameUI : MonoBehaviour
     [SerializeField]
     private BuildingPlacementController _bpc;
 
-    private Button leftButton;
-    private Button rightButton;
+    private Button beltButton;
+    private Button minerButton;
+    private Button crafterButton;
 
     private void Awake()
     {
@@ -17,23 +18,28 @@ public class InGameUI : MonoBehaviour
 
         VisualElement root = uiDocument.rootVisualElement;
 
-        leftButton = root.Q<Button>("left-button");
-        rightButton = root.Q<Button>("right-button");
+        beltButton = root.Q<Button>("belt-button");
+        minerButton = root.Q<Button>("miner-button");
+        crafterButton = root.Q<Button>("crafter-button");
 
-        leftButton.clicked += OnLeftButtonClicked;
-        rightButton.clicked += OnRightButtonClicked;
+        beltButton.clicked += OnBeltButtonClicked;
+        minerButton.clicked += OnMinerButtonClicked;
+        crafterButton.clicked += OnCrafterButtonClicked;
     }
 
     private void OnDestroy()
     {
-        if (leftButton != null)
-            leftButton.clicked -= OnLeftButtonClicked;
+        if (beltButton != null)
+            beltButton.clicked -= OnBeltButtonClicked;
 
-        if (rightButton != null)
-            rightButton.clicked -= OnRightButtonClicked;
+        if (minerButton != null)
+            minerButton.clicked -= OnMinerButtonClicked;
+
+        if (crafterButton != null)
+            crafterButton.clicked -= OnCrafterButtonClicked;
     }
 
-    private void OnLeftButtonClicked()
+    private void OnBeltButtonClicked()
     {
         _bpc.Operation = new BuildingPlacementOperation(new List<BuildingPlacementCandidate>());
 
@@ -52,7 +58,7 @@ public class InGameUI : MonoBehaviour
         }
     }
 
-    private void OnRightButtonClicked()
+    private void OnMinerButtonClicked()
     {
         _bpc.Operation = new BuildingPlacementOperation(new List<BuildingPlacementCandidate>());
 
@@ -69,5 +75,17 @@ public class InGameUI : MonoBehaviour
                     );
             }
         }
+    }
+
+    private void OnCrafterButtonClicked()
+    {
+        _bpc.Operation = new BuildingPlacementOperation(new List<BuildingPlacementCandidate>());
+        _bpc.Operation.Candidates.Add(
+            new BuildingPlacementCandidate(
+                BuildingTypeEnum.Crafter,
+                int2.zero,
+                DirectionEnum.Up,
+                false,
+                ItemTypeEnum.Iron));
     }
 }

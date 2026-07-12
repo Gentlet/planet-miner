@@ -7,6 +7,7 @@ public enum ItemTypeEnum : byte
     Copper_Ore,
     Coal,
     Stone,
+    Iron,
     Count
 }
 

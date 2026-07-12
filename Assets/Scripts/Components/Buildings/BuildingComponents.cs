@@ -18,7 +18,8 @@ public struct BuildingSpawnRequest : IComponentData
 {
     public BuildingTypeEnum type;
     public int2 gridPosition;
-    public DirectionEnum dir; 
+    public DirectionEnum dir;
+    public ItemTypeEnum selectedItemType;
 }
 
 public struct BuildingDestroyRequest : IComponentData

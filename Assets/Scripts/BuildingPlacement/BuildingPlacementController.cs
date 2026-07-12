@@ -97,7 +97,8 @@ public class BuildingPlacementController : MonoBehaviour
                 {
                     type = candidate.type,
                     gridPosition = candidate.position,
-                    dir = candidate.dir.NextDirection(_bpo.GetDirection)
+                    dir = candidate.dir.NextDirection(_bpo.GetDirection),
+                    selectedItemType = candidate.selectedItemType
                 });
         }
     }
