@@ -8,12 +8,14 @@ using Unity.Transforms;
 public partial class CrafterSystem : SystemBase
 {
     private ChunkMapSystem _chunkMap;
+    private ItemStorageSystem _itemStorage;
     private readonly List<Entity> _itemsInCell = new List<Entity>();
     private readonly Dictionary<int2, int> _reservedOutputItemCounts = new Dictionary<int2, int>();
 
     protected override void OnCreate()
     {
         _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
+        _itemStorage = World.GetExistingSystemManaged<ItemStorageSystem>();
         RequireForUpdate<CrafterConfig>();
         RequireForUpdate<ItemPrefabElement>();
     }
@@ -27,6 +29,13 @@ public partial class CrafterSystem : SystemBase
                 return;
         }
 
+        if (_itemStorage == null)
+        {
+            _itemStorage = World.GetExistingSystemManaged<ItemStorageSystem>();
+            if (_itemStorage == null)
+                return;
+        }
+
         DynamicBuffer<CrafterRecipeElement> recipes = SystemAPI.GetSingletonBuffer<CrafterRecipeElement>(true);
         DynamicBuffer<CrafterRecipeIngredientElement> ingredients = SystemAPI.GetSingletonBuffer<CrafterRecipeIngredientElement>(true);
         DynamicBuffer<ItemStorageLimitElement> storageLimits = SystemAPI.GetSingletonBuffer<ItemStorageLimitElement>(true);
@@ -36,21 +45,21 @@ public partial class CrafterSystem : SystemBase
 
         _reservedOutputItemCounts.Clear();
 
-        foreach (var (crafter, gridPosition, direction, depositedItems, crafterEntity) in
-                 SystemAPI.Query<RefRW<Crafter>, RefRO<GridPosition>, RefRO<Direction>, DynamicBuffer<CrafterDepositedItemElement>>().WithEntityAccess())
+        foreach (var (crafter, gridPosition, direction, storedItems, crafterEntity) in
+                 SystemAPI.Query<RefRW<Crafter>, RefRO<GridPosition>, RefRO<Direction>, DynamicBuffer<StoredItemElement>>().WithEntityAccess())
         {
             int2 crafterCell = gridPosition.ValueRO.gridPosition;
 
-            TryDepositItems(ref ecb, crafter.ValueRO, depositedItems, crafterEntity, crafterCell, recipes, ingredients, storageLimits);
-            UpdateCrafting(ref crafter.ValueRW, depositedItems, recipes, ingredients, deltaTime);
-            TryOutput(ref ecb, itemPrefabs, recipes, ingredients, ref crafter.ValueRW, crafterCell, direction.ValueRO.dir, depositedItems);
+            TryDepositItems(ref ecb, crafter.ValueRO, storedItems, crafterEntity, crafterCell, recipes, ingredients, storageLimits);
+            UpdateCrafting(ref crafter.ValueRW, storedItems, recipes, ingredients, deltaTime);
+            TryOutput(ref ecb, itemPrefabs, recipes, ingredients, ref crafter.ValueRW, crafterCell, direction.ValueRO.dir, storedItems);
         }
     }
 
     private void TryDepositItems(
         ref EntityCommandBuffer ecb,
         in Crafter crafter,
-        DynamicBuffer<CrafterDepositedItemElement> depositedItems,
+        DynamicBuffer<StoredItemElement> storedItems,
         Entity crafterEntity,
         int2 crafterCell,
         DynamicBuffer<CrafterRecipeElement> recipes,
@@ -68,16 +77,16 @@ public partial class CrafterSystem : SystemBase
         {
             Entity itemEntity = _itemsInCell[i];
 
-            if (!CanDepositItem(itemEntity, depositedItems, ingredients, storageLimits, recipe.id, out ItemTypeEnum itemType))
+            if (!CanDepositItem(itemEntity, storedItems, ingredients, storageLimits, recipe.id, out ItemTypeEnum itemType))
                 continue;
 
-            DepositItem(ref ecb, depositedItems, crafterEntity, crafterCell, itemEntity, itemType);
+            _itemStorage.TryStoreItem(ref ecb, storedItems, crafterEntity, crafterCell, itemEntity);
         }
     }
 
     private bool CanDepositItem(
         Entity itemEntity,
-        DynamicBuffer<CrafterDepositedItemElement> depositedItems,
+        DynamicBuffer<StoredItemElement> storedItems,
         DynamicBuffer<CrafterRecipeIngredientElement> ingredients,
         DynamicBuffer<ItemStorageLimitElement> storageLimits,
         int recipeId,
@@ -87,7 +96,7 @@ public partial class CrafterSystem : SystemBase
 
         if (!EntityManager.Exists(itemEntity) ||
             !EntityManager.HasComponent<Item>(itemEntity) ||
-            EntityManager.HasComponent<DepositedItem>(itemEntity))
+            EntityManager.HasComponent<StoredItem>(itemEntity))
             return false;
 
         itemType = EntityManager.GetComponentData<Item>(itemEntity).type;
@@ -97,46 +106,12 @@ public partial class CrafterSystem : SystemBase
 
         int maxAmount = storageLimits.GetStorageLimit(itemType);
 
-        return maxAmount > 0 && depositedItems.CountItems(itemType) < maxAmount;
-    }
-
-    private void DepositItem(
-        ref EntityCommandBuffer ecb,
-        DynamicBuffer<CrafterDepositedItemElement> depositedItems,
-        Entity crafterEntity,
-        int2 crafterCell,
-        Entity itemEntity,
-        ItemTypeEnum itemType)
-    {
-        depositedItems.Add(new CrafterDepositedItemElement
-        {
-            itemEntity = itemEntity,
-            type = itemType
-        });
-
-        _chunkMap.TryUnregisterItem(crafterCell, itemEntity);
-
-        if (EntityManager.HasComponent<LocalTransform>(itemEntity))
-        {
-            LocalTransform transform = EntityManager.GetComponentData<LocalTransform>(itemEntity);
-            transform.Position = new float3(crafterCell.x, crafterCell.y, transform.Position.z);
-            ecb.SetComponent(itemEntity, transform);
-        }
-
-        if (EntityManager.HasComponent<GridPosition>(itemEntity))
-            ecb.SetComponent(itemEntity, new GridPosition { gridPosition = crafterCell });
-        else
-            ecb.AddComponent(itemEntity, new GridPosition { gridPosition = crafterCell });
-
-        ecb.AddComponent(itemEntity, new DepositedItem { owner = crafterEntity });
-
-        if (!EntityManager.HasComponent<Disabled>(itemEntity))
-            ecb.AddComponent<Disabled>(itemEntity);
+        return maxAmount > 0 && storedItems.CountItems(itemType) < maxAmount;
     }
 
     private static void UpdateCrafting(
         ref Crafter crafter,
-        DynamicBuffer<CrafterDepositedItemElement> depositedItems,
+        DynamicBuffer<StoredItemElement> storedItems,
         DynamicBuffer<CrafterRecipeElement> recipes,
         DynamicBuffer<CrafterRecipeIngredientElement> ingredients,
         float deltaTime)
@@ -149,7 +124,7 @@ public partial class CrafterSystem : SystemBase
             return;
         }
 
-        if (depositedItems.HasExceptionItem(ingredients, recipe.id))
+        if (storedItems.HasExceptionItem(ingredients, recipe.id))
         {
             crafter.state = CrafterStateEnum.WaitingForExceptionItem;
             crafter.progress = 0f;
@@ -159,7 +134,7 @@ public partial class CrafterSystem : SystemBase
         if (crafter.state == CrafterStateEnum.WaitingForOutput)
             return;
 
-        if (!depositedItems.HasIngredients(ingredients, recipe.id) || crafter.speed <= 0f)
+        if (!storedItems.HasIngredients(ingredients, recipe.id) || crafter.speed <= 0f)
         {
             crafter.state = CrafterStateEnum.Idle;
             crafter.progress = 0f;
@@ -190,7 +165,7 @@ public partial class CrafterSystem : SystemBase
         ref Crafter crafter,
         int2 crafterCell,
         DirectionEnum direction,
-        DynamicBuffer<CrafterDepositedItemElement> depositedItems)
+        DynamicBuffer<StoredItemElement> storedItems)
     {
         if (crafter.state != CrafterStateEnum.WaitingForOutput)
             return;
@@ -200,13 +175,13 @@ public partial class CrafterSystem : SystemBase
             crafter.progress = 0f;
             return;
         }
-        if (depositedItems.HasExceptionItem(ingredients, recipe.id))
+        if (storedItems.HasExceptionItem(ingredients, recipe.id))
         {
             crafter.state = CrafterStateEnum.WaitingForExceptionItem;
             crafter.progress = 0f;
             return;
         }
-        if (!depositedItems.HasIngredients(ingredients, recipe.id))
+        if (!storedItems.HasIngredients(ingredients, recipe.id))
         {
             crafter.state = CrafterStateEnum.Idle;
             crafter.progress = 0f;
@@ -221,7 +196,7 @@ public partial class CrafterSystem : SystemBase
 
         ReserveOutputItem(outputCell);
         SpawnItem(ref ecb, itemPrefab, outputCell, recipe.outputItemType);
-        ConsumeIngredients(ref ecb, depositedItems, ingredients, recipe.id);
+        ConsumeIngredients(ref ecb, storedItems, ingredients, recipe.id);
 
         crafter.progress = 0f;
         crafter.state = CrafterStateEnum.Idle;
@@ -245,11 +220,13 @@ public partial class CrafterSystem : SystemBase
         ecb.SetComponent(item, LocalTransform.FromPosition(new float3(outputCell.x, outputCell.y, 0f)));
         ecb.AddComponent(item, new GridPosition { gridPosition = outputCell });
         ecb.AddComponent(item, new Item { type = type });
+        ecb.AddComponent<ItemCellChanged>(item);
+        ecb.SetComponentEnabled<ItemCellChanged>(item, true);
     }
 
-    private static void ConsumeIngredients(
+    private void ConsumeIngredients(
         ref EntityCommandBuffer ecb,
-        DynamicBuffer<CrafterDepositedItemElement> depositedItems,
+        DynamicBuffer<StoredItemElement> storedItems,
         DynamicBuffer<CrafterRecipeIngredientElement> ingredients,
         int recipeId)
     {
@@ -262,15 +239,14 @@ public partial class CrafterSystem : SystemBase
 
             int remainingAmount = ingredient.amount;
 
-            for (int depositedIndex = depositedItems.Length - 1; depositedIndex >= 0 && remainingAmount > 0; depositedIndex--)
+            for (int storedIndex = storedItems.Length - 1; storedIndex >= 0 && remainingAmount > 0; storedIndex--)
             {
-                CrafterDepositedItemElement depositedItem = depositedItems[depositedIndex];
+                StoredItemElement storedItem = storedItems[storedIndex];
 
-                if (depositedItem.type != ingredient.itemType)
+                if (storedItem.type != ingredient.itemType)
                     continue;
 
-                ecb.DestroyEntity(depositedItem.itemEntity);
-                depositedItems.RemoveAt(depositedIndex);
+                _itemStorage.DestroyStoredItem(ref ecb, storedItems, storedIndex);
                 remainingAmount--;
             }
         }

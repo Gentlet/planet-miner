@@ -20,6 +20,8 @@ public class ItemAuthoring : MonoBehaviour
             {
                 gridPosition = authoring.transform.position.ToGridCell()
             });
+            AddComponent<ItemCellChanged>(entity);
+            SetComponentEnabled<ItemCellChanged>(entity, false);
         }
     }
 }

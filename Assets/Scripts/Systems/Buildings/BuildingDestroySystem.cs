@@ -1,15 +1,16 @@
 using Unity.Entities;
 using Unity.Mathematics;
-using Unity.Transforms;
 
 [UpdateBefore(typeof(BeltMoveSystem))]
 public partial class BuildingDestroySystem : SystemBase
 {
     private ChunkMapSystem _chunkMap;
+    private ItemStorageSystem _itemStorage;
 
     protected override void OnCreate()
     {
         _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
+        _itemStorage = World.GetExistingSystemManaged<ItemStorageSystem>();
         RequireForUpdate<BuildingDestroyRequest>();
     }
 
@@ -19,6 +20,13 @@ public partial class BuildingDestroySystem : SystemBase
         {
             _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
             if (_chunkMap == null)
+                return;
+        }
+
+        if (_itemStorage == null)
+        {
+            _itemStorage = World.GetExistingSystemManaged<ItemStorageSystem>();
+            if (_itemStorage == null)
                 return;
         }
 
@@ -47,37 +55,10 @@ public partial class BuildingDestroySystem : SystemBase
 
     private void RestoreItems(ref EntityCommandBuffer ecb, Entity buildingEntity, int2 buildingCell)
     {
-        if (!EntityManager.HasBuffer<CrafterDepositedItemElement>(buildingEntity))
+        if (!EntityManager.HasBuffer<StoredItemElement>(buildingEntity))
             return;
 
-        DynamicBuffer<CrafterDepositedItemElement> depositedItems = EntityManager.GetBuffer<CrafterDepositedItemElement>(buildingEntity);
-
-        for (int i = 0; i < depositedItems.Length; i++)
-        {
-            Entity itemEntity = depositedItems[i].itemEntity;
-
-            if (itemEntity == Entity.Null || !EntityManager.Exists(itemEntity))
-                continue;
-
-            if (EntityManager.HasComponent<LocalTransform>(itemEntity))
-            {
-                LocalTransform transform = EntityManager.GetComponentData<LocalTransform>(itemEntity);
-                transform.Position = new float3(buildingCell.x, buildingCell.y, transform.Position.z);
-                ecb.SetComponent(itemEntity, transform);
-            }
-
-            if (EntityManager.HasComponent<GridPosition>(itemEntity))
-                ecb.SetComponent(itemEntity, new GridPosition { gridPosition = buildingCell });
-            else
-                ecb.AddComponent(itemEntity, new GridPosition { gridPosition = buildingCell });
-
-            if (EntityManager.HasComponent<DepositedItem>(itemEntity))
-                ecb.RemoveComponent<DepositedItem>(itemEntity);
-
-            if (EntityManager.HasComponent<Disabled>(itemEntity))
-                ecb.RemoveComponent<Disabled>(itemEntity);
-
-            _chunkMap.RegisterItem(buildingCell, itemEntity);
-        }
+        DynamicBuffer<StoredItemElement> storedItems = EntityManager.GetBuffer<StoredItemElement>(buildingEntity);
+        _itemStorage.RestoreItems(ref ecb, storedItems, buildingCell);
     }
 }

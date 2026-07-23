@@ -218,10 +218,10 @@ public static class CrafterRecipeBufferExtension
     }
 }
 
-public static class CrafterDepositedItemBufferExtension
+public static class CrafterStoredItemBufferExtension
 {
     public static bool HasIngredients(
-        this DynamicBuffer<CrafterDepositedItemElement> depositedItems,
+        this DynamicBuffer<StoredItemElement> storedItems,
         DynamicBuffer<CrafterRecipeIngredientElement> ingredients,
         int recipeId)
     {
@@ -231,7 +231,7 @@ public static class CrafterDepositedItemBufferExtension
 
             if (ingredient.recipeId != recipeId)
                 continue;
-            if (depositedItems.CountItems(ingredient.itemType) < ingredient.amount)
+            if (storedItems.CountItems(ingredient.itemType) < ingredient.amount)
                 return false;
         }
 
@@ -239,13 +239,13 @@ public static class CrafterDepositedItemBufferExtension
     }
 
     public static bool HasExceptionItem(
-        this DynamicBuffer<CrafterDepositedItemElement> depositedItems,
+        this DynamicBuffer<StoredItemElement> storedItems,
         DynamicBuffer<CrafterRecipeIngredientElement> ingredients,
         int recipeId)
     {
-        for (int i = 0; i < depositedItems.Length; i++)
+        for (int i = 0; i < storedItems.Length; i++)
         {
-            if (!ingredients.HasIngredient(recipeId, depositedItems[i].type))
+            if (!ingredients.HasIngredient(recipeId, storedItems[i].type))
                 return true;
         }
 
@@ -253,14 +253,14 @@ public static class CrafterDepositedItemBufferExtension
     }
 
     public static int CountItems(
-        this DynamicBuffer<CrafterDepositedItemElement> depositedItems,
+        this DynamicBuffer<StoredItemElement> storedItems,
         ItemTypeEnum itemType)
     {
         int count = 0;
 
-        for (int i = 0; i < depositedItems.Length; i++)
+        for (int i = 0; i < storedItems.Length; i++)
         {
-            if (depositedItems[i].type == itemType)
+            if (storedItems[i].type == itemType)
                 count++;
         }
 

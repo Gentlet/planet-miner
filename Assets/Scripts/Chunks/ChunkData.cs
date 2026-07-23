@@ -77,17 +77,28 @@ public class ChunkCell
         _floor = FloorTypeEnum.Bare;
     }
 
-    public void AddItem(Entity item)
+    public bool TryAddItem(Entity item)
     {
         if (_items.Contains(item))
-            return;
+            return false;
 
         _items.Add(item);
+        return true;
     }
 
     public bool RemoveItem(Entity item)
     {
         return _items.Remove(item);
+    }
+
+    public void RemoveItemAt(int index)
+    {
+        _items.RemoveAt(index);
+    }
+
+    public void SwapItems(int firstIndex, int secondIndex)
+    {
+        (_items[firstIndex], _items[secondIndex]) = (_items[secondIndex], _items[firstIndex]);
     }
 
     public void ClearItems()

@@ -2,11 +2,14 @@ using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Transforms;
 
 public partial class ChunkMapSystem : SystemBase
 {
     private const int initialCapacity = 1024;
     private readonly Dictionary<int2, Chunk> _chunks = new();
+    private readonly Dictionary<Entity, int2> _itemCellByEntity = new();
+    private readonly HashSet<int2> _activeBeltCells = new();
     private NativeParallelHashMap<int2, Entity> _beltByCell;
     private NativeParallelHashSet<int2> _reservedCells;
 
@@ -121,6 +124,11 @@ public partial class ChunkMapSystem : SystemBase
                 ecb.DestroyEntity(entity);
                 return false;
             }
+
+            SortItemsForBelt(pos.gridPosition);
+
+            if (cellData.items.Count > 0)
+                _activeBeltCells.Add(pos.gridPosition);
         }
 
         ecb.RemoveComponent<BuildingOccupantRequest>(entity);
@@ -139,7 +147,10 @@ public partial class ChunkMapSystem : SystemBase
         cellData.TryRemoveBuilding(entity);
 
         if (_beltByCell.TryGetValue(cell, out Entity beltEntity) && beltEntity == entity)
+        {
             _beltByCell.Remove(cell);
+            _activeBeltCells.Remove(cell);
+        }
 
         return true;
     }
@@ -244,22 +255,116 @@ public partial class ChunkMapSystem : SystemBase
             results.Add(cellData.items[i]);
     }
 
-    public void RegisterItem(int2 cell, Entity item)
+    public bool TryGetRegisteredItemCell(Entity item, out int2 cell)
     {
-        GetOrCreateCellData(cell).AddItem(item);
+        return _itemCellByEntity.TryGetValue(item, out cell);
+    }
+
+    public bool TryRegisterItem(int2 cell, Entity item)
+    {
+        if (item == Entity.Null ||
+            !EntityManager.Exists(item) ||
+            !EntityManager.HasComponent<Item>(item) ||
+            !EntityManager.HasComponent<LocalTransform>(item) ||
+            !EntityManager.HasComponent<GridPosition>(item) ||
+            !EntityManager.HasComponent<ItemCellChanged>(item) ||
+            _itemCellByEntity.ContainsKey(item))
+            return false;
+
+        ChunkCell cellData = GetOrCreateCellData(cell);
+        if (!cellData.TryAddItem(item))
+            return false;
+
+        _itemCellByEntity.Add(item, cell);
+
+        if (_beltByCell.ContainsKey(cell))
+            _activeBeltCells.Add(cell);
+
+        return true;
     }
 
     public bool TryUnregisterItem(int2 cell, Entity item)
     {
-        if (!TryGetCellData(cell, out ChunkCell cellData))
+        if (!_itemCellByEntity.TryGetValue(item, out int2 registeredCell) ||
+            !registeredCell.Equals(cell) ||
+            !TryGetCellData(cell, out ChunkCell cellData) ||
+            !cellData.RemoveItem(item))
             return false;
 
-        return cellData.RemoveItem(item);
+        _itemCellByEntity.Remove(item);
+
+        if (cellData.items.Count == 0)
+            _activeBeltCells.Remove(cell);
+
+        return true;
+    }
+
+    public void CopyActiveBeltCells(List<int2> results)
+    {
+        results.Clear();
+
+        foreach (int2 cell in _activeBeltCells)
+            results.Add(cell);
+    }
+
+    public bool TryGetBelt(int2 cell, out Entity beltEntity)
+    {
+        return _beltByCell.TryGetValue(cell, out beltEntity);
+    }
+
+    public void SortItemsForBelt(int2 cell)
+    {
+        if (!TryGetCellData(cell, out ChunkCell cellData) ||
+            !_beltByCell.TryGetValue(cell, out Entity beltEntity) ||
+            !EntityManager.Exists(beltEntity) ||
+            !EntityManager.HasComponent<Direction>(beltEntity))
+            return;
+
+        DirectionEnum direction = EntityManager.GetComponentData<Direction>(beltEntity).dir;
+
+        for (int i = 1; i < cellData.items.Count; i++)
+        {
+            int currentIndex = i;
+
+            while (currentIndex > 0 && IsItemAhead(cellData.items[currentIndex], cellData.items[currentIndex - 1], direction))
+            {
+                cellData.SwapItems(currentIndex, currentIndex - 1);
+                currentIndex--;
+            }
+        }
+    }
+
+    private bool IsItemAhead(Entity item, Entity otherItem, DirectionEnum direction)
+    {
+        if (!EntityManager.Exists(item) ||
+            !EntityManager.Exists(otherItem) ||
+            !EntityManager.HasComponent<LocalTransform>(item) ||
+            !EntityManager.HasComponent<LocalTransform>(otherItem))
+            return false;
+
+        float3 itemPosition = EntityManager.GetComponentData<LocalTransform>(item).Position;
+        float3 otherPosition = EntityManager.GetComponentData<LocalTransform>(otherItem).Position;
+
+        switch (direction)
+        {
+            case DirectionEnum.Right:
+                return itemPosition.x > otherPosition.x;
+            case DirectionEnum.Left:
+                return itemPosition.x < otherPosition.x;
+            case DirectionEnum.Up:
+                return itemPosition.y > otherPosition.y;
+            case DirectionEnum.Down:
+                return itemPosition.y < otherPosition.y;
+            default:
+                return false;
+        }
     }
 
     private void Clear()
     {
         _chunks.Clear();
+        _itemCellByEntity.Clear();
+        _activeBeltCells.Clear();
         _beltByCell.Clear();
         _reservedCells.Clear();
     }

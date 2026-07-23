@@ -24,11 +24,6 @@ public struct Crafter : IComponentData
     public CrafterStateEnum state;
 }
 
-public struct DepositedItem : IComponentData
-{
-    public Entity owner;
-}
-
 public struct CrafterRecipeChangeRequest : IComponentData
 {
     public Entity crafterEntity;
@@ -37,12 +32,6 @@ public struct CrafterRecipeChangeRequest : IComponentData
 
 public struct CrafterConfig : IComponentData
 {
-}
-
-public struct CrafterDepositedItemElement : IBufferElementData
-{
-    public Entity itemEntity;
-    public ItemTypeEnum type;
 }
 
 public struct CrafterRecipeElement : IBufferElementData

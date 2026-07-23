@@ -16,6 +16,21 @@ public struct Item : IComponentData
     public ItemTypeEnum type;
 }
 
+public struct ItemCellChanged : IComponentData, IEnableableComponent
+{
+}
+
+public struct StoredItem : IComponentData
+{
+    public Entity owner;
+}
+
+public struct StoredItemElement : IBufferElementData
+{
+    public Entity itemEntity;
+    public ItemTypeEnum type;
+}
+
 public struct ItemPrefabElement : IBufferElementData
 {
     public ItemTypeEnum type;

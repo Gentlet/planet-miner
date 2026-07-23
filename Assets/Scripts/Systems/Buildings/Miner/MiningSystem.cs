@@ -98,6 +98,8 @@ public partial class MiningSystem : SystemBase
         ecb.SetComponent(item, transform);
         ecb.AddComponent(item, gridPosition);
         ecb.AddComponent(item, itemComponent);
+        ecb.AddComponent<ItemCellChanged>(item);
+        ecb.SetComponentEnabled<ItemCellChanged>(item, true);
     }
 
     private void ConsumeDeposit(ref EntityCommandBuffer ecb, int2 cell, Entity depositEntity, ResourceDeposit deposit)

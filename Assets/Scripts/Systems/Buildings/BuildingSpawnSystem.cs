@@ -44,10 +44,10 @@ partial struct BuildingSpawnSystem : ISystem
             switch (request.ValueRO.type)
             {
                 case BuildingTypeEnum.Belt:
-                    ecb.AddComponent(instance, new Belt { speed = 1f });
+                    ecb.AddComponent(instance, new Belt { speed = 10f });
                     break;
                 case BuildingTypeEnum.Miner:
-                    ecb.AddComponent(instance, new Miner { speed = 1f });
+                    ecb.AddComponent(instance, new Miner { speed = 0.1f });
                     break;
                 case BuildingTypeEnum.Crafter:
                     ItemTypeEnum selectedItemType = request.ValueRO.selectedItemType;
@@ -58,7 +58,7 @@ partial struct BuildingSpawnSystem : ISystem
                         progress = 0f,
                         state = selectedItemType.IsValid() ? CrafterStateEnum.Idle : CrafterStateEnum.NoRecipe
                     });
-                    ecb.AddBuffer<CrafterDepositedItemElement>(instance);
+                    ecb.AddBuffer<StoredItemElement>(instance);
                     break;
                 default:
                     break;

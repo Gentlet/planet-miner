@@ -44,11 +44,11 @@ public partial class CrafterRecipeChangeSystem : SystemBase
             return CrafterStateEnum.NoRecipe;
         if (!recipes.TryFindRecipe(selectedItemType, out CrafterRecipeElement recipe))
             return CrafterStateEnum.NoRecipe;
-        if (EntityManager.HasBuffer<CrafterDepositedItemElement>(crafterEntity))
+        if (EntityManager.HasBuffer<StoredItemElement>(crafterEntity))
         {
-            DynamicBuffer<CrafterDepositedItemElement> depositedItems = EntityManager.GetBuffer<CrafterDepositedItemElement>(crafterEntity);
+            DynamicBuffer<StoredItemElement> storedItems = EntityManager.GetBuffer<StoredItemElement>(crafterEntity);
 
-            if (depositedItems.HasExceptionItem(ingredients, recipe.id))
+            if (storedItems.HasExceptionItem(ingredients, recipe.id))
                 return CrafterStateEnum.WaitingForExceptionItem;
         }
 
