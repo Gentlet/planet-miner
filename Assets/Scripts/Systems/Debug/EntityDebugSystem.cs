@@ -1,6 +1,7 @@
 using Unity.Entities;
 using UnityEngine;
 
+#if UNITY_EDITOR || DEVELOPMENT_BUILD
 public partial class EntityDebugSystem : SystemBase
 {
     private const double logIntervalSeconds = 1.0;
@@ -38,3 +39,4 @@ public partial class EntityDebugSystem : SystemBase
             $"Items: {_items.CalculateEntityCount()}");
     }
 }
+#endif

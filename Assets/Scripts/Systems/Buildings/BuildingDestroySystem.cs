@@ -1,7 +1,8 @@
 using Unity.Entities;
 using Unity.Mathematics;
 
-[UpdateBefore(typeof(BeltMoveSystem))]
+[UpdateAfter(typeof(CrafterSystem))]
+[UpdateAfter(typeof(MiningSystem))]
 public partial class BuildingDestroySystem : SystemBase
 {
     private ChunkMapSystem _chunkMap;
