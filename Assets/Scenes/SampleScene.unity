@@ -157,6 +157,10 @@ MonoBehaviour:
     sprite: {fileID: 3876497900317922485, guid: 64a7dc495acfa6344a3c70de72492983, type: 3}
   - type: 2
     sprite: {fileID: 8974037035073900864, guid: 623ece9e739ca3b4abcb1edb1b132f48, type: 3}
+  - type: 3
+    sprite: {fileID: 3959802595402409777, guid: d397620dcaa9d824ba481c5eed8a24ee, type: 3}
+  - type: 4
+    sprite: {fileID: 8317100556974432301, guid: 7fb6940bd45686647970ff5d1b36454a, type: 3}
   canPlaceColor: {r: 0, g: 1, b: 0, a: 0.5}
   blockedColor: {r: 1, g: 0, b: 0, a: 0.5}
 --- !u!114 &50267807

@@ -6,6 +6,8 @@ public enum BuildingTypeEnum : byte
     Belt,
     Miner,
     Crafter,
+    Splitter,
+    Merger,
     Count
 }
 
