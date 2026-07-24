@@ -34,3 +34,9 @@ public struct BuildingPrefabElement : IBufferElementData
     public BuildingTypeEnum type;
     public Entity prefab;
 }
+
+public struct ProducedItemElement : IBufferElementData
+{
+    public Entity itemEntity;
+    public ItemTypeEnum type;
+}

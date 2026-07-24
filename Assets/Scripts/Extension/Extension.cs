@@ -1,3 +1,4 @@
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine;
@@ -201,6 +202,24 @@ public static class CrafterRecipeBufferExtension
         return false;
     }
 
+    public static bool TryFindRecipe(
+        this NativeArray<CrafterRecipeElement> recipes,
+        ItemTypeEnum outputItemType,
+        out CrafterRecipeElement recipe)
+    {
+        for (int i = 0; i < recipes.Length; i++)
+        {
+            if (recipes[i].outputItemType == outputItemType)
+            {
+                recipe = recipes[i];
+                return true;
+            }
+        }
+
+        recipe = default;
+        return false;
+    }
+
     public static bool HasIngredient(
         this DynamicBuffer<CrafterRecipeIngredientElement> ingredients,
         int recipeId,
@@ -216,6 +235,23 @@ public static class CrafterRecipeBufferExtension
 
         return false;
     }
+
+    public static bool HasIngredient(
+        this NativeArray<CrafterRecipeIngredientElement> ingredients,
+        int recipeId,
+        ItemTypeEnum itemType)
+    {
+        for (int i = 0; i < ingredients.Length; i++)
+        {
+            CrafterRecipeIngredientElement ingredient = ingredients[i];
+
+            if (ingredient.recipeId == recipeId && ingredient.itemType == itemType)
+                return true;
+        }
+
+        return false;
+    }
+
 }
 
 public static class CrafterStoredItemBufferExtension
@@ -223,6 +259,24 @@ public static class CrafterStoredItemBufferExtension
     public static bool HasIngredients(
         this DynamicBuffer<StoredItemElement> storedItems,
         DynamicBuffer<CrafterRecipeIngredientElement> ingredients,
+        int recipeId)
+    {
+        for (int i = 0; i < ingredients.Length; i++)
+        {
+            CrafterRecipeIngredientElement ingredient = ingredients[i];
+
+            if (ingredient.recipeId != recipeId)
+                continue;
+            if (storedItems.CountItems(ingredient.itemType) < ingredient.amount)
+                return false;
+        }
+
+        return true;
+    }
+
+    public static bool HasIngredients(
+        this DynamicBuffer<StoredItemElement> storedItems,
+        NativeArray<CrafterRecipeIngredientElement> ingredients,
         int recipeId)
     {
         for (int i = 0; i < ingredients.Length; i++)
@@ -252,6 +306,20 @@ public static class CrafterStoredItemBufferExtension
         return false;
     }
 
+    public static bool HasExceptionItem(
+        this DynamicBuffer<StoredItemElement> storedItems,
+        NativeArray<CrafterRecipeIngredientElement> ingredients,
+        int recipeId)
+    {
+        for (int i = 0; i < storedItems.Length; i++)
+        {
+            if (!ingredients.HasIngredient(recipeId, storedItems[i].type))
+                return true;
+        }
+
+        return false;
+    }
+
     public static int CountItems(
         this DynamicBuffer<StoredItemElement> storedItems,
         ItemTypeEnum itemType)
@@ -261,6 +329,24 @@ public static class CrafterStoredItemBufferExtension
         for (int i = 0; i < storedItems.Length; i++)
         {
             if (storedItems[i].type == itemType)
+                count++;
+        }
+
+        return count;
+    }
+}
+
+public static class ProducedItemBufferExtension
+{
+    public static int CountItems(
+        this DynamicBuffer<ProducedItemElement> producedItems,
+        ItemTypeEnum itemType)
+    {
+        int count = 0;
+
+        for (int i = 0; i < producedItems.Length; i++)
+        {
+            if (producedItems[i].type == itemType)
                 count++;
         }
 
@@ -282,4 +368,18 @@ public static class ItemStorageLimitBufferExtension
 
         return 0;
     }
+
+    public static int GetStorageLimit(
+        this NativeArray<ItemStorageLimitElement> storageLimits,
+        ItemTypeEnum itemType)
+    {
+        for (int i = 0; i < storageLimits.Length; i++)
+        {
+            if (storageLimits[i].itemType == itemType)
+                return storageLimits[i].maxAmount;
+        }
+
+        return 0;
+    }
+
 }

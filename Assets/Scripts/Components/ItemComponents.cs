@@ -20,6 +20,12 @@ public struct ItemCellChanged : IComponentData, IEnableableComponent
 {
 }
 
+public struct ItemSpawnRequest : IComponentData
+{
+    public Entity owner;
+    public ItemTypeEnum itemType;
+}
+
 public struct StoredItem : IComponentData
 {
     public Entity owner;

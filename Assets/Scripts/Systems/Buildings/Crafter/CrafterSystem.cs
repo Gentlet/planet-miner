@@ -1,70 +1,113 @@
 using System.Collections.Generic;
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
-using Unity.Transforms;
 
 [UpdateAfter(typeof(ItemTrackingSystem))]
 [UpdateAfter(typeof(CrafterRecipeChangeSystem))]
+[UpdateAfter(typeof(MiningSystem))]
 public partial class CrafterSystem : SystemBase
 {
     private ChunkMapSystem _chunkMap;
     private ItemStorageSystem _itemStorage;
-    private readonly List<Entity> _itemsInCell = new List<Entity>();
-    private readonly Dictionary<int2, int> _reservedOutputItemCounts = new Dictionary<int2, int>();
+    private EntityQuery _crafterOutputQuery;
+    private readonly List<Entity> _itemsInCell = new();
 
     protected override void OnCreate()
     {
         _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
         _itemStorage = World.GetExistingSystemManaged<ItemStorageSystem>();
+        _crafterOutputQuery = GetEntityQuery(
+            ComponentType.ReadWrite<Crafter>(),
+            ComponentType.ReadOnly<GridPosition>(),
+            ComponentType.ReadOnly<Direction>(),
+            ComponentType.ReadWrite<StoredItemElement>(),
+            ComponentType.ReadWrite<ProducedItemElement>());
+
         RequireForUpdate<CrafterConfig>();
         RequireForUpdate<ItemPrefabElement>();
     }
 
     protected override void OnUpdate()
     {
-        if (_chunkMap == null)
-        {
-            _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
-            if (_chunkMap == null)
-                return;
-        }
+        if (!EnsureSystems())
+            return;
 
-        if (_itemStorage == null)
-        {
-            _itemStorage = World.GetExistingSystemManaged<ItemStorageSystem>();
-            if (_itemStorage == null)
-                return;
-        }
+        using NativeArray<Entity> crafters = _crafterOutputQuery.ToEntityArray(Allocator.Temp);
+        TryOutputProducedItems(crafters);
 
-        DynamicBuffer<CrafterRecipeElement> recipes = SystemAPI.GetSingletonBuffer<CrafterRecipeElement>(true);
-        DynamicBuffer<CrafterRecipeIngredientElement> ingredients = SystemAPI.GetSingletonBuffer<CrafterRecipeIngredientElement>(true);
-        DynamicBuffer<ItemStorageLimitElement> storageLimits = SystemAPI.GetSingletonBuffer<ItemStorageLimitElement>(true);
-        DynamicBuffer<ItemPrefabElement> itemPrefabs = SystemAPI.GetSingletonBuffer<ItemPrefabElement>(true);
-        EntityCommandBuffer ecb = SystemAPI.GetSingleton<EndSimulationEntityCommandBufferSystem.Singleton>().CreateCommandBuffer(World.Unmanaged);
+        using NativeArray<CrafterRecipeElement> recipes =
+            CopyBuffer(SystemAPI.GetSingletonBuffer<CrafterRecipeElement>(true));
+        using NativeArray<CrafterRecipeIngredientElement> ingredients =
+            CopyBuffer(SystemAPI.GetSingletonBuffer<CrafterRecipeIngredientElement>(true));
+        using NativeArray<ItemStorageLimitElement> storageLimits =
+            CopyBuffer(SystemAPI.GetSingletonBuffer<ItemStorageLimitElement>(true));
+        EntityCommandBuffer ecb = SystemAPI.GetSingleton<EndSimulationEntityCommandBufferSystem.Singleton>()
+            .CreateCommandBuffer(World.Unmanaged);
         float deltaTime = SystemAPI.Time.DeltaTime;
 
-        _reservedOutputItemCounts.Clear();
-
-        foreach (var (crafter, gridPosition, direction, storedItems, crafterEntity) in
-                 SystemAPI.Query<RefRW<Crafter>, RefRO<GridPosition>, RefRO<Direction>, DynamicBuffer<StoredItemElement>>().WithEntityAccess())
+        for (int i = 0; i < crafters.Length; i++)
         {
-            int2 crafterCell = gridPosition.ValueRO.gridPosition;
+            Entity crafterEntity = crafters[i];
+            Crafter crafter = EntityManager.GetComponentData<Crafter>(crafterEntity);
+            int2 crafterCell = EntityManager.GetComponentData<GridPosition>(crafterEntity).gridPosition;
 
-            TryDepositItems(ref ecb, crafter.ValueRO, storedItems, crafterEntity, crafterCell, recipes, ingredients, storageLimits);
-            UpdateCrafting(ref crafter.ValueRW, storedItems, recipes, ingredients, deltaTime);
-            TryOutput(ref ecb, itemPrefabs, recipes, ingredients, ref crafter.ValueRW, crafterCell, direction.ValueRO.dir, storedItems);
+            TryDepositItems(
+                crafter,
+                crafterEntity,
+                crafterCell,
+                recipes,
+                ingredients,
+                storageLimits);
+
+            DynamicBuffer<StoredItemElement> storedItems =
+                EntityManager.GetBuffer<StoredItemElement>(crafterEntity);
+            UpdateCrafting(
+                ref crafter,
+                storedItems,
+                recipes,
+                ingredients,
+                deltaTime);
+
+            TryCompleteCraft(
+                ref ecb,
+                recipes,
+                ingredients,
+                storageLimits,
+                ref crafter,
+                crafterEntity,
+                storedItems,
+                EntityManager.GetBuffer<ProducedItemElement>(crafterEntity));
+
+            EntityManager.SetComponentData(crafterEntity, crafter);
+        }
+    }
+
+    private void TryOutputProducedItems(NativeArray<Entity> crafters)
+    {
+        for (int i = 0; i < crafters.Length; i++)
+        {
+            Entity crafterEntity = crafters[i];
+            DynamicBuffer<ProducedItemElement> producedItems =
+                EntityManager.GetBuffer<ProducedItemElement>(crafterEntity);
+
+            if (producedItems.Length == 0)
+                continue;
+
+            int2 crafterCell = EntityManager.GetComponentData<GridPosition>(crafterEntity).gridPosition;
+            DirectionEnum direction = EntityManager.GetComponentData<Direction>(crafterEntity).dir;
+            int2 outputCell = crafterCell + direction.ToInt2();
+            _itemStorage.TryRestoreProducedItemImmediate(crafterEntity, 0, outputCell);
         }
     }
 
     private void TryDepositItems(
-        ref EntityCommandBuffer ecb,
         in Crafter crafter,
-        DynamicBuffer<StoredItemElement> storedItems,
         Entity crafterEntity,
         int2 crafterCell,
-        DynamicBuffer<CrafterRecipeElement> recipes,
-        DynamicBuffer<CrafterRecipeIngredientElement> ingredients,
-        DynamicBuffer<ItemStorageLimitElement> storageLimits)
+        NativeArray<CrafterRecipeElement> recipes,
+        NativeArray<CrafterRecipeIngredientElement> ingredients,
+        NativeArray<ItemStorageLimitElement> storageLimits)
     {
         if (!crafter.state.CanReceiveItems() || !crafter.selectedItemType.IsValid())
             return;
@@ -76,19 +119,27 @@ public partial class CrafterSystem : SystemBase
         for (int i = 0; i < _itemsInCell.Count; i++)
         {
             Entity itemEntity = _itemsInCell[i];
+            DynamicBuffer<StoredItemElement> storedItems =
+                EntityManager.GetBuffer<StoredItemElement>(crafterEntity);
 
-            if (!CanDepositItem(itemEntity, storedItems, ingredients, storageLimits, recipe.id, out ItemTypeEnum itemType))
+            if (!CanDepositItem(
+                    itemEntity,
+                    storedItems,
+                    ingredients,
+                    storageLimits,
+                    recipe.id,
+                    out _))
                 continue;
 
-            _itemStorage.TryStoreItem(ref ecb, storedItems, crafterEntity, crafterCell, itemEntity);
+            _itemStorage.TryStoreItemImmediate(crafterEntity, crafterCell, itemEntity);
         }
     }
 
     private bool CanDepositItem(
         Entity itemEntity,
         DynamicBuffer<StoredItemElement> storedItems,
-        DynamicBuffer<CrafterRecipeIngredientElement> ingredients,
-        DynamicBuffer<ItemStorageLimitElement> storageLimits,
+        NativeArray<CrafterRecipeIngredientElement> ingredients,
+        NativeArray<ItemStorageLimitElement> storageLimits,
         int recipeId,
         out ItemTypeEnum itemType)
     {
@@ -105,15 +156,14 @@ public partial class CrafterSystem : SystemBase
             return false;
 
         int maxAmount = storageLimits.GetStorageLimit(itemType);
-
         return maxAmount > 0 && storedItems.CountItems(itemType) < maxAmount;
     }
 
     private static void UpdateCrafting(
         ref Crafter crafter,
         DynamicBuffer<StoredItemElement> storedItems,
-        DynamicBuffer<CrafterRecipeElement> recipes,
-        DynamicBuffer<CrafterRecipeIngredientElement> ingredients,
+        NativeArray<CrafterRecipeElement> recipes,
+        NativeArray<CrafterRecipeIngredientElement> ingredients,
         float deltaTime)
     {
         if (!crafter.selectedItemType.IsValid() ||
@@ -157,15 +207,15 @@ public partial class CrafterSystem : SystemBase
         }
     }
 
-    private void TryOutput(
+    private void TryCompleteCraft(
         ref EntityCommandBuffer ecb,
-        DynamicBuffer<ItemPrefabElement> itemPrefabs,
-        DynamicBuffer<CrafterRecipeElement> recipes,
-        DynamicBuffer<CrafterRecipeIngredientElement> ingredients,
+        NativeArray<CrafterRecipeElement> recipes,
+        NativeArray<CrafterRecipeIngredientElement> ingredients,
+        NativeArray<ItemStorageLimitElement> storageLimits,
         ref Crafter crafter,
-        int2 crafterCell,
-        DirectionEnum direction,
-        DynamicBuffer<StoredItemElement> storedItems)
+        Entity crafterEntity,
+        DynamicBuffer<StoredItemElement> storedItems,
+        DynamicBuffer<ProducedItemElement> producedItems)
     {
         if (crafter.state != CrafterStateEnum.WaitingForOutput)
             return;
@@ -188,46 +238,22 @@ public partial class CrafterSystem : SystemBase
             return;
         }
 
-        Entity itemPrefab = FindPrefab(itemPrefabs, recipe.outputItemType);
-        int2 outputCell = crafterCell + direction.ToInt2();
+        int storageLimit = storageLimits.GetStorageLimit(recipe.outputItemType);
 
-        if (itemPrefab == Entity.Null || !CanOutput(outputCell))
+        if (storageLimit <= 0 ||
+            producedItems.CountItems(recipe.outputItemType) >= storageLimit)
             return;
 
-        ReserveOutputItem(outputCell);
-        SpawnItem(ref ecb, itemPrefab, outputCell, recipe.outputItemType);
+        CreateItemSpawnRequest(ref ecb, crafterEntity, recipe.outputItemType);
         ConsumeIngredients(ref ecb, storedItems, ingredients, recipe.id);
-
         crafter.progress = 0f;
         crafter.state = CrafterStateEnum.Idle;
-    }
-
-    private bool CanOutput(int2 outputCell)
-    {
-        _reservedOutputItemCounts.TryGetValue(outputCell, out int reservedCount);
-        return _chunkMap.GetItemCount(outputCell) + reservedCount < GameConstants.MaximumItemInCell;
-    }
-
-    private void ReserveOutputItem(int2 outputCell)
-    {
-        _reservedOutputItemCounts.TryGetValue(outputCell, out int reservedCount);
-        _reservedOutputItemCounts[outputCell] = reservedCount + 1;
-    }
-
-    private static void SpawnItem(ref EntityCommandBuffer ecb, Entity itemPrefab, int2 outputCell, ItemTypeEnum type)
-    {
-        Entity item = ecb.Instantiate(itemPrefab);
-        ecb.SetComponent(item, LocalTransform.FromPosition(new float3(outputCell.x, outputCell.y, 0f)));
-        ecb.AddComponent(item, new GridPosition { gridPosition = outputCell });
-        ecb.AddComponent(item, new Item { type = type });
-        ecb.AddComponent<ItemCellChanged>(item);
-        ecb.SetComponentEnabled<ItemCellChanged>(item, true);
     }
 
     private void ConsumeIngredients(
         ref EntityCommandBuffer ecb,
         DynamicBuffer<StoredItemElement> storedItems,
-        DynamicBuffer<CrafterRecipeIngredientElement> ingredients,
+        NativeArray<CrafterRecipeIngredientElement> ingredients,
         int recipeId)
     {
         for (int ingredientIndex = 0; ingredientIndex < ingredients.Length; ingredientIndex++)
@@ -239,7 +265,9 @@ public partial class CrafterSystem : SystemBase
 
             int remainingAmount = ingredient.amount;
 
-            for (int storedIndex = storedItems.Length - 1; storedIndex >= 0 && remainingAmount > 0; storedIndex--)
+            for (int storedIndex = storedItems.Length - 1;
+                 storedIndex >= 0 && remainingAmount > 0;
+                 storedIndex--)
             {
                 StoredItemElement storedItem = storedItems[storedIndex];
 
@@ -252,14 +280,38 @@ public partial class CrafterSystem : SystemBase
         }
     }
 
-    private static Entity FindPrefab(DynamicBuffer<ItemPrefabElement> prefabs, ItemTypeEnum type)
+    private static void CreateItemSpawnRequest(
+        ref EntityCommandBuffer ecb,
+        Entity owner,
+        ItemTypeEnum itemType)
     {
-        for (int i = 0; i < prefabs.Length; i++)
+        Entity requestEntity = ecb.CreateEntity();
+        ecb.AddComponent(requestEntity, new ItemSpawnRequest
         {
-            if (prefabs[i].type == type)
-                return prefabs[i].prefab;
-        }
+            owner = owner,
+            itemType = itemType
+        });
+    }
 
-        return Entity.Null;
+    private static NativeArray<T> CopyBuffer<T>(DynamicBuffer<T> buffer)
+        where T : unmanaged, IBufferElementData
+    {
+        NativeArray<T> copy = new NativeArray<T>(buffer.Length, Allocator.Temp);
+
+        for (int i = 0; i < buffer.Length; i++)
+            copy[i] = buffer[i];
+
+        return copy;
+    }
+
+    private bool EnsureSystems()
+    {
+        if (_chunkMap == null)
+            _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
+
+        if (_itemStorage == null)
+            _itemStorage = World.GetExistingSystemManaged<ItemStorageSystem>();
+
+        return _chunkMap != null && _itemStorage != null;
     }
 }

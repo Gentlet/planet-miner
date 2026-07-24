@@ -56,10 +56,18 @@ public partial class BuildingDestroySystem : SystemBase
 
     private void RestoreItems(ref EntityCommandBuffer ecb, Entity buildingEntity, int2 buildingCell)
     {
-        if (!EntityManager.HasBuffer<StoredItemElement>(buildingEntity))
-            return;
+        if (EntityManager.HasBuffer<StoredItemElement>(buildingEntity))
+        {
+            DynamicBuffer<StoredItemElement> storedItems =
+                EntityManager.GetBuffer<StoredItemElement>(buildingEntity);
+            _itemStorage.RestoreItems(ref ecb, storedItems, buildingCell);
+        }
 
-        DynamicBuffer<StoredItemElement> storedItems = EntityManager.GetBuffer<StoredItemElement>(buildingEntity);
-        _itemStorage.RestoreItems(ref ecb, storedItems, buildingCell);
+        if (EntityManager.HasBuffer<ProducedItemElement>(buildingEntity))
+        {
+            DynamicBuffer<ProducedItemElement> producedItems =
+                EntityManager.GetBuffer<ProducedItemElement>(buildingEntity);
+            _itemStorage.RestoreProducedItems(ref ecb, producedItems, buildingCell);
+        }
     }
 }

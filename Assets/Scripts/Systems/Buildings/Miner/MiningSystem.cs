@@ -1,42 +1,92 @@
-using System.Collections.Generic;
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
-using Unity.Transforms;
 
 [UpdateAfter(typeof(ItemTrackingSystem))]
 public partial class MiningSystem : SystemBase
 {
     private ChunkMapSystem _chunkMap;
-    private readonly Dictionary<int2, int> _reservedOutputItemCounts = new();
+    private ItemStorageSystem _itemStorage;
+    private ItemTrackingSystem _itemTracking;
+    private EntityQuery _minerOutputQuery;
 
     protected override void OnCreate()
     {
         _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
+        _itemStorage = World.GetExistingSystemManaged<ItemStorageSystem>();
+        _itemTracking = World.GetExistingSystemManaged<ItemTrackingSystem>();
+        _minerOutputQuery = GetEntityQuery(
+            ComponentType.ReadWrite<Miner>(),
+            ComponentType.ReadOnly<GridPosition>(),
+            ComponentType.ReadOnly<Direction>(),
+            ComponentType.ReadWrite<ProducedItemElement>());
+
         RequireForUpdate<ItemPrefabElement>();
+        RequireForUpdate<ItemStorageLimitElement>();
     }
 
     protected override void OnUpdate()
     {
-        if (_chunkMap == null)
-        {
-            _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
-            if (_chunkMap == null)
-                return;
-        }
+        if (!EnsureSystems())
+            return;
 
-        DynamicBuffer<ItemPrefabElement> itemPrefabs = SystemAPI.GetSingletonBuffer<ItemPrefabElement>(true);
-        EntityCommandBuffer ecb = SystemAPI.GetSingleton<EndSimulationEntityCommandBufferSystem.Singleton>().CreateCommandBuffer(World.Unmanaged);
+        _itemTracking.ApplyPendingChangesImmediate();
+        using NativeArray<Entity> miners = _minerOutputQuery.ToEntityArray(Allocator.Temp);
+        TryOutputProducedItems(miners);
+
+        using NativeArray<ItemStorageLimitElement> storageLimits =
+            CopyBuffer(SystemAPI.GetSingletonBuffer<ItemStorageLimitElement>(true));
+        EntityCommandBuffer ecb = SystemAPI.GetSingleton<EndSimulationEntityCommandBufferSystem.Singleton>()
+            .CreateCommandBuffer(World.Unmanaged);
         float deltaTime = SystemAPI.Time.DeltaTime;
 
-        _reservedOutputItemCounts.Clear();
-
-        foreach (var (miner, gridPosition, direction) in SystemAPI.Query<RefRW<Miner>, RefRO<GridPosition>, RefRO<Direction>>())
+        for (int i = 0; i < miners.Length; i++)
         {
-            Mine(ref ecb, itemPrefabs, ref miner.ValueRW, gridPosition.ValueRO.gridPosition, direction.ValueRO.dir, deltaTime);
+            Entity minerEntity = miners[i];
+            Miner miner = EntityManager.GetComponentData<Miner>(minerEntity);
+            int2 minerCell = EntityManager.GetComponentData<GridPosition>(minerEntity).gridPosition;
+            DynamicBuffer<ProducedItemElement> producedItems =
+                EntityManager.GetBuffer<ProducedItemElement>(minerEntity);
+
+            Mine(
+                ref ecb,
+                storageLimits,
+                producedItems,
+                minerEntity,
+                ref miner,
+                minerCell,
+                deltaTime);
+
+            EntityManager.SetComponentData(minerEntity, miner);
         }
     }
 
-    private void Mine(ref EntityCommandBuffer ecb, DynamicBuffer<ItemPrefabElement> itemPrefabs, ref Miner miner, int2 minerCell, DirectionEnum direction, float deltaTime)
+    private void TryOutputProducedItems(NativeArray<Entity> miners)
+    {
+        for (int i = 0; i < miners.Length; i++)
+        {
+            Entity minerEntity = miners[i];
+            DynamicBuffer<ProducedItemElement> producedItems =
+                EntityManager.GetBuffer<ProducedItemElement>(minerEntity);
+
+            if (producedItems.Length == 0)
+                continue;
+
+            int2 minerCell = EntityManager.GetComponentData<GridPosition>(minerEntity).gridPosition;
+            DirectionEnum direction = EntityManager.GetComponentData<Direction>(minerEntity).dir;
+            int2 outputCell = minerCell + direction.ToInt2();
+            _itemStorage.TryRestoreProducedItemImmediate(minerEntity, 0, outputCell);
+        }
+    }
+
+    private void Mine(
+        ref EntityCommandBuffer ecb,
+        NativeArray<ItemStorageLimitElement> storageLimits,
+        DynamicBuffer<ProducedItemElement> producedItems,
+        Entity minerEntity,
+        ref Miner miner,
+        int2 minerCell,
+        float deltaTime)
     {
         if (miner.speed <= 0f)
             return;
@@ -56,53 +106,22 @@ public partial class MiningSystem : SystemBase
             return;
 
         ItemTypeEnum itemType = deposit.type.ToItemType();
-        Entity itemPrefab = FindPrefab(itemPrefabs, itemType);
-        if (itemPrefab == Entity.Null)
+        int storageLimit = storageLimits.GetStorageLimit(itemType);
+
+        if (storageLimit <= 0 ||
+            producedItems.CountItems(itemType) >= storageLimit)
             return;
 
-        int2 outputCell = minerCell + direction.ToInt2();
-        if (!CanMining(outputCell))
-            return;
-
-        ReserveOutputItem(outputCell);
-        SpawnItem(ref ecb, itemPrefab, outputCell, itemType);
+        CreateItemSpawnRequest(ref ecb, minerEntity, itemType);
         ConsumeDeposit(ref ecb, minerCell, depositEntity, deposit);
         miner.timer -= miner.speed;
     }
 
-    private bool CanMining(int2 outputCell)
-    {
-        _reservedOutputItemCounts.TryGetValue(outputCell, out int reservedCount);
-
-        return _chunkMap.GetItemCount(outputCell) + reservedCount < GameConstants.MaximumItemInCell;
-    }
-
-    private void ReserveOutputItem(int2 outputCell)
-    {
-        if (_reservedOutputItemCounts.TryGetValue(outputCell, out int reservedCount))
-        {
-            _reservedOutputItemCounts[outputCell] = reservedCount + 1;
-            return;
-        }
-
-        _reservedOutputItemCounts.Add(outputCell, 1);
-    }
-
-    private void SpawnItem(ref EntityCommandBuffer ecb, Entity itemPrefab, int2 outputCell, ItemTypeEnum type)
-    {
-        Entity item = ecb.Instantiate(itemPrefab);
-        LocalTransform transform = LocalTransform.FromPosition(new float3(outputCell.x, outputCell.y, 0f));
-        GridPosition gridPosition = new GridPosition { gridPosition = outputCell };
-        Item itemComponent = new Item { type = type };
-
-        ecb.SetComponent(item, transform);
-        ecb.AddComponent(item, gridPosition);
-        ecb.AddComponent(item, itemComponent);
-        ecb.AddComponent<ItemCellChanged>(item);
-        ecb.SetComponentEnabled<ItemCellChanged>(item, true);
-    }
-
-    private void ConsumeDeposit(ref EntityCommandBuffer ecb, int2 cell, Entity depositEntity, ResourceDeposit deposit)
+    private void ConsumeDeposit(
+        ref EntityCommandBuffer ecb,
+        int2 cell,
+        Entity depositEntity,
+        ResourceDeposit deposit)
     {
         deposit.amount--;
 
@@ -116,14 +135,41 @@ public partial class MiningSystem : SystemBase
         ecb.SetComponent(depositEntity, deposit);
     }
 
-    private static Entity FindPrefab(DynamicBuffer<ItemPrefabElement> prefabs, ItemTypeEnum type)
+    private static void CreateItemSpawnRequest(
+        ref EntityCommandBuffer ecb,
+        Entity owner,
+        ItemTypeEnum itemType)
     {
-        for (int i = 0; i < prefabs.Length; i++)
+        Entity requestEntity = ecb.CreateEntity();
+        ecb.AddComponent(requestEntity, new ItemSpawnRequest
         {
-            if (prefabs[i].type == type)
-                return prefabs[i].prefab;
-        }
+            owner = owner,
+            itemType = itemType
+        });
+    }
 
-        return Entity.Null;
+    private static NativeArray<T> CopyBuffer<T>(DynamicBuffer<T> buffer)
+        where T : unmanaged, IBufferElementData
+    {
+        NativeArray<T> copy = new NativeArray<T>(buffer.Length, Allocator.Temp);
+
+        for (int i = 0; i < buffer.Length; i++)
+            copy[i] = buffer[i];
+
+        return copy;
+    }
+
+    private bool EnsureSystems()
+    {
+        if (_chunkMap == null)
+            _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
+
+        if (_itemStorage == null)
+            _itemStorage = World.GetExistingSystemManaged<ItemStorageSystem>();
+
+        if (_itemTracking == null)
+            _itemTracking = World.GetExistingSystemManaged<ItemTrackingSystem>();
+
+        return _chunkMap != null && _itemStorage != null && _itemTracking != null;
     }
 }
