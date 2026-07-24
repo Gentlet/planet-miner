@@ -12,6 +12,7 @@ public class InGameUI : MonoBehaviour
     private Button minerButton;
     private Button crafterButton;
     private Button splitterButton;
+    private Button mergerButton;
 
     private void Awake()
     {
@@ -23,11 +24,13 @@ public class InGameUI : MonoBehaviour
         minerButton = root.Q<Button>("miner-button");
         crafterButton = root.Q<Button>("crafter-button");
         splitterButton = root.Q<Button>("splitter-button");
+        mergerButton = root.Q<Button>("merger-button");
 
         beltButton.clicked += OnBeltButtonClicked;
         minerButton.clicked += OnMinerButtonClicked;
         crafterButton.clicked += OnCrafterButtonClicked;
         splitterButton.clicked += OnSplitterButtonClicked;
+        mergerButton.clicked += OnMergerButtonClicked;
     }
 
     private void OnDestroy()
@@ -43,6 +46,9 @@ public class InGameUI : MonoBehaviour
 
         if (splitterButton != null)
             splitterButton.clicked -= OnSplitterButtonClicked;
+
+        if (mergerButton != null)
+            mergerButton.clicked -= OnMergerButtonClicked;
     }
 
     private void OnBeltButtonClicked()
@@ -101,6 +107,17 @@ public class InGameUI : MonoBehaviour
         _bpc.Operation.Candidates.Add(
             new BuildingPlacementCandidate(
                 BuildingTypeEnum.Splitter,
+                int2.zero,
+                DirectionEnum.Up,
+                false));
+    }
+
+    private void OnMergerButtonClicked()
+    {
+        _bpc.Operation = new BuildingPlacementOperation(new List<BuildingPlacementCandidate>());
+        _bpc.Operation.Candidates.Add(
+            new BuildingPlacementCandidate(
+                BuildingTypeEnum.Merger,
                 int2.zero,
                 DirectionEnum.Up,
                 false));

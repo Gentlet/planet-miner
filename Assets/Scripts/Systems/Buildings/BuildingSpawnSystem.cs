@@ -68,6 +68,12 @@ partial struct BuildingSpawnSystem : ISystem
                         nextOutputDirection = dir
                     });
                     break;
+                case BuildingTypeEnum.Merger:
+                    ecb.AddComponent(instance, new Merger
+                    {
+                        nextInputDirection = dir.NextDirection().NextDirection()
+                    });
+                    break;
                 default:
                     break;
             }
