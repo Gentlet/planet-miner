@@ -11,6 +11,7 @@ public class InGameUI : MonoBehaviour
     private Button beltButton;
     private Button minerButton;
     private Button crafterButton;
+    private Button splitterButton;
 
     private void Awake()
     {
@@ -21,10 +22,12 @@ public class InGameUI : MonoBehaviour
         beltButton = root.Q<Button>("belt-button");
         minerButton = root.Q<Button>("miner-button");
         crafterButton = root.Q<Button>("crafter-button");
+        splitterButton = root.Q<Button>("splitter-button");
 
         beltButton.clicked += OnBeltButtonClicked;
         minerButton.clicked += OnMinerButtonClicked;
         crafterButton.clicked += OnCrafterButtonClicked;
+        splitterButton.clicked += OnSplitterButtonClicked;
     }
 
     private void OnDestroy()
@@ -37,6 +40,9 @@ public class InGameUI : MonoBehaviour
 
         if (crafterButton != null)
             crafterButton.clicked -= OnCrafterButtonClicked;
+
+        if (splitterButton != null)
+            splitterButton.clicked -= OnSplitterButtonClicked;
     }
 
     private void OnBeltButtonClicked()
@@ -87,5 +93,16 @@ public class InGameUI : MonoBehaviour
                 DirectionEnum.Up,
                 false,
                 ItemTypeEnum.Iron));
+    }
+
+    private void OnSplitterButtonClicked()
+    {
+        _bpc.Operation = new BuildingPlacementOperation(new List<BuildingPlacementCandidate>());
+        _bpc.Operation.Candidates.Add(
+            new BuildingPlacementCandidate(
+                BuildingTypeEnum.Splitter,
+                int2.zero,
+                DirectionEnum.Up,
+                false));
     }
 }

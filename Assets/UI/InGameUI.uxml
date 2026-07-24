@@ -3,6 +3,7 @@
     <ui:VisualElement name="root" class="root">
         <ui:VisualElement name="bottom-button-container" class="bottom-button-container">
             <ui:Button name="belt-button" text="벨트" class="bottom-button blocking-ui"/>
+            <ui:Button name="splitter-button" text="분배기" class="bottom-button blocking-ui"/>
             <ui:Button name="miner-button" text="채굴기" class="bottom-button blocking-ui"/>
             <ui:Button name="crafter-button" text="제작기" class="bottom-button blocking-ui"/>
         </ui:VisualElement>

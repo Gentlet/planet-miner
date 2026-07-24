@@ -62,6 +62,12 @@ partial struct BuildingSpawnSystem : ISystem
                     ecb.AddBuffer<StoredItemElement>(instance);
                     ecb.AddBuffer<ProducedItemElement>(instance);
                     break;
+                case BuildingTypeEnum.Splitter:
+                    ecb.AddComponent(instance, new Splitter
+                    {
+                        nextOutputDirection = dir
+                    });
+                    break;
                 default:
                     break;
             }
