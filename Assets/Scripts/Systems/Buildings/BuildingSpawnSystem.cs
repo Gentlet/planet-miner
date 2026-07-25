@@ -19,7 +19,7 @@ partial struct BuildingSpawnSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         DynamicBuffer<BuildingPrefabElement> prefabs = SystemAPI.GetSingletonBuffer<BuildingPrefabElement>(true);
-        EntityCommandBuffer ecb = SystemAPI.GetSingleton<EndSimulationEntityCommandBufferSystem.Singleton>().CreateCommandBuffer(state.WorldUnmanaged);
+        EntityCommandBuffer ecb = SystemAPI.GetSingleton<BeginSimulationEntityCommandBufferSystem.Singleton>().CreateCommandBuffer(state.WorldUnmanaged);
 
         foreach(var (request, requestEntity) in SystemAPI.Query<RefRO<BuildingSpawnRequest>>().WithEntityAccess())
         {

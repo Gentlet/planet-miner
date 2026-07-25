@@ -14,7 +14,7 @@ public partial class ResourceSpawnSystem : SystemBase
 
     protected override void OnUpdate()
     {
-        EntityCommandBuffer ecb = SystemAPI.GetSingleton<EndSimulationEntityCommandBufferSystem.Singleton>().CreateCommandBuffer(World.Unmanaged);
+        EntityCommandBuffer ecb = SystemAPI.GetSingleton<BeginSimulationEntityCommandBufferSystem.Singleton>().CreateCommandBuffer(World.Unmanaged);
         DynamicBuffer<ResourcePrefabElement> prefabs = default;
         bool hasPrefabDatabase = !_prefabDatabaseQuery.IsEmptyIgnoreFilter;
 

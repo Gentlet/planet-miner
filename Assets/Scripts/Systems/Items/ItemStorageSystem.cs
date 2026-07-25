@@ -119,6 +119,10 @@ public partial class ItemStorageSystem : SystemBase
             transform.Position = new float3(targetCell.x, targetCell.y, transform.Position.z);
 
             ecb.SetComponent(itemEntity, transform);
+            ecb.SetComponent(itemEntity, new LocalToWorld
+            {
+                Value = transform.ToMatrix()
+            });
             ecb.SetComponent(itemEntity, new GridPosition { gridPosition = targetCell });
             ecb.RemoveComponent<StoredItem>(itemEntity);
             ecb.RemoveComponent<Disabled>(itemEntity);
@@ -140,6 +144,10 @@ public partial class ItemStorageSystem : SystemBase
             transform.Position = new float3(targetCell.x, targetCell.y, transform.Position.z);
 
             ecb.SetComponent(itemEntity, transform);
+            ecb.SetComponent(itemEntity, new LocalToWorld
+            {
+                Value = transform.ToMatrix()
+            });
             ecb.SetComponent(itemEntity, new GridPosition { gridPosition = targetCell });
             ecb.RemoveComponent<StoredItem>(itemEntity);
             ecb.RemoveComponent<Disabled>(itemEntity);

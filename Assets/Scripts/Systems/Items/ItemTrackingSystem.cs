@@ -169,6 +169,10 @@ public partial class ItemTrackingSystem : SystemBase
 
         if (_chunkMap.TryRegisterItem(targetCell, itemEntity))
         {
+            EntityManager.SetComponentData(itemEntity, new LocalToWorld
+            {
+                Value = targetTransform.ToMatrix()
+            });
             EntityManager.SetComponentEnabled<ItemCellChanged>(itemEntity, false);
             _chunkMap.SortItemsForBelt(targetCell);
             _reportedFailures.Remove(itemEntity);

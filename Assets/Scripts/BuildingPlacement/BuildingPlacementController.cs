@@ -7,6 +7,13 @@ using UnityEngine.InputSystem;
 
 public class BuildingPlacementController : MonoBehaviour
 {
+    private enum PointerDragMode
+    {
+        None,
+        Placement,
+        Destruction
+    }
+
     private EntityManager _entityManager;
     private ChunkMapSystem _chunkMap;
 
@@ -16,6 +23,10 @@ public class BuildingPlacementController : MonoBehaviour
 
     [SerializeField]
     private bool _enable = false;
+
+    private PointerDragMode _pointerDragMode;
+    private bool _hasLastPointerDragCell;
+    private int2 _lastPointerDragCell;
 
     private void Start()
     {
@@ -54,7 +65,10 @@ public class BuildingPlacementController : MonoBehaviour
 
 
         if (!_enable || _bpo == null)
+        {
+            ResetPointerDrag();
             return;
+        }
 
         if (Keyboard.current != null && Keyboard.current.rKey.wasPressedThisFrame)
         {
@@ -72,16 +86,52 @@ public class BuildingPlacementController : MonoBehaviour
             if (_bpo != null)
                 _bpo.EvaluatePlacement(_chunkMap);
 
-            if (_bpo != null && PointerUtility.WasLeftClickPressed() && _bpo.GetCanPlace)
-            {
-                CreateSpawnRequest();
-            }
-
-            if (PointerUtility.WasRightClickPressed())
-            {
-                CreateDestroyRequest(gridCell);
-            }
+            HandlePointerInput(gridCell);
         }
+    }
+
+    private void HandlePointerInput(int2 gridCell)
+    {
+        if (_pointerDragMode == PointerDragMode.Placement && !Mouse.current.leftButton.isPressed ||
+            _pointerDragMode == PointerDragMode.Destruction && !Mouse.current.rightButton.isPressed)
+        {
+            ResetPointerDrag();
+        }
+
+        bool isPointerOverUi = PointerUtility.IsPointerOverUi();
+
+        if (_pointerDragMode == PointerDragMode.None && !isPointerOverUi)
+        {
+            if (Mouse.current.leftButton.wasPressedThisFrame)
+                _pointerDragMode = PointerDragMode.Placement;
+            else if (Mouse.current.rightButton.wasPressedThisFrame)
+                _pointerDragMode = PointerDragMode.Destruction;
+        }
+
+        if (_pointerDragMode == PointerDragMode.None || isPointerOverUi)
+            return;
+
+        if (_hasLastPointerDragCell && math.all(_lastPointerDragCell == gridCell))
+            return;
+
+        _lastPointerDragCell = gridCell;
+        _hasLastPointerDragCell = true;
+
+        if (_pointerDragMode == PointerDragMode.Placement)
+        {
+            if (_bpo.GetCanPlace)
+                CreateSpawnRequest();
+        }
+        else
+        {
+            CreateDestroyRequest(gridCell);
+        }
+    }
+
+    private void ResetPointerDrag()
+    {
+        _pointerDragMode = PointerDragMode.None;
+        _hasLastPointerDragCell = false;
     }
 
     private void CreateSpawnRequest()
