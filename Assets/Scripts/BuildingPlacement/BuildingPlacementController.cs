@@ -186,14 +186,16 @@ public class BuildingPlacementController : MonoBehaviour
 
     public void SetEnable(bool enable, BuildingPlacementOperation bpo)
     {
-        _enable = enable;
         _bpo = bpo;
-
-        _preview.enabled = _enable;
+        SetEnable(enable);
     }
+
     public void SetEnable(bool enable)
     {
         _enable = enable;
+
+        if (!_enable)
+            ResetPointerDrag();
 
         _preview.enabled = _enable;
     }

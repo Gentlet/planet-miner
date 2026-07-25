@@ -1,0 +1,8 @@
+<ui:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
+    <Style src="project://database/Assets/UI/Button.uss?fileID=7433441132597879392&amp;guid=6d23cb732104f1f46931923e74a6d700&amp;type=3#Button"/>
+    <ui:VisualElement name="root" class="root">
+        <ui:VisualElement name="bottom-button-container" class="bottom-button-container">
+            <ui:Button name="construction-mode-button" text="건설 모드" class="bottom-button blocking-ui"/>
+        </ui:VisualElement>
+    </ui:VisualElement>
+</ui:UXML>

@@ -1,9 +1,11 @@
+using System;
 using System.Collections.Generic;
 using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.InputSystem;
 using UnityEngine.UIElements;
 
-public class InGameUI : MonoBehaviour
+public class ConstructionModeUI : MonoBehaviour
 {
     [SerializeField]
     private BuildingPlacementController _bpc;
@@ -14,7 +16,9 @@ public class InGameUI : MonoBehaviour
     private Button splitterButton;
     private Button mergerButton;
 
-    private void Awake()
+    public event Action ExitRequested;
+
+    private void OnEnable()
     {
         UIDocument uiDocument = GetComponent<UIDocument>();
 
@@ -33,7 +37,13 @@ public class InGameUI : MonoBehaviour
         mergerButton.clicked += OnMergerButtonClicked;
     }
 
-    private void OnDestroy()
+    private void Update()
+    {
+        if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+            ExitRequested?.Invoke();
+    }
+
+    private void OnDisable()
     {
         if (beltButton != null)
             beltButton.clicked -= OnBeltButtonClicked;
@@ -49,6 +59,12 @@ public class InGameUI : MonoBehaviour
 
         if (mergerButton != null)
             mergerButton.clicked -= OnMergerButtonClicked;
+
+        beltButton = null;
+        minerButton = null;
+        crafterButton = null;
+        splitterButton = null;
+        mergerButton = null;
     }
 
     private void OnBeltButtonClicked()

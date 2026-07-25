@@ -26,6 +26,11 @@ public class BuildingPlacementPreview : MonoBehaviour
 
     private readonly List<GameObject> _previewObjects = new();
 
+    private void OnDisable()
+    {
+        HidePreview();
+    }
+
     public void ShowPreview(BuildingPlacementOperation bpo, int2 pivot)
     {
         EnsurePreviewObjectCount(bpo.Candidates.Count);
@@ -51,6 +56,12 @@ public class BuildingPlacementPreview : MonoBehaviour
         {
             _previewObjects[i].SetActive(false);
         }
+    }
+
+    private void HidePreview()
+    {
+        foreach (GameObject previewObject in _previewObjects)
+            previewObject.SetActive(false);
     }
 
     private void SetSprite(GameObject previewObject, BuildingTypeEnum type)
