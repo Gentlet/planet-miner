@@ -114,7 +114,7 @@ public class ConstructionModeUI : MonoBehaviour
                 int2.zero,
                 DirectionEnum.Up,
                 false,
-                ItemTypeEnum.Iron));
+                ItemTypeEnum.None));
     }
 
     private void OnSplitterButtonClicked()

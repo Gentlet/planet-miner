@@ -193,6 +193,7 @@ MonoBehaviour:
   _defaultUI: {fileID: 1900000004}
   _constructionModeUI: {fileID: 508882479}
   _buildingPlacementController: {fileID: 50267807}
+  _buildingUI: {fileID: 1900000013}
 --- !u!4 &50267808
 Transform:
   m_ObjectHideFlags: 0
@@ -288,6 +289,7 @@ GameObject:
   - component: {fileID: 1900000002}
   - component: {fileID: 1900000003}
   - component: {fileID: 1900000004}
+  - component: {fileID: 1900000013}
   m_Layer: 5
   m_Name: DefaultUI
   m_TagString: Untagged
@@ -345,6 +347,18 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a1b83a58cfa4443dace2e8bc22625645, type: 3}
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::DefaultUI
+--- !u!114 &1900000013
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1900000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 553c308b6c8b495da73f71b57c001ed9, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::BuildingUI
 --- !u!1 &519420028
 GameObject:
   m_ObjectHideFlags: 0

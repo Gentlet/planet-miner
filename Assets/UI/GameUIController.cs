@@ -12,6 +12,9 @@ public class GameUIController : MonoBehaviour
     [SerializeField]
     private BuildingPlacementController _buildingPlacementController;
 
+    [SerializeField]
+    private BuildingUI _buildingUI;
+
     private void Awake()
     {
         _defaultUI.ConstructionModeRequested += EnterConstructionMode;
@@ -31,6 +34,7 @@ public class GameUIController : MonoBehaviour
 
     public void EnterConstructionMode()
     {
+        _buildingUI.SetSelectionEnabled(false);
         SetUIVisible(_defaultUI, false);
         SetUIVisible(_constructionModeUI, true);
         _buildingPlacementController.SetEnable(true);
@@ -41,6 +45,7 @@ public class GameUIController : MonoBehaviour
         _buildingPlacementController.SetEnable(false);
         SetUIVisible(_constructionModeUI, false);
         SetUIVisible(_defaultUI, true);
+        _buildingUI.SetSelectionEnabled(true);
     }
 
     private static void SetUIVisible(MonoBehaviour ui, bool visible)

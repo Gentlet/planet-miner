@@ -1,8 +1,31 @@
 <ui:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
     <Style src="project://database/Assets/UI/Button.uss?fileID=7433441132597879392&amp;guid=6d23cb732104f1f46931923e74a6d700&amp;type=3#Button"/>
+    <Style src="project://database/Assets/UI/BuildingUI.uss?fileID=7433441132597879392&amp;guid=ac8d39037fc94366b11e410c84009581&amp;type=3#BuildingUI"/>
     <ui:VisualElement name="root" class="root">
         <ui:VisualElement name="bottom-button-container" class="bottom-button-container">
             <ui:Button name="construction-mode-button" text="건설 모드" class="bottom-button blocking-ui"/>
+        </ui:VisualElement>
+        <ui:VisualElement name="building-ui-root" class="building-ui-root" picking-mode="Ignore">
+            <ui:VisualElement name="building-panel" class="building-panel blocking-ui" picking-mode="Position" style="display: none;">
+                <ui:VisualElement class="header-row">
+                    <ui:Label text="제작기" class="building-title"/>
+                    <ui:Button name="close-button" text="×" class="close-button"/>
+                </ui:VisualElement>
+                <ui:Label name="building-status" text="레시피를 선택하세요" class="status-label status-waiting"/>
+                <ui:ScrollView class="content-scroll">
+                    <ui:Label text="레시피" class="section-title"/>
+                    <ui:Label name="current-recipe" text="현재 레시피: 없음" class="current-recipe"/>
+                    <ui:VisualElement name="recipe-container" class="recipe-container"/>
+                    <ui:Label text="투입 아이템" class="section-title"/>
+                    <ui:VisualElement name="input-container" class="inventory-container"/>
+                    <ui:Label text="생산 대기 아이템" class="section-title"/>
+                    <ui:VisualElement name="output-container" class="inventory-container"/>
+                    <ui:Label text="생산 진행도" class="section-title"/>
+                    <ui:ProgressBar name="production-progress" low-value="0" high-value="100" value="0" title="0%" class="production-progress"/>
+                    <ui:Label name="remaining-time" text="생산 대기" class="information-label"/>
+                    <ui:Label name="production-speed" text="생산 속도: ×1" class="information-label speed-label"/>
+                </ui:ScrollView>
+            </ui:VisualElement>
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>
