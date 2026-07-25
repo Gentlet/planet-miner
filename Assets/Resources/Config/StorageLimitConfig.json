@@ -19,6 +19,18 @@
     {
       "itemType": "Iron",
       "maxAmount": 10
+    },
+    {
+      "itemType": "Copper",
+      "maxAmount": 10
+    },
+    {
+      "itemType": "Iron_Stick",
+      "maxAmount": 10
+    },
+    {
+      "itemType": "Copper_Stick",
+      "maxAmount": 10
     }
   ]
 }

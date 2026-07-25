@@ -11,6 +11,42 @@
           "amount": 1
         }
       ]
+    },
+    {
+      "id": 2,
+      "outputItemType": "Copper",
+      "craftTime": 1.0,
+      "conditions": [],
+      "ingredients": [
+        {
+          "itemType": "Copper_Ore",
+          "amount": 1
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "outputItemType": "Iron_Stick",
+      "craftTime": 1.5,
+      "conditions": [],
+      "ingredients": [
+        {
+          "itemType": "Iron",
+          "amount": 2
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "outputItemType": "Copper_Stick",
+      "craftTime": 1.5,
+      "conditions": [],
+      "ingredients": [
+        {
+          "itemType": "Copper",
+          "amount": 2
+        }
+      ]
     }
   ]
 }

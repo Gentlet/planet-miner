@@ -333,6 +333,12 @@ MonoBehaviour:
     prefab: {fileID: 2889137660585419115, guid: 2abdfb9cf46755944922a9234880b762, type: 3}
   - type: 5
     prefab: {fileID: 2889137660585419115, guid: 3d8d4e04a2813eb4a9a620e8b8ca07df, type: 3}
+  - type: 6
+    prefab: {fileID: 2889137660585419115, guid: 8168f8b6712988841a1e7cd328001ca4, type: 3}
+  - type: 7
+    prefab: {fileID: 2889137660585419115, guid: fa519de06a574394863bdb0144d5a16d, type: 3}
+  - type: 8
+    prefab: {fileID: 2889137660585419115, guid: 12759d51a1f64ad49246a6e3a0d77cb1, type: 3}
 --- !u!4 &1416870914
 Transform:
   m_ObjectHideFlags: 0

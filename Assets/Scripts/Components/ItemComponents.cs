@@ -8,6 +8,9 @@ public enum ItemTypeEnum : byte
     Coal,
     Stone,
     Iron,
+    Copper,
+    Iron_Stick,
+    Copper_Stick,
     Count
 }
 
