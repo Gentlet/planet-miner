@@ -74,6 +74,10 @@ partial struct BuildingSpawnSystem : ISystem
                         nextInputDirection = dir.NextDirection().NextDirection()
                     });
                     break;
+                case BuildingTypeEnum.Storage:
+                    ecb.AddComponent<Storage>(instance);
+                    ecb.AddBuffer<StoredItemElement>(instance);
+                    break;
                 default:
                     break;
             }

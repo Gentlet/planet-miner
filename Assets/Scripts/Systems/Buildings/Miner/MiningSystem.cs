@@ -75,7 +75,10 @@ public partial class MiningSystem : SystemBase
             int2 minerCell = EntityManager.GetComponentData<GridPosition>(minerEntity).gridPosition;
             DirectionEnum direction = EntityManager.GetComponentData<Direction>(minerEntity).dir;
             int2 outputCell = minerCell + direction.ToInt2();
-            _itemStorage.TryRestoreProducedItemImmediate(minerEntity, 0, outputCell);
+            _itemStorage.TryRestoreItemImmediate<ProducedItemElement>(
+                minerEntity,
+                0,
+                outputCell);
         }
     }
 

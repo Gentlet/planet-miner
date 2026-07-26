@@ -59,42 +59,62 @@ public partial class ItemStorageSystem : SystemBase
         return true;
     }
 
-    public bool TryRestoreProducedItemImmediate(Entity owner, int index, int2 targetCell)
+    public bool TryRestoreItemImmediate<TElement>(
+        Entity owner,
+        int index,
+        int2 targetCell)
+        where TElement : unmanaged, IBufferElementData, IItemStorageElement
     {
-        if (!EnsureItemTracking())
+        if (!EnsureItemTracking() ||
+            owner == Entity.Null ||
+            !EntityManager.Exists(owner) ||
+            !EntityManager.HasBuffer<TElement>(owner))
             return false;
 
-        DynamicBuffer<ProducedItemElement> producedItems = EntityManager.GetBuffer<ProducedItemElement>(owner);
+        DynamicBuffer<TElement> items =
+            EntityManager.GetBuffer<TElement>(owner);
 
-        if (index < 0 || index >= producedItems.Length)
+        if (index < 0 || index >= items.Length)
             return false;
 
-        ProducedItemElement producedItem = producedItems[index];
-        Entity itemEntity = producedItem.itemEntity;
+        TElement itemElement = items[index];
+        Entity itemEntity = itemElement.ItemEntity;
 
-        if (itemEntity == Entity.Null || !EntityManager.Exists(itemEntity))
+        if (itemEntity == Entity.Null ||
+            !EntityManager.Exists(itemEntity) ||
+            !EntityManager.HasComponent<StoredItem>(itemEntity))
         {
-            producedItems.RemoveAt(index);
+            items.RemoveAt(index);
             return false;
         }
 
-        StoredItem storedItem = EntityManager.GetComponentData<StoredItem>(itemEntity);
+        StoredItem storedItem =
+            EntityManager.GetComponentData<StoredItem>(itemEntity);
 
         if (storedItem.owner != owner)
             return false;
 
-        LocalTransform previousTransform = EntityManager.GetComponentData<LocalTransform>(itemEntity);
-        GridPosition previousGridPosition = EntityManager.GetComponentData<GridPosition>(itemEntity);
-        float3 targetPosition = new float3(targetCell.x, targetCell.y, previousTransform.Position.z);
+        LocalTransform previousTransform =
+            EntityManager.GetComponentData<LocalTransform>(itemEntity);
+        GridPosition previousGridPosition =
+            EntityManager.GetComponentData<GridPosition>(itemEntity);
+        float3 targetPosition =
+            new float3(targetCell.x, targetCell.y, previousTransform.Position.z);
 
-        if (!_itemTracking.CanPlaceItemAt(itemEntity, targetCell, targetPosition))
+        if (!_itemTracking.CanPlaceItemAt(
+                itemEntity,
+                targetCell,
+                targetPosition))
             return false;
 
-        producedItems.RemoveAt(index);
+        items.RemoveAt(index);
         EntityManager.RemoveComponent<StoredItem>(itemEntity);
         EntityManager.RemoveComponent<Disabled>(itemEntity);
 
-        if (_itemTracking.TryRegisterItemImmediate(itemEntity, targetCell, targetPosition))
+        if (_itemTracking.TryRegisterItemImmediate(
+                itemEntity,
+                targetCell,
+                targetPosition))
             return true;
 
         EntityManager.SetComponentData(itemEntity, previousTransform);
@@ -102,8 +122,11 @@ public partial class ItemStorageSystem : SystemBase
         EntityManager.AddComponentData(itemEntity, storedItem);
         EntityManager.AddComponent<Disabled>(itemEntity);
 
-        DynamicBuffer<ProducedItemElement> restoredItems = EntityManager.GetBuffer<ProducedItemElement>(owner);
-        restoredItems.Insert(math.min(index, restoredItems.Length), producedItem);
+        DynamicBuffer<TElement> restoredItems =
+            EntityManager.GetBuffer<TElement>(owner);
+        restoredItems.Insert(
+            math.min(index, restoredItems.Length),
+            itemElement);
         return false;
     }
 

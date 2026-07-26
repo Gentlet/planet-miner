@@ -97,7 +97,10 @@ public partial class CrafterSystem : SystemBase
             int2 crafterCell = EntityManager.GetComponentData<GridPosition>(crafterEntity).gridPosition;
             DirectionEnum direction = EntityManager.GetComponentData<Direction>(crafterEntity).dir;
             int2 outputCell = crafterCell + direction.ToInt2();
-            _itemStorage.TryRestoreProducedItemImmediate(crafterEntity, 0, outputCell);
+            _itemStorage.TryRestoreItemImmediate<ProducedItemElement>(
+                crafterEntity,
+                0,
+                outputCell);
         }
     }
 

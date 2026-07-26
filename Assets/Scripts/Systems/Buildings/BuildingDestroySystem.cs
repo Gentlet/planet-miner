@@ -3,6 +3,7 @@ using Unity.Mathematics;
 
 [UpdateAfter(typeof(CrafterSystem))]
 [UpdateAfter(typeof(MiningSystem))]
+[UpdateAfter(typeof(StorageSystem))]
 public partial class BuildingDestroySystem : SystemBase
 {
     private ChunkMapSystem _chunkMap;

@@ -8,6 +8,7 @@ public enum BuildingTypeEnum : byte
     Crafter,
     Splitter,
     Merger,
+    Storage,
     Count
 }
 
@@ -35,8 +36,10 @@ public struct BuildingPrefabElement : IBufferElementData
     public Entity prefab;
 }
 
-public struct ProducedItemElement : IBufferElementData
+public struct ProducedItemElement : IBufferElementData, IItemStorageElement
 {
     public Entity itemEntity;
     public ItemTypeEnum type;
+
+    public Entity ItemEntity => itemEntity;
 }

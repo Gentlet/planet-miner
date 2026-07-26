@@ -15,6 +15,7 @@ public class ConstructionModeUI : MonoBehaviour
     private Button crafterButton;
     private Button splitterButton;
     private Button mergerButton;
+    private Button storageButton;
     private Label copyStatusLabel;
 
     public event Action ExitRequested;
@@ -30,6 +31,7 @@ public class ConstructionModeUI : MonoBehaviour
         crafterButton = root.Q<Button>("crafter-button");
         splitterButton = root.Q<Button>("splitter-button");
         mergerButton = root.Q<Button>("merger-button");
+        storageButton = root.Q<Button>("storage-button");
         copyStatusLabel = root.Q<Label>("copy-status-label");
 
         beltButton.clicked += OnBeltButtonClicked;
@@ -37,6 +39,7 @@ public class ConstructionModeUI : MonoBehaviour
         crafterButton.clicked += OnCrafterButtonClicked;
         splitterButton.clicked += OnSplitterButtonClicked;
         mergerButton.clicked += OnMergerButtonClicked;
+        storageButton.clicked += OnStorageButtonClicked;
     }
 
     private void Update()
@@ -73,11 +76,15 @@ public class ConstructionModeUI : MonoBehaviour
         if (mergerButton != null)
             mergerButton.clicked -= OnMergerButtonClicked;
 
+        if (storageButton != null)
+            storageButton.clicked -= OnStorageButtonClicked;
+
         beltButton = null;
         minerButton = null;
         crafterButton = null;
         splitterButton = null;
         mergerButton = null;
+        storageButton = null;
         copyStatusLabel = null;
     }
 
@@ -148,6 +155,17 @@ public class ConstructionModeUI : MonoBehaviour
         _bpc.Operation.Candidates.Add(
             new BuildingPlacementCandidate(
                 BuildingTypeEnum.Merger,
+                int2.zero,
+                DirectionEnum.Up,
+                false));
+    }
+
+    private void OnStorageButtonClicked()
+    {
+        _bpc.Operation = new BuildingPlacementOperation(new List<BuildingPlacementCandidate>());
+        _bpc.Operation.Candidates.Add(
+            new BuildingPlacementCandidate(
+                BuildingTypeEnum.Storage,
                 int2.zero,
                 DirectionEnum.Up,
                 false));

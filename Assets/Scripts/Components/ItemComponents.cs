@@ -34,10 +34,17 @@ public struct StoredItem : IComponentData
     public Entity owner;
 }
 
-public struct StoredItemElement : IBufferElementData
+public interface IItemStorageElement
+{
+    Entity ItemEntity { get; }
+}
+
+public struct StoredItemElement : IBufferElementData, IItemStorageElement
 {
     public Entity itemEntity;
     public ItemTypeEnum type;
+
+    public Entity ItemEntity => itemEntity;
 }
 
 public struct ItemPrefabElement : IBufferElementData
