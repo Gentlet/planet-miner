@@ -8,6 +8,8 @@ using UnityEngine;
 [BurstCompile]
 partial struct BuildingSpawnSystem : ISystem
 {
+    private const int DefaultStorageCapacity = 10;
+
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
@@ -75,7 +77,10 @@ partial struct BuildingSpawnSystem : ISystem
                     });
                     break;
                 case BuildingTypeEnum.Storage:
-                    ecb.AddComponent<Storage>(instance);
+                    ecb.AddComponent(instance, new Storage
+                    {
+                        capacity = DefaultStorageCapacity
+                    });
                     ecb.AddBuffer<StoredItemElement>(instance);
                     break;
                 default:

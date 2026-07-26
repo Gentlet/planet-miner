@@ -168,8 +168,13 @@ public class BuildingUI : MonoBehaviour
 
     private void Refresh()
     {
-        if (!_entityManager.Exists(_selectedBuilding) ||
-            !TryGetConfigEntity(out Entity configEntity))
+        if (!_entityManager.Exists(_selectedBuilding))
+        {
+            Close();
+            return;
+        }
+
+        if (!TryGetConfigEntity(out Entity configEntity))
         {
             Close();
             return;
@@ -177,6 +182,12 @@ public class BuildingUI : MonoBehaviour
 
         DynamicBuffer<ItemStorageLimitElement> storageLimits =
             _entityManager.GetBuffer<ItemStorageLimitElement>(configEntity, true);
+
+        if (_entityManager.HasComponent<Storage>(_selectedBuilding))
+        {
+            RefreshStorage(storageLimits);
+            return;
+        }
 
         if (_entityManager.HasComponent<Crafter>(_selectedBuilding))
         {
@@ -187,12 +198,6 @@ public class BuildingUI : MonoBehaviour
         if (_entityManager.HasComponent<Miner>(_selectedBuilding))
         {
             RefreshMiner(storageLimits);
-            return;
-        }
-
-        if (_entityManager.HasComponent<Storage>(_selectedBuilding))
-        {
-            RefreshStorage(storageLimits);
             return;
         }
 
@@ -264,7 +269,8 @@ public class BuildingUI : MonoBehaviour
         UpdateMinerProgress(miner);
     }
 
-    private void RefreshStorage(DynamicBuffer<ItemStorageLimitElement> storageLimits)
+    private void RefreshStorage(
+        DynamicBuffer<ItemStorageLimitElement> storageLimits)
     {
         if (!_entityManager.HasBuffer<StoredItemElement>(_selectedBuilding))
         {
@@ -273,16 +279,29 @@ public class BuildingUI : MonoBehaviour
         }
 
         SetStorageLayout();
+        Storage storage = _entityManager.GetComponentData<Storage>(_selectedBuilding);
         DynamicBuffer<StoredItemElement> storedItems =
             _entityManager.GetBuffer<StoredItemElement>(_selectedBuilding, true);
 
         CountItems(storedItems, _storedCounts);
-        UpdateSimpleInventory(
-            _inputContainer,
+        UpdateStorageInventory(
             _storedCounts,
             storageLimits,
-            "보관 중");
-        SetStatus("아이템 보관 중", "status-normal");
+            storage.capacity);
+        int usedSlotCount = storedItems.GetUsedSlotCount(storageLimits);
+
+        if (storage.capacity > 0 && usedSlotCount >= storage.capacity)
+        {
+            SetStatus(
+                $"모든 창고 칸 사용 중 ({usedSlotCount} / {storage.capacity}칸)",
+                "status-waiting");
+        }
+        else
+        {
+            SetStatus(
+                $"창고 칸 사용량 ({usedSlotCount} / {storage.capacity}칸)",
+                "status-normal");
+        }
     }
 
     private bool IsSupportedBuilding(Entity buildingEntity)
@@ -298,6 +317,7 @@ public class BuildingUI : MonoBehaviour
         _inputTitleLabel.text = "투입 아이템";
         _outputTitleLabel.text = "생산 대기 아이템";
         _progressTitleLabel.text = "생산 진행도";
+        _inputContainer.RemoveFromClassList("storage-grid");
 
         SetVisible(_recipeTitleLabel, true);
         SetVisible(_currentRecipeLabel, true);
@@ -314,6 +334,7 @@ public class BuildingUI : MonoBehaviour
         _buildingTitleLabel.text = "채굴기";
         _outputTitleLabel.text = "채굴 대기 아이템";
         _progressTitleLabel.text = "채굴 진행도";
+        _inputContainer.RemoveFromClassList("storage-grid");
 
         SetVisible(_recipeTitleLabel, false);
         SetVisible(_currentRecipeLabel, false);
@@ -329,6 +350,7 @@ public class BuildingUI : MonoBehaviour
     {
         _buildingTitleLabel.text = "창고";
         _inputTitleLabel.text = "보관 아이템";
+        _inputContainer.AddToClassList("storage-grid");
 
         SetVisible(_recipeTitleLabel, false);
         SetVisible(_currentRecipeLabel, false);
@@ -379,6 +401,47 @@ public class BuildingUI : MonoBehaviour
 
         if (container.childCount == 0)
             AddEmptyLabel(container);
+    }
+
+    private void UpdateStorageInventory(
+        Dictionary<ItemTypeEnum, int> counts,
+        DynamicBuffer<ItemStorageLimitElement> storageLimits,
+        int capacity)
+    {
+        _inputContainer.Clear();
+        int createdSlotCount = 0;
+
+        for (ItemTypeEnum itemType = ItemTypeEnum.Iron_Ore;
+             itemType < ItemTypeEnum.Count && createdSlotCount < capacity;
+             itemType++)
+        {
+            if (!counts.TryGetValue(itemType, out int count))
+                continue;
+
+            int stackLimit = storageLimits.GetStorageLimit(itemType);
+            int effectiveStackLimit = stackLimit > 0 ? stackLimit : 1;
+            int remainingCount = count;
+
+            while (remainingCount > 0 && createdSlotCount < capacity)
+            {
+                int stackCount = remainingCount > effectiveStackLimit
+                    ? effectiveStackLimit
+                    : remainingCount;
+                AddStorageSlot(
+                    _inputContainer,
+                    itemType,
+                    stackCount,
+                    effectiveStackLimit);
+                remainingCount -= stackCount;
+                createdSlotCount++;
+            }
+        }
+
+        while (createdSlotCount < capacity)
+        {
+            AddEmptyStorageSlot(_inputContainer);
+            createdSlotCount++;
+        }
     }
 
     private void UpdateMinerStatus(
@@ -776,6 +839,41 @@ public class BuildingUI : MonoBehaviour
         row.Add(countLabel);
         row.Add(detailLabel);
         container.Add(row);
+    }
+
+    private static void AddStorageSlot(
+        VisualElement container,
+        ItemTypeEnum itemType,
+        int count,
+        int stackLimit)
+    {
+        VisualElement slot = new();
+        slot.AddToClassList("storage-slot");
+        slot.AddToClassList("storage-slot-filled");
+        slot.tooltip = $"{GetItemDisplayName(itemType)} {count} / {stackLimit}";
+
+        Label itemLabel = new(GetItemDisplayName(itemType));
+        itemLabel.AddToClassList("storage-slot-item");
+
+        Label countLabel = new($"{count} / {stackLimit}");
+        countLabel.AddToClassList("storage-slot-count");
+
+        slot.Add(itemLabel);
+        slot.Add(countLabel);
+        container.Add(slot);
+    }
+
+    private static void AddEmptyStorageSlot(VisualElement container)
+    {
+        VisualElement slot = new();
+        slot.AddToClassList("storage-slot");
+        slot.AddToClassList("storage-slot-empty");
+
+        Label emptyLabel = new("빈 칸");
+        emptyLabel.AddToClassList("storage-slot-empty-label");
+
+        slot.Add(emptyLabel);
+        container.Add(slot);
     }
 
     private static void AddEmptyLabel(VisualElement container)

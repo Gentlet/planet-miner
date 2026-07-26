@@ -254,7 +254,7 @@ public static class CrafterRecipeBufferExtension
 
 }
 
-public static class CrafterStoredItemBufferExtension
+public static class StoredItemBufferExtension
 {
     public static bool HasIngredients(
         this DynamicBuffer<StoredItemElement> storedItems,
@@ -334,6 +334,55 @@ public static class CrafterStoredItemBufferExtension
 
         return count;
     }
+
+    public static int GetUsedSlotCount(
+        this DynamicBuffer<StoredItemElement> storedItems,
+        DynamicBuffer<ItemStorageLimitElement> storageLimits)
+    {
+        int usedSlotCount = 0;
+
+        for (ItemTypeEnum itemType = ItemTypeEnum.Iron_Ore;
+             itemType < ItemTypeEnum.Count;
+             itemType++)
+        {
+            int itemCount = storedItems.CountItems(itemType);
+
+            if (itemCount == 0)
+                continue;
+
+            int stackLimit = storageLimits.GetStorageLimit(itemType);
+            usedSlotCount += stackLimit > 0
+                ? (itemCount + stackLimit - 1) / stackLimit
+                : itemCount;
+        }
+
+        return usedSlotCount;
+    }
+
+    public static int GetUsedSlotCount(
+        this DynamicBuffer<StoredItemElement> storedItems,
+        NativeArray<ItemStorageLimitElement> storageLimits)
+    {
+        int usedSlotCount = 0;
+
+        for (ItemTypeEnum itemType = ItemTypeEnum.Iron_Ore;
+             itemType < ItemTypeEnum.Count;
+             itemType++)
+        {
+            int itemCount = storedItems.CountItems(itemType);
+
+            if (itemCount == 0)
+                continue;
+
+            int stackLimit = storageLimits.GetStorageLimit(itemType);
+            usedSlotCount += stackLimit > 0
+                ? (itemCount + stackLimit - 1) / stackLimit
+                : itemCount;
+        }
+
+        return usedSlotCount;
+    }
+
 }
 
 public static class ProducedItemBufferExtension

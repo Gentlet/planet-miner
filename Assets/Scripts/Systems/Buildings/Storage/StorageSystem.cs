@@ -51,6 +51,8 @@ public partial class StorageSystem : SystemBase
                     .gridPosition;
             DirectionEnum forward =
                 EntityManager.GetComponentData<Direction>(storageEntity).dir;
+            int capacity =
+                EntityManager.GetComponentData<Storage>(storageEntity).capacity;
 
             TryOutputOldestItem(
                 storageEntity,
@@ -60,6 +62,7 @@ public partial class StorageSystem : SystemBase
                 storageEntity,
                 storageCell,
                 forward,
+                capacity,
                 storageLimits);
         }
     }
@@ -92,6 +95,7 @@ public partial class StorageSystem : SystemBase
         Entity storageEntity,
         int2 storageCell,
         DirectionEnum forward,
+        int capacity,
         NativeArray<ItemStorageLimitElement> storageLimits)
     {
         BuildInputItems(storageCell, forward);
@@ -107,6 +111,7 @@ public partial class StorageSystem : SystemBase
             if (!CanDepositItem(
                     itemEntity,
                     storedItems,
+                    capacity,
                     storageLimits))
                 continue;
 
@@ -159,6 +164,7 @@ public partial class StorageSystem : SystemBase
     private bool CanDepositItem(
         Entity itemEntity,
         DynamicBuffer<StoredItemElement> storedItems,
+        int capacity,
         NativeArray<ItemStorageLimitElement> storageLimits)
     {
         if (!EntityManager.Exists(itemEntity) ||
@@ -166,11 +172,24 @@ public partial class StorageSystem : SystemBase
             EntityManager.HasComponent<StoredItem>(itemEntity))
             return false;
 
+        if (capacity <= 0)
+            return false;
+
         ItemTypeEnum itemType =
             EntityManager.GetComponentData<Item>(itemEntity).type;
-        int maxAmount = storageLimits.GetStorageLimit(itemType);
-        return maxAmount > 0 &&
-               storedItems.CountItems(itemType) < maxAmount;
+        int stackLimit = storageLimits.GetStorageLimit(itemType);
+
+        if (stackLimit <= 0)
+            return false;
+
+        int usedSlotCount = storedItems.GetUsedSlotCount(storageLimits);
+
+        if (usedSlotCount > capacity)
+            return false;
+
+        int storedItemCount = storedItems.CountItems(itemType);
+        return storedItemCount % stackLimit != 0 ||
+               usedSlotCount < capacity;
     }
 
     private static NativeArray<T> CopyBuffer<T>(

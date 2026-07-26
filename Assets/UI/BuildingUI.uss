@@ -125,6 +125,62 @@
     margin-bottom: 4px;
 }
 
+.storage-grid {
+    flex-direction: row;
+    flex-wrap: wrap;
+}
+
+.storage-slot {
+    width: 72px;
+    height: 76px;
+    margin-right: 6px;
+    margin-bottom: 6px;
+    padding: 7px;
+    align-items: center;
+    justify-content: center;
+    border-left-width: 2px;
+    border-right-width: 2px;
+    border-top-width: 2px;
+    border-bottom-width: 2px;
+}
+
+.storage-slot-filled {
+    background-color: rgb(45, 56, 71);
+    border-left-color: rgb(88, 126, 174);
+    border-right-color: rgb(88, 126, 174);
+    border-top-color: rgb(88, 126, 174);
+    border-bottom-color: rgb(88, 126, 174);
+}
+
+.storage-slot-empty {
+    background-color: rgb(31, 37, 47);
+    border-left-color: rgb(57, 66, 80);
+    border-right-color: rgb(57, 66, 80);
+    border-top-color: rgb(57, 66, 80);
+    border-bottom-color: rgb(57, 66, 80);
+}
+
+.storage-slot-item {
+    font-size: 12px;
+    -unity-font-style: bold;
+    -unity-text-align: middle-center;
+    white-space: normal;
+    color: rgb(229, 235, 244);
+}
+
+.storage-slot-count {
+    margin-top: 5px;
+    font-size: 12px;
+    -unity-text-align: middle-center;
+    color: rgb(159, 207, 255);
+}
+
+.storage-slot-empty-label {
+    font-size: 12px;
+    -unity-text-align: middle-center;
+    color: rgb(83, 94, 111);
+}
+
 .item-row {
     min-height: 48px;
     margin-bottom: 6px;
