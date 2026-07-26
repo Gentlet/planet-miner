@@ -42,6 +42,8 @@ public partial class BeltMoveSystem : SystemBase
             new NativeArray<ActiveBeltCell>(_activeCells.Count, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
         NativeArray<ItemSpatialEntry> itemSnapshots =
             new NativeArray<ItemSpatialEntry>(_itemSnapshots.Count, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
+        NativeArray<MoveResult> moveResults =
+            new NativeArray<MoveResult>(_itemSnapshots.Count, Allocator.TempJob, NativeArrayOptions.UninitializedMemory);
 
         for (int i = 0; i < _activeCells.Count; i++)
             activeCells[i] = _activeCells[i];
@@ -55,6 +57,7 @@ public partial class BeltMoveSystem : SystemBase
             itemSpacingSq = GameConstants.itemSpacing * GameConstants.itemSpacing,
             activeCells = activeCells,
             itemSnapshots = itemSnapshots,
+            moveResults = moveResults,
             transforms = SystemAPI.GetComponentLookup<LocalTransform>(),
             cellChanged = SystemAPI.GetComponentLookup<ItemCellChanged>()
         };
@@ -62,6 +65,7 @@ public partial class BeltMoveSystem : SystemBase
         Dependency = job.Schedule(activeCells.Length, 1, Dependency);
         Dependency = activeCells.Dispose(Dependency);
         Dependency = itemSnapshots.Dispose(Dependency);
+        Dependency = moveResults.Dispose(Dependency);
     }
 
     private void BuildActiveCellSnapshots()
@@ -152,6 +156,15 @@ public partial class BeltMoveSystem : SystemBase
         public float3 position;
     }
 
+    private struct MoveResult
+    {
+        public bool isAligning;
+        public float movedDistance;
+        public float2 direction;
+        public float alignmentDistanceSq;
+        public float3 alignmentTarget;
+    }
+
     [BurstCompile]
     private struct MoveActiveBeltCellsJob : IJobParallelFor
     {
@@ -163,6 +176,9 @@ public partial class BeltMoveSystem : SystemBase
 
         [ReadOnly]
         public NativeArray<ItemSpatialEntry> itemSnapshots;
+
+        [NativeDisableParallelForRestriction]
+        public NativeArray<MoveResult> moveResults;
 
         [NativeDisableParallelForRestriction]
         public ComponentLookup<LocalTransform> transforms;
@@ -180,41 +196,169 @@ public partial class BeltMoveSystem : SystemBase
                 ItemSpatialEntry item = itemSnapshots[itemIndex];
 
                 LocalTransform transform = transforms[item.entity];
-                MoveItemOnBelt(
+                MoveResult moveResult = MoveItemOnBelt(
                     item.entity,
                     ref transform,
                     item.position,
                     activeCell);
+                moveResults[itemIndex] = moveResult;
                 transforms[item.entity] = transform;
 
                 if (!transform.Position.ToGridCell().Equals(activeCell.cell))
                     cellChanged.SetComponentEnabled(item.entity, true);
             }
+
+            if (!TryFindBidirectionalAlignmentStuck(
+                    activeCell,
+                    out Entity closestAligningEntity,
+                    out float3 closestAlignmentTarget))
+                return;
+
+            if (HasItemAtAlignmentTarget(
+                    activeCell,
+                    closestAligningEntity,
+                    closestAlignmentTarget))
+                return;
+
+            LocalTransform closestTransform = transforms[closestAligningEntity];
+            closestTransform.Position = closestAlignmentTarget;
+            transforms[closestAligningEntity] = closestTransform;
+
+            if (!closestTransform.Position.ToGridCell().Equals(activeCell.cell))
+                cellChanged.SetComponentEnabled(closestAligningEntity, true);
         }
 
-        private void MoveItemOnBelt(
+        private bool TryFindBidirectionalAlignmentStuck(
+            ActiveBeltCell activeCell,
+            out Entity closestEntity,
+            out float3 closestAlignmentTarget)
+        {
+            closestEntity = Entity.Null;
+            closestAlignmentTarget = default;
+
+            if (activeCell.speed * deltaTime <= GameConstants.alignmentEpsilon)
+                return false;
+
+            float closestAlignmentDistanceSq = float.MaxValue;
+            int endIndex = activeCell.currentStartIndex + activeCell.currentItemCount;
+
+            for (int itemIndex = activeCell.currentStartIndex; itemIndex < endIndex; itemIndex++)
+            {
+                MoveResult moveResult = moveResults[itemIndex];
+
+                if (!moveResult.isAligning ||
+                    moveResult.movedDistance > GameConstants.alignmentEpsilon)
+                    continue;
+
+                for (int otherIndex = itemIndex + 1; otherIndex < endIndex; otherIndex++)
+                {
+                    MoveResult otherMoveResult = moveResults[otherIndex];
+
+                    if (!otherMoveResult.isAligning ||
+                        otherMoveResult.movedDistance > GameConstants.alignmentEpsilon ||
+                        math.dot(moveResult.direction, otherMoveResult.direction) >= 0f)
+                        continue;
+
+                    SelectCloserAlignmentItem(
+                        itemSnapshots[itemIndex],
+                        moveResult,
+                        ref closestEntity,
+                        ref closestAlignmentTarget,
+                        ref closestAlignmentDistanceSq);
+                    SelectCloserAlignmentItem(
+                        itemSnapshots[otherIndex],
+                        otherMoveResult,
+                        ref closestEntity,
+                        ref closestAlignmentTarget,
+                        ref closestAlignmentDistanceSq);
+                }
+            }
+
+            return closestEntity != Entity.Null;
+        }
+
+        private bool HasItemAtAlignmentTarget(
+            ActiveBeltCell activeCell,
+            Entity aligningEntity,
+            float3 alignmentTarget)
+        {
+            float clearanceSq =
+                GameConstants.alignmentEpsilon * GameConstants.alignmentEpsilon;
+            int endIndex = activeCell.currentStartIndex + activeCell.currentItemCount;
+
+            for (int itemIndex = activeCell.currentStartIndex; itemIndex < endIndex; itemIndex++)
+            {
+                Entity otherEntity = itemSnapshots[itemIndex].entity;
+
+                if (otherEntity == aligningEntity)
+                    continue;
+
+                float3 otherPosition = transforms[otherEntity].Position;
+
+                if (math.distancesq(alignmentTarget.xy, otherPosition.xy) <= clearanceSq)
+                    return true;
+            }
+
+            return false;
+        }
+
+        private static void SelectCloserAlignmentItem(
+            ItemSpatialEntry item,
+            MoveResult moveResult,
+            ref Entity closestEntity,
+            ref float3 closestAlignmentTarget,
+            ref float closestAlignmentDistanceSq)
+        {
+            float distanceEpsilonSq =
+                GameConstants.alignmentEpsilon * GameConstants.alignmentEpsilon;
+            bool isSameDistance =
+                math.abs(moveResult.alignmentDistanceSq - closestAlignmentDistanceSq) <=
+                distanceEpsilonSq;
+            bool isCloser =
+                moveResult.alignmentDistanceSq < closestAlignmentDistanceSq - distanceEpsilonSq;
+
+            if (!isCloser &&
+                (!isSameDistance || (closestEntity != Entity.Null && item.entity.Index >= closestEntity.Index)))
+                return;
+
+            closestEntity = item.entity;
+            closestAlignmentTarget = moveResult.alignmentTarget;
+            closestAlignmentDistanceSq = moveResult.alignmentDistanceSq;
+        }
+
+        private MoveResult MoveItemOnBelt(
             Entity entity,
             ref LocalTransform transform,
             float3 itemPosition,
             ActiveBeltCell activeCell)
         {
             float3 alignmentTarget = GetAlignmentTarget(itemPosition, activeCell.cell, activeCell.direction);
+            float alignmentDistanceSq = math.distancesq(itemPosition, alignmentTarget);
 
-            if (math.distancesq(itemPosition, alignmentTarget) >
+            if (alignmentDistanceSq >
                 GameConstants.alignmentEpsilon * GameConstants.alignmentEpsilon)
             {
-                MoveToPosition(
-                    entity,
-                    ref transform,
-                    itemPosition,
-                    alignmentTarget,
-                    activeCell);
-                return;
+                return new MoveResult
+                {
+                    isAligning = true,
+                    movedDistance = MoveToPosition(
+                        entity,
+                        ref transform,
+                        itemPosition,
+                        alignmentTarget,
+                        activeCell),
+                    direction = math.normalize((alignmentTarget - itemPosition).xy),
+                    alignmentDistanceSq = alignmentDistanceSq,
+                    alignmentTarget = alignmentTarget
+                };
             }
 
             int2 targetCell = activeCell.cell + activeCell.direction.ToInt2();
             float3 targetPosition = new float3(targetCell.x, targetCell.y, itemPosition.z);
-            MoveToPosition(entity, ref transform, itemPosition, targetPosition, activeCell);
+            return new MoveResult
+            {
+                movedDistance = MoveToPosition(entity, ref transform, itemPosition, targetPosition, activeCell)
+            };
         }
 
         private static float3 GetAlignmentTarget(float3 itemPosition, int2 itemCell, DirectionEnum direction)
@@ -232,7 +376,7 @@ public partial class BeltMoveSystem : SystemBase
             }
         }
 
-        private void MoveToPosition(
+        private float MoveToPosition(
             Entity entity,
             ref LocalTransform transform,
             float3 itemPosition,
@@ -245,7 +389,7 @@ public partial class BeltMoveSystem : SystemBase
             if (distance == 0f)
             {
                 transform.Position = targetPosition;
-                return;
+                return 0f;
             }
 
             float3 direction = offset / distance;
@@ -275,6 +419,8 @@ public partial class BeltMoveSystem : SystemBase
 
             if (moveDistance > 0f)
                 transform.Position = itemPosition + direction * moveDistance;
+
+            return moveDistance;
         }
 
         private float LimitMoveDistanceInRange(
