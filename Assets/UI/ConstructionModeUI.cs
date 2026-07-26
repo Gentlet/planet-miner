@@ -15,6 +15,7 @@ public class ConstructionModeUI : MonoBehaviour
     private Button crafterButton;
     private Button splitterButton;
     private Button mergerButton;
+    private Label copyStatusLabel;
 
     public event Action ExitRequested;
 
@@ -29,6 +30,7 @@ public class ConstructionModeUI : MonoBehaviour
         crafterButton = root.Q<Button>("crafter-button");
         splitterButton = root.Q<Button>("splitter-button");
         mergerButton = root.Q<Button>("merger-button");
+        copyStatusLabel = root.Q<Label>("copy-status-label");
 
         beltButton.clicked += OnBeltButtonClicked;
         minerButton.clicked += OnMinerButtonClicked;
@@ -40,7 +42,18 @@ public class ConstructionModeUI : MonoBehaviour
     private void Update()
     {
         if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
-            ExitRequested?.Invoke();
+        {
+            if (!_bpc.TryCancelCopyMode())
+                ExitRequested?.Invoke();
+        }
+
+        if (copyStatusLabel != null)
+        {
+            string copyStatus = _bpc.CopyStatus;
+            copyStatusLabel.text = copyStatus;
+            copyStatusLabel.style.display =
+                string.IsNullOrEmpty(copyStatus) ? DisplayStyle.None : DisplayStyle.Flex;
+        }
     }
 
     private void OnDisable()
@@ -65,6 +78,7 @@ public class ConstructionModeUI : MonoBehaviour
         crafterButton = null;
         splitterButton = null;
         mergerButton = null;
+        copyStatusLabel = null;
     }
 
     private void OnBeltButtonClicked()

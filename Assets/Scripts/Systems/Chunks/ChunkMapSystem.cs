@@ -189,6 +189,29 @@ public partial class ChunkMapSystem : SystemBase
         return _chunks.Values;
     }
 
+    public void GetBuildingsInBounds(GridBounds bounds, List<Entity> results)
+    {
+        results.Clear();
+
+        foreach (Chunk chunk in _chunks.Values)
+        {
+            int2 chunkMin = chunk.chunkPosition * GameConstants.chunkSize;
+            int2 chunkMax = chunkMin + new int2(GameConstants.chunkSize - 1);
+            GridBounds chunkBounds = new(chunkMin, chunkMax);
+
+            if (!chunkBounds.Overlaps(bounds))
+                continue;
+
+            foreach (ChunkCell cell in chunk.cells)
+            {
+                if (!cell.hasBuilding || !bounds.Contains(cell.worldPosition))
+                    continue;
+
+                results.Add(cell.buildingEntity);
+            }
+        }
+    }
+
     public FloorTypeEnum GetFloor(int2 cell)
     {
         if (!TryGetCellData(cell, out ChunkCell cellData))

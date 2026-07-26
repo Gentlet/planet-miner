@@ -31,7 +31,7 @@ public class BuildingPlacementPreview : MonoBehaviour
         HidePreview();
     }
 
-    public void ShowPreview(BuildingPlacementOperation bpo, int2 pivot)
+    public void UpdatePreviewPositions(BuildingPlacementOperation bpo, int2 pivot)
     {
         EnsurePreviewObjectCount(bpo.Candidates.Count);
 
@@ -49,7 +49,6 @@ public class BuildingPlacementPreview : MonoBehaviour
             candidate.position = previewObject.transform.position.ToGridCell();
 
             SetSprite(previewObject, candidate.type);
-            SetColor(previewObject, candidate.canPlace ? canPlaceColor : blockedColor);
         }
 
         for (int i = bpo.Candidates.Count; i < _previewObjects.Count; i++)
@@ -58,7 +57,17 @@ public class BuildingPlacementPreview : MonoBehaviour
         }
     }
 
-    private void HidePreview()
+    public void UpdatePreviewColors(BuildingPlacementOperation bpo)
+    {
+        for (int i = 0; i < bpo.Candidates.Count; i++)
+        {
+            SetColor(
+                _previewObjects[i],
+                bpo.Candidates[i].canPlace ? canPlaceColor : blockedColor);
+        }
+    }
+
+    public void HidePreview()
     {
         foreach (GameObject previewObject in _previewObjects)
             previewObject.SetActive(false);

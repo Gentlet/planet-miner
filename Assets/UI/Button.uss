@@ -22,3 +22,16 @@
 
     font-size: 22px;
 }
+
+.copy-status {
+    position: absolute;
+    top: 24px;
+    left: 50%;
+    translate: -50% 0;
+
+    padding: 10px 16px;
+    color: rgb(240, 248, 255);
+    background-color: rgba(10, 20, 30, 0.82);
+    border-radius: 6px;
+    font-size: 18px;
+}
