@@ -24,11 +24,16 @@ public class BuildingUI : MonoBehaviour
     private VisualElement _root;
     private VisualElement _panel;
     private UIDocument _uiDocument;
+    private Label _buildingTitleLabel;
     private Label _statusLabel;
+    private Label _recipeTitleLabel;
     private Label _currentRecipeLabel;
     private VisualElement _recipeContainer;
+    private Label _inputTitleLabel;
     private VisualElement _inputContainer;
+    private Label _outputTitleLabel;
     private VisualElement _outputContainer;
+    private Label _progressTitleLabel;
     private ProgressBar _progressBar;
     private Label _remainingTimeLabel;
     private Label _speedLabel;
@@ -62,11 +67,16 @@ public class BuildingUI : MonoBehaviour
         _root = _uiDocument.rootVisualElement;
         _panel = _root.Q<VisualElement>("building-panel");
         _panel.pickingMode = PickingMode.Position;
+        _buildingTitleLabel = _root.Q<Label>("building-title");
         _statusLabel = _root.Q<Label>("building-status");
+        _recipeTitleLabel = _root.Q<Label>("recipe-title");
         _currentRecipeLabel = _root.Q<Label>("current-recipe");
         _recipeContainer = _root.Q<VisualElement>("recipe-container");
+        _inputTitleLabel = _root.Q<Label>("input-title");
         _inputContainer = _root.Q<VisualElement>("input-container");
+        _outputTitleLabel = _root.Q<Label>("output-title");
         _outputContainer = _root.Q<VisualElement>("output-container");
+        _progressTitleLabel = _root.Q<Label>("progress-title");
         _progressBar = _root.Q<ProgressBar>("production-progress");
         _remainingTimeLabel = _root.Q<Label>("remaining-time");
         _speedLabel = _root.Q<Label>("production-speed");
@@ -83,11 +93,16 @@ public class BuildingUI : MonoBehaviour
 
         _root = null;
         _panel = null;
+        _buildingTitleLabel = null;
         _statusLabel = null;
+        _recipeTitleLabel = null;
         _currentRecipeLabel = null;
         _recipeContainer = null;
+        _inputTitleLabel = null;
         _inputContainer = null;
+        _outputTitleLabel = null;
         _outputContainer = null;
+        _progressTitleLabel = null;
         _progressBar = null;
         _remainingTimeLabel = null;
         _speedLabel = null;
@@ -139,7 +154,7 @@ public class BuildingUI : MonoBehaviour
 
         if (!_chunkMap.TryGetBuilding(gridCell, out Entity buildingEntity) ||
             !_entityManager.Exists(buildingEntity) ||
-            !_entityManager.HasComponent<Crafter>(buildingEntity))
+            !IsSupportedBuilding(buildingEntity))
         {
             Close();
             return;
@@ -154,15 +169,48 @@ public class BuildingUI : MonoBehaviour
     private void Refresh()
     {
         if (!_entityManager.Exists(_selectedBuilding) ||
-            !_entityManager.HasComponent<Crafter>(_selectedBuilding) ||
-            !_entityManager.HasBuffer<StoredItemElement>(_selectedBuilding) ||
-            !_entityManager.HasBuffer<ProducedItemElement>(_selectedBuilding) ||
             !TryGetConfigEntity(out Entity configEntity))
         {
             Close();
             return;
         }
 
+        DynamicBuffer<ItemStorageLimitElement> storageLimits =
+            _entityManager.GetBuffer<ItemStorageLimitElement>(configEntity, true);
+
+        if (_entityManager.HasComponent<Crafter>(_selectedBuilding))
+        {
+            RefreshCrafter(configEntity, storageLimits);
+            return;
+        }
+
+        if (_entityManager.HasComponent<Miner>(_selectedBuilding))
+        {
+            RefreshMiner(storageLimits);
+            return;
+        }
+
+        if (_entityManager.HasComponent<Storage>(_selectedBuilding))
+        {
+            RefreshStorage(storageLimits);
+            return;
+        }
+
+        Close();
+    }
+
+    private void RefreshCrafter(
+        Entity configEntity,
+        DynamicBuffer<ItemStorageLimitElement> storageLimits)
+    {
+        if (!_entityManager.HasBuffer<StoredItemElement>(_selectedBuilding) ||
+            !_entityManager.HasBuffer<ProducedItemElement>(_selectedBuilding))
+        {
+            Close();
+            return;
+        }
+
+        SetCrafterLayout();
         Crafter crafter = _entityManager.GetComponentData<Crafter>(_selectedBuilding);
         DynamicBuffer<StoredItemElement> storedItems =
             _entityManager.GetBuffer<StoredItemElement>(_selectedBuilding, true);
@@ -172,8 +220,6 @@ public class BuildingUI : MonoBehaviour
             _entityManager.GetBuffer<CrafterRecipeElement>(configEntity, true);
         DynamicBuffer<CrafterRecipeIngredientElement> ingredients =
             _entityManager.GetBuffer<CrafterRecipeIngredientElement>(configEntity, true);
-        DynamicBuffer<ItemStorageLimitElement> storageLimits =
-            _entityManager.GetBuffer<ItemStorageLimitElement>(configEntity, true);
 
         CountItems(storedItems, _storedCounts);
         CountItems(producedItems, _producedCounts);
@@ -193,6 +239,200 @@ public class BuildingUI : MonoBehaviour
             ingredients,
             storageLimits);
         UpdateProgress(crafter, hasRecipe, selectedRecipe);
+    }
+
+    private void RefreshMiner(DynamicBuffer<ItemStorageLimitElement> storageLimits)
+    {
+        if (!_entityManager.HasBuffer<ProducedItemElement>(_selectedBuilding))
+        {
+            Close();
+            return;
+        }
+
+        SetMinerLayout();
+        Miner miner = _entityManager.GetComponentData<Miner>(_selectedBuilding);
+        DynamicBuffer<ProducedItemElement> producedItems =
+            _entityManager.GetBuffer<ProducedItemElement>(_selectedBuilding, true);
+
+        CountItems(producedItems, _producedCounts);
+        UpdateSimpleInventory(
+            _outputContainer,
+            _producedCounts,
+            storageLimits,
+            "배출 대기");
+        UpdateMinerStatus(miner, producedItems, storageLimits);
+        UpdateMinerProgress(miner);
+    }
+
+    private void RefreshStorage(DynamicBuffer<ItemStorageLimitElement> storageLimits)
+    {
+        if (!_entityManager.HasBuffer<StoredItemElement>(_selectedBuilding))
+        {
+            Close();
+            return;
+        }
+
+        SetStorageLayout();
+        DynamicBuffer<StoredItemElement> storedItems =
+            _entityManager.GetBuffer<StoredItemElement>(_selectedBuilding, true);
+
+        CountItems(storedItems, _storedCounts);
+        UpdateSimpleInventory(
+            _inputContainer,
+            _storedCounts,
+            storageLimits,
+            "보관 중");
+        SetStatus("아이템 보관 중", "status-normal");
+    }
+
+    private bool IsSupportedBuilding(Entity buildingEntity)
+    {
+        return _entityManager.HasComponent<Crafter>(buildingEntity) ||
+               _entityManager.HasComponent<Miner>(buildingEntity) ||
+               _entityManager.HasComponent<Storage>(buildingEntity);
+    }
+
+    private void SetCrafterLayout()
+    {
+        _buildingTitleLabel.text = "제작기";
+        _inputTitleLabel.text = "투입 아이템";
+        _outputTitleLabel.text = "생산 대기 아이템";
+        _progressTitleLabel.text = "생산 진행도";
+
+        SetVisible(_recipeTitleLabel, true);
+        SetVisible(_currentRecipeLabel, true);
+        SetVisible(_recipeContainer, true);
+        SetVisible(_inputTitleLabel, true);
+        SetVisible(_inputContainer, true);
+        SetVisible(_outputTitleLabel, true);
+        SetVisible(_outputContainer, true);
+        SetProgressVisible(true);
+    }
+
+    private void SetMinerLayout()
+    {
+        _buildingTitleLabel.text = "채굴기";
+        _outputTitleLabel.text = "채굴 대기 아이템";
+        _progressTitleLabel.text = "채굴 진행도";
+
+        SetVisible(_recipeTitleLabel, false);
+        SetVisible(_currentRecipeLabel, false);
+        SetVisible(_recipeContainer, false);
+        SetVisible(_inputTitleLabel, false);
+        SetVisible(_inputContainer, false);
+        SetVisible(_outputTitleLabel, true);
+        SetVisible(_outputContainer, true);
+        SetProgressVisible(true);
+    }
+
+    private void SetStorageLayout()
+    {
+        _buildingTitleLabel.text = "창고";
+        _inputTitleLabel.text = "보관 아이템";
+
+        SetVisible(_recipeTitleLabel, false);
+        SetVisible(_currentRecipeLabel, false);
+        SetVisible(_recipeContainer, false);
+        SetVisible(_inputTitleLabel, true);
+        SetVisible(_inputContainer, true);
+        SetVisible(_outputTitleLabel, false);
+        SetVisible(_outputContainer, false);
+        SetProgressVisible(false);
+    }
+
+    private void SetProgressVisible(bool visible)
+    {
+        SetVisible(_progressTitleLabel, visible);
+        SetVisible(_progressBar, visible);
+        SetVisible(_remainingTimeLabel, visible);
+        SetVisible(_speedLabel, visible);
+    }
+
+    private static void SetVisible(VisualElement element, bool visible)
+    {
+        element.style.display = visible ? DisplayStyle.Flex : DisplayStyle.None;
+    }
+
+    private void UpdateSimpleInventory(
+        VisualElement container,
+        Dictionary<ItemTypeEnum, int> counts,
+        DynamicBuffer<ItemStorageLimitElement> storageLimits,
+        string detail)
+    {
+        container.Clear();
+
+        for (ItemTypeEnum itemType = ItemTypeEnum.Iron_Ore;
+             itemType < ItemTypeEnum.Count;
+             itemType++)
+        {
+            if (!counts.TryGetValue(itemType, out int count))
+                continue;
+
+            AddItemRow(
+                container,
+                itemType,
+                count,
+                storageLimits.GetStorageLimit(itemType),
+                detail,
+                false);
+        }
+
+        if (container.childCount == 0)
+            AddEmptyLabel(container);
+    }
+
+    private void UpdateMinerStatus(
+        Miner miner,
+        DynamicBuffer<ProducedItemElement> producedItems,
+        DynamicBuffer<ItemStorageLimitElement> storageLimits)
+    {
+        if (miner.speed <= 0f)
+        {
+            SetStatus("작동 정지", "status-error");
+            return;
+        }
+
+        for (int i = 0; i < producedItems.Length; i++)
+        {
+            ItemTypeEnum itemType = producedItems[i].type;
+            int capacity = storageLimits.GetStorageLimit(itemType);
+
+            if (capacity > 0 &&
+                _producedCounts.TryGetValue(itemType, out int count) &&
+                count >= capacity)
+            {
+                SetStatus("채굴 아이템 보관함이 가득 찼습니다", "status-error");
+                return;
+            }
+        }
+
+        SetStatus("채굴 중", "status-normal");
+    }
+
+    private void UpdateMinerProgress(Miner miner)
+    {
+        float progressRatio = miner.speed > 0f
+            ? math.saturate(miner.timer / miner.speed)
+            : 0f;
+        float progressPercent = progressRatio * 100f;
+
+        _progressBar.value = progressPercent;
+        _progressBar.title = $"{progressPercent:0}%";
+        _remainingTimeLabel.text = miner.speed > 0f
+            ? $"다음 채굴까지: {math.max(0f, miner.speed - miner.timer):0.0}초"
+            : "채굴 대기";
+        _speedLabel.text = miner.speed > 0f
+            ? $"채굴 속도: {miner.speed:0.##}초당 1개"
+            : "채굴 속도: 정지";
+    }
+
+    private void SetStatus(string status, string statusClass)
+    {
+        _statusLabel.RemoveFromClassList("status-normal");
+        _statusLabel.RemoveFromClassList("status-waiting");
+        _statusLabel.RemoveFromClassList("status-error");
+        _statusLabel.text = status;
+        _statusLabel.AddToClassList(statusClass);
     }
 
     private bool TryGetConfigEntity(out Entity configEntity)
