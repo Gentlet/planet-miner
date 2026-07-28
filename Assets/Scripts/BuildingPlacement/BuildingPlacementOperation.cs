@@ -17,6 +17,12 @@ public class BuildingPlacementOperation
 
     public void EvaluatePlacement(ChunkMapSystem chunkMap)
     {
+        if (_candidates.Count == 0)
+        {
+            _canPlace = false;
+            return;
+        }
+
         _canPlace = true;
         foreach (var candidate in _candidates)
         {

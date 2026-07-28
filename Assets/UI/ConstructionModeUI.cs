@@ -17,6 +17,9 @@ public class ConstructionModeUI : MonoBehaviour
     private Button mergerButton;
     private Button storageButton;
     private Label copyStatusLabel;
+    private BuildingTypeEnum? _selectedBuildingType;
+
+    private const string SelectedButtonClass = "selected";
 
     public event Action ExitRequested;
 
@@ -40,15 +43,24 @@ public class ConstructionModeUI : MonoBehaviour
         splitterButton.clicked += OnSplitterButtonClicked;
         mergerButton.clicked += OnMergerButtonClicked;
         storageButton.clicked += OnStorageButtonClicked;
+        _bpc.PlacementSelectionCleared += OnPlacementSelectionCleared;
+
+        ClearBuildingSelection();
     }
 
     private void Update()
     {
-        if (Keyboard.current != null && Keyboard.current.escapeKey.wasPressedThisFrame)
+        Keyboard keyboard = Keyboard.current;
+
+        if (keyboard != null && keyboard.escapeKey.wasPressedThisFrame)
         {
             if (!_bpc.TryCancelCopyMode())
                 ExitRequested?.Invoke();
+
+            return;
         }
+
+        HandleBuildingHotkeys(keyboard);
 
         if (copyStatusLabel != null)
         {
@@ -59,8 +71,30 @@ public class ConstructionModeUI : MonoBehaviour
         }
     }
 
+    private void HandleBuildingHotkeys(Keyboard keyboard)
+    {
+        if (keyboard == null)
+            return;
+
+        if (keyboard.digit1Key.wasPressedThisFrame)
+            OnBeltButtonClicked();
+        else if (keyboard.digit2Key.wasPressedThisFrame)
+            OnSplitterButtonClicked();
+        else if (keyboard.digit3Key.wasPressedThisFrame)
+            OnMergerButtonClicked();
+        else if (keyboard.digit4Key.wasPressedThisFrame)
+            OnMinerButtonClicked();
+        else if (keyboard.digit5Key.wasPressedThisFrame)
+            OnCrafterButtonClicked();
+        else if (keyboard.digit6Key.wasPressedThisFrame)
+            OnStorageButtonClicked();
+    }
+
     private void OnDisable()
     {
+        _bpc.PlacementSelectionCleared -= OnPlacementSelectionCleared;
+        RemoveSelectedButtonStyle();
+
         if (beltButton != null)
             beltButton.clicked -= OnBeltButtonClicked;
 
@@ -90,84 +124,81 @@ public class ConstructionModeUI : MonoBehaviour
 
     private void OnBeltButtonClicked()
     {
-        _bpc.Operation = new BuildingPlacementOperation(new List<BuildingPlacementCandidate>());
-
-        for (int i = 0; i < 1; i++)
-        {
-            for (int j = 0; j < 1; j++)
-            {
-                _bpc.Operation.Candidates.Add(
-                    new BuildingPlacementCandidate(
-                    BuildingTypeEnum.Belt,
-                    new int2(i, j),
-                    DirectionEnum.Up,
-                    false)
-                    );
-            }
-        }
+        ToggleBuildingSelection(BuildingTypeEnum.Belt, beltButton);
     }
 
     private void OnMinerButtonClicked()
     {
-        _bpc.Operation = new BuildingPlacementOperation(new List<BuildingPlacementCandidate>());
-
-        for (int i = 0; i < 1; i++)
-        {
-            for (int j = 0; j < 1; j++)
-            {
-                _bpc.Operation.Candidates.Add(
-                    new BuildingPlacementCandidate(
-                    BuildingTypeEnum.Miner,
-                    new int2(i, j),
-                    DirectionEnum.Up,
-                    false)
-                    );
-            }
-        }
+        ToggleBuildingSelection(BuildingTypeEnum.Miner, minerButton);
     }
 
     private void OnCrafterButtonClicked()
     {
-        _bpc.Operation = new BuildingPlacementOperation(new List<BuildingPlacementCandidate>());
-        _bpc.Operation.Candidates.Add(
-            new BuildingPlacementCandidate(
-                BuildingTypeEnum.Crafter,
-                int2.zero,
-                DirectionEnum.Up,
-                false,
-                ItemTypeEnum.None));
+        ToggleBuildingSelection(BuildingTypeEnum.Crafter, crafterButton);
     }
 
     private void OnSplitterButtonClicked()
     {
-        _bpc.Operation = new BuildingPlacementOperation(new List<BuildingPlacementCandidate>());
-        _bpc.Operation.Candidates.Add(
-            new BuildingPlacementCandidate(
-                BuildingTypeEnum.Splitter,
-                int2.zero,
-                DirectionEnum.Up,
-                false));
+        ToggleBuildingSelection(BuildingTypeEnum.Splitter, splitterButton);
     }
 
     private void OnMergerButtonClicked()
     {
-        _bpc.Operation = new BuildingPlacementOperation(new List<BuildingPlacementCandidate>());
-        _bpc.Operation.Candidates.Add(
-            new BuildingPlacementCandidate(
-                BuildingTypeEnum.Merger,
-                int2.zero,
-                DirectionEnum.Up,
-                false));
+        ToggleBuildingSelection(BuildingTypeEnum.Merger, mergerButton);
     }
 
     private void OnStorageButtonClicked()
     {
-        _bpc.Operation = new BuildingPlacementOperation(new List<BuildingPlacementCandidate>());
-        _bpc.Operation.Candidates.Add(
+        ToggleBuildingSelection(BuildingTypeEnum.Storage, storageButton);
+    }
+
+    private void ToggleBuildingSelection(BuildingTypeEnum type, Button button)
+    {
+        if (_selectedBuildingType == type)
+        {
+            ClearBuildingSelection();
+            return;
+        }
+
+        RemoveSelectedButtonStyle();
+        _selectedBuildingType = type;
+        button.AddToClassList(SelectedButtonClass);
+
+        List<BuildingPlacementCandidate> candidates = new()
+        {
             new BuildingPlacementCandidate(
-                BuildingTypeEnum.Storage,
+                type,
                 int2.zero,
                 DirectionEnum.Up,
-                false));
+                false,
+                type == BuildingTypeEnum.Crafter
+                    ? ItemTypeEnum.None
+                    : default)
+        };
+
+        _bpc.Operation = new BuildingPlacementOperation(candidates);
+    }
+
+    private void ClearBuildingSelection()
+    {
+        RemoveSelectedButtonStyle();
+        _selectedBuildingType = null;
+        _bpc.ClearOperation();
+    }
+
+    private void OnPlacementSelectionCleared()
+    {
+        RemoveSelectedButtonStyle();
+        _selectedBuildingType = null;
+    }
+
+    private void RemoveSelectedButtonStyle()
+    {
+        beltButton?.RemoveFromClassList(SelectedButtonClass);
+        minerButton?.RemoveFromClassList(SelectedButtonClass);
+        crafterButton?.RemoveFromClassList(SelectedButtonClass);
+        splitterButton?.RemoveFromClassList(SelectedButtonClass);
+        mergerButton?.RemoveFromClassList(SelectedButtonClass);
+        storageButton?.RemoveFromClassList(SelectedButtonClass);
     }
 }

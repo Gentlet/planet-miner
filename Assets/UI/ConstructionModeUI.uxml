@@ -1,6 +1,11 @@
 <ui:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
     <Style src="project://database/Assets/UI/Button.uss?fileID=7433441132597879392&amp;guid=6d23cb732104f1f46931923e74a6d700&amp;type=3#Button"/>
     <ui:VisualElement name="root" class="root">
+        <ui:VisualElement name="construction-guide" class="construction-guide blocking-ui">
+            <ui:Label text="건설 모드 조작" class="construction-guide-title"/>
+            <ui:Label text="건물 복사: Ctrl+C → 좌클릭 드래그로 선택 → 좌클릭으로 배치 · R 회전 · Esc 취소" class="construction-guide-text"/>
+            <ui:Label text="건물 설정 복사: Shift+우클릭 → Shift+좌클릭 또는 드래그로 붙여넣기" class="construction-guide-text"/>
+        </ui:VisualElement>
         <ui:Label name="copy-status-label" class="copy-status blocking-ui" />
         <ui:VisualElement name="bottom-button-container" class="bottom-button-container">
             <ui:Button name="belt-button" text="벨트" class="bottom-button blocking-ui"/>

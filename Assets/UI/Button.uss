@@ -23,6 +23,43 @@
     font-size: 22px;
 }
 
+.bottom-button.selected {
+    background-color: rgb(62, 118, 164);
+    border-top-color: rgb(132, 203, 255);
+    border-right-color: rgb(132, 203, 255);
+    border-bottom-color: rgb(132, 203, 255);
+    border-left-color: rgb(132, 203, 255);
+    border-top-width: 3px;
+    border-right-width: 3px;
+    border-bottom-width: 3px;
+    border-left-width: 3px;
+}
+
+.construction-guide {
+    position: absolute;
+    top: 24px;
+    left: 24px;
+    max-width: 760px;
+
+    padding: 12px 16px;
+    background-color: rgba(10, 20, 30, 0.82);
+    border-radius: 6px;
+}
+
+.construction-guide-title {
+    margin-bottom: 6px;
+    color: rgb(240, 248, 255);
+    font-size: 18px;
+    -unity-font-style: bold;
+}
+
+.construction-guide-text {
+    margin-top: 2px;
+    color: rgb(210, 224, 236);
+    font-size: 15px;
+    white-space: normal;
+}
+
 .copy-status {
     position: absolute;
     top: 24px;
