@@ -46,6 +46,8 @@ public class BuildingPlacementPreview : MonoBehaviour
             previewObject.SetActive(true);
 
             previewObject.transform.localPosition = candidate.gridPosition.ToVector2();
+            previewObject.transform.localRotation =
+                Quaternion.Euler(0f, 0f, candidate.dir.ToDegrees());
             candidate.position = previewObject.transform.position.ToGridCell();
 
             SetSprite(previewObject, candidate.type);
