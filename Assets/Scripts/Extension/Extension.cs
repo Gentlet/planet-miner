@@ -61,6 +61,16 @@ public static class DirectionExtension
                 return int2.zero;
         }
     }
+
+    public static DirectionEnum GetMoveDirection(float3 from, float3 to)
+    {
+        float2 offset = to.xy - from.xy;
+
+        if (math.abs(offset.x) > math.abs(offset.y))
+            return offset.x > 0f ? DirectionEnum.Right : DirectionEnum.Left;
+
+        return offset.y > 0f ? DirectionEnum.Up : DirectionEnum.Down;
+    }
     
     public static int ToDegrees(this DirectionEnum dir)
     {

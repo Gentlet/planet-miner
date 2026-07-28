@@ -160,7 +160,7 @@ public partial class BeltMoveSystem : SystemBase
     {
         public bool isAligning;
         public float movedDistance;
-        public float2 direction;
+        public DirectionEnum moveDirection;
         public float alignmentDistanceSq;
         public float3 alignmentTarget;
     }
@@ -208,7 +208,7 @@ public partial class BeltMoveSystem : SystemBase
                     cellChanged.SetComponentEnabled(item.entity, true);
             }
 
-            if (!TryFindBidirectionalAlignmentStuck(
+            if (!TryFindAlignmentStuck(
                     activeCell,
                     out Entity closestAligningEntity,
                     out float3 closestAlignmentTarget))
@@ -228,7 +228,7 @@ public partial class BeltMoveSystem : SystemBase
                 cellChanged.SetComponentEnabled(closestAligningEntity, true);
         }
 
-        private bool TryFindBidirectionalAlignmentStuck(
+        private bool TryFindAlignmentStuck(
             ActiveBeltCell activeCell,
             out Entity closestEntity,
             out float3 closestAlignmentTarget)
@@ -246,31 +246,39 @@ public partial class BeltMoveSystem : SystemBase
             {
                 MoveResult moveResult = moveResults[itemIndex];
 
-                if (!moveResult.isAligning ||
-                    moveResult.movedDistance > GameConstants.alignmentEpsilon)
+                if (moveResult.movedDistance > GameConstants.alignmentEpsilon)
                     continue;
 
                 for (int otherIndex = itemIndex + 1; otherIndex < endIndex; otherIndex++)
                 {
                     MoveResult otherMoveResult = moveResults[otherIndex];
 
-                    if (!otherMoveResult.isAligning ||
-                        otherMoveResult.movedDistance > GameConstants.alignmentEpsilon ||
-                        math.dot(moveResult.direction, otherMoveResult.direction) >= 0f)
+                    if (otherMoveResult.movedDistance > GameConstants.alignmentEpsilon ||
+                        (!moveResult.isAligning && !otherMoveResult.isAligning) ||
+                        math.dot(
+                            moveResult.moveDirection.ToInt2(),
+                            otherMoveResult.moveDirection.ToInt2()) > 0)
                         continue;
 
-                    SelectCloserAlignmentItem(
-                        itemSnapshots[itemIndex],
-                        moveResult,
-                        ref closestEntity,
-                        ref closestAlignmentTarget,
-                        ref closestAlignmentDistanceSq);
-                    SelectCloserAlignmentItem(
-                        itemSnapshots[otherIndex],
-                        otherMoveResult,
-                        ref closestEntity,
-                        ref closestAlignmentTarget,
-                        ref closestAlignmentDistanceSq);
+                    if (moveResult.isAligning)
+                    {
+                        SelectCloserAlignmentItem(
+                            itemSnapshots[itemIndex],
+                            moveResult,
+                            ref closestEntity,
+                            ref closestAlignmentTarget,
+                            ref closestAlignmentDistanceSq);
+                    }
+
+                    if (otherMoveResult.isAligning)
+                    {
+                        SelectCloserAlignmentItem(
+                            itemSnapshots[otherIndex],
+                            otherMoveResult,
+                            ref closestEntity,
+                            ref closestAlignmentTarget,
+                            ref closestAlignmentDistanceSq);
+                    }
                 }
             }
 
@@ -347,7 +355,7 @@ public partial class BeltMoveSystem : SystemBase
                         itemPosition,
                         alignmentTarget,
                         activeCell),
-                    direction = math.normalize((alignmentTarget - itemPosition).xy),
+                    moveDirection = DirectionExtension.GetMoveDirection(itemPosition, alignmentTarget),
                     alignmentDistanceSq = alignmentDistanceSq,
                     alignmentTarget = alignmentTarget
                 };
@@ -357,7 +365,8 @@ public partial class BeltMoveSystem : SystemBase
             float3 targetPosition = new float3(targetCell.x, targetCell.y, itemPosition.z);
             return new MoveResult
             {
-                movedDistance = MoveToPosition(entity, ref transform, itemPosition, targetPosition, activeCell)
+                movedDistance = MoveToPosition(entity, ref transform, itemPosition, targetPosition, activeCell),
+                moveDirection = activeCell.direction
             };
         }
 
