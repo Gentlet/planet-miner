@@ -35,7 +35,7 @@ public class BuildingPlacementPreview : MonoBehaviour
     {
         EnsurePreviewObjectCount(bpo.Candidates.Count);
 
-        transform.rotation = Quaternion.Euler(0,0, bpo.GetDirection.ToDegrees());
+        transform.rotation = Quaternion.Euler(0, 0, bpo.Direction.ToDegrees());
         transform.position = pivot.ToVector2();
 
         for (int i = 0; i < bpo.Candidates.Count; i++)

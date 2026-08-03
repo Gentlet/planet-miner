@@ -31,7 +31,7 @@ public partial class ResourceMapGenerationSystem : SystemBase
         {
             Chunk chunk = _chunkMap.GetOrCreateChunk(request.ValueRO.chunkPosition);
 
-            if (!chunk.hasGeneratedResources)
+            if (!chunk.HasGeneratedResources)
             {
                 GenerateChunkResources(ecb, chunk, settings, configs);
                 chunk.MarkResourcesGenerated();
@@ -55,7 +55,7 @@ public partial class ResourceMapGenerationSystem : SystemBase
         {
             for (int x = -neighborRange; x <= neighborRange; x++)
             {
-                int2 candidateChunk = targetChunk.chunkPosition + new int2(x, y);
+                int2 candidateChunk = targetChunk.ChunkPosition + new int2(x, y);
 
                 for (int i = 0; i < configs.Length; i++)
                 {
@@ -114,7 +114,7 @@ public partial class ResourceMapGenerationSystem : SystemBase
 
                 ChunkCell cellData = targetChunk.GetCellByWorldPosition(cell);
 
-                if (cellData.hasResource)
+                if (cellData.HasResource)
                     continue;
 
                 int minAmount = math.max(1, config.minAmount);
@@ -141,7 +141,7 @@ public partial class ResourceMapGenerationSystem : SystemBase
 
     private static bool IsInsideChunk(int2 cell, Chunk chunk)
     {
-        int2 min = chunk.chunkPosition * GameConstants.chunkSize;
+        int2 min = chunk.ChunkPosition * GameConstants.chunkSize;
         int2 max = min + new int2(GameConstants.chunkSize - 1, GameConstants.chunkSize - 1);
 
         return cell.x >= min.x &&

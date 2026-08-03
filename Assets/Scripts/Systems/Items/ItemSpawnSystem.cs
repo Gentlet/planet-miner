@@ -21,7 +21,9 @@ public partial class ItemSpawnSystem : SystemBase
     protected override void OnUpdate()
     {
         using NativeArray<ItemPrefabElement> itemPrefabs =
-            CopyBuffer(SystemAPI.GetSingletonBuffer<ItemPrefabElement>(true));
+            DynamicBufferCopyUtility.CreateNativeCopy(
+                SystemAPI.GetSingletonBuffer<ItemPrefabElement>(true),
+                Allocator.Temp);
         using NativeArray<Entity> requestEntities =
             _spawnRequestQuery.ToEntityArray(Allocator.Temp);
 
@@ -130,14 +132,4 @@ public partial class ItemSpawnSystem : SystemBase
         return Entity.Null;
     }
 
-    private static NativeArray<T> CopyBuffer<T>(DynamicBuffer<T> buffer)
-        where T : unmanaged, IBufferElementData
-    {
-        NativeArray<T> copy = new NativeArray<T>(buffer.Length, Allocator.Temp);
-
-        for (int i = 0; i < buffer.Length; i++)
-            copy[i] = buffer[i];
-
-        return copy;
-    }
 }

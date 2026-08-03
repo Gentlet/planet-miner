@@ -38,8 +38,9 @@ public partial class StorageSystem : SystemBase
         _itemTracking.ApplyPendingChangesImmediate();
 
         using NativeArray<ItemStorageLimitElement> storageLimits =
-            CopyBuffer(
-                SystemAPI.GetSingletonBuffer<ItemStorageLimitElement>(true));
+            DynamicBufferCopyUtility.CreateNativeCopy(
+                SystemAPI.GetSingletonBuffer<ItemStorageLimitElement>(true),
+                Allocator.Temp);
         using NativeArray<Entity> storages =
             _storageQuery.ToEntityArray(Allocator.Temp);
 
@@ -190,19 +191,6 @@ public partial class StorageSystem : SystemBase
         int storedItemCount = storedItems.CountItems(itemType);
         return storedItemCount % stackLimit != 0 ||
                usedSlotCount < capacity;
-    }
-
-    private static NativeArray<T> CopyBuffer<T>(
-        DynamicBuffer<T> buffer)
-        where T : unmanaged, IBufferElementData
-    {
-        NativeArray<T> copy =
-            new NativeArray<T>(buffer.Length, Allocator.Temp);
-
-        for (int i = 0; i < buffer.Length; i++)
-            copy[i] = buffer[i];
-
-        return copy;
     }
 
     private static int CompareInputItems(InputItem first, InputItem second)

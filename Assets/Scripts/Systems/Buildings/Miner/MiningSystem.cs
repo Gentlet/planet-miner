@@ -35,7 +35,9 @@ public partial class MiningSystem : SystemBase
         TryOutputProducedItems(miners);
 
         using NativeArray<ItemStorageLimitElement> storageLimits =
-            CopyBuffer(SystemAPI.GetSingletonBuffer<ItemStorageLimitElement>(true));
+            DynamicBufferCopyUtility.CreateNativeCopy(
+                SystemAPI.GetSingletonBuffer<ItemStorageLimitElement>(true),
+                Allocator.Temp);
         EntityCommandBuffer ecb = SystemAPI.GetSingleton<EndSimulationEntityCommandBufferSystem.Singleton>()
             .CreateCommandBuffer(World.Unmanaged);
         float deltaTime = SystemAPI.Time.DeltaTime;
@@ -100,10 +102,10 @@ public partial class MiningSystem : SystemBase
 
         miner.timer = miner.speed;
 
-        if (!_chunkMap.TryGetCellData(minerCell, out ChunkCell cellData) || !cellData.hasResource)
+        if (!_chunkMap.TryGetCellData(minerCell, out ChunkCell cellData) || !cellData.HasResource)
             return;
 
-        Entity depositEntity = cellData.resourceEntity;
+        Entity depositEntity = cellData.ResourceEntity;
         ResourceDeposit deposit = EntityManager.GetComponentData<ResourceDeposit>(depositEntity);
         if (deposit.amount <= 0)
             return;
@@ -149,17 +151,6 @@ public partial class MiningSystem : SystemBase
             owner = owner,
             itemType = itemType
         });
-    }
-
-    private static NativeArray<T> CopyBuffer<T>(DynamicBuffer<T> buffer)
-        where T : unmanaged, IBufferElementData
-    {
-        NativeArray<T> copy = new NativeArray<T>(buffer.Length, Allocator.Temp);
-
-        for (int i = 0; i < buffer.Length; i++)
-            copy[i] = buffer[i];
-
-        return copy;
     }
 
     private bool EnsureSystems()

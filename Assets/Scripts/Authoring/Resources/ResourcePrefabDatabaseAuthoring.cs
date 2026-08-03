@@ -24,7 +24,10 @@ public class ResourcePrefabDatabaseAuthoring : MonoBehaviour
 
             foreach (Entry entry in authoring._entries)
             {
-                if (entry.type <= ResourceTypeEnum.None || entry.type >= ResourceTypeEnum.Count || entry.prefab == null)
+                if (entry.prefab == null)
+                    continue;
+
+                if (entry.type <= ResourceTypeEnum.None || entry.type >= ResourceTypeEnum.Count)
                     continue;
 
                 buffer.Add(new ResourcePrefabElement

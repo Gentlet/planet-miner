@@ -24,7 +24,10 @@ public class ItemPrefabDatabaseAuthoring : MonoBehaviour
 
             foreach (Entry entry in authoring._entries)
             {
-                if (entry.type <= ItemTypeEnum.None || entry.type >= ItemTypeEnum.Count || entry.prefab == null)
+                if (entry.prefab == null)
+                    continue;
+
+                if (entry.type <= ItemTypeEnum.None || entry.type >= ItemTypeEnum.Count)
                     continue;
 
                 buffer.Add(new ItemPrefabElement

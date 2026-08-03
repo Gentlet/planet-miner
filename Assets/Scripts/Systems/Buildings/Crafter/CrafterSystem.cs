@@ -37,11 +37,17 @@ public partial class CrafterSystem : SystemBase
         TryOutputProducedItems(crafters);
 
         using NativeArray<CrafterRecipeElement> recipes =
-            CopyBuffer(SystemAPI.GetSingletonBuffer<CrafterRecipeElement>(true));
+            DynamicBufferCopyUtility.CreateNativeCopy(
+                SystemAPI.GetSingletonBuffer<CrafterRecipeElement>(true),
+                Allocator.Temp);
         using NativeArray<CrafterRecipeIngredientElement> ingredients =
-            CopyBuffer(SystemAPI.GetSingletonBuffer<CrafterRecipeIngredientElement>(true));
+            DynamicBufferCopyUtility.CreateNativeCopy(
+                SystemAPI.GetSingletonBuffer<CrafterRecipeIngredientElement>(true),
+                Allocator.Temp);
         using NativeArray<ItemStorageLimitElement> storageLimits =
-            CopyBuffer(SystemAPI.GetSingletonBuffer<ItemStorageLimitElement>(true));
+            DynamicBufferCopyUtility.CreateNativeCopy(
+                SystemAPI.GetSingletonBuffer<ItemStorageLimitElement>(true),
+                Allocator.Temp);
         EntityCommandBuffer ecb = SystemAPI.GetSingleton<EndSimulationEntityCommandBufferSystem.Singleton>()
             .CreateCommandBuffer(World.Unmanaged);
         float deltaTime = SystemAPI.Time.DeltaTime;
@@ -294,17 +300,6 @@ public partial class CrafterSystem : SystemBase
             owner = owner,
             itemType = itemType
         });
-    }
-
-    private static NativeArray<T> CopyBuffer<T>(DynamicBuffer<T> buffer)
-        where T : unmanaged, IBufferElementData
-    {
-        NativeArray<T> copy = new NativeArray<T>(buffer.Length, Allocator.Temp);
-
-        for (int i = 0; i < buffer.Length; i++)
-            copy[i] = buffer[i];
-
-        return copy;
     }
 
     private bool EnsureSystems()

@@ -22,7 +22,7 @@ public struct Direction : IComponentData
 {
     public DirectionEnum dir;
 
-    
+
 }
 
 public struct BuildingOccupant : IComponentData

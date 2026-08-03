@@ -22,7 +22,7 @@ public class BuildingPrefabDatabaseAuthoring : MonoBehaviour
             Entity entity = GetEntity(TransformUsageFlags.None);
             DynamicBuffer<BuildingPrefabElement> buffer = AddBuffer<BuildingPrefabElement>(entity);
 
-            foreach(Entry entry in authoring._entries)
+            foreach (Entry entry in authoring._entries)
             {
                 if (entry.prefab == null)
                     continue;

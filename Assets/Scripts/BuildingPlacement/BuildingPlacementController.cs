@@ -8,14 +8,6 @@ using UnityEngine.InputSystem;
 
 public class BuildingPlacementController : MonoBehaviour
 {
-    private enum PlacementInteractionModeEnum
-    {
-        Normal,
-        CopySelecting,
-        CopyPlacing,
-        Count
-    }
-
     private enum PointerDragModeEnum
     {
         None,
@@ -25,42 +17,28 @@ public class BuildingPlacementController : MonoBehaviour
         Count
     }
 
-    private struct BuildingSettingsSnapshot
-    {
-        public BuildingTypeEnum buildingType;
-        public ItemTypeEnum crafterRecipe;
-    }
-
     private EntityManager _entityManager;
     private ChunkMapSystem _chunkMap;
 
     [SerializeField]
     private BuildingPlacementPreview _preview;
-    private BuildingPlacementOperation _bpo;
-    private BuildingPlacementOperation _operationBeforeCopy;
+    private BuildingPlacementOperation _placementOperation;
+    private readonly BuildingCopyInteraction _copyInteraction = new();
+    private readonly BuildingSettingsTransfer _settingsTransfer = new();
 
     [SerializeField]
     private bool _enable = false;
 
-    private PlacementInteractionModeEnum _interactionMode;
     private PointerDragModeEnum _pointerDragMode;
     private bool _hasLastPointerDragCell;
     private int2 _lastPointerDragCell;
-    private BuildingSettingsSnapshot? _settingsClipboard;
-    private readonly HashSet<Entity> _settingsPasteVisited = new();
-    private BuildingCopySelectionPreview _copySelectionPreview;
-    private readonly List<Entity> _buildingsInCopyBounds = new();
-    private bool _isCopySelectionDragging;
-    private int2 _copySelectionStart;
-    private int2 _copySelectionEnd;
-    private string _copyStatus = string.Empty;
 
     public event Action PlacementSelectionCleared;
 
     private void Start()
     {
         _entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
-        _bpo ??= CreateEmptyOperation();
+        _placementOperation ??= CreateEmptyOperation();
     }
 
     private void Awake()
@@ -72,150 +50,109 @@ public class BuildingPlacementController : MonoBehaviour
             Debug.LogError("ChunkMapSystem not found.");
         }
 
-        _copySelectionPreview = GetComponent<BuildingCopySelectionPreview>();
-        if (_copySelectionPreview == null)
-            _copySelectionPreview = gameObject.AddComponent<BuildingCopySelectionPreview>();
+        BuildingCopySelectionPreview copySelectionPreview =
+            GetComponent<BuildingCopySelectionPreview>();
+
+        if (copySelectionPreview == null)
+            copySelectionPreview = gameObject.AddComponent<BuildingCopySelectionPreview>();
+
+        _copyInteraction.AttachPreview(copySelectionPreview);
     }
 
-    void Update()
+    private void Update()
     {
         _preview.enabled = _enable;
 
-
-        if (!_enable || _bpo == null)
+        if (!_enable || _placementOperation == null)
         {
-            ResetPointerDrag();
-            ResetCopySelectionDrag();
+            ResetTransientInput();
             return;
         }
 
         Keyboard keyboard = Keyboard.current;
-        if (keyboard != null &&
-            keyboard.cKey.wasPressedThisFrame &&
+        HandleGlobalHotkeys(keyboard);
+
+        if (!TryGetPointerGridCell(out int2 gridCell))
+            return;
+
+        if (TryHandleSettingsTransferInput(keyboard, gridCell))
+            return;
+
+        if (_copyInteraction.IsSelecting)
+        {
+            _preview.HidePreview();
+
+            if (_copyInteraction.TryHandleSelectionInput(
+                    gridCell,
+                    _entityManager,
+                    _chunkMap,
+                    out BuildingPlacementOperation copyOperation))
+            {
+                _placementOperation = copyOperation;
+            }
+
+            return;
+        }
+
+        UpdatePlacementPreview(gridCell);
+
+        if (_copyInteraction.IsPlacing)
+            HandleCopyPlacementInput();
+        else
+            HandlePointerInput(gridCell);
+    }
+
+    private void HandleGlobalHotkeys(Keyboard keyboard)
+    {
+        if (keyboard == null)
+            return;
+
+        if (keyboard.cKey.wasPressedThisFrame &&
             (keyboard.leftCtrlKey.isPressed || keyboard.rightCtrlKey.isPressed))
         {
             BeginCopySelection();
         }
 
-        if (keyboard != null &&
-            keyboard.rKey.wasPressedThisFrame &&
-            _interactionMode != PlacementInteractionModeEnum.CopySelecting &&
-            _bpo.Candidates.Count > 0)
+        if (keyboard.rKey.wasPressedThisFrame &&
+            !_copyInteraction.IsSelecting &&
+            _placementOperation.Candidates.Count > 0)
         {
-            _bpo.Rotate();
+            _placementOperation.Rotate();
         }
+    }
 
-        if (Mouse.current != null && _chunkMap != null)
-        {
-            Vector3 pos = Camera.main.ScreenToWorldPoint(Mouse.current.position.ReadValue());
-            int2 gridCell = pos.ToGridCell();
+    private bool TryGetPointerGridCell(out int2 gridCell)
+    {
+        gridCell = default;
 
-            if (TryHandleSettingsTransferInput(keyboard, gridCell))
-                return;
+        if (Mouse.current == null || _chunkMap == null)
+            return false;
 
-            if (_interactionMode == PlacementInteractionModeEnum.CopySelecting)
-            {
-                _preview.HidePreview();
-                HandleCopySelectionInput(gridCell);
-                return;
-            }
+        Vector3 pointerWorldPosition =
+            Camera.main.ScreenToWorldPoint(Mouse.current.position.ReadValue());
+        gridCell = pointerWorldPosition.ToGridCell();
+        return true;
+    }
 
-            _preview.UpdatePreviewPositions(_bpo, gridCell);
-            _bpo.EvaluatePlacement(_chunkMap);
-            _preview.UpdatePreviewColors(_bpo);
-
-            if (_interactionMode == PlacementInteractionModeEnum.CopyPlacing)
-                HandleCopyPlacementInput();
-            else
-                HandlePointerInput(gridCell);
-        }
+    private void UpdatePlacementPreview(int2 gridCell)
+    {
+        _preview.UpdatePreviewPositions(_placementOperation, gridCell);
+        _placementOperation.EvaluatePlacement(_chunkMap);
+        _preview.UpdatePreviewColors(_placementOperation);
     }
 
     private void BeginCopySelection()
     {
-        if (_interactionMode == PlacementInteractionModeEnum.Normal)
-            _operationBeforeCopy = _bpo;
-
-        _interactionMode = PlacementInteractionModeEnum.CopySelecting;
-        _copyStatus = "복사할 범위를 좌클릭 드래그하세요.";
+        _copyInteraction.BeginSelection(_placementOperation);
         ResetPointerDrag();
-        ResetCopySelectionDrag();
         _preview.HidePreview();
-        _copySelectionPreview.Hide();
-    }
-
-    private void HandleCopySelectionInput(int2 gridCell)
-    {
-        bool isPointerOverUi = PointerUtility.IsPointerOverUi();
-
-        if (!_isCopySelectionDragging)
-        {
-            if (Mouse.current.leftButton.wasPressedThisFrame && !isPointerOverUi)
-            {
-                _isCopySelectionDragging = true;
-                _copySelectionStart = gridCell;
-                _copySelectionEnd = gridCell;
-                _copyStatus = "복사 범위 선택 중";
-                ShowCopySelectionPreview();
-            }
-
-            return;
-        }
-
-        if (Mouse.current.leftButton.isPressed)
-        {
-            _copySelectionEnd = gridCell;
-            ShowCopySelectionPreview();
-            return;
-        }
-
-        if (!Mouse.current.leftButton.wasReleasedThisFrame)
-            return;
-
-        if (isPointerOverUi)
-        {
-            ResetCopySelectionDrag();
-            _copyStatus = "복사할 범위를 좌클릭 드래그하세요.";
-            return;
-        }
-
-        _copySelectionEnd = gridCell;
-        ShowCopySelectionPreview();
-        CreateCopyOperation();
-        _isCopySelectionDragging = false;
-    }
-
-    private void ShowCopySelectionPreview()
-    {
-        _copySelectionPreview.Show(
-            new GridBounds(_copySelectionStart, _copySelectionEnd));
-    }
-
-    private void CreateCopyOperation()
-    {
-        GridBounds bounds = new(_copySelectionStart, _copySelectionEnd);
-        _chunkMap.GetBuildingsInBounds(bounds, _buildingsInCopyBounds);
-
-        if (_buildingsInCopyBounds.Count == 0)
-        {
-            _copyStatus = "선택한 범위에 복사할 건물이 없습니다.";
-            return;
-        }
-
-        _bpo = BuildingCopyBlueprintBuilder.Create(
-            _entityManager,
-            _buildingsInCopyBounds,
-            bounds.Min);
-        _interactionMode = PlacementInteractionModeEnum.CopyPlacing;
-        _copyStatus = "복사 배치 중 · 좌클릭 설치 / R 회전 / Esc 취소";
-        _copySelectionPreview.Hide();
     }
 
     private void HandleCopyPlacementInput()
     {
         if (PointerUtility.IsPointerOverUi() ||
             !Mouse.current.leftButton.wasPressedThisFrame ||
-            !_bpo.GetCanPlace)
+            !_placementOperation.CanPlace)
             return;
 
         CreateSpawnRequest();
@@ -250,7 +187,7 @@ public class BuildingPlacementController : MonoBehaviour
 
         if (_pointerDragMode == PointerDragModeEnum.Placement)
         {
-            if (_bpo.GetCanPlace)
+            if (_placementOperation.CanPlace)
                 CreateSpawnRequest();
         }
         else
@@ -277,7 +214,7 @@ public class BuildingPlacementController : MonoBehaviour
             }
 
             if (!PointerUtility.IsPointerOverUi())
-                PasteSettings(gridCell);
+                _settingsTransfer.PasteSettings(gridCell, _entityManager, _chunkMap);
 
             return true;
         }
@@ -295,7 +232,7 @@ public class BuildingPlacementController : MonoBehaviour
         if (mouse.rightButton.wasPressedThisFrame)
         {
             ActivateSettingsTransfer();
-            CopySettings(gridCell);
+            _settingsTransfer.CopySettings(gridCell, _entityManager, _chunkMap);
             return true;
         }
 
@@ -303,7 +240,7 @@ public class BuildingPlacementController : MonoBehaviour
         {
             ActivateSettingsTransfer();
             _pointerDragMode = PointerDragModeEnum.SettingsPaste;
-            PasteSettings(gridCell);
+            _settingsTransfer.PasteSettings(gridCell, _entityManager, _chunkMap);
             return true;
         }
 
@@ -317,79 +254,28 @@ public class BuildingPlacementController : MonoBehaviour
         PlacementSelectionCleared?.Invoke();
     }
 
-    private void CopySettings(int2 gridCell)
-    {
-        _settingsClipboard = null;
-
-        if (!_chunkMap.TryGetBuilding(gridCell, out Entity building) ||
-            !_entityManager.HasComponent<Crafter>(building))
-        {
-            return;
-        }
-
-        Crafter crafter = _entityManager.GetComponentData<Crafter>(building);
-        _settingsClipboard = new BuildingSettingsSnapshot
-        {
-            buildingType = BuildingTypeEnum.Crafter,
-            crafterRecipe = crafter.selectedItemType
-        };
-    }
-
-    private void PasteSettings(int2 gridCell)
-    {
-        if (!_settingsClipboard.HasValue ||
-            !_chunkMap.TryGetBuilding(gridCell, out Entity building) ||
-            !_settingsPasteVisited.Add(building))
-        {
-            return;
-        }
-
-        BuildingSettingsSnapshot snapshot = _settingsClipboard.Value;
-
-        if (snapshot.buildingType != BuildingTypeEnum.Crafter ||
-            !_entityManager.HasComponent<Crafter>(building))
-        {
-            return;
-        }
-
-        Crafter targetCrafter =
-            _entityManager.GetComponentData<Crafter>(building);
-
-        if (targetCrafter.selectedItemType == snapshot.crafterRecipe)
-            return;
-
-        Entity request = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(request, new CrafterRecipeChangeRequest
-        {
-            crafterEntity = building,
-            selectedItemType = snapshot.crafterRecipe
-        });
-    }
-
     private void ResetPointerDrag()
     {
         _pointerDragMode = PointerDragModeEnum.None;
         _hasLastPointerDragCell = false;
-        _settingsPasteVisited.Clear();
+        _settingsTransfer.ResetPasteVisited();
     }
 
-    private void ResetCopySelectionDrag()
+    private void ResetTransientInput()
     {
-        _isCopySelectionDragging = false;
-
-        if (_copySelectionPreview != null)
-            _copySelectionPreview.Hide();
+        ResetPointerDrag();
+        _copyInteraction.ResetSelectionDrag();
     }
 
     private void CreateSpawnRequest()
     {
-        if (_bpo.Candidates.Count == 0)
+        if (_placementOperation.Candidates.Count == 0)
             return;
 
         if (!TryReserveCandidates())
             return;
 
-        foreach (var candidate in _bpo.Candidates)
+        foreach (var candidate in _placementOperation.Candidates)
         {
             Entity request = _entityManager.CreateEntity();
             _entityManager.AddComponentData(request,
@@ -397,7 +283,7 @@ public class BuildingPlacementController : MonoBehaviour
                 {
                     type = candidate.type,
                     gridPosition = candidate.position,
-                    dir = candidate.dir.NextDirection(_bpo.GetDirection),
+                    dir = candidate.dir.NextDirection(_placementOperation.Direction),
                     selectedItemType = candidate.selectedItemType
                 });
         }
@@ -416,7 +302,7 @@ public class BuildingPlacementController : MonoBehaviour
     {
         List<int2> reservedCells = new();
 
-        foreach (var candidate in _bpo.Candidates)
+        foreach (var candidate in _placementOperation.Candidates)
         {
             if (_chunkMap.TryReserveBuilding(candidate.position))
             {
@@ -427,16 +313,16 @@ public class BuildingPlacementController : MonoBehaviour
             foreach (int2 reservedCell in reservedCells)
                 _chunkMap.TryUnreserveBuilding(reservedCell);
 
-            _bpo.EvaluatePlacement(_chunkMap);
+            _placementOperation.EvaluatePlacement(_chunkMap);
             return false;
         }
 
         return true;
     }
 
-    public void SetEnable(bool enable, BuildingPlacementOperation bpo)
+    public void SetEnable(bool enable, BuildingPlacementOperation placementOperation)
     {
-        SetOperation(bpo);
+        SetOperation(placementOperation);
         SetEnable(enable);
     }
 
@@ -445,47 +331,32 @@ public class BuildingPlacementController : MonoBehaviour
         _enable = enable;
 
         if (!_enable)
-        {
-            if (_interactionMode != PlacementInteractionModeEnum.Normal &&
-                _operationBeforeCopy != null)
-            {
-                _bpo = _operationBeforeCopy;
-            }
-
-            ResetPointerDrag();
-            ResetCopySelectionDrag();
-            _interactionMode = PlacementInteractionModeEnum.Normal;
-            _operationBeforeCopy = null;
-            _copyStatus = string.Empty;
-        }
+            ExitCopyMode(true);
 
         _preview.enabled = _enable;
     }
 
     public bool TryCancelCopyMode()
     {
-        if (_interactionMode == PlacementInteractionModeEnum.Normal)
+        if (!_copyInteraction.IsActive)
             return false;
 
-        if (_operationBeforeCopy != null)
-            _bpo = _operationBeforeCopy;
-
-        _operationBeforeCopy = null;
-        _interactionMode = PlacementInteractionModeEnum.Normal;
-        _copyStatus = string.Empty;
-        ResetCopySelectionDrag();
-        ResetPointerDrag();
+        ExitCopyMode(true);
         return true;
+    }
+
+    private void ExitCopyMode(bool restorePreviousOperation)
+    {
+        _placementOperation = _copyInteraction.Exit(
+            _placementOperation,
+            restorePreviousOperation);
+        ResetPointerDrag();
     }
 
     private void SetOperation(BuildingPlacementOperation operation)
     {
-        _bpo = operation ?? CreateEmptyOperation();
-        _operationBeforeCopy = null;
-        _interactionMode = PlacementInteractionModeEnum.Normal;
-        _copyStatus = string.Empty;
-        ResetCopySelectionDrag();
-        ResetPointerDrag();
+        _placementOperation = operation ?? CreateEmptyOperation();
+        ExitCopyMode(false);
     }
 
     private static BuildingPlacementOperation CreateEmptyOperation()
@@ -498,8 +369,11 @@ public class BuildingPlacementController : MonoBehaviour
         SetOperation(CreateEmptyOperation());
     }
 
-    #region Properties
-    public BuildingPlacementOperation Operation { get => _bpo; set => SetOperation(value); }
-    public string CopyStatus => _copyStatus;
-    #endregion
+    public BuildingPlacementOperation Operation
+    {
+        get => _placementOperation;
+        set => SetOperation(value);
+    }
+
+    public string CopyStatus => _copyInteraction.Status;
 }

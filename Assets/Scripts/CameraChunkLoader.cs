@@ -53,7 +53,7 @@ public class CameraChunkLoader : MonoBehaviour
 
                 if (_requestedChunks.Contains(chunkPosition))
                     continue;
-                if (_chunkMap.TryGetChunk(chunkPosition, out Chunk chunk) && chunk.hasGeneratedResources)
+                if (_chunkMap.TryGetChunk(chunkPosition, out Chunk chunk) && chunk.HasGeneratedResources)
                     continue;
 
                 Entity request = _entityManager.CreateEntity();

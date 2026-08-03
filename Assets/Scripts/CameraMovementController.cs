@@ -114,7 +114,10 @@ public class CameraMovementController : MonoBehaviour
 
     private void ZoomCamera()
     {
-        if (_camera == null || !_camera.orthographic || _scrollAction == null)
+        if (_camera == null || _scrollAction == null)
+            return;
+
+        if (!_camera.orthographic)
             return;
 
         float scrollY = _scrollAction.ReadValue<Vector2>().y;

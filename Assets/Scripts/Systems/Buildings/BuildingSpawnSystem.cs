@@ -23,11 +23,11 @@ partial struct BuildingSpawnSystem : ISystem
         DynamicBuffer<BuildingPrefabElement> prefabs = SystemAPI.GetSingletonBuffer<BuildingPrefabElement>(true);
         EntityCommandBuffer ecb = SystemAPI.GetSingleton<BeginSimulationEntityCommandBufferSystem.Singleton>().CreateCommandBuffer(state.WorldUnmanaged);
 
-        foreach(var (request, requestEntity) in SystemAPI.Query<RefRO<BuildingSpawnRequest>>().WithEntityAccess())
+        foreach (var (request, requestEntity) in SystemAPI.Query<RefRO<BuildingSpawnRequest>>().WithEntityAccess())
         {
             Entity prefab = FindPrefab(prefabs, request.ValueRO.type);
 
-            if(prefab == Entity.Null)
+            if (prefab == Entity.Null)
             {
                 ecb.DestroyEntity(requestEntity);
                 continue;
@@ -94,7 +94,7 @@ partial struct BuildingSpawnSystem : ISystem
 
     private static Entity FindPrefab(DynamicBuffer<BuildingPrefabElement> prefabs, BuildingTypeEnum type)
     {
-        for(int i = 0; i < prefabs.Length; i++)
+        for (int i = 0; i < prefabs.Length; i++)
         {
             if (prefabs[i].type == type)
                 return prefabs[i].prefab;

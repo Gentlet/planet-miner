@@ -29,7 +29,7 @@ public class ChunkCell
 
     public bool TrySetBuilding(Entity buildingEntity)
     {
-        if (hasBuilding)
+        if (HasBuilding)
             return false;
 
         _buildingEntity = buildingEntity;
@@ -52,7 +52,7 @@ public class ChunkCell
 
     public bool TrySetResource(ResourceTypeEnum type, Entity entity)
     {
-        if (hasResource || type == ResourceTypeEnum.None || type >= ResourceTypeEnum.Count)
+        if (HasResource || type == ResourceTypeEnum.None || type >= ResourceTypeEnum.Count)
             return false;
 
         _resourceType = type;
@@ -106,16 +106,15 @@ public class ChunkCell
         _items.Clear();
     }
 
-    #region Properties
-    public int2 worldPosition { get => _worldPosition; }
-    public Entity buildingEntity { get => _buildingEntity; private set => _buildingEntity = value; }
-    public Entity resourceEntity { get => _resourceEntity; private set => _resourceEntity = value; }
-    public ResourceTypeEnum resourceType { get => _resourceType; private set => _resourceType = value; }
-    public FloorTypeEnum floor { get => _floor; private set => _floor = value; }
-    public IReadOnlyList<Entity> items { get => _items; }
-    public bool hasBuilding { get => _buildingEntity != Entity.Null; }
-    public bool hasResource { get => _resourceEntity != Entity.Null && _resourceType != ResourceTypeEnum.None; }
-    #endregion
+    public int2 WorldPosition => _worldPosition;
+    public Entity BuildingEntity => _buildingEntity;
+    public Entity ResourceEntity => _resourceEntity;
+    public ResourceTypeEnum ResourceType => _resourceType;
+    public FloorTypeEnum Floor => _floor;
+    public IReadOnlyList<Entity> Items => _items;
+    public bool HasBuilding => _buildingEntity != Entity.Null;
+    public bool HasResource =>
+        _resourceEntity != Entity.Null && _resourceType != ResourceTypeEnum.None;
 }
 
 public class Chunk
@@ -160,9 +159,7 @@ public class Chunk
             _cells[i].ClearItems();
     }
 
-    #region Properties
-    public int2 chunkPosition { get => _chunkPosition; }
-    public bool hasGeneratedResources { get => _hasGeneratedResources; private set => _hasGeneratedResources = value; }
-    public IReadOnlyList<ChunkCell> cells { get => _cells; }
-    #endregion
+    public int2 ChunkPosition => _chunkPosition;
+    public bool HasGeneratedResources => _hasGeneratedResources;
+    public IReadOnlyList<ChunkCell> Cells => _cells;
 }
