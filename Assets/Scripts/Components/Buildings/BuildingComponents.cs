@@ -34,6 +34,12 @@ public struct BuildingPrefabElement : IBufferElementData
 {
     public BuildingTypeEnum type;
     public Entity prefab;
+    public int2 size;
+}
+
+public struct BuildingOutputCursor : IComponentData
+{
+    public int nextIndex;
 }
 
 public struct ProducedItemElement : IBufferElementData, IItemStorageElement

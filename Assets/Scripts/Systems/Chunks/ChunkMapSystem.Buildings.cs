@@ -1,9 +1,14 @@
 using System.Collections.Generic;
 using Unity.Entities;
 using Unity.Mathematics;
+using UnityEngine;
 
 public partial class ChunkMapSystem
 {
+    private readonly List<int2> _buildingFootprintCells = new();
+    private readonly List<int2> _registeredBuildingCells = new();
+    private readonly HashSet<Entity> _buildingQueryDeduplication = new();
+
     public bool IsBuildingOccupied(int2 cell)
     {
         return TryGetCellData(cell, out ChunkCell cellData) && cellData.HasBuilding;
@@ -31,6 +36,16 @@ public partial class ChunkMapSystem
         return true;
     }
 
+    public int2 GetBuildingSize(BuildingTypeEnum type)
+    {
+        if (_buildingPrefabQuery.IsEmptyIgnoreFilter)
+            return new int2(1, 1);
+
+        DynamicBuffer<BuildingPrefabElement> definitions =
+            _buildingPrefabQuery.GetSingletonBuffer<BuildingPrefabElement>(true);
+        return definitions.GetFootprintSize(type);
+    }
+
     public bool TryReserveBuilding(int2 cell)
     {
         if (IsBuildingOccupiedOrReserved(cell))
@@ -50,74 +65,181 @@ public partial class ChunkMapSystem
         return _reservedCells.Remove(cell);
     }
 
+    public void ReleaseBuildingReservation(
+        int2 anchor,
+        BuildingTypeEnum type,
+        DirectionEnum direction)
+    {
+        BuildingFootprintUtility.GetOccupiedCells(
+            anchor,
+            GetBuildingSize(type),
+            direction,
+            _buildingFootprintCells);
+        ReleaseBuildingReservations(_buildingFootprintCells);
+    }
+
     private bool TryRegisterBuilding(EntityCommandBuffer ecb, Entity entity)
     {
         if (!EntityManager.HasComponent<BuildingOccupantRequest>(entity))
             return false;
-        if (!EntityManager.HasComponent<GridPosition>(entity))
-            return false;
 
-        GridPosition pos = EntityManager.GetComponentData<GridPosition>(entity);
-
-        EnsureReservedCapacity();
-        ChunkCell cellData = GetOrCreateCellData(pos.gridPosition);
-
-        if (!TryUnreserveBuilding(pos.gridPosition))
-            UnityEngine.Debug.LogWarning($"Not Reserved Building Spawned. Cell : {pos.gridPosition}");
-
-        if (!cellData.TrySetBuilding(entity))
+        if (!EntityManager.HasComponent<GridPosition>(entity) ||
+            !EntityManager.HasComponent<BuildingType>(entity) ||
+            !EntityManager.HasComponent<Direction>(entity))
         {
-            UnityEngine.Debug.LogError($"Failed ChunkCell.TrySetBuilding. Type : {EntityManager.GetComponentData<BuildingType>(entity).ToString()}, Cell : {pos.gridPosition}");
+            Debug.LogError($"Building registration failed because spatial components are missing. Entity: {entity}");
             ecb.DestroyEntity(entity);
             return false;
         }
 
-        if (EntityManager.HasComponent<Belt>(entity))
-        {
-            EnsureBeltCapacity();
+        int2 anchor = EntityManager.GetComponentData<GridPosition>(entity).gridPosition;
+        BuildingTypeEnum type = EntityManager.GetComponentData<BuildingType>(entity).type;
+        DirectionEnum direction = EntityManager.GetComponentData<Direction>(entity).dir;
+        BuildingFootprintUtility.GetOccupiedCells(
+            anchor,
+            GetBuildingSize(type),
+            direction,
+            _buildingFootprintCells);
 
-            if (!_beltByCell.TryAdd(pos.gridPosition, entity))
+        for (int i = 0; i < _buildingFootprintCells.Count; i++)
+        {
+            int2 cell = _buildingFootprintCells[i];
+
+            if (!IsBuildingOccupied(cell))
+                continue;
+
+            Debug.LogError(
+                $"Building registration failed because its footprint is occupied. Type: {type}, Anchor: {anchor}, Cell: {cell}");
+            ReleaseBuildingReservations(_buildingFootprintCells);
+            ecb.DestroyEntity(entity);
+            return false;
+        }
+
+        _registeredBuildingCells.Clear();
+
+        for (int i = 0; i < _buildingFootprintCells.Count; i++)
+        {
+            int2 cell = _buildingFootprintCells[i];
+            ChunkCell cellData = GetOrCreateCellData(cell);
+
+            if (cellData.TrySetBuilding(entity))
             {
-                cellData.TryRemoveBuilding(entity);
-                UnityEngine.Debug.LogError($"Failed BeltIndex.TryAdd. Type : {EntityManager.GetComponentData<BuildingType>(entity).ToString()}, Cell : {pos.gridPosition}");
-                ecb.DestroyEntity(entity);
-                return false;
+                _registeredBuildingCells.Add(cell);
+                continue;
             }
 
-            SortItemsForBelt(pos.gridPosition);
+            RollbackBuildingRegistration(entity);
+            ReleaseBuildingReservations(_buildingFootprintCells);
+            Debug.LogError(
+                $"Building registration failed while writing its footprint. Type: {type}, Anchor: {anchor}, Cell: {cell}");
+            ecb.DestroyEntity(entity);
+            return false;
+        }
 
-            if (cellData.Items.Count > 0)
-                _activeBeltCells.Add(pos.gridPosition);
+        if (EntityManager.HasComponent<Belt>(entity) &&
+            !TryRegisterBelt(entity, anchor))
+        {
+            RollbackBuildingRegistration(entity);
+            ReleaseBuildingReservations(_buildingFootprintCells);
+            ecb.DestroyEntity(entity);
+            return false;
+        }
+
+        bool missingReservation = false;
+
+        for (int i = 0; i < _buildingFootprintCells.Count; i++)
+        {
+            if (!TryUnreserveBuilding(_buildingFootprintCells[i]))
+                missingReservation = true;
+        }
+
+        if (missingReservation)
+        {
+            Debug.LogWarning(
+                $"Building spawned without a complete footprint reservation. Type: {type}, Anchor: {anchor}");
         }
 
         ecb.RemoveComponent<BuildingOccupantRequest>(entity);
         ecb.AddComponent<BuildingOccupant>(entity);
+        return true;
+    }
+
+    private bool TryRegisterBelt(Entity entity, int2 anchor)
+    {
+        EnsureBeltCapacity();
+
+        if (!_beltByCell.TryAdd(anchor, entity))
+        {
+            Debug.LogError($"Failed BeltIndex.TryAdd. Entity: {entity}, Cell: {anchor}");
+            return false;
+        }
+
+        SortItemsForBelt(anchor);
+
+        if (TryGetCellData(anchor, out ChunkCell cellData) && cellData.Items.Count > 0)
+            _activeBeltCells.Add(anchor);
 
         return true;
     }
 
-    public bool TryUnregisterBuilding(int2 cell, Entity entity)
+    private void RollbackBuildingRegistration(Entity entity)
     {
-        if (!TryGetCellData(cell, out ChunkCell cellData))
-            return false;
-
-        if (cellData.BuildingEntity != entity)
-            return false;
-
-        cellData.TryRemoveBuilding(entity);
-
-        if (_beltByCell.TryGetValue(cell, out Entity beltEntity) && beltEntity == entity)
+        for (int i = 0; i < _registeredBuildingCells.Count; i++)
         {
-            _beltByCell.Remove(cell);
-            _activeBeltCells.Remove(cell);
+            if (TryGetCellData(_registeredBuildingCells[i], out ChunkCell cellData))
+                cellData.TryRemoveBuilding(entity);
         }
 
-        return true;
+        _registeredBuildingCells.Clear();
+    }
+
+    private void ReleaseBuildingReservations(List<int2> cells)
+    {
+        for (int i = 0; i < cells.Count; i++)
+            TryUnreserveBuilding(cells[i]);
+    }
+
+    public bool TryUnregisterBuilding(Entity entity)
+    {
+        if (!EntityManager.Exists(entity) ||
+            !EntityManager.HasComponent<GridPosition>(entity) ||
+            !EntityManager.HasComponent<BuildingType>(entity) ||
+            !EntityManager.HasComponent<Direction>(entity))
+            return false;
+
+        int2 anchor = EntityManager.GetComponentData<GridPosition>(entity).gridPosition;
+        BuildingTypeEnum type = EntityManager.GetComponentData<BuildingType>(entity).type;
+        DirectionEnum direction = EntityManager.GetComponentData<Direction>(entity).dir;
+        BuildingFootprintUtility.GetOccupiedCells(
+            anchor,
+            GetBuildingSize(type),
+            direction,
+            _buildingFootprintCells);
+
+        bool removedAllCells = true;
+
+        for (int i = 0; i < _buildingFootprintCells.Count; i++)
+        {
+            if (!TryGetCellData(_buildingFootprintCells[i], out ChunkCell cellData) ||
+                !cellData.TryRemoveBuilding(entity))
+            {
+                removedAllCells = false;
+            }
+        }
+
+        if (_beltByCell.TryGetValue(anchor, out Entity beltEntity) && beltEntity == entity)
+        {
+            _beltByCell.Remove(anchor);
+            _activeBeltCells.Remove(anchor);
+        }
+
+        return removedAllCells;
     }
 
     public void GetBuildingsInBounds(GridBounds bounds, List<Entity> results)
     {
         results.Clear();
+        _buildingQueryDeduplication.Clear();
 
         foreach (Chunk chunk in _chunks.Values)
         {
@@ -130,7 +252,9 @@ public partial class ChunkMapSystem
 
             foreach (ChunkCell cell in chunk.Cells)
             {
-                if (!cell.HasBuilding || !bounds.Contains(cell.WorldPosition))
+                if (!cell.HasBuilding ||
+                    !bounds.Contains(cell.WorldPosition) ||
+                    !_buildingQueryDeduplication.Add(cell.BuildingEntity))
                     continue;
 
                 results.Add(cell.BuildingEntity);

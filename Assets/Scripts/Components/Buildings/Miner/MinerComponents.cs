@@ -4,4 +4,5 @@ public struct Miner : IComponentData
 {
     public float speed;
     public float timer;
+    public uint randomState;
 }

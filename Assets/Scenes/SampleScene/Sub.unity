@@ -386,16 +386,22 @@ MonoBehaviour:
   _entries:
   - type: 0
     prefab: {fileID: 9106238281758111696, guid: e2e1a0860e6ffc4448740f1c3edce5e9, type: 3}
+    size: {x: 1, y: 1}
   - type: 1
     prefab: {fileID: 2222127362126821372, guid: 9d5459b95a4bac147a7d1a00418fdc36, type: 3}
+    size: {x: 1, y: 1}
   - type: 2
     prefab: {fileID: 2222127362126821372, guid: 59786e42313e48643b545ce5462797da, type: 3}
+    size: {x: 1, y: 1}
   - type: 3
     prefab: {fileID: 2222127362126821372, guid: 4e1b8365c3829e64dad69342e5d3dd2f, type: 3}
+    size: {x: 1, y: 1}
   - type: 4
     prefab: {fileID: 2222127362126821372, guid: 89e5f75603e6e164ebfc4d6358cb8098, type: 3}
+    size: {x: 1, y: 1}
   - type: 5
     prefab: {fileID: 2222127362126821372, guid: 00d230803ef2fcf4985f4410a78e5677, type: 3}
+    size: {x: 1, y: 1}
 --- !u!4 &1731399918
 Transform:
   m_ObjectHideFlags: 0

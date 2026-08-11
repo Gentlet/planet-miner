@@ -45,12 +45,17 @@ public class BuildingPlacementPreview : MonoBehaviour
 
             previewObject.SetActive(true);
 
-            previewObject.transform.localPosition = candidate.gridPosition.ToVector2();
+            float2 visualCenterOffset =
+                BuildingFootprintUtility.GetVisualCenterOffset(
+                    candidate.size,
+                    candidate.dir);
+            previewObject.transform.localPosition =
+                candidate.gridPosition.ToVector2() +
+                new Vector2(visualCenterOffset.x, visualCenterOffset.y);
             previewObject.transform.localRotation =
                 Quaternion.Euler(0f, 0f, candidate.dir.ToDegrees());
-            candidate.position = previewObject.transform.position.ToGridCell();
 
-            SetSprite(previewObject, candidate.type);
+            SetSpriteAndSize(previewObject, candidate.type, candidate.size);
         }
 
         for (int i = bpo.Candidates.Count; i < _previewObjects.Count; i++)
@@ -75,7 +80,10 @@ public class BuildingPlacementPreview : MonoBehaviour
             previewObject.SetActive(false);
     }
 
-    private void SetSprite(GameObject previewObject, BuildingTypeEnum type)
+    private void SetSpriteAndSize(
+        GameObject previewObject,
+        BuildingTypeEnum type,
+        int2 size)
     {
         var renderer = previewObject.GetComponent<SpriteRenderer>();
 
@@ -87,6 +95,11 @@ public class BuildingPlacementPreview : MonoBehaviour
             if (entry.type == type)
             {
                 renderer.sprite = entry.sprite;
+                Vector2 spriteSize = entry.sprite.bounds.size;
+                previewObject.transform.localScale = new Vector3(
+                    spriteSize.x > 0f ? size.x / spriteSize.x : 1f,
+                    spriteSize.y > 0f ? size.y / spriteSize.y : 1f,
+                    1f);
                 return;
             }
         }

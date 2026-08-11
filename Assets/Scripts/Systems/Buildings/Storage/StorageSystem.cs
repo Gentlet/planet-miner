@@ -15,6 +15,10 @@ public partial class StorageSystem : SystemBase
     private EntityQuery _storageQuery;
     private readonly List<Entity> _itemsInCell = new();
     private readonly List<InputItem> _inputItems = new();
+    private readonly List<int2> _footprintCells = new();
+    private readonly List<BuildingBoundaryConnection> _boundaryConnections = new();
+    private readonly List<int2> _outputCells = new();
+    private readonly HashSet<Entity> _inputItemDeduplication = new();
 
     protected override void OnCreate()
     {
@@ -25,9 +29,11 @@ public partial class StorageSystem : SystemBase
             ComponentType.ReadOnly<Storage>(),
             ComponentType.ReadOnly<GridPosition>(),
             ComponentType.ReadOnly<Direction>(),
+            ComponentType.ReadWrite<BuildingOutputCursor>(),
             ComponentType.ReadWrite<StoredItemElement>());
         RequireForUpdate<Storage>();
         RequireForUpdate<ItemStorageLimitElement>();
+        RequireForUpdate<BuildingPrefabElement>();
     }
 
     protected override void OnUpdate()
@@ -41,6 +47,12 @@ public partial class StorageSystem : SystemBase
             DynamicBufferCopyUtility.CreateNativeCopy(
                 SystemAPI.GetSingletonBuffer<ItemStorageLimitElement>(true),
                 Allocator.Temp);
+        using NativeArray<BuildingPrefabElement> buildingDefinitions =
+            DynamicBufferCopyUtility.CreateNativeCopy(
+                SystemAPI.GetSingletonBuffer<BuildingPrefabElement>(true),
+                Allocator.Temp);
+        int2 storageSize =
+            buildingDefinitions.GetFootprintSize(BuildingTypeEnum.Storage);
         using NativeArray<Entity> storages =
             _storageQuery.ToEntityArray(Allocator.Temp);
 
@@ -58,11 +70,13 @@ public partial class StorageSystem : SystemBase
             TryOutputOldestItem(
                 storageEntity,
                 storageCell,
-                forward);
+                forward,
+                storageSize);
             TryDepositItems(
                 storageEntity,
                 storageCell,
                 forward,
+                storageSize,
                 capacity,
                 storageLimits);
         }
@@ -71,7 +85,8 @@ public partial class StorageSystem : SystemBase
     private void TryOutputOldestItem(
         Entity storageEntity,
         int2 storageCell,
-        DirectionEnum forward)
+        DirectionEnum forward,
+        int2 storageSize)
     {
         DynamicBuffer<StoredItemElement> storedItems =
             EntityManager.GetBuffer<StoredItemElement>(
@@ -81,29 +96,36 @@ public partial class StorageSystem : SystemBase
         if (storedItems.Length == 0)
             return;
 
-        int2 outputCell = storageCell + forward.ToInt2();
-
-        if (!_chunkMap.TryGetBelt(outputCell, out _))
-            return;
-
-        _itemStorage.TryRestoreItemImmediate<StoredItemElement>(
+        BuildingOutputCursor cursor = EntityManager
+            .GetComponentData<BuildingOutputCursor>(storageEntity);
+        BuildingBeltConnectionUtility.TryOutputItem<StoredItemElement>(
+            _chunkMap,
+            EntityManager,
+            _itemStorage,
             storageEntity,
-            0,
-            outputCell);
+            storageCell,
+            storageSize,
+            forward,
+            ref cursor,
+            _boundaryConnections,
+            _outputCells);
+        EntityManager.SetComponentData(storageEntity, cursor);
     }
 
     private void TryDepositItems(
         Entity storageEntity,
         int2 storageCell,
         DirectionEnum forward,
+        int2 storageSize,
         int capacity,
         NativeArray<ItemStorageLimitElement> storageLimits)
     {
-        BuildInputItems(storageCell, forward);
+        BuildInputItems(storageCell, storageSize, forward);
 
         for (int i = 0; i < _inputItems.Count; i++)
         {
-            Entity itemEntity = _inputItems[i].entity;
+            InputItem inputItem = _inputItems[i];
+            Entity itemEntity = inputItem.entity;
             DynamicBuffer<StoredItemElement> storedItems =
                 EntityManager.GetBuffer<StoredItemElement>(
                     storageEntity,
@@ -118,45 +140,56 @@ public partial class StorageSystem : SystemBase
 
             _itemStorage.TryStoreItemImmediate(
                 storageEntity,
-                storageCell,
+                inputItem.sourceCell,
                 itemEntity);
         }
     }
 
-    private void BuildInputItems(int2 storageCell, DirectionEnum forward)
+    private void BuildInputItems(
+        int2 storageCell,
+        int2 storageSize,
+        DirectionEnum forward)
     {
         _inputItems.Clear();
-        _chunkMap.GetItems(storageCell, _itemsInCell);
+        _inputItemDeduplication.Clear();
+        BuildingFootprintUtility.GetOccupiedCells(
+            storageCell,
+            storageSize,
+            forward,
+            _footprintCells);
 
-        float2 cellCenter = new float2(storageCell.x, storageCell.y);
-        DirectionEnum back = forward.NextDirection().NextDirection();
-        DirectionEnum left = back.NextDirection();
-        DirectionEnum right = forward.NextDirection();
-        float2 forwardOffset = forward.ToInt2();
-        float2 backOffset = back.ToInt2();
-        float2 leftOffset = left.ToInt2();
-        float2 rightOffset = right.ToInt2();
-
-        for (int i = 0; i < _itemsInCell.Count; i++)
+        for (int cellIndex = 0;
+             cellIndex < _footprintCells.Count;
+             cellIndex++)
         {
-            Entity itemEntity = _itemsInCell[i];
-            float3 position =
-                EntityManager.GetComponentData<LocalTransform>(itemEntity).Position;
-            float2 relativePosition = position.xy - cellCenter;
-            float inputScore = math.max(
-                math.dot(relativePosition, backOffset),
-                math.max(
-                    math.dot(relativePosition, leftOffset),
-                    math.dot(relativePosition, rightOffset)));
+            int2 buildingCell = _footprintCells[cellIndex];
+            _chunkMap.GetItems(buildingCell, _itemsInCell);
 
-            if (math.dot(relativePosition, forwardOffset) > inputScore)
-                continue;
-
-            _inputItems.Add(new InputItem
+            for (int itemIndex = 0;
+                 itemIndex < _itemsInCell.Count;
+                 itemIndex++)
             {
-                entity = itemEntity,
-                distanceSq = math.lengthsq(relativePosition)
-            });
+                Entity itemEntity = _itemsInCell[itemIndex];
+
+                if (_inputItemDeduplication.Contains(itemEntity))
+                    continue;
+
+                float2 itemPosition = EntityManager
+                    .GetComponentData<LocalTransform>(itemEntity)
+                    .Position.xy;
+
+                _inputItemDeduplication.Add(itemEntity);
+                _inputItems.Add(new InputItem
+                {
+                    entity = itemEntity,
+                    sourceCell = buildingCell,
+                    distanceSq = math.distancesq(
+                        itemPosition,
+                        new float2(
+                            buildingCell.x,
+                            buildingCell.y))
+                });
+            }
         }
 
         _inputItems.Sort(CompareInputItems);
@@ -227,6 +260,7 @@ public partial class StorageSystem : SystemBase
     private struct InputItem
     {
         public Entity entity;
+        public int2 sourceCell;
         public float distanceSq;
     }
 }

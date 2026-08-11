@@ -6,6 +6,7 @@ public class BuildingPlacementCandidate
     public BuildingTypeEnum type;
     public int2 gridPosition;
     public int2 position;
+    public int2 size;
     public DirectionEnum dir;
     public bool canPlace;
     public ItemTypeEnum selectedItemType;
@@ -19,6 +20,7 @@ public class BuildingPlacementCandidate
     {
         this.type = type;
         this.gridPosition = gridPosition;
+        size = new int2(1, 1);
         this.dir = dir;
         this.canPlace = canPlace;
         this.selectedItemType = selectedItemType;

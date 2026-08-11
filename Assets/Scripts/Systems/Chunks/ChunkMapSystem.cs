@@ -11,11 +11,14 @@ public partial class ChunkMapSystem : SystemBase
     private readonly HashSet<int2> _activeBeltCells = new();
     private NativeParallelHashMap<int2, Entity> _beltByCell;
     private NativeParallelHashSet<int2> _reservedCells;
+    private EntityQuery _buildingPrefabQuery;
 
     protected override void OnCreate()
     {
         _beltByCell = new NativeParallelHashMap<int2, Entity>(initialCapacity, Allocator.Persistent);
         _reservedCells = new NativeParallelHashSet<int2>(initialCapacity, Allocator.Persistent);
+        _buildingPrefabQuery = GetEntityQuery(
+            ComponentType.ReadOnly<BuildingPrefabElement>());
     }
 
     protected override void OnUpdate()

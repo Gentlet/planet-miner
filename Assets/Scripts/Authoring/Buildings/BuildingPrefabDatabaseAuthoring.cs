@@ -1,6 +1,7 @@
 using System;
 using Unity.Entities;
 using System.Collections.Generic;
+using Unity.Mathematics;
 using UnityEngine;
 
 public class BuildingPrefabDatabaseAuthoring : MonoBehaviour
@@ -10,6 +11,7 @@ public class BuildingPrefabDatabaseAuthoring : MonoBehaviour
     {
         public BuildingTypeEnum type;
         public GameObject prefab;
+        public Vector2Int size;
     }
 
     [SerializeField]
@@ -27,10 +29,14 @@ public class BuildingPrefabDatabaseAuthoring : MonoBehaviour
                 if (entry.prefab == null)
                     continue;
 
+                int2 size = BuildingFootprintUtility.NormalizeSize(
+                    new int2(entry.size.x, entry.size.y));
+
                 buffer.Add(new BuildingPrefabElement
                 {
                     type = entry.type,
-                    prefab = GetEntity(entry.prefab, TransformUsageFlags.Dynamic)
+                    prefab = GetEntity(entry.prefab, TransformUsageFlags.Dynamic),
+                    size = size
                 });
             }
         }

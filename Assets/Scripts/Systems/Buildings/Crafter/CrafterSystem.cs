@@ -12,6 +12,11 @@ public partial class CrafterSystem : SystemBase
     private ItemStorageSystem _itemStorage;
     private EntityQuery _crafterOutputQuery;
     private readonly List<Entity> _itemsInCell = new();
+    private readonly List<int2> _footprintCells = new();
+    private readonly List<BuildingBoundaryConnection> _boundaryConnections = new();
+    private readonly List<int2> _outputCells = new();
+    private readonly List<InputItem> _inputItems = new();
+    private readonly HashSet<Entity> _inputItemDeduplication = new();
 
     protected override void OnCreate()
     {
@@ -21,11 +26,13 @@ public partial class CrafterSystem : SystemBase
             ComponentType.ReadWrite<Crafter>(),
             ComponentType.ReadOnly<GridPosition>(),
             ComponentType.ReadOnly<Direction>(),
+            ComponentType.ReadWrite<BuildingOutputCursor>(),
             ComponentType.ReadWrite<StoredItemElement>(),
             ComponentType.ReadWrite<ProducedItemElement>());
 
         RequireForUpdate<CrafterConfig>();
         RequireForUpdate<ItemPrefabElement>();
+        RequireForUpdate<BuildingPrefabElement>();
     }
 
     protected override void OnUpdate()
@@ -34,7 +41,13 @@ public partial class CrafterSystem : SystemBase
             return;
 
         using NativeArray<Entity> crafters = _crafterOutputQuery.ToEntityArray(Allocator.Temp);
-        TryOutputProducedItems(crafters);
+        using NativeArray<BuildingPrefabElement> buildingDefinitions =
+            DynamicBufferCopyUtility.CreateNativeCopy(
+                SystemAPI.GetSingletonBuffer<BuildingPrefabElement>(true),
+                Allocator.Temp);
+        int2 crafterSize =
+            buildingDefinitions.GetFootprintSize(BuildingTypeEnum.Crafter);
+        TryOutputProducedItems(crafters, crafterSize);
 
         using NativeArray<CrafterRecipeElement> recipes =
             DynamicBufferCopyUtility.CreateNativeCopy(
@@ -57,11 +70,16 @@ public partial class CrafterSystem : SystemBase
             Entity crafterEntity = crafters[i];
             Crafter crafter = EntityManager.GetComponentData<Crafter>(crafterEntity);
             int2 crafterCell = EntityManager.GetComponentData<GridPosition>(crafterEntity).gridPosition;
+            DirectionEnum direction = EntityManager
+                .GetComponentData<Direction>(crafterEntity)
+                .dir;
 
             TryDepositItems(
                 crafter,
                 crafterEntity,
                 crafterCell,
+                direction,
+                crafterSize,
                 recipes,
                 ingredients,
                 storageLimits);
@@ -89,7 +107,9 @@ public partial class CrafterSystem : SystemBase
         }
     }
 
-    private void TryOutputProducedItems(NativeArray<Entity> crafters)
+    private void TryOutputProducedItems(
+        NativeArray<Entity> crafters,
+        int2 crafterSize)
     {
         for (int i = 0; i < crafters.Length; i++)
         {
@@ -102,11 +122,20 @@ public partial class CrafterSystem : SystemBase
 
             int2 crafterCell = EntityManager.GetComponentData<GridPosition>(crafterEntity).gridPosition;
             DirectionEnum direction = EntityManager.GetComponentData<Direction>(crafterEntity).dir;
-            int2 outputCell = crafterCell + direction.ToInt2();
-            _itemStorage.TryRestoreItemImmediate<ProducedItemElement>(
+            BuildingOutputCursor cursor = EntityManager
+                .GetComponentData<BuildingOutputCursor>(crafterEntity);
+            BuildingBeltConnectionUtility.TryOutputItem<ProducedItemElement>(
+                _chunkMap,
+                EntityManager,
+                _itemStorage,
                 crafterEntity,
-                0,
-                outputCell);
+                crafterCell,
+                crafterSize,
+                direction,
+                ref cursor,
+                _boundaryConnections,
+                _outputCells);
+            EntityManager.SetComponentData(crafterEntity, cursor);
         }
     }
 
@@ -114,6 +143,8 @@ public partial class CrafterSystem : SystemBase
         in Crafter crafter,
         Entity crafterEntity,
         int2 crafterCell,
+        DirectionEnum direction,
+        int2 crafterSize,
         NativeArray<CrafterRecipeElement> recipes,
         NativeArray<CrafterRecipeIngredientElement> ingredients,
         NativeArray<ItemStorageLimitElement> storageLimits)
@@ -123,11 +154,12 @@ public partial class CrafterSystem : SystemBase
         if (!recipes.TryFindRecipe(crafter.selectedItemType, out CrafterRecipeElement recipe))
             return;
 
-        _chunkMap.GetItems(crafterCell, _itemsInCell);
+        BuildInputItems(crafterCell, crafterSize, direction);
 
-        for (int i = 0; i < _itemsInCell.Count; i++)
+        for (int i = 0; i < _inputItems.Count; i++)
         {
-            Entity itemEntity = _itemsInCell[i];
+            InputItem inputItem = _inputItems[i];
+            Entity itemEntity = inputItem.entity;
             DynamicBuffer<StoredItemElement> storedItems =
                 EntityManager.GetBuffer<StoredItemElement>(crafterEntity);
 
@@ -140,7 +172,49 @@ public partial class CrafterSystem : SystemBase
                     out _))
                 continue;
 
-            _itemStorage.TryStoreItemImmediate(crafterEntity, crafterCell, itemEntity);
+            _itemStorage.TryStoreItemImmediate(
+                crafterEntity,
+                inputItem.sourceCell,
+                itemEntity);
+        }
+    }
+
+    private void BuildInputItems(
+        int2 anchor,
+        int2 size,
+        DirectionEnum direction)
+    {
+        _inputItems.Clear();
+        _inputItemDeduplication.Clear();
+        BuildingFootprintUtility.GetOccupiedCells(
+            anchor,
+            size,
+            direction,
+            _footprintCells);
+
+        for (int cellIndex = 0;
+             cellIndex < _footprintCells.Count;
+             cellIndex++)
+        {
+            int2 buildingCell = _footprintCells[cellIndex];
+            _chunkMap.GetItems(buildingCell, _itemsInCell);
+
+            for (int itemIndex = 0;
+                 itemIndex < _itemsInCell.Count;
+                 itemIndex++)
+            {
+                Entity itemEntity = _itemsInCell[itemIndex];
+
+                if (_inputItemDeduplication.Contains(itemEntity))
+                    continue;
+
+                _inputItemDeduplication.Add(itemEntity);
+                _inputItems.Add(new InputItem
+                {
+                    entity = itemEntity,
+                    sourceCell = buildingCell
+                });
+            }
         }
     }
 
@@ -311,5 +385,11 @@ public partial class CrafterSystem : SystemBase
             _itemStorage = World.GetExistingSystemManaged<ItemStorageSystem>();
 
         return _chunkMap != null && _itemStorage != null;
+    }
+
+    private struct InputItem
+    {
+        public Entity entity;
+        public int2 sourceCell;
     }
 }

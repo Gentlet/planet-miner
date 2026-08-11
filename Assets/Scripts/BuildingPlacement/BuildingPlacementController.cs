@@ -136,6 +136,7 @@ public class BuildingPlacementController : MonoBehaviour
 
     private void UpdatePlacementPreview(int2 gridCell)
     {
+        _placementOperation.PrepareCandidates(gridCell, _chunkMap);
         _preview.UpdatePreviewPositions(_placementOperation, gridCell);
         _placementOperation.EvaluatePlacement(_chunkMap);
         _preview.UpdatePreviewColors(_placementOperation);
@@ -301,18 +302,14 @@ public class BuildingPlacementController : MonoBehaviour
     private bool TryReserveCandidates()
     {
         List<int2> reservedCells = new();
+        List<int2> footprintCells = new();
 
-        foreach (var candidate in _placementOperation.Candidates)
+        if (!BuildingPlacementReservationUtility.TryReserve(
+                _placementOperation,
+                _chunkMap,
+                reservedCells,
+                footprintCells))
         {
-            if (_chunkMap.TryReserveBuilding(candidate.position))
-            {
-                reservedCells.Add(candidate.position);
-                continue;
-            }
-
-            foreach (int2 reservedCell in reservedCells)
-                _chunkMap.TryUnreserveBuilding(reservedCell);
-
             _placementOperation.EvaluatePlacement(_chunkMap);
             return false;
         }

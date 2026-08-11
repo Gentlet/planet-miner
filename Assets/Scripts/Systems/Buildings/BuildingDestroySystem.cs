@@ -46,8 +46,11 @@ public partial class BuildingDestroySystem : SystemBase
                 EntityManager.Exists(targetEntity) &&
                 EntityManager.HasComponent<BuildingOccupant>(targetEntity))
             {
-                RestoreItems(ref ecb, targetEntity, request.ValueRO.gridPosition);
-                _chunkMap.TryUnregisterBuilding(request.ValueRO.gridPosition, targetEntity);
+                int2 anchor = EntityManager
+                    .GetComponentData<GridPosition>(targetEntity)
+                    .gridPosition;
+                RestoreItems(ref ecb, targetEntity, anchor);
+                _chunkMap.TryUnregisterBuilding(targetEntity);
                 ecb.DestroyEntity(targetEntity);
             }
 
