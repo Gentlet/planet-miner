@@ -16,6 +16,8 @@ public class ConstructionModeUI : MonoBehaviour
     private Button splitterButton;
     private Button mergerButton;
     private Button storageButton;
+    private Button powerPoleButton;
+    private Button coalGeneratorButton;
     private Label copyStatusLabel;
     private BuildingTypeEnum? _selectedBuildingType;
 
@@ -35,6 +37,8 @@ public class ConstructionModeUI : MonoBehaviour
         splitterButton = root.Q<Button>("splitter-button");
         mergerButton = root.Q<Button>("merger-button");
         storageButton = root.Q<Button>("storage-button");
+        powerPoleButton = root.Q<Button>("power-pole-button");
+        coalGeneratorButton = root.Q<Button>("coal-generator-button");
         copyStatusLabel = root.Q<Label>("copy-status-label");
 
         beltButton.clicked += OnBeltButtonClicked;
@@ -43,6 +47,8 @@ public class ConstructionModeUI : MonoBehaviour
         splitterButton.clicked += OnSplitterButtonClicked;
         mergerButton.clicked += OnMergerButtonClicked;
         storageButton.clicked += OnStorageButtonClicked;
+        powerPoleButton.clicked += OnPowerPoleButtonClicked;
+        coalGeneratorButton.clicked += OnCoalGeneratorButtonClicked;
         _bpc.PlacementSelectionCleared += OnPlacementSelectionCleared;
 
         ClearBuildingSelection();
@@ -88,6 +94,10 @@ public class ConstructionModeUI : MonoBehaviour
             OnCrafterButtonClicked();
         else if (keyboard.digit6Key.wasPressedThisFrame)
             OnStorageButtonClicked();
+        else if (keyboard.digit7Key.wasPressedThisFrame)
+            OnPowerPoleButtonClicked();
+        else if (keyboard.digit8Key.wasPressedThisFrame)
+            OnCoalGeneratorButtonClicked();
     }
 
     private void OnDisable()
@@ -113,12 +123,20 @@ public class ConstructionModeUI : MonoBehaviour
         if (storageButton != null)
             storageButton.clicked -= OnStorageButtonClicked;
 
+        if (powerPoleButton != null)
+            powerPoleButton.clicked -= OnPowerPoleButtonClicked;
+
+        if (coalGeneratorButton != null)
+            coalGeneratorButton.clicked -= OnCoalGeneratorButtonClicked;
+
         beltButton = null;
         minerButton = null;
         crafterButton = null;
         splitterButton = null;
         mergerButton = null;
         storageButton = null;
+        powerPoleButton = null;
+        coalGeneratorButton = null;
         copyStatusLabel = null;
     }
 
@@ -150,6 +168,18 @@ public class ConstructionModeUI : MonoBehaviour
     private void OnStorageButtonClicked()
     {
         ToggleBuildingSelection(BuildingTypeEnum.Storage, storageButton);
+    }
+
+    private void OnPowerPoleButtonClicked()
+    {
+        ToggleBuildingSelection(BuildingTypeEnum.PowerPole, powerPoleButton);
+    }
+
+    private void OnCoalGeneratorButtonClicked()
+    {
+        ToggleBuildingSelection(
+            BuildingTypeEnum.CoalGenerator,
+            coalGeneratorButton);
     }
 
     private void ToggleBuildingSelection(BuildingTypeEnum type, Button button)
@@ -200,5 +230,7 @@ public class ConstructionModeUI : MonoBehaviour
         splitterButton?.RemoveFromClassList(SelectedButtonClass);
         mergerButton?.RemoveFromClassList(SelectedButtonClass);
         storageButton?.RemoveFromClassList(SelectedButtonClass);
+        powerPoleButton?.RemoveFromClassList(SelectedButtonClass);
+        coalGeneratorButton?.RemoveFromClassList(SelectedButtonClass);
     }
 }

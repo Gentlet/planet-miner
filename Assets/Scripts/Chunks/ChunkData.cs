@@ -13,6 +13,7 @@ public class ChunkCell
 {
     private readonly int2 _worldPosition;
     private readonly List<Entity> _items = new();
+    private readonly List<Entity> _coveringPowerPoles = new();
     private Entity _buildingEntity;
     private Entity _resourceEntity;
     private ResourceTypeEnum _resourceType;
@@ -106,12 +107,32 @@ public class ChunkCell
         _items.Clear();
     }
 
+    public bool TryAddCoveringPowerPole(Entity powerPoleEntity)
+    {
+        if (_coveringPowerPoles.Contains(powerPoleEntity))
+            return false;
+
+        _coveringPowerPoles.Add(powerPoleEntity);
+        return true;
+    }
+
+    public bool TryRemoveCoveringPowerPole(Entity powerPoleEntity)
+    {
+        return _coveringPowerPoles.Remove(powerPoleEntity);
+    }
+
+    public bool HasCoveringPowerPole(Entity powerPoleEntity)
+    {
+        return _coveringPowerPoles.Contains(powerPoleEntity);
+    }
+
     public int2 WorldPosition => _worldPosition;
     public Entity BuildingEntity => _buildingEntity;
     public Entity ResourceEntity => _resourceEntity;
     public ResourceTypeEnum ResourceType => _resourceType;
     public FloorTypeEnum Floor => _floor;
     public IReadOnlyList<Entity> Items => _items;
+    public IReadOnlyList<Entity> CoveringPowerPoles => _coveringPowerPoles;
     public bool HasBuilding => _buildingEntity != Entity.Null;
     public bool HasResource =>
         _resourceEntity != Entity.Null && _resourceType != ResourceTypeEnum.None;

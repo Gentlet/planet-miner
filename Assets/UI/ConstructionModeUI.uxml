@@ -14,6 +14,8 @@
             <ui:Button name="miner-button" text="채굴기" class="bottom-button blocking-ui"/>
             <ui:Button name="crafter-button" text="제작기" class="bottom-button blocking-ui"/>
             <ui:Button name="storage-button" text="창고" class="bottom-button blocking-ui"/>
+            <ui:Button name="power-pole-button" text="전신주" class="bottom-button blocking-ui"/>
+            <ui:Button name="coal-generator-button" text="석탄 발전기" class="bottom-button blocking-ui"/>
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

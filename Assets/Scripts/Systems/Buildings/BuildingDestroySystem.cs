@@ -4,15 +4,18 @@ using Unity.Mathematics;
 [UpdateAfter(typeof(CrafterSystem))]
 [UpdateAfter(typeof(MiningSystem))]
 [UpdateAfter(typeof(StorageSystem))]
+[UpdateAfter(typeof(CoalGeneratorFuelSystem))]
 public partial class BuildingDestroySystem : SystemBase
 {
     private ChunkMapSystem _chunkMap;
     private ItemStorageSystem _itemStorage;
+    private PowerGridSystem _powerGrid;
 
     protected override void OnCreate()
     {
         _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
         _itemStorage = World.GetExistingSystemManaged<ItemStorageSystem>();
+        _powerGrid = World.GetExistingSystemManaged<PowerGridSystem>();
         RequireForUpdate<BuildingDestroyRequest>();
     }
 
@@ -32,6 +35,14 @@ public partial class BuildingDestroySystem : SystemBase
                 return;
         }
 
+        if (_powerGrid == null)
+        {
+            _powerGrid = World.GetExistingSystemManaged<PowerGridSystem>();
+
+            if (_powerGrid == null)
+                return;
+        }
+
         EntityCommandBuffer ecb = SystemAPI.GetSingleton<EndSimulationEntityCommandBufferSystem.Singleton>().CreateCommandBuffer(World.Unmanaged);
 
         foreach (var (request, requestEntity) in SystemAPI.Query<RefRO<BuildingDestroyRequest>>().WithEntityAccess())
@@ -42,17 +53,37 @@ public partial class BuildingDestroySystem : SystemBase
                 continue;
             }
 
-            if (targetEntity != Entity.Null &&
-                EntityManager.Exists(targetEntity) &&
-                EntityManager.HasComponent<BuildingOccupant>(targetEntity))
+            if (targetEntity == Entity.Null)
             {
-                int2 anchor = EntityManager
-                    .GetComponentData<GridPosition>(targetEntity)
-                    .gridPosition;
-                RestoreItems(ref ecb, targetEntity, anchor);
-                _chunkMap.TryUnregisterBuilding(targetEntity);
-                ecb.DestroyEntity(targetEntity);
+                ecb.DestroyEntity(requestEntity);
+                continue;
             }
+            if (!EntityManager.Exists(targetEntity))
+            {
+                ecb.DestroyEntity(requestEntity);
+                continue;
+            }
+            if (!EntityManager.HasComponent<BuildingOccupant>(targetEntity))
+            {
+                ecb.DestroyEntity(requestEntity);
+                continue;
+            }
+            if (EntityManager.HasComponent<IndestructibleBuilding>(targetEntity))
+            {
+                ecb.DestroyEntity(requestEntity);
+                continue;
+            }
+
+            int2 anchor = EntityManager
+                .GetComponentData<GridPosition>(targetEntity)
+                .gridPosition;
+            RestoreItems(ref ecb, targetEntity, anchor);
+
+            if (EntityManager.HasComponent<PowerPole>(targetEntity))
+                _powerGrid.TryUnregisterPowerPole(targetEntity);
+
+            _chunkMap.TryUnregisterBuilding(targetEntity);
+            ecb.DestroyEntity(targetEntity);
 
             ecb.DestroyEntity(requestEntity);
         }

@@ -13,6 +13,12 @@ public partial class BuildingUI
         _panel.pickingMode = PickingMode.Position;
         _buildingTitleLabel = _root.Q<Label>("building-title");
         _statusLabel = _root.Q<Label>("building-status");
+        _powerContainer = _root.Q<VisualElement>("power-container");
+        _powerGridLabel = _root.Q<Label>("power-grid");
+        _powerPrimaryLabel = _root.Q<Label>("power-primary");
+        _powerSecondaryLabel = _root.Q<Label>("power-secondary");
+        _powerTertiaryLabel = _root.Q<Label>("power-tertiary");
+        _powerQuaternaryLabel = _root.Q<Label>("power-quaternary");
         _recipeTitleLabel = _root.Q<Label>("recipe-title");
         _currentRecipeLabel = _root.Q<Label>("current-recipe");
         _recipeContainer = _root.Q<VisualElement>("recipe-container");
@@ -24,6 +30,7 @@ public partial class BuildingUI
         _progressBar = _root.Q<ProgressBar>("production-progress");
         _remainingTimeLabel = _root.Q<Label>("remaining-time");
         _speedLabel = _root.Q<Label>("production-speed");
+        _speedReasonLabel = _root.Q<Label>("production-speed-reason");
         _closeButton = _root.Q<Button>("close-button");
 
         _closeButton.clicked += Close;
@@ -39,6 +46,12 @@ public partial class BuildingUI
         _panel = null;
         _buildingTitleLabel = null;
         _statusLabel = null;
+        _powerContainer = null;
+        _powerGridLabel = null;
+        _powerPrimaryLabel = null;
+        _powerSecondaryLabel = null;
+        _powerTertiaryLabel = null;
+        _powerQuaternaryLabel = null;
         _recipeTitleLabel = null;
         _currentRecipeLabel = null;
         _recipeContainer = null;
@@ -50,6 +63,7 @@ public partial class BuildingUI
         _progressBar = null;
         _remainingTimeLabel = null;
         _speedLabel = null;
+        _speedReasonLabel = null;
         _closeButton = null;
         _recipeButtons.Clear();
     }
@@ -61,6 +75,7 @@ public partial class BuildingUI
         _outputTitleLabel.text = "생산 대기 아이템";
         _progressTitleLabel.text = "생산 진행도";
         _inputContainer.RemoveFromClassList("storage-grid");
+        SetVisible(_powerContainer, true);
 
         SetVisible(_recipeTitleLabel, true);
         SetVisible(_currentRecipeLabel, true);
@@ -78,6 +93,7 @@ public partial class BuildingUI
         _outputTitleLabel.text = "채굴 대기 아이템";
         _progressTitleLabel.text = "채굴 진행도";
         _inputContainer.RemoveFromClassList("storage-grid");
+        SetVisible(_powerContainer, true);
 
         SetVisible(_recipeTitleLabel, false);
         SetVisible(_currentRecipeLabel, false);
@@ -94,6 +110,7 @@ public partial class BuildingUI
         _buildingTitleLabel.text = "창고";
         _inputTitleLabel.text = "보관 아이템";
         _inputContainer.AddToClassList("storage-grid");
+        SetVisible(_powerContainer, false);
 
         SetVisible(_recipeTitleLabel, false);
         SetVisible(_currentRecipeLabel, false);
@@ -105,12 +122,29 @@ public partial class BuildingUI
         SetProgressVisible(false);
     }
 
+    private void SetPowerOnlyLayout(string title)
+    {
+        _buildingTitleLabel.text = title;
+        _inputContainer.RemoveFromClassList("storage-grid");
+
+        SetVisible(_powerContainer, true);
+        SetVisible(_recipeTitleLabel, false);
+        SetVisible(_currentRecipeLabel, false);
+        SetVisible(_recipeContainer, false);
+        SetVisible(_inputTitleLabel, false);
+        SetVisible(_inputContainer, false);
+        SetVisible(_outputTitleLabel, false);
+        SetVisible(_outputContainer, false);
+        SetProgressVisible(false);
+    }
+
     private void SetProgressVisible(bool visible)
     {
         SetVisible(_progressTitleLabel, visible);
         SetVisible(_progressBar, visible);
         SetVisible(_remainingTimeLabel, visible);
         SetVisible(_speedLabel, visible);
+        SetVisible(_speedReasonLabel, visible);
     }
 
     private static void SetVisible(VisualElement element, bool visible)

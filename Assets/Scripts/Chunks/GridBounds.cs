@@ -1,3 +1,4 @@
+using System.Collections.Generic;
 using Unity.Mathematics;
 
 public readonly struct GridBounds
@@ -22,6 +23,17 @@ public readonly struct GridBounds
                Max.y >= other.Min.y &&
                Min.x <= other.Max.x &&
                Min.y <= other.Max.y;
+    }
+
+    public void GetCells(List<int2> results)
+    {
+        results.Clear();
+
+        for (int y = Min.y; y <= Max.y; y++)
+        {
+            for (int x = Min.x; x <= Max.x; x++)
+                results.Add(new int2(x, y));
+        }
     }
 
     public int2 Min { get; }

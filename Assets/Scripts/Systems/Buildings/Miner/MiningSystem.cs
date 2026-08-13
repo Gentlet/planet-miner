@@ -72,6 +72,11 @@ public partial class MiningSystem : SystemBase
                 .dir;
             DynamicBuffer<ProducedItemElement> producedItems =
                 EntityManager.GetBuffer<ProducedItemElement>(minerEntity);
+            float progressDeltaTime = PowerProductionUtility
+                .GetProgressDeltaTime(
+                    EntityManager,
+                    minerEntity,
+                    deltaTime);
 
             Mine(
                 ref ecb,
@@ -82,7 +87,7 @@ public partial class MiningSystem : SystemBase
                 ref miner,
                 anchor,
                 direction,
-                deltaTime);
+                progressDeltaTime);
 
             EntityManager.SetComponentData(minerEntity, miner);
         }
@@ -133,12 +138,12 @@ public partial class MiningSystem : SystemBase
         ref Miner miner,
         int2 anchor,
         DirectionEnum direction,
-        float deltaTime)
+        float progressDeltaTime)
     {
         if (miner.speed <= 0f)
             return;
 
-        miner.timer += deltaTime;
+        miner.timer += progressDeltaTime;
 
         if (miner.timer < miner.speed)
             return;

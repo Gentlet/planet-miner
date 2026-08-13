@@ -13,6 +13,14 @@
                 </ui:VisualElement>
                 <ui:Label name="building-status" text="레시피를 선택하세요" class="status-label status-waiting"/>
                 <ui:ScrollView class="content-scroll">
+                    <ui:VisualElement name="power-container" class="power-container">
+                        <ui:Label name="power-title" text="전력" class="section-title"/>
+                        <ui:Label name="power-grid" class="power-information-label"/>
+                        <ui:Label name="power-primary" class="power-information-label"/>
+                        <ui:Label name="power-secondary" class="power-information-label"/>
+                        <ui:Label name="power-tertiary" class="power-information-label"/>
+                        <ui:Label name="power-quaternary" class="power-information-label"/>
+                    </ui:VisualElement>
                     <ui:Label name="recipe-title" text="레시피" class="section-title"/>
                     <ui:Label name="current-recipe" text="현재 레시피: 없음" class="current-recipe"/>
                     <ui:VisualElement name="recipe-container" class="recipe-container"/>
@@ -24,6 +32,7 @@
                     <ui:ProgressBar name="production-progress" low-value="0" high-value="100" value="0" title="0%" class="production-progress"/>
                     <ui:Label name="remaining-time" text="생산 대기" class="information-label"/>
                     <ui:Label name="production-speed" text="생산 속도: ×1" class="information-label speed-label"/>
+                    <ui:Label name="production-speed-reason" text="속도 변경 이유: 전력 정상 공급" class="information-label speed-reason-label"/>
                 </ui:ScrollView>
             </ui:VisualElement>
         </ui:VisualElement>

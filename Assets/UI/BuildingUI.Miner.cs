@@ -23,6 +23,7 @@ public partial class BuildingUI
             storageLimits,
             "배출 대기");
         UpdateMinerStatus(miner, producedItems, storageLimits);
+        RefreshPowerConsumer();
         UpdateMinerProgress(miner);
     }
 
@@ -56,6 +57,9 @@ public partial class BuildingUI
 
     private void UpdateMinerProgress(Miner miner)
     {
+        float productionSpeedMultiplier = GetProductionSpeedMultiplier(
+            out string speedChangeReason);
+        _speedReasonLabel.text = speedChangeReason;
         float progressRatio = miner.speed > 0f
             ? math.saturate(miner.timer / miner.speed)
             : 0f;
@@ -63,11 +67,22 @@ public partial class BuildingUI
 
         _progressBar.value = progressPercent;
         _progressBar.title = $"{progressPercent:0}%";
+
+        if (miner.speed > 0f && productionSpeedMultiplier > 0f)
+        {
+            float remainingTime = math.max(0f, miner.speed - miner.timer) /
+                                  productionSpeedMultiplier;
+            float effectiveMiningTime = miner.speed / productionSpeedMultiplier;
+            float itemsPerMinute = 60f / effectiveMiningTime;
+            _remainingTimeLabel.text = $"다음 채굴까지: {remainingTime:0.0}초";
+            _speedLabel.text =
+                $"채굴 속도: 1회 {effectiveMiningTime:0.##}초  ·  분당 {itemsPerMinute:0.#}개";
+            return;
+        }
+
         _remainingTimeLabel.text = miner.speed > 0f
-            ? $"다음 채굴까지: {math.max(0f, miner.speed - miner.timer):0.0}초"
+            ? "다음 채굴까지: 전력 공급 대기"
             : "채굴 대기";
-        _speedLabel.text = miner.speed > 0f
-            ? $"채굴 속도: {miner.speed:0.##}초당 1개"
-            : "채굴 속도: 정지";
+        _speedLabel.text = "채굴 속도: 정지";
     }
 }

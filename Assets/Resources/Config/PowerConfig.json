@@ -1,0 +1,35 @@
+{
+  "powerPoles": [
+    {
+      "buildingType": "PowerPole",
+      "supplyRangeX": 5,
+      "supplyRangeY": 5,
+      "connectionRangeX": 8,
+      "connectionRangeY": 8
+    }
+  ],
+  "generators": [
+    {
+      "generatorType": "MainFacility",
+      "maximumGeneration": 40.0
+    },
+    {
+      "generatorType": "CoalGenerator",
+      "maximumGeneration": 100.0
+    }
+  ],
+  "coalGenerator": {
+    "coalEnergyPerItem": 600.0,
+    "fuelStorageCapacity": 10
+  },
+  "consumers": [
+    {
+      "buildingType": "Miner",
+      "maximumConsumption": 10.0
+    },
+    {
+      "buildingType": "Crafter",
+      "maximumConsumption": 20.0
+    }
+  ]
+}

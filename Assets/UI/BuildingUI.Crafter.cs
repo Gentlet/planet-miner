@@ -38,6 +38,7 @@ public partial class BuildingUI
 
         UpdateRecipeSelection(crafter.selectedItemType);
         UpdateStatus(crafter, hasRecipe, selectedRecipe, ingredients);
+        RefreshPowerConsumer();
         UpdateInventory(
             crafter,
             hasRecipe,
@@ -243,6 +244,9 @@ public partial class BuildingUI
         bool hasRecipe,
         CrafterRecipeElement recipe)
     {
+        float productionSpeedMultiplier = GetProductionSpeedMultiplier(
+            out string speedChangeReason);
+        _speedReasonLabel.text = speedChangeReason;
         float progressRatio = 0f;
         float requiredTime = 0f;
 
@@ -260,29 +264,40 @@ public partial class BuildingUI
         _progressBar.value = progressPercent;
         _progressBar.title = $"{progressPercent:0}%";
 
-        if (crafter.state == CrafterStateEnum.Crafting)
-            _remainingTimeLabel.text =
-                $"남은 시간: {math.max(0f, requiredTime - crafter.progress):0.0}초";
+        if (crafter.state == CrafterStateEnum.Crafting &&
+            productionSpeedMultiplier > 0f)
+        {
+            float remainingTime = math.max(0f, requiredTime - crafter.progress) /
+                                  productionSpeedMultiplier;
+            _remainingTimeLabel.text = $"남은 시간: {remainingTime:0.0}초";
+        }
+        else if (crafter.state == CrafterStateEnum.Crafting)
+            _remainingTimeLabel.text = "남은 시간: 전력 공급 대기";
         else if (crafter.state == CrafterStateEnum.WaitingForOutput)
             _remainingTimeLabel.text = "제작 완료 · 배출 공간 대기";
         else
             _remainingTimeLabel.text = "생산 대기";
 
+        float effectiveSpeed = crafter.speed * productionSpeedMultiplier;
+
         if (!hasRecipe)
         {
-            _speedLabel.text = $"생산 속도: ×{crafter.speed:0.##}";
+            _speedLabel.text = effectiveSpeed > 0f
+                ? $"생산 속도: ×{effectiveSpeed:0.##}"
+                : "생산 속도: 정지";
             return;
         }
 
-        if (crafter.speed <= 0f)
+        if (effectiveSpeed <= 0f)
         {
             _speedLabel.text = "생산 속도: 정지";
             return;
         }
 
-        float craftsPerMinute = 60f / requiredTime;
+        float effectiveRequiredTime = recipe.GetCraftTime(effectiveSpeed);
+        float craftsPerMinute = 60f / effectiveRequiredTime;
         _speedLabel.text =
-            $"생산 속도: ×{crafter.speed:0.##}  ·  1회 {requiredTime:0.##}초  ·  분당 {craftsPerMinute:0.#}개";
+            $"생산 속도: ×{effectiveSpeed:0.##}  ·  1회 {effectiveRequiredTime:0.##}초  ·  분당 {craftsPerMinute:0.#}개";
     }
 
     private static string GetIngredientText(

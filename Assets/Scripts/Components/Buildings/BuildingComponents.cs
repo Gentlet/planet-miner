@@ -9,6 +9,9 @@ public enum BuildingTypeEnum : byte
     Splitter,
     Merger,
     Storage,
+    PowerPole,
+    CoalGenerator,
+    MainFacility,
     Count
 }
 
@@ -39,7 +42,12 @@ public struct BuildingPrefabElement : IBufferElementData
 
 public struct BuildingOutputCursor : IComponentData
 {
-    public int nextIndex;
+    public int2 lastOutputCell;
+    public bool hasOutput;
+}
+
+public struct IndestructibleBuilding : IComponentData
+{
 }
 
 public struct ProducedItemElement : IBufferElementData, IItemStorageElement

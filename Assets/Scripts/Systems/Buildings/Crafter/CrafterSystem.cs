@@ -15,7 +15,7 @@ public partial class CrafterSystem : SystemBase
     private readonly List<int2> _footprintCells = new();
     private readonly List<BuildingBoundaryConnection> _boundaryConnections = new();
     private readonly List<int2> _outputCells = new();
-    private readonly List<InputItem> _inputItems = new();
+    private readonly List<BuildingInputItem> _inputItems = new();
     private readonly HashSet<Entity> _inputItemDeduplication = new();
 
     protected override void OnCreate()
@@ -86,12 +86,17 @@ public partial class CrafterSystem : SystemBase
 
             DynamicBuffer<StoredItemElement> storedItems =
                 EntityManager.GetBuffer<StoredItemElement>(crafterEntity);
+            float progressDeltaTime = PowerProductionUtility
+                .GetProgressDeltaTime(
+                    EntityManager,
+                    crafterEntity,
+                    deltaTime);
             UpdateCrafting(
                 ref crafter,
                 storedItems,
                 recipes,
                 ingredients,
-                deltaTime);
+                progressDeltaTime);
 
             TryCompleteCraft(
                 ref ecb,
@@ -158,8 +163,8 @@ public partial class CrafterSystem : SystemBase
 
         for (int i = 0; i < _inputItems.Count; i++)
         {
-            InputItem inputItem = _inputItems[i];
-            Entity itemEntity = inputItem.entity;
+            BuildingInputItem inputItem = _inputItems[i];
+            Entity itemEntity = inputItem.Entity;
             DynamicBuffer<StoredItemElement> storedItems =
                 EntityManager.GetBuffer<StoredItemElement>(crafterEntity);
 
@@ -174,7 +179,7 @@ public partial class CrafterSystem : SystemBase
 
             _itemStorage.TryStoreItemImmediate(
                 crafterEntity,
-                inputItem.sourceCell,
+                inputItem.SourceCell,
                 itemEntity);
         }
     }
@@ -184,38 +189,16 @@ public partial class CrafterSystem : SystemBase
         int2 size,
         DirectionEnum direction)
     {
-        _inputItems.Clear();
-        _inputItemDeduplication.Clear();
-        BuildingFootprintUtility.GetOccupiedCells(
+        BuildingInputCollectionUtility.CollectItems(
+            _chunkMap,
+            EntityManager,
             anchor,
             size,
             direction,
-            _footprintCells);
-
-        for (int cellIndex = 0;
-             cellIndex < _footprintCells.Count;
-             cellIndex++)
-        {
-            int2 buildingCell = _footprintCells[cellIndex];
-            _chunkMap.GetItems(buildingCell, _itemsInCell);
-
-            for (int itemIndex = 0;
-                 itemIndex < _itemsInCell.Count;
-                 itemIndex++)
-            {
-                Entity itemEntity = _itemsInCell[itemIndex];
-
-                if (_inputItemDeduplication.Contains(itemEntity))
-                    continue;
-
-                _inputItemDeduplication.Add(itemEntity);
-                _inputItems.Add(new InputItem
-                {
-                    entity = itemEntity,
-                    sourceCell = buildingCell
-                });
-            }
-        }
+            _footprintCells,
+            _itemsInCell,
+            _inputItemDeduplication,
+            _inputItems);
     }
 
     private bool CanDepositItem(
@@ -247,7 +230,7 @@ public partial class CrafterSystem : SystemBase
         DynamicBuffer<StoredItemElement> storedItems,
         NativeArray<CrafterRecipeElement> recipes,
         NativeArray<CrafterRecipeIngredientElement> ingredients,
-        float deltaTime)
+        float progressDeltaTime)
     {
         if (!crafter.selectedItemType.IsValid() ||
             !recipes.TryFindRecipe(crafter.selectedItemType, out CrafterRecipeElement recipe))
@@ -281,7 +264,7 @@ public partial class CrafterSystem : SystemBase
         }
 
         float requiredTime = recipe.GetCraftTime(crafter.speed);
-        crafter.progress += deltaTime;
+        crafter.progress += progressDeltaTime;
 
         if (crafter.progress >= requiredTime)
         {
@@ -385,11 +368,5 @@ public partial class CrafterSystem : SystemBase
             _itemStorage = World.GetExistingSystemManaged<ItemStorageSystem>();
 
         return _chunkMap != null && _itemStorage != null;
-    }
-
-    private struct InputItem
-    {
-        public Entity entity;
-        public int2 sourceCell;
     }
 }

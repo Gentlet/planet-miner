@@ -76,7 +76,15 @@ public static class BuildingBeltConnectionUtility
         if (outputCells.Count == 0)
             return false;
 
-        int startIndex = cursor.nextIndex % outputCells.Count;
+        int startIndex = 0;
+
+        if (cursor.hasOutput)
+        {
+            int lastOutputIndex = outputCells.IndexOf(cursor.lastOutputCell);
+
+            if (lastOutputIndex >= 0)
+                startIndex = (lastOutputIndex + 1) % outputCells.Count;
+        }
 
         for (int offset = 0; offset < outputCells.Count; offset++)
         {
@@ -88,7 +96,8 @@ public static class BuildingBeltConnectionUtility
                     outputCells[outputIndex]))
                 continue;
 
-            cursor.nextIndex = (outputIndex + 1) % outputCells.Count;
+            cursor.lastOutputCell = outputCells[outputIndex];
+            cursor.hasOutput = true;
             return true;
         }
 

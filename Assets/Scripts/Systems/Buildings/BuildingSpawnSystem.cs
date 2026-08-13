@@ -7,10 +7,15 @@ public partial class BuildingSpawnSystem : SystemBase
 {
     private const int DefaultStorageCapacity = 10;
     private ChunkMapSystem _chunkMap;
+    private EntityQuery _powerConfigQuery;
 
     protected override void OnCreate()
     {
         _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
+        _powerConfigQuery = GetEntityQuery(
+            ComponentType.ReadOnly<PowerConfig>(),
+            ComponentType.ReadOnly<PowerConsumerConfigElement>(),
+            ComponentType.ReadOnly<PowerGeneratorConfigElement>());
         RequireForUpdate<BuildingPrefabElement>();
         RequireForUpdate<BuildingSpawnRequest>();
     }
@@ -31,16 +36,50 @@ public partial class BuildingSpawnSystem : SystemBase
             .GetSingleton<BeginSimulationEntityCommandBufferSystem.Singleton>()
             .CreateCommandBuffer(World.Unmanaged);
 
+        if (_powerConfigQuery.IsEmptyIgnoreFilter)
+        {
+            Debug.LogError(
+                "Building spawn requests were rejected because the power config was not loaded.");
+
+            foreach (var (request, requestEntity) in
+                     SystemAPI.Query<RefRO<BuildingSpawnRequest>>()
+                         .WithEntityAccess())
+            {
+                BuildingSpawnRequest spawnRequest = request.ValueRO;
+                _chunkMap.ReleaseBuildingReservation(
+                    spawnRequest.gridPosition,
+                    spawnRequest.type,
+                    spawnRequest.dir);
+                ecb.DestroyEntity(requestEntity);
+            }
+
+            return;
+        }
+
+        DynamicBuffer<PowerConsumerConfigElement> powerConsumerConfigs =
+            _powerConfigQuery
+                .GetSingletonBuffer<PowerConsumerConfigElement>(true);
+        DynamicBuffer<PowerGeneratorConfigElement> powerGeneratorConfigs =
+            _powerConfigQuery
+                .GetSingletonBuffer<PowerGeneratorConfigElement>(true);
+
         foreach (var (request, requestEntity) in
                  SystemAPI.Query<RefRO<BuildingSpawnRequest>>().WithEntityAccess())
         {
             BuildingSpawnRequest spawnRequest = request.ValueRO;
 
-            if (!TryFindDefinition(
-                    definitions,
+            if (!definitions.TryGetDefinition(
                     spawnRequest.type,
-                    out BuildingPrefabElement definition) ||
-                definition.prefab == Entity.Null)
+                    out BuildingPrefabElement definition))
+            {
+                _chunkMap.ReleaseBuildingReservation(
+                    spawnRequest.gridPosition,
+                    spawnRequest.type,
+                    spawnRequest.dir);
+                ecb.DestroyEntity(requestEntity);
+                continue;
+            }
+            if (definition.prefab == Entity.Null)
             {
                 _chunkMap.ReleaseBuildingReservation(
                     spawnRequest.gridPosition,
@@ -73,6 +112,12 @@ public partial class BuildingSpawnSystem : SystemBase
             ecb.AddComponent(instance, new BuildingOccupantRequest());
 
             AddBuildingBehavior(ref ecb, instance, spawnRequest, anchor);
+            AddPowerComponents(
+                ref ecb,
+                instance,
+                spawnRequest.type,
+                powerConsumerConfigs,
+                powerGeneratorConfigs);
             ecb.DestroyEntity(requestEntity);
         }
     }
@@ -134,24 +179,82 @@ public partial class BuildingSpawnSystem : SystemBase
                 ecb.AddComponent(instance, new BuildingOutputCursor());
                 ecb.AddBuffer<StoredItemElement>(instance);
                 break;
+            case BuildingTypeEnum.PowerPole:
+                ecb.AddComponent(instance, new PowerPole());
+                break;
+            case BuildingTypeEnum.CoalGenerator:
+                ecb.AddComponent(instance, new CoalGenerator());
+                ecb.AddBuffer<StoredItemElement>(instance);
+                break;
         }
     }
 
-    private static bool TryFindDefinition(
-        DynamicBuffer<BuildingPrefabElement> definitions,
+    private static void AddPowerComponents(
+        ref EntityCommandBuffer ecb,
+        Entity instance,
         BuildingTypeEnum type,
-        out BuildingPrefabElement definition)
+        DynamicBuffer<PowerConsumerConfigElement> consumerConfigs,
+        DynamicBuffer<PowerGeneratorConfigElement> generatorConfigs)
     {
-        for (int i = 0; i < definitions.Length; i++)
+        AddPowerConsumerIfConfigured(
+            ref ecb,
+            instance,
+            type,
+            consumerConfigs);
+
+        if (type == BuildingTypeEnum.CoalGenerator)
         {
-            if (definitions[i].type != type)
+            AddPowerGeneratorIfConfigured(
+                ref ecb,
+                instance,
+                PowerGeneratorTypeEnum.CoalGenerator,
+                generatorConfigs);
+        }
+    }
+
+    private static void AddPowerConsumerIfConfigured(
+        ref EntityCommandBuffer ecb,
+        Entity instance,
+        BuildingTypeEnum type,
+        DynamicBuffer<PowerConsumerConfigElement> configs)
+    {
+        for (int i = 0; i < configs.Length; i++)
+        {
+            if (configs[i].buildingType != type)
                 continue;
 
-            definition = definitions[i];
-            return true;
+            ecb.AddComponent(
+                instance,
+                new PowerConsumer
+                {
+                    maximumConsumption = configs[i].maximumConsumption,
+                    currentConsumption = 0f,
+                    supplyRatio = 0f
+                });
+            return;
         }
+    }
 
-        definition = default;
-        return false;
+    private static void AddPowerGeneratorIfConfigured(
+        ref EntityCommandBuffer ecb,
+        Entity instance,
+        PowerGeneratorTypeEnum generatorType,
+        DynamicBuffer<PowerGeneratorConfigElement> configs)
+    {
+        for (int i = 0; i < configs.Length; i++)
+        {
+            if (configs[i].generatorType != generatorType)
+                continue;
+
+            ecb.AddComponent(
+                instance,
+                new PowerGenerator
+                {
+                    type = generatorType,
+                    maximumGeneration = configs[i].maximumGeneration,
+                    currentGeneration = 0f
+                });
+            return;
+        }
     }
 }

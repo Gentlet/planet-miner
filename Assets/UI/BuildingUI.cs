@@ -26,6 +26,12 @@ public partial class BuildingUI : MonoBehaviour
     private UIDocument _uiDocument;
     private Label _buildingTitleLabel;
     private Label _statusLabel;
+    private VisualElement _powerContainer;
+    private Label _powerGridLabel;
+    private Label _powerPrimaryLabel;
+    private Label _powerSecondaryLabel;
+    private Label _powerTertiaryLabel;
+    private Label _powerQuaternaryLabel;
     private Label _recipeTitleLabel;
     private Label _currentRecipeLabel;
     private VisualElement _recipeContainer;
@@ -37,6 +43,7 @@ public partial class BuildingUI : MonoBehaviour
     private ProgressBar _progressBar;
     private Label _remainingTimeLabel;
     private Label _speedLabel;
+    private Label _speedReasonLabel;
     private Button _closeButton;
 
     private void Awake()
@@ -124,6 +131,24 @@ public partial class BuildingUI : MonoBehaviour
             return;
         }
 
+        if (_entityManager.HasComponent<CoalGenerator>(_selectedBuilding))
+        {
+            RefreshCoalGenerator();
+            return;
+        }
+
+        if (_entityManager.HasComponent<MainFacility>(_selectedBuilding))
+        {
+            RefreshMainFacility();
+            return;
+        }
+
+        if (_entityManager.HasComponent<PowerPole>(_selectedBuilding))
+        {
+            RefreshPowerPole();
+            return;
+        }
+
         if (!TryGetConfigEntity(out Entity configEntity))
         {
             Close();
@@ -158,7 +183,10 @@ public partial class BuildingUI : MonoBehaviour
     {
         return _entityManager.HasComponent<Crafter>(buildingEntity) ||
                _entityManager.HasComponent<Miner>(buildingEntity) ||
-               _entityManager.HasComponent<Storage>(buildingEntity);
+               _entityManager.HasComponent<Storage>(buildingEntity) ||
+               _entityManager.HasComponent<CoalGenerator>(buildingEntity) ||
+               _entityManager.HasComponent<MainFacility>(buildingEntity) ||
+               _entityManager.HasComponent<PowerPole>(buildingEntity);
     }
 
     private bool TryGetConfigEntity(out Entity configEntity)

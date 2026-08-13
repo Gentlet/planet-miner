@@ -2,7 +2,6 @@ using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
-using Unity.Transforms;
 
 [UpdateAfter(typeof(BeltMoveSystem))]
 [UpdateAfter(typeof(MergerSystem))]
@@ -14,7 +13,7 @@ public partial class StorageSystem : SystemBase
     private ItemTrackingSystem _itemTracking;
     private EntityQuery _storageQuery;
     private readonly List<Entity> _itemsInCell = new();
-    private readonly List<InputItem> _inputItems = new();
+    private readonly List<BuildingInputItem> _inputItems = new();
     private readonly List<int2> _footprintCells = new();
     private readonly List<BuildingBoundaryConnection> _boundaryConnections = new();
     private readonly List<int2> _outputCells = new();
@@ -124,8 +123,8 @@ public partial class StorageSystem : SystemBase
 
         for (int i = 0; i < _inputItems.Count; i++)
         {
-            InputItem inputItem = _inputItems[i];
-            Entity itemEntity = inputItem.entity;
+            BuildingInputItem inputItem = _inputItems[i];
+            Entity itemEntity = inputItem.Entity;
             DynamicBuffer<StoredItemElement> storedItems =
                 EntityManager.GetBuffer<StoredItemElement>(
                     storageEntity,
@@ -140,7 +139,7 @@ public partial class StorageSystem : SystemBase
 
             _itemStorage.TryStoreItemImmediate(
                 storageEntity,
-                inputItem.sourceCell,
+                inputItem.SourceCell,
                 itemEntity);
         }
     }
@@ -150,49 +149,17 @@ public partial class StorageSystem : SystemBase
         int2 storageSize,
         DirectionEnum forward)
     {
-        _inputItems.Clear();
-        _inputItemDeduplication.Clear();
-        BuildingFootprintUtility.GetOccupiedCells(
+        BuildingInputCollectionUtility.CollectItems(
+            _chunkMap,
+            EntityManager,
             storageCell,
             storageSize,
             forward,
-            _footprintCells);
-
-        for (int cellIndex = 0;
-             cellIndex < _footprintCells.Count;
-             cellIndex++)
-        {
-            int2 buildingCell = _footprintCells[cellIndex];
-            _chunkMap.GetItems(buildingCell, _itemsInCell);
-
-            for (int itemIndex = 0;
-                 itemIndex < _itemsInCell.Count;
-                 itemIndex++)
-            {
-                Entity itemEntity = _itemsInCell[itemIndex];
-
-                if (_inputItemDeduplication.Contains(itemEntity))
-                    continue;
-
-                float2 itemPosition = EntityManager
-                    .GetComponentData<LocalTransform>(itemEntity)
-                    .Position.xy;
-
-                _inputItemDeduplication.Add(itemEntity);
-                _inputItems.Add(new InputItem
-                {
-                    entity = itemEntity,
-                    sourceCell = buildingCell,
-                    distanceSq = math.distancesq(
-                        itemPosition,
-                        new float2(
-                            buildingCell.x,
-                            buildingCell.y))
-                });
-            }
-        }
-
-        _inputItems.Sort(CompareInputItems);
+            _footprintCells,
+            _itemsInCell,
+            _inputItemDeduplication,
+            _inputItems);
+        BuildingInputCollectionUtility.SortByDistance(_inputItems);
     }
 
     private bool CanDepositItem(
@@ -226,21 +193,6 @@ public partial class StorageSystem : SystemBase
                usedSlotCount < capacity;
     }
 
-    private static int CompareInputItems(InputItem first, InputItem second)
-    {
-        int distanceComparison =
-            first.distanceSq.CompareTo(second.distanceSq);
-
-        if (distanceComparison != 0)
-            return distanceComparison;
-
-        int indexComparison =
-            first.entity.Index.CompareTo(second.entity.Index);
-        return indexComparison != 0
-            ? indexComparison
-            : first.entity.Version.CompareTo(second.entity.Version);
-    }
-
     private bool EnsureSystems()
     {
         if (_chunkMap == null)
@@ -255,12 +207,5 @@ public partial class StorageSystem : SystemBase
         return _chunkMap != null &&
                _itemStorage != null &&
                _itemTracking != null;
-    }
-
-    private struct InputItem
-    {
-        public Entity entity;
-        public int2 sourceCell;
-        public float distanceSq;
     }
 }

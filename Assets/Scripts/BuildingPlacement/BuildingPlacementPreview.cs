@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using Unity.Mathematics;
 using UnityEngine;
 
-public class BuildingPlacementPreview : MonoBehaviour
+public partial class BuildingPlacementPreview : MonoBehaviour
 {
     [Serializable]
     private struct PreviewSpriteEntry
@@ -62,6 +62,8 @@ public class BuildingPlacementPreview : MonoBehaviour
         {
             _previewObjects[i].SetActive(false);
         }
+
+        UpdatePowerPoleRangePreview(bpo);
     }
 
     public void UpdatePreviewColors(BuildingPlacementOperation bpo)
@@ -78,6 +80,9 @@ public class BuildingPlacementPreview : MonoBehaviour
     {
         foreach (GameObject previewObject in _previewObjects)
             previewObject.SetActive(false);
+
+        HideObjects(_powerSupplyPreviewObjects);
+        HideObjects(_connectablePowerPolePreviewObjects);
     }
 
     private void SetSpriteAndSize(

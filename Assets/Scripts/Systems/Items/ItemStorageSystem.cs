@@ -189,6 +189,59 @@ public partial class ItemStorageSystem : SystemBase
         storedItems.RemoveAt(index);
     }
 
+    public int GetStoredItemCount(Entity owner, ItemTypeEnum itemType)
+    {
+        if (owner == Entity.Null)
+            return 0;
+
+        if (!EntityManager.Exists(owner))
+            return 0;
+
+        if (!EntityManager.HasBuffer<StoredItemElement>(owner))
+            return 0;
+
+        DynamicBuffer<StoredItemElement> storedItems =
+            EntityManager.GetBuffer<StoredItemElement>(owner, true);
+        int count = 0;
+
+        for (int i = 0; i < storedItems.Length; i++)
+        {
+            if (storedItems[i].type == itemType)
+                count++;
+        }
+
+        return count;
+    }
+
+    public bool TryConsumeStoredItem(
+        ref EntityCommandBuffer ecb,
+        Entity owner,
+        ItemTypeEnum itemType)
+    {
+        if (owner == Entity.Null)
+            return false;
+
+        if (!EntityManager.Exists(owner))
+            return false;
+
+        if (!EntityManager.HasBuffer<StoredItemElement>(owner))
+            return false;
+
+        DynamicBuffer<StoredItemElement> storedItems =
+            EntityManager.GetBuffer<StoredItemElement>(owner);
+
+        for (int i = 0; i < storedItems.Length; i++)
+        {
+            if (storedItems[i].type != itemType)
+                continue;
+
+            DestroyStoredItem(ref ecb, storedItems, i);
+            return true;
+        }
+
+        return false;
+    }
+
     private bool EnsureChunkMap()
     {
         if (_chunkMap == null)
