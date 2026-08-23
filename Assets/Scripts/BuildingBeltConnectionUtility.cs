@@ -76,6 +76,15 @@ public static class BuildingBeltConnectionUtility
         if (outputCells.Count == 0)
             return false;
 
+        DynamicBuffer<TElement> storedItems =
+            entityManager.GetBuffer<TElement>(buildingEntity, true);
+        int storedItemIndex = FindFirstUnreservedItemIndex(
+            entityManager,
+            storedItems);
+
+        if (storedItemIndex < 0)
+            return false;
+
         int startIndex = 0;
 
         if (cursor.hasOutput)
@@ -92,7 +101,7 @@ public static class BuildingBeltConnectionUtility
 
             if (!itemStorage.TryRestoreItemImmediate<TElement>(
                     buildingEntity,
-                    0,
+                    storedItemIndex,
                     outputCells[outputIndex]))
                 continue;
 
@@ -102,6 +111,30 @@ public static class BuildingBeltConnectionUtility
         }
 
         return false;
+    }
+
+    private static int FindFirstUnreservedItemIndex<TElement>(
+        EntityManager entityManager,
+        DynamicBuffer<TElement> storedItems)
+        where TElement : unmanaged, IBufferElementData, IItemStorageElement
+    {
+        for (int i = 0; i < storedItems.Length; i++)
+        {
+            Entity itemEntity = storedItems[i].ItemEntity;
+
+            if (itemEntity == Entity.Null)
+                continue;
+
+            if (!entityManager.Exists(itemEntity))
+                continue;
+
+            if (entityManager.HasComponent<DroneItemReservation>(itemEntity))
+                continue;
+
+            return i;
+        }
+
+        return -1;
     }
 
     private static void GetBoundaryConnections(

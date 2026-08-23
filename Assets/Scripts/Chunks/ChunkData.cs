@@ -14,6 +14,7 @@ public class ChunkCell
     private readonly int2 _worldPosition;
     private readonly List<Entity> _items = new();
     private readonly List<Entity> _coveringPowerPoles = new();
+    private readonly List<Entity> _coveringDroneStations = new();
     private Entity _buildingEntity;
     private Entity _resourceEntity;
     private ResourceTypeEnum _resourceType;
@@ -126,6 +127,25 @@ public class ChunkCell
         return _coveringPowerPoles.Contains(powerPoleEntity);
     }
 
+    public bool TryAddCoveringDroneStation(Entity stationEntity)
+    {
+        if (_coveringDroneStations.Contains(stationEntity))
+            return false;
+
+        _coveringDroneStations.Add(stationEntity);
+        return true;
+    }
+
+    public bool TryRemoveCoveringDroneStation(Entity stationEntity)
+    {
+        return _coveringDroneStations.Remove(stationEntity);
+    }
+
+    public bool HasCoveringDroneStation(Entity stationEntity)
+    {
+        return _coveringDroneStations.Contains(stationEntity);
+    }
+
     public int2 WorldPosition => _worldPosition;
     public Entity BuildingEntity => _buildingEntity;
     public Entity ResourceEntity => _resourceEntity;
@@ -133,6 +153,8 @@ public class ChunkCell
     public FloorTypeEnum Floor => _floor;
     public IReadOnlyList<Entity> Items => _items;
     public IReadOnlyList<Entity> CoveringPowerPoles => _coveringPowerPoles;
+    public IReadOnlyList<Entity> CoveringDroneStations =>
+        _coveringDroneStations;
     public bool HasBuilding => _buildingEntity != Entity.Null;
     public bool HasResource =>
         _resourceEntity != Entity.Null && _resourceType != ResourceTypeEnum.None;

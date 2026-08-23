@@ -47,6 +47,22 @@
           "amount": 2
         }
       ]
+    },
+    {
+      "id": 5,
+      "outputItemType": "Drone",
+      "craftTime": 4.0,
+      "conditions": [],
+      "ingredients": [
+        {
+          "itemType": "Iron_Stick",
+          "amount": 2
+        },
+        {
+          "itemType": "Copper_Stick",
+          "amount": 2
+        }
+      ]
     }
   ]
 }

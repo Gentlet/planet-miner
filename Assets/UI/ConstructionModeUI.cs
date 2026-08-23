@@ -18,6 +18,7 @@ public class ConstructionModeUI : MonoBehaviour
     private Button storageButton;
     private Button powerPoleButton;
     private Button coalGeneratorButton;
+    private Button droneStationButton;
     private Label copyStatusLabel;
     private BuildingTypeEnum? _selectedBuildingType;
 
@@ -39,6 +40,7 @@ public class ConstructionModeUI : MonoBehaviour
         storageButton = root.Q<Button>("storage-button");
         powerPoleButton = root.Q<Button>("power-pole-button");
         coalGeneratorButton = root.Q<Button>("coal-generator-button");
+        droneStationButton = root.Q<Button>("drone-station-button");
         copyStatusLabel = root.Q<Label>("copy-status-label");
 
         beltButton.clicked += OnBeltButtonClicked;
@@ -49,6 +51,7 @@ public class ConstructionModeUI : MonoBehaviour
         storageButton.clicked += OnStorageButtonClicked;
         powerPoleButton.clicked += OnPowerPoleButtonClicked;
         coalGeneratorButton.clicked += OnCoalGeneratorButtonClicked;
+        droneStationButton.clicked += OnDroneStationButtonClicked;
         _bpc.PlacementSelectionCleared += OnPlacementSelectionCleared;
 
         ClearBuildingSelection();
@@ -98,6 +101,8 @@ public class ConstructionModeUI : MonoBehaviour
             OnPowerPoleButtonClicked();
         else if (keyboard.digit8Key.wasPressedThisFrame)
             OnCoalGeneratorButtonClicked();
+        else if (keyboard.digit9Key.wasPressedThisFrame)
+            OnDroneStationButtonClicked();
     }
 
     private void OnDisable()
@@ -129,6 +134,9 @@ public class ConstructionModeUI : MonoBehaviour
         if (coalGeneratorButton != null)
             coalGeneratorButton.clicked -= OnCoalGeneratorButtonClicked;
 
+        if (droneStationButton != null)
+            droneStationButton.clicked -= OnDroneStationButtonClicked;
+
         beltButton = null;
         minerButton = null;
         crafterButton = null;
@@ -137,6 +145,7 @@ public class ConstructionModeUI : MonoBehaviour
         storageButton = null;
         powerPoleButton = null;
         coalGeneratorButton = null;
+        droneStationButton = null;
         copyStatusLabel = null;
     }
 
@@ -180,6 +189,13 @@ public class ConstructionModeUI : MonoBehaviour
         ToggleBuildingSelection(
             BuildingTypeEnum.CoalGenerator,
             coalGeneratorButton);
+    }
+
+    private void OnDroneStationButtonClicked()
+    {
+        ToggleBuildingSelection(
+            BuildingTypeEnum.DroneStation,
+            droneStationButton);
     }
 
     private void ToggleBuildingSelection(BuildingTypeEnum type, Button button)
@@ -232,5 +248,6 @@ public class ConstructionModeUI : MonoBehaviour
         storageButton?.RemoveFromClassList(SelectedButtonClass);
         powerPoleButton?.RemoveFromClassList(SelectedButtonClass);
         coalGeneratorButton?.RemoveFromClassList(SelectedButtonClass);
+        droneStationButton?.RemoveFromClassList(SelectedButtonClass);
     }
 }

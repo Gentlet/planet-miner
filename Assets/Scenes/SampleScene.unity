@@ -150,6 +150,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b2160924d06ebc94b8739d84f1be9854, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BuildingPlacementPreview
+  powerSupplyColor: {r: 0.1, g: 0.55, b: 1, a: 0.18}
+  connectablePowerPoleColor: {r: 1, g: 0.85, b: 0.1, a: 0.7}
   previewPrefab: {fileID: 9106238281758111696, guid: e7e36e9a5a364494cb59e30cab94c87a, type: 3}
   previewSprites:
   - type: 0
@@ -168,10 +170,10 @@ MonoBehaviour:
     sprite: {fileID: -5474660635284629554, guid: 11b0e68d82fc6cd438e826da8751a743, type: 3}
   - type: 7
     sprite: {fileID: 746440195830365729, guid: 166e46e5583893446a36c920f0f26d4c, type: 3}
+  - type: 9
+    sprite: {fileID: -6433847079836243096, guid: 997f8fadccad6494698acd5374a68308, type: 3}
   canPlaceColor: {r: 0, g: 1, b: 0, a: 0.5}
   blockedColor: {r: 1, g: 0, b: 0, a: 0.5}
-  powerSupplyColor: {r: 0.1, g: 0.55, b: 1, a: 0.18}
-  connectablePowerPoleColor: {r: 1, g: 0.85, b: 0.1, a: 0.7}
 --- !u!114 &50267807
 MonoBehaviour:
   m_ObjectHideFlags: 0

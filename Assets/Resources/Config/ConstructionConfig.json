@@ -1,0 +1,13 @@
+{
+  "materials": [
+    { "buildingType": "Belt", "itemType": "Iron", "quantity": 1 },
+    { "buildingType": "Miner", "itemType": "Iron", "quantity": 3 },
+    { "buildingType": "Crafter", "itemType": "Iron", "quantity": 3 },
+    { "buildingType": "Splitter", "itemType": "Iron", "quantity": 2 },
+    { "buildingType": "Merger", "itemType": "Iron", "quantity": 2 },
+    { "buildingType": "Storage", "itemType": "Iron", "quantity": 2 },
+    { "buildingType": "PowerPole", "itemType": "Copper", "quantity": 1 },
+    { "buildingType": "CoalGenerator", "itemType": "Iron", "quantity": 4 },
+    { "buildingType": "DroneStation", "itemType": "Iron", "quantity": 5 }
+  ]
+}

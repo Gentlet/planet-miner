@@ -13,9 +13,16 @@ public partial class ItemSpawnSystem : SystemBase
 
     protected override void OnCreate()
     {
-        _spawnRequestQuery = GetEntityQuery(ComponentType.ReadOnly<ItemSpawnRequest>());
+        _spawnRequestQuery = GetEntityQuery(new EntityQueryDesc
+        {
+            Any = new[]
+            {
+                ComponentType.ReadOnly<ItemSpawnRequest>(),
+                ComponentType.ReadOnly<StartingItemSpawnRequest>()
+            }
+        });
         RequireForUpdate<ItemPrefabElement>();
-        RequireForUpdate<ItemSpawnRequest>();
+        RequireForUpdate(_spawnRequestQuery);
     }
 
     protected override void OnUpdate()
@@ -30,10 +37,100 @@ public partial class ItemSpawnSystem : SystemBase
         for (int i = 0; i < requestEntities.Length; i++)
         {
             Entity requestEntity = requestEntities[i];
-            ItemSpawnRequest request =
-                EntityManager.GetComponentData<ItemSpawnRequest>(requestEntity);
 
-            ProcessRequest(requestEntity, request, itemPrefabs);
+            if (EntityManager.HasComponent<ItemSpawnRequest>(requestEntity))
+            {
+                ItemSpawnRequest request = EntityManager
+                    .GetComponentData<ItemSpawnRequest>(requestEntity);
+                ProcessRequest(requestEntity, request, itemPrefabs);
+                continue;
+            }
+
+            StartingItemSpawnRequest startingRequest = EntityManager
+                .GetComponentData<StartingItemSpawnRequest>(requestEntity);
+            ProcessStartingRequest(
+                requestEntity,
+                startingRequest,
+                itemPrefabs);
+        }
+    }
+
+    private void ProcessStartingRequest(
+        Entity requestEntity,
+        StartingItemSpawnRequest request,
+        NativeArray<ItemPrefabElement> itemPrefabs)
+    {
+        try
+        {
+            if (!request.itemType.IsValid())
+            {
+                Debug.LogError(
+                    $"Starting item spawn failed because the item type is invalid. Request: {requestEntity}, Type: {request.itemType}");
+                return;
+            }
+
+            if (request.owner == Entity.Null)
+            {
+                Debug.LogError(
+                    $"Starting item spawn failed because the owner is null. Request: {requestEntity}, Type: {request.itemType}");
+                return;
+            }
+
+            if (!EntityManager.Exists(request.owner))
+            {
+                Debug.LogError(
+                    $"Starting item spawn failed because the owner does not exist. Request: {requestEntity}, Owner: {request.owner}, Type: {request.itemType}");
+                return;
+            }
+
+            if (!EntityManager.HasComponent<GridPosition>(request.owner))
+            {
+                Debug.LogError(
+                    $"Starting item spawn failed because the owner has no grid position. Request: {requestEntity}, Owner: {request.owner}, Type: {request.itemType}");
+                return;
+            }
+
+            if (!EntityManager.HasBuffer<StoredItemElement>(request.owner))
+            {
+                Debug.LogError(
+                    $"Starting item spawn failed because the owner has no stored-item buffer. Request: {requestEntity}, Owner: {request.owner}, Type: {request.itemType}");
+                return;
+            }
+
+            Entity itemPrefab = FindPrefab(itemPrefabs, request.itemType);
+
+            if (itemPrefab == Entity.Null || !EntityManager.Exists(itemPrefab))
+            {
+                Debug.LogError(
+                    $"Starting item spawn failed because no prefab was found. Request: {requestEntity}, Type: {request.itemType}");
+                return;
+            }
+
+            int2 ownerCell = EntityManager
+                .GetComponentData<GridPosition>(request.owner)
+                .gridPosition;
+            Entity itemEntity = SpawnStoredItem(
+                itemPrefab,
+                request.owner,
+                ownerCell,
+                request.itemType);
+            DynamicBuffer<StoredItemElement> storedItems = EntityManager
+                .GetBuffer<StoredItemElement>(request.owner);
+            storedItems.Add(new StoredItemElement
+            {
+                itemEntity = itemEntity,
+                type = request.itemType
+            });
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError(
+                $"Starting item spawn failed with an exception. Request: {requestEntity}, Owner: {request.owner}, Type: {request.itemType}\n{exception}");
+        }
+        finally
+        {
+            if (EntityManager.Exists(requestEntity))
+                EntityManager.DestroyEntity(requestEntity);
         }
     }
 

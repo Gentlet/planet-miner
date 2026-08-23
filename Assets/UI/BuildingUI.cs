@@ -13,6 +13,8 @@ public partial class BuildingUI : MonoBehaviour
     private readonly Dictionary<ItemTypeEnum, int> _producedCounts = new();
     private readonly Dictionary<ItemTypeEnum, Button> _recipeButtons = new();
     private readonly HashSet<ItemTypeEnum> _listedInputTypes = new();
+    private readonly List<ItemTypeEnum> _transferItemTypes = new();
+    private readonly List<string> _transferItemNames = new();
 
     private EntityManager _entityManager;
     private ChunkMapSystem _chunkMap;
@@ -44,6 +46,11 @@ public partial class BuildingUI : MonoBehaviour
     private Label _remainingTimeLabel;
     private Label _speedLabel;
     private Label _speedReasonLabel;
+    private VisualElement _droneTransferContainer;
+    private DropdownField _droneItemField;
+    private IntegerField _droneQuantityField;
+    private Button _droneInsertButton;
+    private Button _droneRemoveButton;
     private Button _closeButton;
 
     private void Awake()

@@ -16,6 +16,7 @@
             <ui:Button name="storage-button" text="창고" class="bottom-button blocking-ui"/>
             <ui:Button name="power-pole-button" text="전신주" class="bottom-button blocking-ui"/>
             <ui:Button name="coal-generator-button" text="석탄 발전기" class="bottom-button blocking-ui"/>
+            <ui:Button name="drone-station-button" text="드론 스테이션" class="bottom-button blocking-ui"/>
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

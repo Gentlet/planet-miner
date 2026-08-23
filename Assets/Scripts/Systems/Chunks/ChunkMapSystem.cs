@@ -8,6 +8,7 @@ public partial class ChunkMapSystem : SystemBase
     private const int initialCapacity = 1024;
     private readonly Dictionary<int2, Chunk> _chunks = new();
     private readonly Dictionary<Entity, int2> _itemCellByEntity = new();
+    private readonly Dictionary<int2, Entity> _constructionSiteByCell = new();
     private readonly HashSet<int2> _activeBeltCells = new();
     private NativeParallelHashMap<int2, Entity> _beltByCell;
     private NativeParallelHashSet<int2> _reservedCells;

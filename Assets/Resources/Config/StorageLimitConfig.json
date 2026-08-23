@@ -31,6 +31,10 @@
     {
       "itemType": "Copper_Stick",
       "maxAmount": 10
+    },
+    {
+      "itemType": "Drone",
+      "maxAmount": 50
     }
   ]
 }

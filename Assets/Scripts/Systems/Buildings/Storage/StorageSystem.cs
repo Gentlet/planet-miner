@@ -26,9 +26,9 @@ public partial class StorageSystem : SystemBase
         _itemTracking = World.GetExistingSystemManaged<ItemTrackingSystem>();
         _storageQuery = GetEntityQuery(
             ComponentType.ReadOnly<Storage>(),
+            ComponentType.ReadOnly<BuildingType>(),
             ComponentType.ReadOnly<GridPosition>(),
             ComponentType.ReadOnly<Direction>(),
-            ComponentType.ReadWrite<BuildingOutputCursor>(),
             ComponentType.ReadWrite<StoredItemElement>());
         RequireForUpdate<Storage>();
         RequireForUpdate<ItemStorageLimitElement>();
@@ -50,8 +50,6 @@ public partial class StorageSystem : SystemBase
             DynamicBufferCopyUtility.CreateNativeCopy(
                 SystemAPI.GetSingletonBuffer<BuildingPrefabElement>(true),
                 Allocator.Temp);
-        int2 storageSize =
-            buildingDefinitions.GetFootprintSize(BuildingTypeEnum.Storage);
         using NativeArray<Entity> storages =
             _storageQuery.ToEntityArray(Allocator.Temp);
 
@@ -65,6 +63,11 @@ public partial class StorageSystem : SystemBase
                 EntityManager.GetComponentData<Direction>(storageEntity).dir;
             int capacity =
                 EntityManager.GetComponentData<Storage>(storageEntity).capacity;
+            BuildingTypeEnum buildingType = EntityManager
+                .GetComponentData<BuildingType>(storageEntity)
+                .type;
+            int2 storageSize = buildingDefinitions.GetFootprintSize(
+                buildingType);
 
             TryOutputOldestItem(
                 storageEntity,
@@ -87,6 +90,9 @@ public partial class StorageSystem : SystemBase
         DirectionEnum forward,
         int2 storageSize)
     {
+        if (!EntityManager.HasComponent<BuildingOutputCursor>(storageEntity))
+            return;
+
         DynamicBuffer<StoredItemElement> storedItems =
             EntityManager.GetBuffer<StoredItemElement>(
                 storageEntity,
@@ -131,6 +137,7 @@ public partial class StorageSystem : SystemBase
                     true);
 
             if (!CanDepositItem(
+                    storageEntity,
                     itemEntity,
                     storedItems,
                     capacity,
@@ -163,34 +170,43 @@ public partial class StorageSystem : SystemBase
     }
 
     private bool CanDepositItem(
+        Entity storageEntity,
         Entity itemEntity,
         DynamicBuffer<StoredItemElement> storedItems,
         int capacity,
         NativeArray<ItemStorageLimitElement> storageLimits)
     {
-        if (!EntityManager.Exists(itemEntity) ||
-            !EntityManager.HasComponent<Item>(itemEntity) ||
-            EntityManager.HasComponent<StoredItem>(itemEntity))
+        if (!EntityManager.Exists(itemEntity))
             return false;
 
-        if (capacity <= 0)
+        if (!EntityManager.HasComponent<Item>(itemEntity))
+            return false;
+
+        if (EntityManager.HasComponent<StoredItem>(itemEntity))
             return false;
 
         ItemTypeEnum itemType =
             EntityManager.GetComponentData<Item>(itemEntity).type;
-        int stackLimit = storageLimits.GetStorageLimit(itemType);
+        bool hasReservedCapacity = EntityManager
+            .HasBuffer<DroneReservedStorageCapacityElement>(storageEntity);
+        DynamicBuffer<DroneReservedStorageCapacityElement> reservedCapacity =
+            hasReservedCapacity
+                ? EntityManager.GetBuffer<DroneReservedStorageCapacityElement>(
+                    storageEntity,
+                    true)
+                : default;
 
-        if (stackLimit <= 0)
-            return false;
-
-        int usedSlotCount = storedItems.GetUsedSlotCount(storageLimits);
-
-        if (usedSlotCount > capacity)
-            return false;
-
-        int storedItemCount = storedItems.CountItems(itemType);
-        return storedItemCount % stackLimit != 0 ||
-               usedSlotCount < capacity;
+        return StorageCapacityUtility.CanStoreAdditionalItems(
+            storedItems,
+            reservedCapacity,
+            hasReservedCapacity,
+            capacity,
+            storageLimits,
+            itemType,
+            1,
+            DroneStationStorageUtility.GetStoredDroneCount(
+                EntityManager,
+                storageEntity));
     }
 
     private bool EnsureSystems()

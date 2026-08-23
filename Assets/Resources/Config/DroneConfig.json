@@ -1,0 +1,18 @@
+{
+  "defaultTaskPriority": 5,
+  "stationStorageCapacity": 13,
+  "mainStationStartingIronQuantity": 30,
+  "mainStationStartingCopperQuantity": 30,
+  "mainStationStartingIronStickQuantity": 30,
+  "mainStationStartingCopperStickQuantity": 30,
+  "mainStationStartingDroneQuantity": 10,
+  "stationActivityRangeInChunksX": 1,
+  "stationActivityRangeInChunksY": 1,
+  "carryingCapacity": 3,
+  "movementSpeed": 4.0,
+  "emergencyMovementSpeed": 0.5,
+  "maximumBattery": 100.0,
+  "batteryConsumptionPerDistance": 1.0,
+  "chargingSpeed": 10.0,
+  "chargingPowerConsumptionPerDrone": 5.0
+}

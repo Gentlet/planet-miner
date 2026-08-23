@@ -211,9 +211,13 @@ public partial class CrafterSystem : SystemBase
     {
         itemType = ItemTypeEnum.None;
 
-        if (!EntityManager.Exists(itemEntity) ||
-            !EntityManager.HasComponent<Item>(itemEntity) ||
-            EntityManager.HasComponent<StoredItem>(itemEntity))
+        if (!EntityManager.Exists(itemEntity))
+            return false;
+
+        if (!EntityManager.HasComponent<Item>(itemEntity))
+            return false;
+
+        if (EntityManager.HasComponent<StoredItem>(itemEntity))
             return false;
 
         itemType = EntityManager.GetComponentData<Item>(itemEntity).type;
@@ -225,7 +229,7 @@ public partial class CrafterSystem : SystemBase
         return maxAmount > 0 && storedItems.CountItems(itemType) < maxAmount;
     }
 
-    private static void UpdateCrafting(
+    private void UpdateCrafting(
         ref Crafter crafter,
         DynamicBuffer<StoredItemElement> storedItems,
         NativeArray<CrafterRecipeElement> recipes,
@@ -250,7 +254,14 @@ public partial class CrafterSystem : SystemBase
         if (crafter.state == CrafterStateEnum.WaitingForOutput)
             return;
 
-        if (!storedItems.HasIngredients(ingredients, recipe.id) || crafter.speed <= 0f)
+        if (!HasAvailableIngredients(storedItems, ingredients, recipe.id))
+        {
+            crafter.state = CrafterStateEnum.Idle;
+            crafter.progress = 0f;
+            return;
+        }
+
+        if (crafter.speed <= 0f)
         {
             crafter.state = CrafterStateEnum.Idle;
             crafter.progress = 0f;
@@ -297,7 +308,7 @@ public partial class CrafterSystem : SystemBase
             crafter.progress = 0f;
             return;
         }
-        if (!storedItems.HasIngredients(ingredients, recipe.id))
+        if (!HasAvailableIngredients(storedItems, ingredients, recipe.id))
         {
             crafter.state = CrafterStateEnum.Idle;
             crafter.progress = 0f;
@@ -340,10 +351,63 @@ public partial class CrafterSystem : SystemBase
                 if (storedItem.type != ingredient.itemType)
                     continue;
 
+                if (EntityManager.HasComponent<DroneItemReservation>(
+                        storedItem.itemEntity))
+                    continue;
+
                 _itemStorage.DestroyStoredItem(ref ecb, storedItems, storedIndex);
                 remainingAmount--;
             }
         }
+    }
+
+    private bool HasAvailableIngredients(
+        DynamicBuffer<StoredItemElement> storedItems,
+        NativeArray<CrafterRecipeIngredientElement> ingredients,
+        int recipeId)
+    {
+        for (int ingredientIndex = 0;
+             ingredientIndex < ingredients.Length;
+             ingredientIndex++)
+        {
+            CrafterRecipeIngredientElement ingredient =
+                ingredients[ingredientIndex];
+
+            if (ingredient.recipeId != recipeId)
+                continue;
+
+            int availableQuantity = CountAvailableItems(
+                storedItems,
+                ingredient.itemType);
+
+            if (availableQuantity < ingredient.amount)
+                return false;
+        }
+
+        return true;
+    }
+
+    private int CountAvailableItems(
+        DynamicBuffer<StoredItemElement> storedItems,
+        ItemTypeEnum itemType)
+    {
+        int count = 0;
+
+        for (int i = 0; i < storedItems.Length; i++)
+        {
+            StoredItemElement storedItem = storedItems[i];
+
+            if (storedItem.type != itemType)
+                continue;
+
+            if (EntityManager.HasComponent<DroneItemReservation>(
+                    storedItem.itemEntity))
+                continue;
+
+            count++;
+        }
+
+        return count;
     }
 
     private static void CreateItemSpawnRequest(

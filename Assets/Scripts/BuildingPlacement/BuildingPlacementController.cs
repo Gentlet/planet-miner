@@ -156,7 +156,7 @@ public class BuildingPlacementController : MonoBehaviour
             !_placementOperation.CanPlace)
             return;
 
-        CreateSpawnRequest();
+        CreateConstructionRequests();
     }
 
     private void HandlePointerInput(int2 gridCell)
@@ -189,11 +189,11 @@ public class BuildingPlacementController : MonoBehaviour
         if (_pointerDragMode == PointerDragModeEnum.Placement)
         {
             if (_placementOperation.CanPlace)
-                CreateSpawnRequest();
+                CreateConstructionRequests();
         }
         else
         {
-            CreateDestroyRequest(gridCell);
+            CreateDestroyOrCancelRequest(gridCell);
         }
     }
 
@@ -268,7 +268,7 @@ public class BuildingPlacementController : MonoBehaviour
         _copyInteraction.ResetSelectionDrag();
     }
 
-    private void CreateSpawnRequest()
+    private void CreateConstructionRequests()
     {
         if (_placementOperation.Candidates.Count == 0)
             return;
@@ -276,24 +276,46 @@ public class BuildingPlacementController : MonoBehaviour
         if (!TryReserveCandidates())
             return;
 
-        foreach (var candidate in _placementOperation.Candidates)
+        List<int2> footprintCells = new();
+
+        foreach (BuildingPlacementCandidate candidate in _placementOperation.Candidates)
         {
             Entity request = _entityManager.CreateEntity();
             _entityManager.AddComponentData(request,
-                new BuildingSpawnRequest
+                new ConstructionSiteCreateRequest
                 {
                     type = candidate.type,
                     gridPosition = candidate.position,
                     dir = candidate.dir.NextDirection(_placementOperation.Direction),
                     selectedItemType = candidate.selectedItemType
                 });
+            DynamicBuffer<ConstructionSiteReservedCellElement> reservedCells =
+                _entityManager.AddBuffer<ConstructionSiteReservedCellElement>(request);
+            BuildingFootprintUtility.GetOccupiedCells(
+                candidate.position,
+                candidate.size,
+                _placementOperation.GetDirection(candidate),
+                footprintCells);
+
+            for (int i = 0; i < footprintCells.Count; i++)
+            {
+                reservedCells.Add(new ConstructionSiteReservedCellElement
+                {
+                    cell = footprintCells[i]
+                });
+            }
         }
     }
 
-    private void CreateDestroyRequest(int2 gridCell)
+    private void CreateDestroyOrCancelRequest(int2 gridCell)
     {
-        Entity request = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(request, new BuildingDestroyRequest
+        Entity demolitionRequest = _entityManager.CreateEntity();
+        _entityManager.AddComponentData(demolitionRequest, new DroneDemolitionRequest
+        {
+            gridPosition = gridCell
+        });
+        Entity cancelRequest = _entityManager.CreateEntity();
+        _entityManager.AddComponentData(cancelRequest, new ConstructionCancelRequest
         {
             gridPosition = gridCell
         });

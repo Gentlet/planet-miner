@@ -65,6 +65,59 @@ public partial class ChunkMapSystem
         return _reservedCells.Remove(cell);
     }
 
+    public bool TryRegisterConstructionSite(
+        Entity siteEntity,
+        DynamicBuffer<ConstructionSiteReservedCellElement> reservedCells)
+    {
+        if (siteEntity == Entity.Null)
+            return false;
+
+        if (!EntityManager.Exists(siteEntity))
+            return false;
+
+        if (reservedCells.Length == 0)
+            return false;
+
+        for (int i = 0; i < reservedCells.Length; i++)
+        {
+            int2 cell = reservedCells[i].cell;
+
+            if (!IsBuildingReserved(cell))
+                return false;
+
+            if (_constructionSiteByCell.ContainsKey(cell))
+                return false;
+        }
+
+        for (int i = 0; i < reservedCells.Length; i++)
+            _constructionSiteByCell.Add(reservedCells[i].cell, siteEntity);
+
+        return true;
+    }
+
+    public bool TryGetConstructionSite(int2 cell, out Entity siteEntity)
+    {
+        return _constructionSiteByCell.TryGetValue(cell, out siteEntity);
+    }
+
+    public void UnregisterConstructionSite(
+        Entity siteEntity,
+        DynamicBuffer<ConstructionSiteReservedCellElement> reservedCells,
+        bool releaseReservations)
+    {
+        for (int i = 0; i < reservedCells.Length; i++)
+        {
+            int2 cell = reservedCells[i].cell;
+
+            if (_constructionSiteByCell.TryGetValue(cell, out Entity owner) &&
+                owner == siteEntity)
+                _constructionSiteByCell.Remove(cell);
+
+            if (releaseReservations)
+                TryUnreserveBuilding(cell);
+        }
+    }
+
     public void ReleaseBuildingReservation(
         int2 anchor,
         BuildingTypeEnum type,

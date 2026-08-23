@@ -31,14 +31,29 @@ public partial class BuildingUI
         _remainingTimeLabel = _root.Q<Label>("remaining-time");
         _speedLabel = _root.Q<Label>("production-speed");
         _speedReasonLabel = _root.Q<Label>("production-speed-reason");
+        _droneTransferContainer = _root.Q<VisualElement>(
+            "drone-transfer-container");
+        _droneItemField = _root.Q<DropdownField>("drone-item");
+        _droneQuantityField = _root.Q<IntegerField>("drone-quantity");
+        _droneInsertButton = _root.Q<Button>("drone-insert-button");
+        _droneRemoveButton = _root.Q<Button>("drone-remove-button");
         _closeButton = _root.Q<Button>("close-button");
 
+        BuildDroneItemChoices();
+        _droneInsertButton.clicked += RequestDroneItemInsertion;
+        _droneRemoveButton.clicked += RequestDroneItemRemoval;
         _closeButton.clicked += Close;
         _recipeButtons.Clear();
     }
 
     private void UnbindVisualTree()
     {
+        if (_droneInsertButton != null)
+            _droneInsertButton.clicked -= RequestDroneItemInsertion;
+
+        if (_droneRemoveButton != null)
+            _droneRemoveButton.clicked -= RequestDroneItemRemoval;
+
         if (_closeButton != null)
             _closeButton.clicked -= Close;
 
@@ -64,7 +79,14 @@ public partial class BuildingUI
         _remainingTimeLabel = null;
         _speedLabel = null;
         _speedReasonLabel = null;
+        _droneTransferContainer = null;
+        _droneItemField = null;
+        _droneQuantityField = null;
+        _droneInsertButton = null;
+        _droneRemoveButton = null;
         _closeButton = null;
+        _transferItemTypes.Clear();
+        _transferItemNames.Clear();
         _recipeButtons.Clear();
     }
 
@@ -84,6 +106,7 @@ public partial class BuildingUI
         SetVisible(_inputContainer, true);
         SetVisible(_outputTitleLabel, true);
         SetVisible(_outputContainer, true);
+        SetVisible(_droneTransferContainer, true);
         SetProgressVisible(true);
     }
 
@@ -102,6 +125,7 @@ public partial class BuildingUI
         SetVisible(_inputContainer, false);
         SetVisible(_outputTitleLabel, true);
         SetVisible(_outputContainer, true);
+        SetVisible(_droneTransferContainer, false);
         SetProgressVisible(true);
     }
 
@@ -119,6 +143,7 @@ public partial class BuildingUI
         SetVisible(_inputContainer, true);
         SetVisible(_outputTitleLabel, false);
         SetVisible(_outputContainer, false);
+        SetVisible(_droneTransferContainer, true);
         SetProgressVisible(false);
     }
 
@@ -135,6 +160,25 @@ public partial class BuildingUI
         SetVisible(_inputContainer, false);
         SetVisible(_outputTitleLabel, false);
         SetVisible(_outputContainer, false);
+        SetVisible(_droneTransferContainer, false);
+        SetProgressVisible(false);
+    }
+
+    private void SetMainFacilityLayout()
+    {
+        _buildingTitleLabel.text = "메인스테이션";
+        _inputTitleLabel.text = "보관 아이템";
+        _inputContainer.AddToClassList("storage-grid");
+
+        SetVisible(_powerContainer, true);
+        SetVisible(_recipeTitleLabel, false);
+        SetVisible(_currentRecipeLabel, false);
+        SetVisible(_recipeContainer, false);
+        SetVisible(_inputTitleLabel, true);
+        SetVisible(_inputContainer, true);
+        SetVisible(_outputTitleLabel, false);
+        SetVisible(_outputContainer, false);
+        SetVisible(_droneTransferContainer, true);
         SetProgressVisible(false);
     }
 
@@ -288,6 +332,7 @@ public partial class BuildingUI
             ItemTypeEnum.Copper => "구리",
             ItemTypeEnum.Iron_Stick => "철 막대",
             ItemTypeEnum.Copper_Stick => "구리 막대",
+            ItemTypeEnum.Drone => "드론",
             _ => "없음"
         };
     }

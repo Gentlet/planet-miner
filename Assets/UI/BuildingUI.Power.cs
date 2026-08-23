@@ -95,9 +95,47 @@ public partial class BuildingUI
             return;
         }
 
-        SetPowerOnlyLayout("메인스테이션");
+        if (!_entityManager.HasComponent<Storage>(_selectedBuilding))
+        {
+            Close();
+            return;
+        }
+
+        if (!_entityManager.HasBuffer<StoredItemElement>(_selectedBuilding))
+        {
+            Close();
+            return;
+        }
+
+        if (!TryGetConfigEntity(out Entity configEntity))
+        {
+            Close();
+            return;
+        }
+
+        SetMainFacilityLayout();
         PowerGenerator generator = _entityManager
             .GetComponentData<PowerGenerator>(_selectedBuilding);
+        Storage storage = _entityManager
+            .GetComponentData<Storage>(_selectedBuilding);
+        DynamicBuffer<StoredItemElement> storedItems = _entityManager
+            .GetBuffer<StoredItemElement>(_selectedBuilding, true);
+        DynamicBuffer<ItemStorageLimitElement> storageLimits = _entityManager
+            .GetBuffer<ItemStorageLimitElement>(configEntity, true);
+
+        CountItems(storedItems, _storedCounts, static item => item.type);
+        int storedDroneCount = DroneStationStorageUtility.GetStoredDroneCount(
+            _entityManager,
+            _selectedBuilding);
+
+        if (storedDroneCount > 0)
+            _storedCounts[ItemTypeEnum.Drone] = storedDroneCount;
+
+        UpdateStorageInventory(
+            _storedCounts,
+            storageLimits,
+            storage.capacity);
+
         bool isConnected = TryGetConnectedGrid(
             _selectedBuilding,
             out _,

@@ -3,6 +3,24 @@
     height: 100%;
 }
 
+.drone-transfer-container {
+    margin-top: 8px;
+}
+
+.drone-transfer-field {
+    margin-top: 4px;
+}
+
+.drone-transfer-buttons {
+    flex-direction: row;
+    margin-top: 6px;
+}
+
+.drone-transfer-button {
+    flex-grow: 1;
+    margin-right: 4px;
+}
+
 .building-panel {
     position: absolute;
     top: 24px;

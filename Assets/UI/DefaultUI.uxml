@@ -26,6 +26,15 @@
                     <ui:VisualElement name="recipe-container" class="recipe-container"/>
                     <ui:Label name="input-title" text="투입 아이템" class="section-title"/>
                     <ui:VisualElement name="input-container" class="inventory-container"/>
+                    <ui:VisualElement name="drone-transfer-container" class="drone-transfer-container">
+                        <ui:Label text="드론 일회성 운송" class="section-title"/>
+                        <ui:DropdownField name="drone-item" label="아이템" class="drone-transfer-field"/>
+                        <ui:IntegerField name="drone-quantity" label="수량" value="1" class="drone-transfer-field"/>
+                        <ui:VisualElement class="drone-transfer-buttons">
+                            <ui:Button name="drone-insert-button" text="넣기 요청" class="drone-transfer-button"/>
+                            <ui:Button name="drone-remove-button" text="꺼내기 요청" class="drone-transfer-button"/>
+                        </ui:VisualElement>
+                    </ui:VisualElement>
                     <ui:Label name="output-title" text="생산 대기 아이템" class="section-title"/>
                     <ui:VisualElement name="output-container" class="inventory-container"/>
                     <ui:Label name="progress-title" text="생산 진행도" class="section-title"/>

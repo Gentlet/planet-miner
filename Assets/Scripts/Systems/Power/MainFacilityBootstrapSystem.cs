@@ -22,6 +22,7 @@ public partial class MainFacilityBootstrapSystem : SystemBase
         _mainFacilityQuery = GetEntityQuery(
             ComponentType.ReadOnly<MainFacility>());
         RequireForUpdate<PowerConfig>();
+        RequireForUpdate<DroneConfig>();
         RequireForUpdate<BuildingPrefabElement>();
     }
 
@@ -66,6 +67,8 @@ public partial class MainFacilityBootstrapSystem : SystemBase
             return;
         }
 
+        DroneConfig droneConfig = SystemAPI.GetSingleton<DroneConfig>();
+
         int2 footprintSize = BuildingFootprintUtility.NormalizeSize(definition.size);
         if (!TryReserveFootprint(footprintSize))
         {
@@ -88,12 +91,19 @@ public partial class MainFacilityBootstrapSystem : SystemBase
                 MainFacilityCell.x + visualCenterOffset.x,
                 MainFacilityCell.y + visualCenterOffset.y,
                 0f));
-        transform.Scale = math.max(footprintSize.x, footprintSize.y);
 
         if (EntityManager.HasComponent<LocalTransform>(mainFacility))
             EntityManager.SetComponentData(mainFacility, transform);
         else
             EntityManager.AddComponentData(mainFacility, transform);
+
+        EntityManager.AddComponentData(
+            mainFacility,
+            new PostTransformMatrix
+            {
+                Value = float4x4.Scale(
+                    new float3(footprintSize.x, footprintSize.y, 1f))
+            });
 
         EntityManager.AddComponentData(
             mainFacility,
@@ -109,6 +119,25 @@ public partial class MainFacilityBootstrapSystem : SystemBase
         EntityManager.AddComponent<IndestructibleBuilding>(mainFacility);
         EntityManager.AddComponentData(
             mainFacility,
+            new Storage
+            {
+                capacity = droneConfig.stationStorageCapacity
+            });
+        EntityManager.AddBuffer<StoredItemElement>(mainFacility);
+        EntityManager.AddBuffer<StoredDroneElement>(mainFacility);
+        EntityManager.AddComponentData(
+            mainFacility,
+            new DroneStation
+            {
+                activityRangeInChunks =
+                    droneConfig.stationActivityRangeInChunks,
+                isMainStation = true
+            });
+        EntityManager.AddComponentData(
+            mainFacility,
+            new PowerConsumer());
+        EntityManager.AddComponentData(
+            mainFacility,
             new PowerGenerator
             {
                 type = PowerGeneratorTypeEnum.MainFacility,
@@ -116,7 +145,49 @@ public partial class MainFacilityBootstrapSystem : SystemBase
                 currentGeneration = maximumGeneration
             });
 
+        CreateStartingItemRequest(
+            mainFacility,
+            ItemTypeEnum.Iron,
+            droneConfig.mainStationStartingIronQuantity);
+        CreateStartingItemRequest(
+            mainFacility,
+            ItemTypeEnum.Copper,
+            droneConfig.mainStationStartingCopperQuantity);
+        CreateStartingItemRequest(
+            mainFacility,
+            ItemTypeEnum.Iron_Stick,
+            droneConfig.mainStationStartingIronStickQuantity);
+        CreateStartingItemRequest(
+            mainFacility,
+            ItemTypeEnum.Copper_Stick,
+            droneConfig.mainStationStartingCopperStickQuantity);
+        CreateStartingItemRequest(
+            mainFacility,
+            ItemTypeEnum.Drone,
+            droneConfig.mainStationStartingDroneQuantity);
+
         Enabled = false;
+    }
+
+    private void CreateStartingItemRequest(
+        Entity mainFacility,
+        ItemTypeEnum itemType,
+        int quantity)
+    {
+        if (quantity <= 0)
+            return;
+
+        for (int i = 0; i < quantity; i++)
+        {
+            Entity requestEntity = EntityManager.CreateEntity();
+            EntityManager.AddComponentData(
+                requestEntity,
+                new StartingItemSpawnRequest
+                {
+                    owner = mainFacility,
+                    itemType = itemType
+                });
+        }
     }
 
     private bool TryReserveFootprint(int2 footprintSize)

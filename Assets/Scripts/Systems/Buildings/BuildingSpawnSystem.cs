@@ -3,11 +3,13 @@ using Unity.Mathematics;
 using Unity.Transforms;
 using UnityEngine;
 
+[UpdateAfter(typeof(ConstructionCompletionSystem))]
 public partial class BuildingSpawnSystem : SystemBase
 {
     private const int DefaultStorageCapacity = 10;
     private ChunkMapSystem _chunkMap;
     private EntityQuery _powerConfigQuery;
+    private EntityQuery _droneConfigQuery;
 
     protected override void OnCreate()
     {
@@ -16,6 +18,8 @@ public partial class BuildingSpawnSystem : SystemBase
             ComponentType.ReadOnly<PowerConfig>(),
             ComponentType.ReadOnly<PowerConsumerConfigElement>(),
             ComponentType.ReadOnly<PowerGeneratorConfigElement>());
+        _droneConfigQuery = GetEntityQuery(
+            ComponentType.ReadOnly<DroneConfig>());
         RequireForUpdate<BuildingPrefabElement>();
         RequireForUpdate<BuildingSpawnRequest>();
     }
@@ -62,11 +66,28 @@ public partial class BuildingSpawnSystem : SystemBase
         DynamicBuffer<PowerGeneratorConfigElement> powerGeneratorConfigs =
             _powerConfigQuery
                 .GetSingletonBuffer<PowerGeneratorConfigElement>(true);
+        bool hasDroneConfig = !_droneConfigQuery.IsEmptyIgnoreFilter;
+        DroneConfig droneConfig = hasDroneConfig
+            ? _droneConfigQuery.GetSingleton<DroneConfig>()
+            : default;
 
         foreach (var (request, requestEntity) in
                  SystemAPI.Query<RefRO<BuildingSpawnRequest>>().WithEntityAccess())
         {
             BuildingSpawnRequest spawnRequest = request.ValueRO;
+
+            if (spawnRequest.type == BuildingTypeEnum.DroneStation &&
+                !hasDroneConfig)
+            {
+                Debug.LogError(
+                    "Drone station spawn request was rejected because the drone config was not loaded.");
+                _chunkMap.ReleaseBuildingReservation(
+                    spawnRequest.gridPosition,
+                    spawnRequest.type,
+                    spawnRequest.dir);
+                ecb.DestroyEntity(requestEntity);
+                continue;
+            }
 
             if (!definitions.TryGetDefinition(
                     spawnRequest.type,
@@ -106,12 +127,26 @@ public partial class BuildingSpawnSystem : SystemBase
                         0f),
                     quaternion.RotateZ(
                         Mathf.Deg2Rad * direction.ToDegrees())));
+            int2 visualSize = BuildingFootprintUtility.NormalizeSize(
+                definition.size);
+            ecb.AddComponent(
+                instance,
+                new PostTransformMatrix
+                {
+                    Value = float4x4.Scale(
+                        new float3(visualSize.x, visualSize.y, 1f))
+                });
             ecb.AddComponent(instance, new BuildingType { type = spawnRequest.type });
             ecb.AddComponent(instance, new GridPosition { gridPosition = anchor });
             ecb.AddComponent(instance, new Direction { dir = direction });
             ecb.AddComponent(instance, new BuildingOccupantRequest());
 
-            AddBuildingBehavior(ref ecb, instance, spawnRequest, anchor);
+            AddBuildingBehavior(
+                ref ecb,
+                instance,
+                spawnRequest,
+                anchor,
+                droneConfig);
             AddPowerComponents(
                 ref ecb,
                 instance,
@@ -126,7 +161,8 @@ public partial class BuildingSpawnSystem : SystemBase
         ref EntityCommandBuffer ecb,
         Entity instance,
         BuildingSpawnRequest request,
-        int2 anchor)
+        int2 anchor,
+        DroneConfig droneConfig)
     {
         switch (request.type)
         {
@@ -185,6 +221,25 @@ public partial class BuildingSpawnSystem : SystemBase
             case BuildingTypeEnum.CoalGenerator:
                 ecb.AddComponent(instance, new CoalGenerator());
                 ecb.AddBuffer<StoredItemElement>(instance);
+                break;
+            case BuildingTypeEnum.DroneStation:
+                ecb.AddComponent(
+                    instance,
+                    new Storage
+                    {
+                        capacity = droneConfig.stationStorageCapacity
+                });
+                ecb.AddBuffer<StoredItemElement>(instance);
+                ecb.AddBuffer<StoredDroneElement>(instance);
+                ecb.AddComponent(instance, new PowerConsumer());
+                ecb.AddComponent(
+                    instance,
+                    new DroneStation
+                    {
+                        activityRangeInChunks =
+                            droneConfig.stationActivityRangeInChunks,
+                        isMainStation = false
+                    });
                 break;
         }
     }

@@ -1,4 +1,5 @@
 using Unity.Entities;
+using Unity.Mathematics;
 
 public enum ItemTypeEnum : byte
 {
@@ -11,6 +12,7 @@ public enum ItemTypeEnum : byte
     Copper,
     Iron_Stick,
     Copper_Stick,
+    Drone,
     Count
 }
 
@@ -27,6 +29,19 @@ public struct ItemSpawnRequest : IComponentData
 {
     public Entity owner;
     public ItemTypeEnum itemType;
+}
+
+public struct StartingItemSpawnRequest : IComponentData
+{
+    public Entity owner;
+    public ItemTypeEnum itemType;
+}
+
+public struct WorldItemSpawnRequest : IComponentData
+{
+    public ItemTypeEnum itemType;
+    public int2 gridPosition;
+    public bool createRecoveryTask;
 }
 
 public struct StoredItem : IComponentData

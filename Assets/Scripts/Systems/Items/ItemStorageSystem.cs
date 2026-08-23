@@ -59,6 +59,103 @@ public partial class ItemStorageSystem : SystemBase
         return true;
     }
 
+    public bool TryDetachStoredItemForConversionImmediate(
+        Entity owner,
+        Entity itemEntity,
+        out ItemTypeEnum itemType)
+    {
+        itemType = ItemTypeEnum.None;
+
+        if (owner == Entity.Null)
+            return false;
+
+        if (itemEntity == Entity.Null)
+            return false;
+
+        if (!EntityManager.Exists(owner))
+            return false;
+
+        if (!EntityManager.Exists(itemEntity))
+            return false;
+
+        if (!EntityManager.HasBuffer<StoredItemElement>(owner))
+            return false;
+
+        if (!EntityManager.HasComponent<Item>(itemEntity))
+            return false;
+
+        if (!EntityManager.HasComponent<StoredItem>(itemEntity))
+            return false;
+
+        if (!EntityManager.HasComponent<Disabled>(itemEntity))
+            return false;
+
+        if (EntityManager.HasComponent<DroneItemReservation>(itemEntity))
+            return false;
+
+        StoredItem storedItem = EntityManager.GetComponentData<StoredItem>(
+            itemEntity);
+
+        if (storedItem.owner != owner)
+            return false;
+
+        DynamicBuffer<StoredItemElement> storedItems = EntityManager
+            .GetBuffer<StoredItemElement>(owner);
+        int itemIndex = FindStoredItemIndex(storedItems, itemEntity);
+
+        if (itemIndex < 0)
+            return false;
+
+        itemType = storedItems[itemIndex].type;
+        storedItems.RemoveAt(itemIndex);
+        EntityManager.RemoveComponent<StoredItem>(itemEntity);
+        EntityManager.RemoveComponent<Disabled>(itemEntity);
+        return true;
+    }
+
+    public bool TryRestoreDetachedItemAfterConversionFailureImmediate(
+        Entity owner,
+        Entity itemEntity,
+        ItemTypeEnum itemType)
+    {
+        if (owner == Entity.Null)
+            return false;
+
+        if (itemEntity == Entity.Null)
+            return false;
+
+        if (!EntityManager.Exists(owner))
+            return false;
+
+        if (!EntityManager.Exists(itemEntity))
+            return false;
+
+        if (!EntityManager.HasBuffer<StoredItemElement>(owner))
+            return false;
+
+        if (!itemType.IsValid())
+            return false;
+
+        if (EntityManager.HasComponent<StoredItem>(itemEntity))
+            return false;
+
+        if (EntityManager.HasComponent<Disabled>(itemEntity))
+            return false;
+
+        EntityManager.AddComponentData(
+            itemEntity,
+            new StoredItem { owner = owner });
+        EntityManager.AddComponent<Disabled>(itemEntity);
+        DynamicBuffer<StoredItemElement> storedItems = EntityManager
+            .GetBuffer<StoredItemElement>(owner);
+        storedItems.Add(new StoredItemElement
+        {
+            itemEntity = itemEntity,
+            type = itemType
+        });
+        return true;
+    }
+
     public bool TryRestoreItemImmediate<TElement>(
         Entity owner,
         int index,
@@ -92,6 +189,9 @@ public partial class ItemStorageSystem : SystemBase
             EntityManager.GetComponentData<StoredItem>(itemEntity);
 
         if (storedItem.owner != owner)
+            return false;
+
+        if (EntityManager.HasComponent<DroneItemReservation>(itemEntity))
             return false;
 
         LocalTransform previousTransform =
@@ -185,7 +285,12 @@ public partial class ItemStorageSystem : SystemBase
         DynamicBuffer<StoredItemElement> storedItems,
         int index)
     {
-        ecb.DestroyEntity(storedItems[index].itemEntity);
+        Entity itemEntity = storedItems[index].itemEntity;
+
+        if (EntityManager.HasComponent<DroneItemReservation>(itemEntity))
+            return;
+
+        ecb.DestroyEntity(itemEntity);
         storedItems.RemoveAt(index);
     }
 
@@ -235,6 +340,10 @@ public partial class ItemStorageSystem : SystemBase
             if (storedItems[i].type != itemType)
                 continue;
 
+            if (EntityManager.HasComponent<DroneItemReservation>(
+                    storedItems[i].itemEntity))
+                continue;
+
             DestroyStoredItem(ref ecb, storedItems, i);
             return true;
         }
@@ -248,6 +357,19 @@ public partial class ItemStorageSystem : SystemBase
             _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
 
         return _chunkMap != null;
+    }
+
+    private static int FindStoredItemIndex(
+        DynamicBuffer<StoredItemElement> storedItems,
+        Entity itemEntity)
+    {
+        for (int i = 0; i < storedItems.Length; i++)
+        {
+            if (storedItems[i].itemEntity == itemEntity)
+                return i;
+        }
+
+        return -1;
     }
 
     private bool EnsureItemTracking()

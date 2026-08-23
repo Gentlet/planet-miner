@@ -294,6 +294,16 @@ public class PowerGridTopologyTests
     [Test]
     public void MainFacilityBootstrapCreatesReservedOccupantRequestAtOrigin()
     {
+        Entity droneConfigEntity = _entityManager.CreateEntity(
+            typeof(DroneConfig));
+        _entityManager.SetComponentData(
+            droneConfigEntity,
+            new DroneConfig
+            {
+                defaultTaskPriority = 5,
+                stationStorageCapacity = 10,
+                stationActivityRangeInChunks = new int2(1, 1)
+            });
         Entity prefab = _entityManager.CreateEntity(
             typeof(Prefab),
             typeof(LocalTransform));

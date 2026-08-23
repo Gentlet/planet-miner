@@ -339,6 +339,8 @@ MonoBehaviour:
     prefab: {fileID: 2889137660585419115, guid: fa519de06a574394863bdb0144d5a16d, type: 3}
   - type: 8
     prefab: {fileID: 2889137660585419115, guid: 12759d51a1f64ad49246a6e3a0d77cb1, type: 3}
+  - type: 9
+    prefab: {fileID: 7314021033568432731, guid: 9b7cb4a8996a456bbbe98819721ee0d3, type: 3}
 --- !u!4 &1416870914
 Transform:
   m_ObjectHideFlags: 0
@@ -364,6 +366,7 @@ GameObject:
   m_Component:
   - component: {fileID: 1731399918}
   - component: {fileID: 1731399917}
+  - component: {fileID: 1731399919}
   m_Layer: 0
   m_Name: BuildingPrefabDatabase
   m_TagString: Untagged
@@ -392,7 +395,7 @@ MonoBehaviour:
     size: {x: 1, y: 1}
   - type: 2
     prefab: {fileID: 2222127362126821372, guid: 59786e42313e48643b545ce5462797da, type: 3}
-    size: {x: 1, y: 1}
+    size: {x: 2, y: 2}
   - type: 3
     prefab: {fileID: 2222127362126821372, guid: 4e1b8365c3829e64dad69342e5d3dd2f, type: 3}
     size: {x: 1, y: 1}
@@ -407,10 +410,26 @@ MonoBehaviour:
     size: {x: 1, y: 1}
   - type: 7
     prefab: {fileID: 2222127362126821372, guid: b7c58e30127b42c8b23e69d12fa45d91, type: 3}
-    size: {x: 1, y: 1}
+    size: {x: 2, y: 2}
   - type: 8
     prefab: {fileID: 2222127362126821372, guid: 4c6b940515f54fe9b8bdf9535cb15799, type: 3}
     size: {x: 3, y: 3}
+  - type: 9
+    prefab: {fileID: 2222127362126821372, guid: d4b5408225a54ef5874d7eac0cbb0f2f, type: 3}
+    size: {x: 2, y: 2}
+--- !u!114 &1731399919
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1731399916}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 10a59f57c461458b8e2c43fd3c9110fa, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::DronePrefabDatabaseAuthoring
+  _prefab: {fileID: 7314021033568432731, guid: 9b7cb4a8996a456bbbe98819721ee0d3, type: 3}
 --- !u!4 &1731399918
 Transform:
   m_ObjectHideFlags: 0

@@ -12,6 +12,7 @@ public enum BuildingTypeEnum : byte
     PowerPole,
     CoalGenerator,
     MainFacility,
+    DroneStation,
     Count
 }
 
@@ -28,9 +29,59 @@ public struct BuildingSpawnRequest : IComponentData
     public ItemTypeEnum selectedItemType;
 }
 
+public struct ConstructionConfig : IComponentData
+{
+}
+
+public struct ConstructionMaterialConfigElement : IBufferElementData
+{
+    public BuildingTypeEnum buildingType;
+    public ItemTypeEnum itemType;
+    public int quantity;
+}
+
+public struct ConstructionSiteCreateRequest : IComponentData
+{
+    public BuildingTypeEnum type;
+    public int2 gridPosition;
+    public DirectionEnum dir;
+    public ItemTypeEnum selectedItemType;
+}
+
+public struct ConstructionSite : IComponentData
+{
+    public BuildingTypeEnum type;
+    public DirectionEnum direction;
+    public ItemTypeEnum selectedItemType;
+}
+
+public struct ConstructionSiteReservedCellElement : IBufferElementData
+{
+    public int2 cell;
+}
+
+public struct ConstructionMaterialRequirementElement : IBufferElementData
+{
+    public ItemTypeEnum itemType;
+    public int quantity;
+}
+
+public struct ConstructionCancelRequest : IComponentData
+{
+    public int2 gridPosition;
+}
+
+public enum BuildingDestroyCauseEnum : byte
+{
+    External,
+    UserDemolition,
+    Count
+}
+
 public struct BuildingDestroyRequest : IComponentData
 {
     public int2 gridPosition;
+    public BuildingDestroyCauseEnum cause;
 }
 
 public struct BuildingPrefabElement : IBufferElementData
