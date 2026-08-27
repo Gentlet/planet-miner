@@ -48,6 +48,9 @@ public partial class BuildingUI : MonoBehaviour
     private Label _droneCapabilityLabel;
     private Label _droneTaskLabel;
     private Label _droneAssignmentLabel;
+    private VisualElement _beltContainer;
+    private Label _beltMaximumSpeedLabel;
+    private VisualElement _beltItemContainer;
     private Label _recipeTitleLabel;
     private Label _currentRecipeLabel;
     private VisualElement _recipeContainer;
@@ -254,6 +257,12 @@ public partial class BuildingUI : MonoBehaviour
         if (_entityManager.HasComponent<PowerPole>(_selectedBuilding))
         {
             RefreshPowerPole();
+            return;
+        }
+
+        if (_entityManager.HasComponent<Belt>(_selectedBuilding))
+        {
+            RefreshBelt();
             return;
         }
 

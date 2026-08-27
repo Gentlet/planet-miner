@@ -49,9 +49,10 @@
 - `.Power`: consumer/generator/main facility/pole의 grid와 전력 상태.
 - `.DroneItems`: 선택 건물의 insert/remove drone task 요청.
 - `.Drone`: 선택 드론의 상태, 배터리, 화물, 성능, 작업 할당 표시.
+- `.Belt`: 선택 벨트 셀의 월드 아이템 종류별 개수와 `Belt.speed` 최대 이동 속도 표시.
 - `.Construction`: `ConstructionSite`의 필요/도착 자재, 납품률, 집계 운송 상태를 표시하고, 현장이 실제 건물로 전환되면 같은 셀의 건물 UI로 선택을 넘긴다.
 
-건물 선택은 먼저 화면상의 활성 드론을 반경 기반으로 찾고, 그 다음 `ChunkMapSystem.TryGetConstructionSite`, `TryGetBuilding` 순으로 셀의 엔티티를 찾는다. 공사 현장은 기본 모드에서만 선택 가능하며, 실제 건물이 생성될 때까지 footprint 예약이 남아 있으면 UI는 완료 전환 상태를 표시한다. UI는 ECS 컴포넌트와 config buffer를 읽어 표시한다.
+건물 선택은 먼저 화면상의 활성 드론을 반경 기반으로 찾고, 그 다음 `ChunkMapSystem.TryGetConstructionSite`, `TryGetBuilding` 순으로 셀의 엔티티를 찾는다. 공사 현장은 기본 모드에서만 선택 가능하며, 실제 건물이 생성될 때까지 footprint 예약이 남아 있으면 UI는 완료 전환 상태를 표시한다. 벨트 UI는 선택 엔티티의 `GridPosition`으로 `ChunkMapSystem.GetItems`를 조회한다. UI는 ECS 컴포넌트와 config buffer를 읽어 표시한다.
 
 레시피 변경과 드론 아이템 이동은 직접 buffer를 수정하지 않고 각각 `CrafterRecipeChangeRequest`, `DroneBuildingItemRequestUtility` 경로를 사용한다.
 

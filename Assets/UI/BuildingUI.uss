@@ -120,6 +120,36 @@
     background-color: rgb(38, 46, 58);
 }
 
+.belt-information-label {
+    min-height: 34px;
+    padding: 8px 10px;
+    font-size: 15px;
+    color: rgb(194, 213, 239);
+    background-color: rgb(38, 46, 58);
+}
+
+.belt-item-row {
+    min-height: 42px;
+    margin-bottom: 6px;
+    padding: 9px 12px;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    background-color: rgb(40, 47, 59);
+    border-left-width: 3px;
+    border-left-color: rgb(81, 104, 137);
+}
+
+.belt-item-name {
+    font-size: 15px;
+    -unity-font-style: bold;
+}
+
+.belt-item-count {
+    font-size: 15px;
+    color: rgb(159, 207, 255);
+}
+
 .section-title {
     margin-top: 18px;
     margin-bottom: 8px;

@@ -31,6 +31,12 @@
                         <ui:Label name="drone-task" class="drone-information-label"/>
                         <ui:Label name="drone-assignment" class="drone-information-label"/>
                     </ui:VisualElement>
+                    <ui:VisualElement name="belt-container" class="belt-container" style="display: none;">
+                        <ui:Label text="이동 성능" class="section-title"/>
+                        <ui:Label name="belt-maximum-speed" class="belt-information-label"/>
+                        <ui:Label text="벨트 위 아이템" class="section-title"/>
+                        <ui:VisualElement name="belt-item-container" class="belt-item-container"/>
+                    </ui:VisualElement>
                     <ui:Label name="recipe-title" text="레시피" class="section-title"/>
                     <ui:Label name="current-recipe" text="현재 레시피: 없음" class="current-recipe"/>
                     <ui:VisualElement name="recipe-container" class="recipe-container"/>

@@ -26,6 +26,9 @@ public partial class BuildingUI
         _droneCapabilityLabel = _root.Q<Label>("drone-capability");
         _droneTaskLabel = _root.Q<Label>("drone-task");
         _droneAssignmentLabel = _root.Q<Label>("drone-assignment");
+        _beltContainer = _root.Q<VisualElement>("belt-container");
+        _beltMaximumSpeedLabel = _root.Q<Label>("belt-maximum-speed");
+        _beltItemContainer = _root.Q<VisualElement>("belt-item-container");
         _recipeTitleLabel = _root.Q<Label>("recipe-title");
         _currentRecipeLabel = _root.Q<Label>("current-recipe");
         _recipeContainer = _root.Q<VisualElement>("recipe-container");
@@ -81,6 +84,9 @@ public partial class BuildingUI
         _droneCapabilityLabel = null;
         _droneTaskLabel = null;
         _droneAssignmentLabel = null;
+        _beltContainer = null;
+        _beltMaximumSpeedLabel = null;
+        _beltItemContainer = null;
         _recipeTitleLabel = null;
         _currentRecipeLabel = null;
         _recipeContainer = null;
@@ -113,6 +119,7 @@ public partial class BuildingUI
         _inputContainer.RemoveFromClassList("storage-grid");
         SetVisible(_powerContainer, true);
         SetVisible(_droneContainer, false);
+        SetVisible(_beltContainer, false);
 
         SetVisible(_recipeTitleLabel, true);
         SetVisible(_currentRecipeLabel, true);
@@ -133,6 +140,7 @@ public partial class BuildingUI
         _inputContainer.RemoveFromClassList("storage-grid");
         SetVisible(_powerContainer, true);
         SetVisible(_droneContainer, false);
+        SetVisible(_beltContainer, false);
 
         SetVisible(_recipeTitleLabel, false);
         SetVisible(_currentRecipeLabel, false);
@@ -152,6 +160,7 @@ public partial class BuildingUI
         _inputContainer.AddToClassList("storage-grid");
         SetVisible(_powerContainer, false);
         SetVisible(_droneContainer, false);
+        SetVisible(_beltContainer, false);
 
         SetVisible(_recipeTitleLabel, false);
         SetVisible(_currentRecipeLabel, false);
@@ -171,6 +180,7 @@ public partial class BuildingUI
 
         SetVisible(_powerContainer, true);
         SetVisible(_droneContainer, false);
+        SetVisible(_beltContainer, false);
         SetVisible(_recipeTitleLabel, false);
         SetVisible(_currentRecipeLabel, false);
         SetVisible(_recipeContainer, false);
@@ -190,6 +200,7 @@ public partial class BuildingUI
 
         SetVisible(_powerContainer, true);
         SetVisible(_droneContainer, false);
+        SetVisible(_beltContainer, false);
         SetVisible(_recipeTitleLabel, false);
         SetVisible(_currentRecipeLabel, false);
         SetVisible(_recipeContainer, false);
@@ -208,6 +219,7 @@ public partial class BuildingUI
 
         SetVisible(_powerContainer, false);
         SetVisible(_droneContainer, true);
+        SetVisible(_beltContainer, false);
         SetVisible(_recipeTitleLabel, false);
         SetVisible(_currentRecipeLabel, false);
         SetVisible(_recipeContainer, false);
@@ -228,6 +240,7 @@ public partial class BuildingUI
 
         SetVisible(_powerContainer, false);
         SetVisible(_droneContainer, false);
+        SetVisible(_beltContainer, false);
         SetVisible(_recipeTitleLabel, false);
         SetVisible(_currentRecipeLabel, false);
         SetVisible(_recipeContainer, false);
@@ -247,6 +260,26 @@ public partial class BuildingUI
 
         SetVisible(_powerContainer, false);
         SetVisible(_droneContainer, false);
+        SetVisible(_beltContainer, false);
+        SetVisible(_recipeTitleLabel, false);
+        SetVisible(_currentRecipeLabel, false);
+        SetVisible(_recipeContainer, false);
+        SetVisible(_inputTitleLabel, false);
+        SetVisible(_inputContainer, false);
+        SetVisible(_outputTitleLabel, false);
+        SetVisible(_outputContainer, false);
+        SetVisible(_droneTransferContainer, false);
+        SetProgressVisible(false);
+    }
+
+    private void SetBeltLayout()
+    {
+        _buildingTitleLabel.text = "벨트";
+        _inputContainer.RemoveFromClassList("storage-grid");
+
+        SetVisible(_powerContainer, false);
+        SetVisible(_droneContainer, false);
+        SetVisible(_beltContainer, true);
         SetVisible(_recipeTitleLabel, false);
         SetVisible(_currentRecipeLabel, false);
         SetVisible(_recipeContainer, false);

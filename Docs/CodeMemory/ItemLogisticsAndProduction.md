@@ -26,6 +26,7 @@
 - `ItemSpawnSystem`: miner/crafter의 `ItemSpawnRequest`를 disabled stored item으로 만들고 `ProducedItemElement`에 넣는다. 시작 아이템은 `StartingItemSpawnRequest`에서 `StoredItemElement`로 들어간다.
 - `WorldItemSpawnSystem`: 파괴/취소 반환 요청을 실제 월드 아이템으로 만들고 즉시 공간 등록하며 필요하면 회수 작업 요청을 만든다.
 - `BeltMoveSystem` + `.Job`: 활성 벨트 셀을 기준으로 아이템 transform을 이동하고 셀 경계를 넘는 항목에 `ItemCellChanged`를 enable한다.
+- `BuildingUI.Belt`: 선택 벨트 셀의 `ChunkMapSystem` 월드 아이템을 종류별로 집계하고, 실제 이동 계산에 사용되는 `Belt.speed`를 최대 이동 속도(칸/초)로 표시한다.
 - `SplitterSystem`, `MergerSystem`: 자체 저장 버퍼 없이 셀에 이미 존재하는 월드 아이템을 immediate move한다.
 - `StorageSystem`: footprint 전체에서 월드 아이템을 받아 FIFO `StoredItemElement`로 저장하고 바깥 방향 벨트로 oldest item을 복원한다.
 - `MiningSystem`: footprint 자원을 선택·소모하고 생산 요청을 만들며 `ProducedItemElement`를 벨트로 출력한다.
