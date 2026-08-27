@@ -27,7 +27,7 @@
 - `WorldItemSpawnSystem`: 파괴/취소 반환 요청을 실제 월드 아이템으로 만들고 즉시 공간 등록하며 필요하면 회수 작업 요청을 만든다.
 - `BeltMoveSystem` + `.Job`: 활성 벨트 셀을 기준으로 아이템 transform을 이동하고 셀 경계를 넘는 항목에 `ItemCellChanged`를 enable한다.
 - `BuildingUI.Belt`: 선택 벨트 셀의 `ChunkMapSystem` 월드 아이템을 종류별로 집계하고, 실제 이동 계산에 사용되는 `Belt.speed`를 최대 이동 속도(칸/초)로 표시한다.
-- `SplitterSystem`, `MergerSystem`: 자체 저장 버퍼 없이 셀에 이미 존재하는 월드 아이템을 immediate move한다.
+- `SplitterSystem`, `MergerSystem`: 아이템 소유권을 갖는 저장 버퍼 없이 셀에 이미 존재하는 월드 아이템을 immediate move한다. Splitter는 안쪽을 향하는 벨트 중 설치 순서가 가장 오래된 벨트를 입력으로 고정하고 그 방향으로 회전한다. 출력은 `forward -> right -> left` 라운드로빈을 유지하며 바깥쪽을 향하는 벨트만 인정한다. 선택된 입력이 사라질 때 셀 안에 있던 아이템은 소유권을 바꾸지 않는 `SplitterRetainedItemElement` 참조로 남겨 계속 출력한다. Merger는 주변에서 바깥쪽을 향하는 벨트 중 설치 순서가 가장 오래된 벨트를 출력으로 고정하고 그 방향으로 회전한다. 선택된 출력이 사라질 때만 남은 후보를 다시 고르며, 나머지 세 방향에서는 Merger를 향하는 벨트만 입력으로 인정한다.
 - `StorageSystem`: footprint 전체에서 월드 아이템을 받아 FIFO `StoredItemElement`로 저장하고 바깥 방향 벨트로 oldest item을 복원한다.
 - `MiningSystem`: footprint 자원을 선택·소모하고 생산 요청을 만들며 `ProducedItemElement`를 벨트로 출력한다.
 - `CrafterSystem`: 레시피 입력을 저장하고, 진행도를 갱신하고, 재료를 소비한 뒤 출력 item 요청을 만들며 생산 버퍼를 벨트로 출력한다.
@@ -38,8 +38,8 @@
 1. 이전 시스템이 item transform을 옮기고 `ItemCellChanged`를 enable한다.
 2. `ItemTrackingSystem`이 이전 셀 소유권을 해제하고 새 셀에 등록한 뒤 `GridPosition`을 갱신한다.
 3. `BeltMoveSystem`이 셀 내 전방 아이템부터 spacing과 다음 셀 조건을 고려해 이동한다.
-4. `SplitterSystem`은 pending belt move를 flush한 뒤 `forward -> right -> left`의 상대 순서에서 가능한 출구로 보낸다. 성공할 때만 cursor를 진행한다.
-5. `MergerSystem`은 `back -> left -> right` 상대 입력 순서에서 가장 가까운 item을 forward 벨트로 보낸다. 성공할 때만 cursor를 진행한다.
+4. `SplitterSystem`은 가장 먼저 설치된 안쪽 방향 벨트를 입력으로 유지하고 그 방향을 `forward`로 삼는다. `forward -> right -> left`의 상대 순서에서 바깥쪽을 향하는 출구로 보내며 성공할 때만 cursor를 진행한다. 선택된 입력이 사라져도 이미 셀 안에 들어온 item은 계속 출력한다.
+5. `MergerSystem`은 선택된 출력 벨트 방향을 `forward`로 삼고 `back -> left -> right` 상대 입력 순서에서 가장 가까운 item을 보낸다. 출력은 가장 먼저 설치된 바깥 방향 벨트로 유지하며, 입력 벨트는 Merger를 향해야 한다. 성공할 때만 cursor를 진행한다.
 6. `StorageSystem`, `CoalGeneratorInputSystem`, `MiningSystem`, `CrafterSystem` 등 건물 시스템은 pending item changes를 적용하고 footprint 셀에서 입력을 수집한다.
 
 `BuildingInputCollectionUtility`는 회전 footprint 전체의 item을 중복 제거하고 실제 source cell과 거리 정보를 유지한다. `BuildingBeltConnectionUtility`는 footprint 바깥을 향하는 벨트만 출력 연결로 인정하고, `BuildingOutputCursor`로 성공한 출력 위치를 순환한다.

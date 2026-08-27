@@ -27,22 +27,45 @@ public partial class MergerSystem : SystemBase
 
         _itemTracking.ApplyPendingChangesImmediate();
 
-        foreach (var (merger, gridPosition, direction) in
-                 SystemAPI.Query<RefRW<Merger>, RefRO<GridPosition>, RefRO<Direction>>())
+        foreach (var (merger, gridPosition, direction, transform) in
+                 SystemAPI.Query<
+                     RefRW<Merger>,
+                     RefRO<GridPosition>,
+                     RefRW<Direction>,
+                     RefRW<LocalTransform>>())
         {
             int2 mergerCell = gridPosition.ValueRO.gridPosition;
-            DirectionEnum forward = direction.ValueRO.dir;
-            int2 outputCell = mergerCell + forward.ToInt2();
+            Merger mergerData = merger.ValueRO;
+            Entity previousOutputBelt = mergerData.outputBelt;
 
-            if (!_chunkMap.TryGetBelt(outputCell, out _))
+            if (!TryResolveOutput(
+                    mergerCell,
+                    ref mergerData,
+                    direction.ValueRO.dir,
+                    out DirectionEnum forward))
+            {
+                merger.ValueRW = mergerData;
                 continue;
+            }
+
+            if (mergerData.outputBelt != previousOutputBelt ||
+                direction.ValueRO.dir != forward)
+            {
+                direction.ValueRW.dir = forward;
+                transform.ValueRW.Rotation = quaternion.RotateZ(
+                    math.radians((float)forward.ToDegrees()));
+            }
+
+            int2 outputCell = mergerCell + forward.ToInt2();
 
             BuildInputItems(mergerCell, forward);
 
             if (_inputItems.Count == 0)
+            {
+                merger.ValueRW = mergerData;
                 continue;
+            }
 
-            Merger mergerData = merger.ValueRO;
             mergerData.nextInputDirection =
                 NormalizeInputDirection(mergerData.nextInputDirection, forward);
 
@@ -56,10 +79,13 @@ public partial class MergerSystem : SystemBase
                     break;
 
                 Entity itemEntity = _inputItems[inputItemIndex].entity;
-                LocalTransform transform =
+                LocalTransform itemTransform =
                     EntityManager.GetComponentData<LocalTransform>(itemEntity);
                 float3 outputPosition =
-                    new float3(outputCell.x, outputCell.y, transform.Position.z);
+                    new float3(
+                        outputCell.x,
+                        outputCell.y,
+                        itemTransform.Position.z);
 
                 if (!_itemTracking.TryMoveItemImmediate(
                         itemEntity,
@@ -74,6 +100,94 @@ public partial class MergerSystem : SystemBase
 
             merger.ValueRW = mergerData;
         }
+    }
+
+    private bool TryResolveOutput(
+        int2 mergerCell,
+        ref Merger merger,
+        DirectionEnum currentDirection,
+        out DirectionEnum outputDirection)
+    {
+        if (IsSelectedOutputValid(
+                mergerCell,
+                merger.outputBelt,
+                currentDirection))
+        {
+            outputDirection = currentDirection;
+            return true;
+        }
+
+        merger.outputBelt = Entity.Null;
+
+        if (!TryFindOldestOutputBelt(
+                mergerCell,
+                out Entity outputBelt,
+                out outputDirection))
+            return false;
+
+        merger.outputBelt = outputBelt;
+        merger.nextInputDirection = outputDirection
+            .NextDirection()
+            .NextDirection();
+        return true;
+    }
+
+    private bool IsSelectedOutputValid(
+        int2 mergerCell,
+        Entity outputBelt,
+        DirectionEnum outputDirection)
+    {
+        if (outputBelt == Entity.Null)
+            return false;
+
+        int2 outputCell = mergerCell + outputDirection.ToInt2();
+
+        if (!_chunkMap.TryGetBelt(outputCell, out Entity indexedBelt))
+            return false;
+
+        if (indexedBelt != outputBelt)
+            return false;
+
+        return IsBeltPointing(outputBelt, outputDirection);
+    }
+
+    private bool TryFindOldestOutputBelt(
+        int2 mergerCell,
+        out Entity outputBelt,
+        out DirectionEnum outputDirection)
+    {
+        outputBelt = Entity.Null;
+        outputDirection = DirectionEnum.Up;
+        ulong oldestInstallationOrder = ulong.MaxValue;
+
+        for (int directionIndex = 0;
+             directionIndex < (int)DirectionEnum.Count;
+             directionIndex++)
+        {
+            DirectionEnum candidateDirection =
+                (DirectionEnum)directionIndex;
+            int2 candidateCell =
+                mergerCell + candidateDirection.ToInt2();
+
+            if (!_chunkMap.TryGetBelt(
+                    candidateCell,
+                    out Entity candidateBelt))
+                continue;
+
+            if (!IsBeltPointing(candidateBelt, candidateDirection))
+                continue;
+
+            Belt belt = EntityManager.GetComponentData<Belt>(candidateBelt);
+
+            if (belt.installationOrder >= oldestInstallationOrder)
+                continue;
+
+            outputBelt = candidateBelt;
+            outputDirection = candidateDirection;
+            oldestInstallationOrder = belt.installationOrder;
+        }
+
+        return outputBelt != Entity.Null;
     }
 
     private void BuildInputItems(int2 mergerCell, DirectionEnum forward)
@@ -117,6 +231,9 @@ public partial class MergerSystem : SystemBase
             if (math.dot(relativePosition, forwardOffset) > inputScore)
                 continue;
 
+            if (!IsInputBeltConnected(mergerCell, inputDirection))
+                continue;
+
             _inputItems.Add(new InputItem
             {
                 entity = itemEntity,
@@ -124,6 +241,38 @@ public partial class MergerSystem : SystemBase
                 distanceSq = math.lengthsq(relativePosition)
             });
         }
+    }
+
+    private bool IsInputBeltConnected(
+        int2 mergerCell,
+        DirectionEnum inputDirection)
+    {
+        int2 inputCell = mergerCell + inputDirection.ToInt2();
+
+        if (!_chunkMap.TryGetBelt(inputCell, out Entity inputBelt))
+            return false;
+
+        DirectionEnum directionTowardMerger = inputDirection
+            .NextDirection()
+            .NextDirection();
+        return IsBeltPointing(inputBelt, directionTowardMerger);
+    }
+
+    private bool IsBeltPointing(
+        Entity beltEntity,
+        DirectionEnum direction)
+    {
+        if (!EntityManager.Exists(beltEntity))
+            return false;
+
+        if (!EntityManager.HasComponent<Belt>(beltEntity))
+            return false;
+
+        if (!EntityManager.HasComponent<Direction>(beltEntity))
+            return false;
+
+        return EntityManager.GetComponentData<Direction>(beltEntity).dir ==
+               direction;
     }
 
     private bool TryFindInputItem(

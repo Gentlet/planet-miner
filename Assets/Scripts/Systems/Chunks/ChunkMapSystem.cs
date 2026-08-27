@@ -12,6 +12,7 @@ public partial class ChunkMapSystem : SystemBase
     private readonly HashSet<int2> _activeBeltCells = new();
     private NativeParallelHashMap<int2, Entity> _beltByCell;
     private NativeParallelHashSet<int2> _reservedCells;
+    private ulong _nextBeltInstallationOrder;
     private EntityQuery _buildingPrefabQuery;
 
     protected override void OnCreate()
@@ -100,6 +101,7 @@ public partial class ChunkMapSystem : SystemBase
         _activeBeltCells.Clear();
         _beltByCell.Clear();
         _reservedCells.Clear();
+        _nextBeltInstallationOrder = 0;
     }
 
     private void EnsureReservedCapacity()

@@ -227,6 +227,10 @@ public partial class ChunkMapSystem
             return false;
         }
 
+        Belt belt = EntityManager.GetComponentData<Belt>(entity);
+        belt.installationOrder = ++_nextBeltInstallationOrder;
+        EntityManager.SetComponentData(entity, belt);
+
         SortItemsForBelt(anchor);
 
         if (TryGetCellData(anchor, out ChunkCell cellData) && cellData.Items.Count > 0)

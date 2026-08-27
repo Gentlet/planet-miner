@@ -199,6 +199,7 @@ public partial class BuildingSpawnSystem : SystemBase
                 {
                     nextOutputDirection = request.dir
                 });
+                ecb.AddBuffer<SplitterRetainedItemElement>(instance);
                 break;
             case BuildingTypeEnum.Merger:
                 ecb.AddComponent(instance, new Merger
