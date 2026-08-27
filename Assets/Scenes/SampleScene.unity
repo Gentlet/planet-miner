@@ -150,6 +150,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b2160924d06ebc94b8739d84f1be9854, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BuildingPlacementPreview
+  constructionSiteColor: {r: 0.25, g: 0.65, b: 1, a: 0.45}
   powerSupplyColor: {r: 0.1, g: 0.55, b: 1, a: 0.18}
   connectablePowerPoleColor: {r: 1, g: 0.85, b: 0.1, a: 0.7}
   previewPrefab: {fileID: 9106238281758111696, guid: e7e36e9a5a364494cb59e30cab94c87a, type: 3}

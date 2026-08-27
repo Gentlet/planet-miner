@@ -1,11 +1,6 @@
 {
   "defaultTaskPriority": 5,
   "stationStorageCapacity": 13,
-  "mainStationStartingIronQuantity": 30,
-  "mainStationStartingCopperQuantity": 30,
-  "mainStationStartingIronStickQuantity": 30,
-  "mainStationStartingCopperStickQuantity": 30,
-  "mainStationStartingDroneQuantity": 10,
   "stationActivityRangeInChunksX": 1,
   "stationActivityRangeInChunksY": 1,
   "carryingCapacity": 3,

@@ -1,0 +1,30 @@
+{
+  "worldSeed": 12345,
+  "biomeRegionSizeInChunks": 3,
+  "transitionWidthInChunks": 2,
+  "boundaryNoiseScaleInCells": 24.0,
+  "boundaryNoiseAmplitudeInCells": 6.0,
+  "nearBiomePreferenceExponent": 0.5,
+  "biomes": [
+    {
+      "id": "Grass",
+      "selectionWeight": 1.0,
+      "floorVariants": [
+        {
+          "spriteResourcePath": "GroundGrass",
+          "weight": 1.0
+        }
+      ]
+    },
+    {
+      "id": "Dirt",
+      "selectionWeight": 1.0,
+      "floorVariants": [
+        {
+          "spriteResourcePath": "GroundDirt",
+          "weight": 1.0
+        }
+      ]
+    }
+  ]
+}

@@ -340,11 +340,19 @@ public partial class DroneTaskCommandSystem : SystemBase
         if (request.suspend)
         {
             if (status.state == DroneTaskStateEnum.Suspended)
+            {
+                DroneTaskAutomaticSuspensionUtility.Clear(
+                    EntityManager,
+                    request.taskEntity);
                 return;
+            }
 
             if (IsTerminalState(status.state))
                 return;
 
+            DroneTaskAutomaticSuspensionUtility.Clear(
+                EntityManager,
+                request.taskEntity);
             status.stateBeforeSuspension = status.state;
             status.state = DroneTaskStateEnum.Suspended;
         }
@@ -354,6 +362,9 @@ public partial class DroneTaskCommandSystem : SystemBase
                 return;
 
             status.state = GetResumedState(status.stateBeforeSuspension);
+            DroneTaskAutomaticSuspensionUtility.Clear(
+                EntityManager,
+                request.taskEntity);
         }
 
         EntityManager.SetComponentData(request.taskEntity, status);
@@ -372,6 +383,9 @@ public partial class DroneTaskCommandSystem : SystemBase
         if (IsTerminalState(status.state))
             return;
 
+        DroneTaskAutomaticSuspensionUtility.Clear(
+            EntityManager,
+            request.taskEntity);
         status.state = DroneTaskStateEnum.Cancelled;
         EntityManager.SetComponentData(request.taskEntity, status);
         Debug.Log($"Cancelled drone task. Entity : {request.taskEntity}");

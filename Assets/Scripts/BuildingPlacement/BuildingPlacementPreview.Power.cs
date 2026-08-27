@@ -32,6 +32,7 @@ public partial class BuildingPlacementPreview
             ComponentType.ReadOnly<PowerConfig>(),
             ComponentType.ReadOnly<PowerPoleConfigElement>());
         CreateRangeCellSprite();
+        InitializeConstructionSitePresentation();
     }
 
     private void OnDestroy()

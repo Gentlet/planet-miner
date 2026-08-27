@@ -31,12 +31,15 @@ public partial class DroneDemolitionRequestSystem : SystemBase
             Entity requestEntity = requests[i];
             DroneDemolitionRequest request = EntityManager
                 .GetComponentData<DroneDemolitionRequest>(requestEntity);
-            TryCreateDemolitionTask(request.gridPosition, defaultPriority);
+            int normalPriority = DroneTaskPriorityUtility.ResolveNormalPriority(
+                request.normalPriority,
+                defaultPriority);
+            TryCreateDemolitionTask(request.gridPosition, normalPriority);
             EntityManager.DestroyEntity(requestEntity);
         }
     }
 
-    private bool TryCreateDemolitionTask(int2 gridPosition, int defaultPriority)
+    private bool TryCreateDemolitionTask(int2 gridPosition, int normalPriority)
     {
         if (!_chunkMap.TryGetBuilding(gridPosition, out Entity buildingEntity))
             return false;
@@ -61,7 +64,7 @@ public partial class DroneDemolitionRequestSystem : SystemBase
         {
             type = DroneTaskTypeEnum.Demolition,
             priorityClass = DroneTaskPriorityClassEnum.Normal,
-            normalPriority = defaultPriority,
+            normalPriority = normalPriority,
             totalQuantity = 1
         });
         EntityManager.AddComponentData(taskRequest, new DroneDemolitionTaskData

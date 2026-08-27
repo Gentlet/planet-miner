@@ -60,6 +60,39 @@
     white-space: normal;
 }
 
+.task-priority-container {
+    position: absolute;
+    bottom: 102px;
+    left: 50%;
+    translate: -50% 0;
+    height: 38px;
+
+    flex-direction: row;
+    gap: 2px;
+}
+
+.task-priority-button {
+    width: 20px;
+    height: 38px;
+    padding: 0;
+
+    color: rgb(240, 248, 255);
+    background-color: rgb(57, 88, 130);
+    font-size: 15px;
+}
+
+.task-priority-button.selected {
+    background-color: rgb(62, 118, 164);
+    border-top-color: rgb(132, 203, 255);
+    border-right-color: rgb(132, 203, 255);
+    border-bottom-color: rgb(132, 203, 255);
+    border-left-color: rgb(132, 203, 255);
+    border-top-width: 2px;
+    border-right-width: 2px;
+    border-bottom-width: 2px;
+    border-left-width: 2px;
+}
+
 .copy-status {
     position: absolute;
     top: 24px;

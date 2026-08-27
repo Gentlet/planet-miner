@@ -83,8 +83,13 @@ public partial class DroneDirectTaskPlanningSystem : SystemBase
     {
         DroneTaskStatus status = EntityManager
             .GetComponentData<DroneTaskStatus>(taskEntity);
+        bool isAutomaticallySuspended =
+            DroneTaskAutomaticSuspensionUtility.IsAutomaticallySuspended(
+                EntityManager,
+                taskEntity);
 
-        if (status.state != DroneTaskStateEnum.Pending)
+        if (status.state != DroneTaskStateEnum.Pending &&
+            !isAutomaticallySuspended)
             return;
 
         if (!EntityManager.HasComponent<DroneWorldItemRecoveryTaskData>(
@@ -108,11 +113,16 @@ public partial class DroneDirectTaskPlanningSystem : SystemBase
                 position.gridPosition,
                 out int networkId))
         {
-            status.stateBeforeSuspension = DroneTaskStateEnum.Pending;
-            status.state = DroneTaskStateEnum.Suspended;
-            EntityManager.SetComponentData(taskEntity, status);
+            DroneTaskAutomaticSuspensionUtility.Suspend(
+                EntityManager,
+                taskEntity,
+                DroneTaskAutomaticSuspensionReasonEnum.OutsideDroneNetwork);
             return;
         }
+
+        DroneTaskAutomaticSuspensionUtility.Resume(
+            EntityManager,
+            taskEntity);
 
         if (_directTaskSystem.HasAvailableRecoveryDestination(
                 itemEntity,
@@ -159,6 +169,9 @@ public partial class DroneDirectTaskPlanningSystem : SystemBase
 
     private void CancelTask(Entity taskEntity, DroneTaskStatus status)
     {
+        DroneTaskAutomaticSuspensionUtility.Clear(
+            EntityManager,
+            taskEntity);
         status.state = DroneTaskStateEnum.Cancelled;
         EntityManager.SetComponentData(taskEntity, status);
     }

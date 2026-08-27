@@ -326,13 +326,39 @@ public class DroneStationNetworkTests
             {
                 defaultTaskPriority = 5,
                 stationStorageCapacity = 13,
-                mainStationStartingIronQuantity = 30,
-                mainStationStartingCopperQuantity = 30,
-                mainStationStartingIronStickQuantity = 30,
-                mainStationStartingCopperStickQuantity = 30,
-                mainStationStartingDroneQuantity = 10,
                 stationActivityRangeInChunks = new int2(1)
             });
+
+        Entity startingItemConfigEntity = _entityManager.CreateEntity(
+            typeof(StartingItemConfigElement));
+        DynamicBuffer<StartingItemConfigElement> startingItems =
+            _entityManager.GetBuffer<StartingItemConfigElement>(
+                startingItemConfigEntity);
+        startingItems.Add(new StartingItemConfigElement
+        {
+            itemType = ItemTypeEnum.Iron,
+            quantity = 30
+        });
+        startingItems.Add(new StartingItemConfigElement
+        {
+            itemType = ItemTypeEnum.Copper,
+            quantity = 30
+        });
+        startingItems.Add(new StartingItemConfigElement
+        {
+            itemType = ItemTypeEnum.Iron_Stick,
+            quantity = 30
+        });
+        startingItems.Add(new StartingItemConfigElement
+        {
+            itemType = ItemTypeEnum.Copper_Stick,
+            quantity = 30
+        });
+        startingItems.Add(new StartingItemConfigElement
+        {
+            itemType = ItemTypeEnum.Drone,
+            quantity = 10
+        });
 
         Entity powerConfigEntity = _entityManager.CreateEntity(
             typeof(PowerConfig),

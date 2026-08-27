@@ -5,11 +5,6 @@ internal sealed class DroneConfigFile
 {
     public int defaultTaskPriority;
     public int stationStorageCapacity;
-    public int mainStationStartingIronQuantity;
-    public int mainStationStartingCopperQuantity;
-    public int mainStationStartingIronStickQuantity;
-    public int mainStationStartingCopperStickQuantity;
-    public int mainStationStartingDroneQuantity;
     public int stationActivityRangeInChunksX;
     public int stationActivityRangeInChunksY;
     public int carryingCapacity;

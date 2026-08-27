@@ -30,15 +30,31 @@ public partial class DroneChargingSystem : SystemBase
 
         using NativeArray<Entity> stationEntities =
             _stationQuery.ToEntityArray(Allocator.Temp);
+        using NativeList<Entity> completedDroneEntities =
+            new NativeList<Entity>(Allocator.Temp);
 
         for (int i = 0; i < stationEntities.Length; i++)
-            ChargeStoredDrones(stationEntities[i], config, deltaTime);
+        {
+            ChargeStoredDrones(
+                stationEntities[i],
+                config,
+                deltaTime,
+                completedDroneEntities);
+        }
+
+        for (int i = 0; i < completedDroneEntities.Length; i++)
+        {
+            DroneStationStorageUtility.UpdateDroneRendering(
+                EntityManager,
+                completedDroneEntities[i]);
+        }
     }
 
     private void ChargeStoredDrones(
         Entity stationEntity,
         DroneConfig config,
-        float deltaTime)
+        float deltaTime,
+        NativeList<Entity> completedDroneEntities)
     {
         float supplyRatio = EntityManager.GetComponentData<PowerConsumer>(
             stationEntity).supplyRatio;
@@ -63,7 +79,10 @@ public partial class DroneChargingSystem : SystemBase
 
             if (requestedCharge <= 0f)
             {
-                CompleteCharging(droneEntity, ref battery);
+                CompleteCharging(
+                    droneEntity,
+                    ref battery,
+                    completedDroneEntities);
                 continue;
             }
 
@@ -80,18 +99,25 @@ public partial class DroneChargingSystem : SystemBase
             EntityManager.SetComponentData(droneEntity, battery);
 
             if (battery.current >= battery.maximum)
-                CompleteCharging(droneEntity, ref battery);
+            {
+                CompleteCharging(
+                    droneEntity,
+                    ref battery,
+                    completedDroneEntities);
+            }
         }
     }
 
     private void CompleteCharging(
         Entity droneEntity,
-        ref DroneBattery battery)
+        ref DroneBattery battery,
+        NativeList<Entity> completedDroneEntities)
     {
         battery.current = battery.maximum;
         EntityManager.SetComponentData(droneEntity, battery);
         EntityManager.SetComponentData(
             droneEntity,
             new DroneState { value = DroneStateEnum.Stored });
+        completedDroneEntities.Add(droneEntity);
     }
 }

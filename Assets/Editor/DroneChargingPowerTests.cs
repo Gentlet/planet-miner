@@ -2,6 +2,7 @@ using NUnit.Framework;
 using Unity.Core;
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Rendering;
 using Unity.Transforms;
 
 public class DroneChargingPowerTests
@@ -101,6 +102,9 @@ public class DroneChargingPowerTests
         Assert.That(
             _entityManager.GetComponentData<DroneState>(drone).value,
             Is.EqualTo(DroneStateEnum.Stored));
+        Assert.That(
+            _entityManager.HasComponent<DisableRendering>(drone),
+            Is.True);
     }
 
     [Test]
@@ -194,6 +198,7 @@ public class DroneChargingPowerTests
     {
         Entity config = _entityManager.CreateEntity(
             typeof(DroneConfig),
+            typeof(StartingItemConfigElement),
             typeof(ItemStorageLimitElement),
             typeof(PowerConfig),
             typeof(CoalGeneratorConfig),

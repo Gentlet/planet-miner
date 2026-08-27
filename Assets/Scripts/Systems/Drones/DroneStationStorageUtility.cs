@@ -1,4 +1,5 @@
 using Unity.Entities;
+using Unity.Rendering;
 
 public static class DroneStationStorageUtility
 {
@@ -37,6 +38,7 @@ public static class DroneStationStorageUtility
             return false;
 
         entityManager.RemoveComponent<StoredDrone>(droneEntity);
+        EnableDroneRendering(entityManager, droneEntity);
         return true;
     }
 
@@ -66,6 +68,7 @@ public static class DroneStationStorageUtility
         entityManager.AddComponentData(
             droneEntity,
             new StoredDrone { stationEntity = stationEntity });
+        UpdateDroneRendering(entityManager, droneEntity);
         return true;
     }
 
@@ -96,5 +99,41 @@ public static class DroneStationStorageUtility
         }
 
         return false;
+    }
+
+    private static void DisableDroneRendering(
+        EntityManager entityManager,
+        Entity droneEntity)
+    {
+        if (entityManager.HasComponent<DisableRendering>(droneEntity))
+            return;
+
+        entityManager.AddComponent<DisableRendering>(droneEntity);
+    }
+
+    public static void UpdateDroneRendering(
+        EntityManager entityManager,
+        Entity droneEntity)
+    {
+        DroneState state = entityManager.GetComponentData<DroneState>(
+            droneEntity);
+
+        if (state.value == DroneStateEnum.Stored)
+        {
+            DisableDroneRendering(entityManager, droneEntity);
+            return;
+        }
+
+        EnableDroneRendering(entityManager, droneEntity);
+    }
+
+    private static void EnableDroneRendering(
+        EntityManager entityManager,
+        Entity droneEntity)
+    {
+        if (!entityManager.HasComponent<DisableRendering>(droneEntity))
+            return;
+
+        entityManager.RemoveComponent<DisableRendering>(droneEntity);
     }
 }

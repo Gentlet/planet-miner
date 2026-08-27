@@ -21,6 +21,16 @@
                         <ui:Label name="power-tertiary" class="power-information-label"/>
                         <ui:Label name="power-quaternary" class="power-information-label"/>
                     </ui:VisualElement>
+                    <ui:VisualElement name="drone-container" class="drone-container" style="display: none;">
+                        <ui:Label text="배터리" class="section-title"/>
+                        <ui:ProgressBar name="drone-battery-progress" low-value="0" high-value="100" value="0" title="0%" class="drone-battery-progress"/>
+                        <ui:Label name="drone-battery" class="drone-information-label"/>
+                        <ui:Label text="운행 정보" class="section-title"/>
+                        <ui:Label name="drone-cargo" class="drone-information-label"/>
+                        <ui:Label name="drone-capability" class="drone-information-label"/>
+                        <ui:Label name="drone-task" class="drone-information-label"/>
+                        <ui:Label name="drone-assignment" class="drone-information-label"/>
+                    </ui:VisualElement>
                     <ui:Label name="recipe-title" text="레시피" class="section-title"/>
                     <ui:Label name="current-recipe" text="현재 레시피: 없음" class="current-recipe"/>
                     <ui:VisualElement name="recipe-container" class="recipe-container"/>

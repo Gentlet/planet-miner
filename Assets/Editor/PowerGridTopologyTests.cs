@@ -178,6 +178,48 @@ public class PowerGridTopologyTests
     }
 
     [Test]
+    public void MainFacilityCreatesPowerGridWithoutSeparatePowerPole()
+    {
+        Entity mainFacility = CreateMainFacilityPowerRoot(40f, 10f);
+
+        _powerGrid.Update();
+
+        Entity powerGrid = GetGrid(mainFacility);
+        PowerGridState state = _entityManager
+            .GetComponentData<PowerGridState>(powerGrid);
+        PowerConsumer consumer = _entityManager
+            .GetComponentData<PowerConsumer>(mainFacility);
+
+        Assert.That(
+            _entityManager.GetComponentData<PowerGridConnection>(mainFacility)
+                .powerPoleEntity,
+            Is.EqualTo(mainFacility));
+        Assert.That(state.availableGeneration, Is.EqualTo(40f));
+        Assert.That(state.maximumDemand, Is.EqualTo(10f));
+        Assert.That(consumer.supplyRatio, Is.EqualTo(1f));
+    }
+
+    [Test]
+    public void PowerPoleConnectsToMainFacilityPowerGrid()
+    {
+        Entity mainFacility = CreateMainFacilityPowerRoot(40f, 0f);
+        Entity powerPole = CreateRegisteredPowerPole(new int2(8, 0));
+        Entity consumer = CreatePowerConsumer(new int2(13, 0), 10f);
+
+        _powerGrid.Update();
+
+        Assert.That(GetGrid(powerPole), Is.EqualTo(GetGrid(mainFacility)));
+        Assert.That(
+            _entityManager.GetComponentData<PowerGridConnection>(consumer)
+                .powerPoleEntity,
+            Is.EqualTo(powerPole));
+        Assert.That(
+            _entityManager.GetComponentData<PowerConsumer>(consumer)
+                .supplyRatio,
+            Is.EqualTo(1f));
+    }
+
+    [Test]
     public void CoalGeneratorWithoutFuelProvidesNoPower()
     {
         Entity powerPole = CreateRegisteredPowerPole(new int2(1, 0));
@@ -304,6 +346,7 @@ public class PowerGridTopologyTests
                 stationStorageCapacity = 10,
                 stationActivityRangeInChunks = new int2(1, 1)
             });
+        _entityManager.CreateEntity(typeof(StartingItemConfigElement));
         Entity prefab = _entityManager.CreateEntity(
             typeof(Prefab),
             typeof(LocalTransform));
@@ -337,6 +380,9 @@ public class PowerGridTopologyTests
         Assert.That(
             _entityManager.HasComponent<IndestructibleBuilding>(mainFacility),
             Is.True);
+        Assert.That(
+            _entityManager.HasComponent<PowerPole>(mainFacility),
+            Is.True);
         Assert.That(_chunkMap.IsBuildingReserved(int2.zero), Is.True);
         Assert.That(generator.type, Is.EqualTo(PowerGeneratorTypeEnum.MainFacility));
         Assert.That(generator.maximumGeneration, Is.EqualTo(40f));
@@ -353,6 +399,34 @@ public class PowerGridTopologyTests
             powerPole,
             new GridPosition { gridPosition = cell });
         return powerPole;
+    }
+
+    private Entity CreateMainFacilityPowerRoot(
+        float generation,
+        float maximumConsumption)
+    {
+        Entity mainFacility = _entityManager.CreateEntity(
+            typeof(MainFacility),
+            typeof(PowerPole),
+            typeof(PowerGenerator),
+            typeof(PowerConsumer),
+            typeof(GridPosition),
+            typeof(BuildingOccupant));
+        _entityManager.SetComponentData(
+            mainFacility,
+            new PowerGenerator
+            {
+                type = PowerGeneratorTypeEnum.MainFacility,
+                maximumGeneration = generation,
+                currentGeneration = generation
+            });
+        _entityManager.SetComponentData(
+            mainFacility,
+            new PowerConsumer
+            {
+                maximumConsumption = maximumConsumption
+            });
+        return mainFacility;
     }
 
     private Entity CreatePowerGenerator(int2 cell, float generation)

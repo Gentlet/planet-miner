@@ -44,15 +44,16 @@ public partial class PowerGridSystem
             int2 center = EntityManager
                 .GetComponentData<GridPosition>(powerPoleEntity)
                 .gridPosition;
+            int2 supplyRange = GetSupplyRange(powerPoleEntity, config);
             PowerPoleTopologyData powerPole = new PowerPoleTopologyData(
                 powerPoleEntity,
                 _nextStablePowerPoleId,
                 center,
-                config.supplyRange,
+                supplyRange,
                 config.connectionRange);
             GridBounds supplyBounds = PowerGridRangeUtility.GetBounds(
                 center,
-                config.supplyRange);
+                supplyRange);
 
             if (!_chunkMap.TryRegisterPowerPoleSupply(
                     powerPoleEntity,
@@ -74,6 +75,16 @@ public partial class PowerGridSystem
         }
 
         return topologyChanged;
+    }
+
+    private int2 GetSupplyRange(
+        Entity powerPoleEntity,
+        PowerPoleConfigElement config)
+    {
+        if (!EntityManager.HasComponent<MainFacility>(powerPoleEntity))
+            return config.supplyRange;
+
+        return int2.zero;
     }
 
     private void UnregisterAllPowerPoleSupplyRanges()

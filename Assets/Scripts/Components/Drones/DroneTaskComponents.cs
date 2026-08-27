@@ -28,6 +28,14 @@ public enum DroneTaskPriorityClassEnum : byte
     Count
 }
 
+public enum DroneTaskAutomaticSuspensionReasonEnum : byte
+{
+    MissingSourceItems,
+    DestinationCapacityUnavailable,
+    OutsideDroneNetwork,
+    Count
+}
+
 public struct DroneTask : IComponentData
 {
     public DroneTaskTypeEnum type;
@@ -43,6 +51,11 @@ public struct DroneTaskPriority : IComponentData
 {
     public DroneTaskPriorityClassEnum priorityClass;
     public int normalPriority;
+}
+
+public struct DroneTaskAutomaticSuspension : IComponentData
+{
+    public DroneTaskAutomaticSuspensionReasonEnum reason;
 }
 
 public struct DroneTaskCreationOrder : IComponentData
@@ -93,6 +106,7 @@ public struct DroneWorldItemRecoveryCreateRequest : IComponentData
 public struct DroneDemolitionRequest : IComponentData
 {
     public int2 gridPosition;
+    public int normalPriority;
 }
 
 public struct DroneDemolitionTaskData : IComponentData

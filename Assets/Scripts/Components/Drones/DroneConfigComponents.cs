@@ -5,11 +5,6 @@ public struct DroneConfig : IComponentData
 {
     public int defaultTaskPriority;
     public int stationStorageCapacity;
-    public int mainStationStartingIronQuantity;
-    public int mainStationStartingCopperQuantity;
-    public int mainStationStartingIronStickQuantity;
-    public int mainStationStartingCopperStickQuantity;
-    public int mainStationStartingDroneQuantity;
     public int2 stationActivityRangeInChunks;
     public int carryingCapacity;
     public float movementSpeed;

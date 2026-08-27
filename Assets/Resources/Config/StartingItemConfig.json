@@ -1,0 +1,9 @@
+{
+  "items": [
+    { "itemType": "Iron", "quantity": 30 },
+    { "itemType": "Copper", "quantity": 30 },
+    { "itemType": "Iron_Stick", "quantity": 30 },
+    { "itemType": "Copper_Stick", "quantity": 30 },
+    { "itemType": "Drone", "quantity": 10 }
+  ]
+}

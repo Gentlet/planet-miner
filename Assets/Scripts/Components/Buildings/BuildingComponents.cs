@@ -46,6 +46,7 @@ public struct ConstructionSiteCreateRequest : IComponentData
     public int2 gridPosition;
     public DirectionEnum dir;
     public ItemTypeEnum selectedItemType;
+    public int normalPriority;
 }
 
 public struct ConstructionSite : IComponentData

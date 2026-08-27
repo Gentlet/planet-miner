@@ -91,17 +91,6 @@ public partial class DroneStationStorageSystem : SystemBase
             return;
         }
 
-        if (!DroneStationStorageUtility.TryAddStoredDrone(
-                EntityManager,
-                stationEntity,
-                droneEntity))
-        {
-            EntityManager.SetComponentData(
-                droneEntity,
-                new DroneState { value = DroneStateEnum.AwaitingStorage });
-            return;
-        }
-
         DroneBattery battery = EntityManager.GetComponentData<DroneBattery>(
             droneEntity);
         DroneStateEnum storedState = battery.current >= battery.maximum
@@ -110,6 +99,16 @@ public partial class DroneStationStorageSystem : SystemBase
         EntityManager.SetComponentData(
             droneEntity,
             new DroneState { value = storedState });
+
+        if (DroneStationStorageUtility.TryAddStoredDrone(
+                EntityManager,
+                stationEntity,
+                droneEntity))
+            return;
+
+        EntityManager.SetComponentData(
+            droneEntity,
+            new DroneState { value = DroneStateEnum.AwaitingStorage });
     }
 
     private bool TryRerouteToAvailableStation(

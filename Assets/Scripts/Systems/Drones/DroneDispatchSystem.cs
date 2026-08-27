@@ -46,13 +46,8 @@ public partial class DroneDispatchSystem : SystemBase
         DroneState state = EntityManager
             .GetComponentData<DroneState>(droneEntity);
 
-        if (state.value != DroneStateEnum.Stored)
-            return;
-
-        DroneBattery battery = EntityManager
-            .GetComponentData<DroneBattery>(droneEntity);
-
-        if (battery.current < battery.maximum)
+        if (state.value != DroneStateEnum.Stored &&
+            state.value != DroneStateEnum.AwaitingCharge)
             return;
 
         DroneCargo cargo = EntityManager
@@ -80,6 +75,7 @@ public partial class DroneDispatchSystem : SystemBase
             return;
 
         bool hasReservation = TrySelectReservation(
+                droneEntity,
                 drone.carryingCapacity,
                 networkId,
                 out Entity reservationEntity,
@@ -164,6 +160,7 @@ public partial class DroneDispatchSystem : SystemBase
     }
 
     private bool TrySelectReservation(
+        Entity droneEntity,
         int carryingCapacity,
         int networkId,
         out Entity reservationEntity,
@@ -186,6 +183,7 @@ public partial class DroneDispatchSystem : SystemBase
             Entity candidateEntity = reservationEntities[i];
 
             if (!TryGetReservationCandidate(
+                    droneEntity,
                     candidateEntity,
                     carryingCapacity,
                     networkId,
@@ -216,6 +214,7 @@ public partial class DroneDispatchSystem : SystemBase
     }
 
     private bool TryGetReservationCandidate(
+        Entity droneEntity,
         Entity reservationEntity,
         int carryingCapacity,
         int networkId,
@@ -255,7 +254,16 @@ public partial class DroneDispatchSystem : SystemBase
         if (!IsOwnerInNetwork(sourceOwner, networkId))
             return false;
 
-        return IsOwnerInNetwork(reservation.destinationOwner, networkId);
+        if (!IsOwnerInNetwork(reservation.destinationOwner, networkId))
+            return false;
+
+        return DroneDispatchBatteryUtility.CanCompleteRoute(
+            EntityManager,
+            _networkSystem,
+            droneEntity,
+            networkId,
+            sourceOwner,
+            reservation.destinationOwner);
     }
 
     private bool TryGetSchedulableTask(

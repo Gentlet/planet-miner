@@ -39,6 +39,9 @@ public partial class ConstructionSiteCreationSystem : SystemBase
     {
         ConstructionSiteCreateRequest request = EntityManager
             .GetComponentData<ConstructionSiteCreateRequest>(requestEntity);
+        int normalPriority = DroneTaskPriorityUtility.ResolveNormalPriority(
+            request.normalPriority,
+            droneConfig.defaultTaskPriority);
         DynamicBuffer<ConstructionSiteReservedCellElement> reservedCells =
             EntityManager.GetBuffer<ConstructionSiteReservedCellElement>(requestEntity);
 
@@ -99,7 +102,7 @@ public partial class ConstructionSiteCreationSystem : SystemBase
             CreateConstructionTaskRequest(
                 requestEntity,
                 configs[i],
-                droneConfig.defaultTaskPriority);
+                normalPriority);
         }
     }
 
@@ -129,14 +132,14 @@ public partial class ConstructionSiteCreationSystem : SystemBase
     private void CreateConstructionTaskRequest(
         Entity siteEntity,
         ConstructionMaterialConfigElement material,
-        int defaultPriority)
+        int normalPriority)
     {
         Entity taskRequest = EntityManager.CreateEntity();
         EntityManager.AddComponentData(taskRequest, new DroneTaskCreateRequest
         {
             type = DroneTaskTypeEnum.Construction,
             priorityClass = DroneTaskPriorityClassEnum.Normal,
-            normalPriority = defaultPriority,
+            normalPriority = normalPriority,
             totalQuantity = material.quantity
         });
         EntityManager.AddComponentData(taskRequest, new DroneBuildingItemTaskData

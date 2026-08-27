@@ -19,6 +19,13 @@ public partial class BuildingUI
         _powerSecondaryLabel = _root.Q<Label>("power-secondary");
         _powerTertiaryLabel = _root.Q<Label>("power-tertiary");
         _powerQuaternaryLabel = _root.Q<Label>("power-quaternary");
+        _droneContainer = _root.Q<VisualElement>("drone-container");
+        _droneBatteryProgress = _root.Q<ProgressBar>("drone-battery-progress");
+        _droneBatteryLabel = _root.Q<Label>("drone-battery");
+        _droneCargoLabel = _root.Q<Label>("drone-cargo");
+        _droneCapabilityLabel = _root.Q<Label>("drone-capability");
+        _droneTaskLabel = _root.Q<Label>("drone-task");
+        _droneAssignmentLabel = _root.Q<Label>("drone-assignment");
         _recipeTitleLabel = _root.Q<Label>("recipe-title");
         _currentRecipeLabel = _root.Q<Label>("current-recipe");
         _recipeContainer = _root.Q<VisualElement>("recipe-container");
@@ -67,6 +74,13 @@ public partial class BuildingUI
         _powerSecondaryLabel = null;
         _powerTertiaryLabel = null;
         _powerQuaternaryLabel = null;
+        _droneContainer = null;
+        _droneBatteryProgress = null;
+        _droneBatteryLabel = null;
+        _droneCargoLabel = null;
+        _droneCapabilityLabel = null;
+        _droneTaskLabel = null;
+        _droneAssignmentLabel = null;
         _recipeTitleLabel = null;
         _currentRecipeLabel = null;
         _recipeContainer = null;
@@ -98,6 +112,7 @@ public partial class BuildingUI
         _progressTitleLabel.text = "생산 진행도";
         _inputContainer.RemoveFromClassList("storage-grid");
         SetVisible(_powerContainer, true);
+        SetVisible(_droneContainer, false);
 
         SetVisible(_recipeTitleLabel, true);
         SetVisible(_currentRecipeLabel, true);
@@ -117,6 +132,7 @@ public partial class BuildingUI
         _progressTitleLabel.text = "채굴 진행도";
         _inputContainer.RemoveFromClassList("storage-grid");
         SetVisible(_powerContainer, true);
+        SetVisible(_droneContainer, false);
 
         SetVisible(_recipeTitleLabel, false);
         SetVisible(_currentRecipeLabel, false);
@@ -135,6 +151,7 @@ public partial class BuildingUI
         _inputTitleLabel.text = "보관 아이템";
         _inputContainer.AddToClassList("storage-grid");
         SetVisible(_powerContainer, false);
+        SetVisible(_droneContainer, false);
 
         SetVisible(_recipeTitleLabel, false);
         SetVisible(_currentRecipeLabel, false);
@@ -153,6 +170,7 @@ public partial class BuildingUI
         _inputContainer.RemoveFromClassList("storage-grid");
 
         SetVisible(_powerContainer, true);
+        SetVisible(_droneContainer, false);
         SetVisible(_recipeTitleLabel, false);
         SetVisible(_currentRecipeLabel, false);
         SetVisible(_recipeContainer, false);
@@ -171,6 +189,7 @@ public partial class BuildingUI
         _inputContainer.AddToClassList("storage-grid");
 
         SetVisible(_powerContainer, true);
+        SetVisible(_droneContainer, false);
         SetVisible(_recipeTitleLabel, false);
         SetVisible(_currentRecipeLabel, false);
         SetVisible(_recipeContainer, false);
@@ -179,6 +198,63 @@ public partial class BuildingUI
         SetVisible(_outputTitleLabel, false);
         SetVisible(_outputContainer, false);
         SetVisible(_droneTransferContainer, true);
+        SetProgressVisible(false);
+    }
+
+    private void SetDroneLayout()
+    {
+        _buildingTitleLabel.text = "드론";
+        _inputContainer.RemoveFromClassList("storage-grid");
+
+        SetVisible(_powerContainer, false);
+        SetVisible(_droneContainer, true);
+        SetVisible(_recipeTitleLabel, false);
+        SetVisible(_currentRecipeLabel, false);
+        SetVisible(_recipeContainer, false);
+        SetVisible(_inputTitleLabel, false);
+        SetVisible(_inputContainer, false);
+        SetVisible(_outputTitleLabel, false);
+        SetVisible(_outputContainer, false);
+        SetVisible(_droneTransferContainer, false);
+        SetProgressVisible(false);
+    }
+
+    private void SetConstructionSiteLayout(string buildingName)
+    {
+        _buildingTitleLabel.text = $"{buildingName} 건설";
+        _inputTitleLabel.text = "필요 자재";
+        _progressTitleLabel.text = "자재 납품률";
+        _inputContainer.RemoveFromClassList("storage-grid");
+
+        SetVisible(_powerContainer, false);
+        SetVisible(_droneContainer, false);
+        SetVisible(_recipeTitleLabel, false);
+        SetVisible(_currentRecipeLabel, false);
+        SetVisible(_recipeContainer, false);
+        SetVisible(_inputTitleLabel, true);
+        SetVisible(_inputContainer, true);
+        SetVisible(_outputTitleLabel, false);
+        SetVisible(_outputContainer, false);
+        SetVisible(_droneTransferContainer, false);
+        SetProgressVisible(true);
+        SetVisible(_speedReasonLabel, false);
+    }
+
+    private void SetStaticBuildingLayout(string buildingName)
+    {
+        _buildingTitleLabel.text = buildingName;
+        _inputContainer.RemoveFromClassList("storage-grid");
+
+        SetVisible(_powerContainer, false);
+        SetVisible(_droneContainer, false);
+        SetVisible(_recipeTitleLabel, false);
+        SetVisible(_currentRecipeLabel, false);
+        SetVisible(_recipeContainer, false);
+        SetVisible(_inputTitleLabel, false);
+        SetVisible(_inputContainer, false);
+        SetVisible(_outputTitleLabel, false);
+        SetVisible(_outputContainer, false);
+        SetVisible(_droneTransferContainer, false);
         SetProgressVisible(false);
     }
 

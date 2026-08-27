@@ -29,6 +29,7 @@ public class BuildingPlacementController : MonoBehaviour
     [SerializeField]
     private bool _enable = false;
 
+    private int _normalTaskPriority = 5;
     private PointerDragModeEnum _pointerDragMode;
     private bool _hasLastPointerDragCell;
     private int2 _lastPointerDragCell;
@@ -61,8 +62,6 @@ public class BuildingPlacementController : MonoBehaviour
 
     private void Update()
     {
-        _preview.enabled = _enable;
-
         if (!_enable || _placementOperation == null)
         {
             ResetTransientInput();
@@ -287,7 +286,8 @@ public class BuildingPlacementController : MonoBehaviour
                     type = candidate.type,
                     gridPosition = candidate.position,
                     dir = candidate.dir.NextDirection(_placementOperation.Direction),
-                    selectedItemType = candidate.selectedItemType
+                    selectedItemType = candidate.selectedItemType,
+                    normalPriority = _normalTaskPriority
                 });
             DynamicBuffer<ConstructionSiteReservedCellElement> reservedCells =
                 _entityManager.AddBuffer<ConstructionSiteReservedCellElement>(request);
@@ -312,7 +312,8 @@ public class BuildingPlacementController : MonoBehaviour
         Entity demolitionRequest = _entityManager.CreateEntity();
         _entityManager.AddComponentData(demolitionRequest, new DroneDemolitionRequest
         {
-            gridPosition = gridCell
+            gridPosition = gridCell,
+            normalPriority = _normalTaskPriority
         });
         Entity cancelRequest = _entityManager.CreateEntity();
         _entityManager.AddComponentData(cancelRequest, new ConstructionCancelRequest
@@ -350,9 +351,10 @@ public class BuildingPlacementController : MonoBehaviour
         _enable = enable;
 
         if (!_enable)
+        {
             ExitCopyMode(true);
-
-        _preview.enabled = _enable;
+            _preview.HidePreview();
+        }
     }
 
     public bool TryCancelCopyMode()
@@ -395,4 +397,12 @@ public class BuildingPlacementController : MonoBehaviour
     }
 
     public string CopyStatus => _copyInteraction.Status;
+
+    public void SetNormalTaskPriority(int normalPriority)
+    {
+        if (!DroneTaskPriorityUtility.IsValidNormalPriority(normalPriority))
+            return;
+
+        _normalTaskPriority = normalPriority;
+    }
 }

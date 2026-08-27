@@ -30,7 +30,7 @@ public class DroneDemolitionRecoveryTests
     }
 
     [Test]
-    public void UserInputCreatesDemolitionTaskWithoutDestroyingBuilding()
+    public void UserInputCreatesDemolitionTaskWithRequestedPriority()
     {
         Entity building = CreateRegisteredBuilding(
             new int2(3, 4),
@@ -38,7 +38,11 @@ public class DroneDemolitionRecoveryTests
         Entity request = _entityManager.CreateEntity(
             typeof(DroneDemolitionRequest));
         _entityManager.SetComponentData(request,
-            new DroneDemolitionRequest { gridPosition = new int2(3, 4) });
+            new DroneDemolitionRequest
+            {
+                gridPosition = new int2(3, 4),
+                normalPriority = 3
+            });
         DroneDemolitionRequestSystem requestSystem = _world
             .GetOrCreateSystemManaged<DroneDemolitionRequestSystem>();
 
@@ -51,6 +55,10 @@ public class DroneDemolitionRecoveryTests
         Assert.That(
             _entityManager.GetComponentData<DroneTaskCreateRequest>(taskRequest).type,
             Is.EqualTo(DroneTaskTypeEnum.Demolition));
+        Assert.That(
+            _entityManager.GetComponentData<DroneTaskCreateRequest>(taskRequest)
+                .normalPriority,
+            Is.EqualTo(3));
     }
 
     [Test]
@@ -97,9 +105,9 @@ public class DroneDemolitionRecoveryTests
     }
 
     [Test]
-    public void RecoveryOutsideEveryNetworkBecomesSuspendedWithoutDeletingItem()
+    public void RecoveryOutsideEveryNetworkSuspendsAndResumesWhenCovered()
     {
-        Entity item = CreateWorldItem(new int2(100, 100), ItemTypeEnum.Iron);
+        Entity item = CreateWorldItem(new int2(2, 2), ItemTypeEnum.Iron);
         Entity task = CreateRecoveryTask(item, 5);
         DroneDirectTaskPlanningSystem planningSystem = _world
             .GetOrCreateSystemManaged<DroneDirectTaskPlanningSystem>();
@@ -111,6 +119,25 @@ public class DroneDemolitionRecoveryTests
         Assert.That(
             _entityManager.GetComponentData<DroneTaskStatus>(task).state,
             Is.EqualTo(DroneTaskStateEnum.Suspended));
+        Assert.That(
+            _entityManager.GetComponentData<DroneTaskAutomaticSuspension>(task)
+                .reason,
+            Is.EqualTo(DroneTaskAutomaticSuspensionReasonEnum
+                .OutsideDroneNetwork));
+
+        CreateStation(int2.zero, 10);
+        _networkSystem.Update();
+        Assert.That(
+            _networkSystem.TryGetNetworkIdAtCell(new int2(2, 2), out _),
+            Is.True);
+        planningSystem.Update();
+
+        Assert.That(
+            _entityManager.GetComponentData<DroneTaskStatus>(task).state,
+            Is.EqualTo(DroneTaskStateEnum.Pending));
+        Assert.That(
+            _entityManager.HasComponent<DroneTaskAutomaticSuspension>(task),
+            Is.False);
     }
 
     [Test]

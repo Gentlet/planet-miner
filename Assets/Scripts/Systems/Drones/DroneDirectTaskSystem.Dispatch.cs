@@ -13,6 +13,7 @@ public partial class DroneDirectTaskSystem
         ulong reservationCreationOrder)
     {
         if (!TrySelectTask(
+                droneEntity,
                 networkId,
                 hasReservationCandidate,
                 reservationPriority,
@@ -44,6 +45,7 @@ public partial class DroneDirectTaskSystem
     }
 
     private bool TrySelectTask(
+        Entity droneEntity,
         int networkId,
         bool hasReservationCandidate,
         DroneTaskPriority reservationPriority,
@@ -66,7 +68,10 @@ public partial class DroneDirectTaskSystem
             if (status.state != DroneTaskStateEnum.Pending)
                 continue;
 
-            if (!IsDirectTaskAvailableInNetwork(candidate, networkId))
+            if (!IsDirectTaskAvailableInNetwork(
+                    droneEntity,
+                    candidate,
+                    networkId))
                 continue;
 
             DroneTaskPriority candidatePriority = EntityManager
@@ -91,20 +96,36 @@ public partial class DroneDirectTaskSystem
         return taskEntity != Entity.Null;
     }
 
-    private bool IsDirectTaskAvailableInNetwork(Entity taskEntity, int networkId)
+    private bool IsDirectTaskAvailableInNetwork(
+        Entity droneEntity,
+        Entity taskEntity,
+        int networkId)
     {
         DroneTask task = EntityManager.GetComponentData<DroneTask>(taskEntity);
 
         if (task.type == DroneTaskTypeEnum.Demolition)
-            return IsDemolitionAvailableInNetwork(taskEntity, networkId);
+        {
+            return IsDemolitionAvailableInNetwork(
+                droneEntity,
+                taskEntity,
+                networkId);
+        }
 
         if (task.type == DroneTaskTypeEnum.RecoverWorldItem)
-            return IsWorldItemAvailableInNetwork(taskEntity, networkId);
+        {
+            return IsWorldItemAvailableInNetwork(
+                droneEntity,
+                taskEntity,
+                networkId);
+        }
 
         return false;
     }
 
-    private bool IsDemolitionAvailableInNetwork(Entity taskEntity, int networkId)
+    private bool IsDemolitionAvailableInNetwork(
+        Entity droneEntity,
+        Entity taskEntity,
+        int networkId)
     {
         if (!EntityManager.HasComponent<DroneDemolitionTaskData>(taskEntity))
             return false;
@@ -118,11 +139,27 @@ public partial class DroneDirectTaskSystem
 
         int2 cell = EntityManager.GetComponentData<GridPosition>(target)
             .gridPosition;
-        return _networkSystem.TryGetNetworkIdAtCell(cell, out int targetNetwork) &&
-               targetNetwork == networkId;
+        if (!_networkSystem.TryGetNetworkIdAtCell(
+                cell,
+                out int targetNetwork))
+            return false;
+
+        if (targetNetwork != networkId)
+            return false;
+
+        return DroneDispatchBatteryUtility.CanCompleteRoute(
+            EntityManager,
+            _networkSystem,
+            droneEntity,
+            networkId,
+            target,
+            Entity.Null);
     }
 
-    private bool IsWorldItemAvailableInNetwork(Entity taskEntity, int networkId)
+    private bool IsWorldItemAvailableInNetwork(
+        Entity droneEntity,
+        Entity taskEntity,
+        int networkId)
     {
         if (!EntityManager.HasComponent<DroneWorldItemRecoveryTaskData>(taskEntity))
             return false;
@@ -142,11 +179,20 @@ public partial class DroneDirectTaskSystem
         if (itemNetwork != networkId)
             return false;
 
-        return TryFindRecoveryDestination(
-            position.gridPosition,
+        if (!TryFindRecoveryDestination(
+                position.gridPosition,
+                networkId,
+                item.type,
+                out Entity destinationOwner))
+            return false;
+
+        return DroneDispatchBatteryUtility.CanCompleteRoute(
+            EntityManager,
+            _networkSystem,
+            droneEntity,
             networkId,
-            item.type,
-            out _);
+            itemEntity,
+            destinationOwner);
     }
 
     private bool TryClaimDemolitionTask(

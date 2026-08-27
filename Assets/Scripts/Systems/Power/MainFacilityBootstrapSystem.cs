@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
@@ -23,6 +24,7 @@ public partial class MainFacilityBootstrapSystem : SystemBase
             ComponentType.ReadOnly<MainFacility>());
         RequireForUpdate<PowerConfig>();
         RequireForUpdate<DroneConfig>();
+        RequireForUpdate<StartingItemConfigElement>();
         RequireForUpdate<BuildingPrefabElement>();
     }
 
@@ -68,6 +70,10 @@ public partial class MainFacilityBootstrapSystem : SystemBase
         }
 
         DroneConfig droneConfig = SystemAPI.GetSingleton<DroneConfig>();
+        using NativeArray<StartingItemConfigElement> startingItemConfigs =
+            DynamicBufferCopyUtility.CreateNativeCopy(
+                SystemAPI.GetSingletonBuffer<StartingItemConfigElement>(true),
+                Allocator.Temp);
 
         int2 footprintSize = BuildingFootprintUtility.NormalizeSize(definition.size);
         if (!TryReserveFootprint(footprintSize))
@@ -144,27 +150,9 @@ public partial class MainFacilityBootstrapSystem : SystemBase
                 maximumGeneration = maximumGeneration,
                 currentGeneration = maximumGeneration
             });
+        EntityManager.AddComponent<PowerPole>(mainFacility);
 
-        CreateStartingItemRequest(
-            mainFacility,
-            ItemTypeEnum.Iron,
-            droneConfig.mainStationStartingIronQuantity);
-        CreateStartingItemRequest(
-            mainFacility,
-            ItemTypeEnum.Copper,
-            droneConfig.mainStationStartingCopperQuantity);
-        CreateStartingItemRequest(
-            mainFacility,
-            ItemTypeEnum.Iron_Stick,
-            droneConfig.mainStationStartingIronStickQuantity);
-        CreateStartingItemRequest(
-            mainFacility,
-            ItemTypeEnum.Copper_Stick,
-            droneConfig.mainStationStartingCopperStickQuantity);
-        CreateStartingItemRequest(
-            mainFacility,
-            ItemTypeEnum.Drone,
-            droneConfig.mainStationStartingDroneQuantity);
+        CreateStartingItemRequests(mainFacility, startingItemConfigs);
 
         Enabled = false;
     }
@@ -187,6 +175,20 @@ public partial class MainFacilityBootstrapSystem : SystemBase
                     owner = mainFacility,
                     itemType = itemType
                 });
+        }
+    }
+
+    private void CreateStartingItemRequests(
+        Entity mainFacility,
+        NativeArray<StartingItemConfigElement> itemConfigs)
+    {
+        for (int i = 0; i < itemConfigs.Length; i++)
+        {
+            StartingItemConfigElement itemConfig = itemConfigs[i];
+            CreateStartingItemRequest(
+                mainFacility,
+                itemConfig.itemType,
+                itemConfig.quantity);
         }
     }
 

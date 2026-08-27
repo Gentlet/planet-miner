@@ -7,6 +7,18 @@
             <ui:Label text="건물 설정 복사: Shift+우클릭 → Shift+좌클릭 또는 드래그로 붙여넣기" class="construction-guide-text"/>
         </ui:VisualElement>
         <ui:Label name="copy-status-label" class="copy-status blocking-ui" />
+        <ui:VisualElement name="task-priority-container" class="task-priority-container blocking-ui">
+            <ui:Button name="task-priority-1" text="1" tooltip="작업 우선순위 1 (가장 높음)" class="task-priority-button blocking-ui"/>
+            <ui:Button name="task-priority-2" text="2" tooltip="작업 우선순위 2" class="task-priority-button blocking-ui"/>
+            <ui:Button name="task-priority-3" text="3" tooltip="작업 우선순위 3" class="task-priority-button blocking-ui"/>
+            <ui:Button name="task-priority-4" text="4" tooltip="작업 우선순위 4" class="task-priority-button blocking-ui"/>
+            <ui:Button name="task-priority-5" text="5" tooltip="작업 우선순위 5 (기본값)" class="task-priority-button blocking-ui"/>
+            <ui:Button name="task-priority-6" text="6" tooltip="작업 우선순위 6" class="task-priority-button blocking-ui"/>
+            <ui:Button name="task-priority-7" text="7" tooltip="작업 우선순위 7" class="task-priority-button blocking-ui"/>
+            <ui:Button name="task-priority-8" text="8" tooltip="작업 우선순위 8" class="task-priority-button blocking-ui"/>
+            <ui:Button name="task-priority-9" text="9" tooltip="작업 우선순위 9" class="task-priority-button blocking-ui"/>
+            <ui:Button name="task-priority-10" text="10" tooltip="작업 우선순위 10 (가장 낮음)" class="task-priority-button blocking-ui"/>
+        </ui:VisualElement>
         <ui:VisualElement name="bottom-button-container" class="bottom-button-container">
             <ui:Button name="belt-button" text="벨트" class="bottom-button blocking-ui"/>
             <ui:Button name="splitter-button" text="분배기" class="bottom-button blocking-ui"/>

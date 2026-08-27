@@ -95,7 +95,7 @@ public class DroneBuildingItemTaskTests
     }
 
     [Test]
-    public void CrafterCapacityShortageKeepsInsertionPendingWithoutReservation()
+    public void CrafterCapacityShortageAutomaticallySuspendsInsertion()
     {
         Entity source = CreateStorage(
             new int2(4, 0),
@@ -117,7 +117,86 @@ public class DroneBuildingItemTaskTests
         Assert.That(CountReservations(), Is.EqualTo(0));
         Assert.That(
             _entityManager.GetComponentData<DroneTaskStatus>(task).state,
+            Is.EqualTo(DroneTaskStateEnum.Suspended));
+        Assert.That(
+            _entityManager.GetComponentData<DroneTaskAutomaticSuspension>(task)
+                .reason,
+            Is.EqualTo(DroneTaskAutomaticSuspensionReasonEnum
+                .DestinationCapacityUnavailable));
+    }
+
+    [Test]
+    public void MissingInsertionItemsAutomaticallySuspendAndResume()
+    {
+        Entity source = CreateStorage(
+            new int2(4, 0),
+            10,
+            BuildingTypeEnum.Storage);
+        Entity destination = CreateStorage(
+            new int2(8, 0),
+            10,
+            BuildingTypeEnum.Storage);
+        Entity task = CreateBuildingItemTask(
+            DroneTaskTypeEnum.InsertBuildingItem,
+            destination,
+            ItemTypeEnum.Iron_Ore,
+            1);
+
+        PlanAndReserve();
+
+        Assert.That(CountReservations(), Is.EqualTo(0));
+        Assert.That(
+            _entityManager.GetComponentData<DroneTaskStatus>(task).state,
+            Is.EqualTo(DroneTaskStateEnum.Suspended));
+        Assert.That(
+            _entityManager.GetComponentData<DroneTaskAutomaticSuspension>(task)
+                .reason,
+            Is.EqualTo(DroneTaskAutomaticSuspensionReasonEnum
+                .MissingSourceItems));
+
+        CreateStoredItem(source, ItemTypeEnum.Iron_Ore);
+        PlanAndReserve();
+
+        Assert.That(CountReservations(), Is.EqualTo(1));
+        Assert.That(
+            _entityManager.GetComponentData<DroneTaskStatus>(task).state,
             Is.EqualTo(DroneTaskStateEnum.Pending));
+        Assert.That(
+            _entityManager.HasComponent<DroneTaskAutomaticSuspension>(task),
+            Is.False);
+    }
+
+    [Test]
+    public void ManualSuspensionDoesNotResumeWhenItemsAreAvailable()
+    {
+        Entity source = CreateStorage(
+            new int2(4, 0),
+            10,
+            BuildingTypeEnum.Storage);
+        CreateStoredItem(source, ItemTypeEnum.Iron_Ore);
+        Entity destination = CreateStorage(
+            new int2(8, 0),
+            10,
+            BuildingTypeEnum.Storage);
+        Entity task = CreateBuildingItemTask(
+            DroneTaskTypeEnum.InsertBuildingItem,
+            destination,
+            ItemTypeEnum.Iron_Ore,
+            1);
+        _entityManager.SetComponentData(
+            task,
+            new DroneTaskStatus
+            {
+                state = DroneTaskStateEnum.Suspended,
+                stateBeforeSuspension = DroneTaskStateEnum.Pending
+            });
+
+        PlanAndReserve();
+
+        Assert.That(CountReservations(), Is.EqualTo(0));
+        Assert.That(
+            _entityManager.GetComponentData<DroneTaskStatus>(task).state,
+            Is.EqualTo(DroneTaskStateEnum.Suspended));
     }
 
     [Test]

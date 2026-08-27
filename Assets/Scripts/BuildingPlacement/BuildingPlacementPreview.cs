@@ -26,9 +26,15 @@ public partial class BuildingPlacementPreview : MonoBehaviour
 
     private readonly List<GameObject> _previewObjects = new();
 
+    private void OnEnable()
+    {
+        InitializeConstructionSitePresentation();
+    }
+
     private void OnDisable()
     {
         HidePreview();
+        DisposeConstructionSitePresentation();
     }
 
     public void UpdatePreviewPositions(BuildingPlacementOperation bpo, int2 pivot)

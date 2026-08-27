@@ -44,46 +44,6 @@ internal static class DroneConfigParser
             return null;
         }
 
-        if (configFile.mainStationStartingIronQuantity < 0)
-        {
-            Debug.LogError(
-                $"Invalid main station starting iron quantity. Value : {configFile.mainStationStartingIronQuantity}, " +
-                "Expected : 0 or greater");
-            return null;
-        }
-
-        if (configFile.mainStationStartingCopperQuantity < 0)
-        {
-            Debug.LogError(
-                $"Invalid main station starting copper quantity. Value : {configFile.mainStationStartingCopperQuantity}, " +
-                "Expected : 0 or greater");
-            return null;
-        }
-
-        if (configFile.mainStationStartingIronStickQuantity < 0)
-        {
-            Debug.LogError(
-                $"Invalid main station starting iron stick quantity. Value : {configFile.mainStationStartingIronStickQuantity}, " +
-                "Expected : 0 or greater");
-            return null;
-        }
-
-        if (configFile.mainStationStartingCopperStickQuantity < 0)
-        {
-            Debug.LogError(
-                $"Invalid main station starting copper stick quantity. Value : {configFile.mainStationStartingCopperStickQuantity}, " +
-                "Expected : 0 or greater");
-            return null;
-        }
-
-        if (configFile.mainStationStartingDroneQuantity < 0)
-        {
-            Debug.LogError(
-                $"Invalid main station starting drone quantity. Value : {configFile.mainStationStartingDroneQuantity}, " +
-                "Expected : 0 or greater");
-            return null;
-        }
-
         if (configFile.stationActivityRangeInChunksX < 0)
         {
             Debug.LogError(
@@ -160,16 +120,6 @@ internal static class DroneConfigParser
         {
             defaultTaskPriority = configFile.defaultTaskPriority,
             stationStorageCapacity = configFile.stationStorageCapacity,
-            mainStationStartingIronQuantity =
-                configFile.mainStationStartingIronQuantity,
-            mainStationStartingCopperQuantity =
-                configFile.mainStationStartingCopperQuantity,
-            mainStationStartingIronStickQuantity =
-                configFile.mainStationStartingIronStickQuantity,
-            mainStationStartingCopperStickQuantity =
-                configFile.mainStationStartingCopperStickQuantity,
-            mainStationStartingDroneQuantity =
-                configFile.mainStationStartingDroneQuantity,
             stationActivityRangeInChunks = new int2(
                 configFile.stationActivityRangeInChunksX,
                 configFile.stationActivityRangeInChunksY),

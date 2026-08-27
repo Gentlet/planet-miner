@@ -2,6 +2,7 @@ using NUnit.Framework;
 using Unity.Core;
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Rendering;
 using Unity.Transforms;
 
 public class ActiveDroneTransportTests
@@ -218,6 +219,102 @@ public class ActiveDroneTransportTests
             _entityManager.HasComponent<DroneReservationAssignment>(
                 reservation),
             Is.False);
+    }
+
+    [Test]
+    public void AwaitingChargeDroneDispatchesWhenBatteryCoversTransportRoute()
+    {
+        Entity source = CreateStorage(new int2(4, 0), 10);
+        Entity destination = CreateStorage(new int2(8, 0), 10);
+        CreateStoredItem(source, ItemTypeEnum.Iron_Ore);
+        Entity task = CreateTask(1);
+        CreateReservation(task, source, destination, ItemTypeEnum.Iron_Ore, 1);
+        _reservationSystem.Update();
+        Entity drone = CreateDrone(3, 100f);
+        SetAwaitingCharge(drone, 16f);
+
+        _dispatchSystem.Update();
+
+        Assert.That(
+            _entityManager.GetComponentData<DroneState>(drone).value,
+            Is.EqualTo(DroneStateEnum.MovingToPickup));
+        Assert.That(
+            _entityManager.GetComponentData<DroneBattery>(drone).current,
+            Is.EqualTo(16f));
+        Assert.That(_entityManager.HasComponent<StoredDrone>(drone), Is.False);
+        Assert.That(
+            _entityManager.HasComponent<DroneReservationAssignment>(
+                GetReservation()),
+            Is.True);
+        Assert.That(
+            _entityManager.HasComponent<DisableRendering>(drone),
+            Is.False);
+    }
+
+    [Test]
+    public void FullyChargedStoredDroneIsHiddenWhenAddedToStation()
+    {
+        Entity drone = CreateDrone(3, 100f);
+
+        Assert.That(
+            DroneStationStorageUtility.TryAddStoredDrone(
+                _entityManager,
+                _station,
+                drone),
+            Is.True);
+
+        Assert.That(
+            _entityManager.HasComponent<DisableRendering>(drone),
+            Is.True);
+    }
+
+    [Test]
+    public void AwaitingChargeDroneRemainsStoredWhenBatteryCannotCoverRoute()
+    {
+        Entity source = CreateStorage(new int2(4, 0), 10);
+        Entity destination = CreateStorage(new int2(8, 0), 10);
+        CreateStoredItem(source, ItemTypeEnum.Iron_Ore);
+        Entity task = CreateTask(1);
+        CreateReservation(task, source, destination, ItemTypeEnum.Iron_Ore, 1);
+        _reservationSystem.Update();
+        Entity drone = CreateDrone(3, 100f);
+        SetAwaitingCharge(drone, 15f);
+
+        _dispatchSystem.Update();
+
+        Assert.That(
+            _entityManager.GetComponentData<DroneState>(drone).value,
+            Is.EqualTo(DroneStateEnum.AwaitingCharge));
+        Assert.That(_entityManager.HasComponent<StoredDrone>(drone), Is.True);
+        Assert.That(
+            _entityManager.HasComponent<DroneReservationAssignment>(
+                GetReservation()),
+            Is.False);
+    }
+
+    [Test]
+    public void AwaitingChargeDroneDispatchesDirectTaskWhenBatteryCoversRoute()
+    {
+        Entity target = CreateStorage(new int2(4, 0), 10);
+        Entity task = CreateTask(1);
+        _entityManager.SetComponentData(
+            task,
+            new DroneTask { type = DroneTaskTypeEnum.Demolition });
+        _entityManager.AddComponentData(
+            task,
+            new DroneDemolitionTaskData { targetBuilding = target });
+        Entity drone = CreateDrone(3, 100f);
+        SetAwaitingCharge(drone, 8f);
+
+        _dispatchSystem.Update();
+
+        Assert.That(
+            _entityManager.GetComponentData<DroneState>(drone).value,
+            Is.EqualTo(DroneStateEnum.MovingToDemolition));
+        Assert.That(_entityManager.HasComponent<StoredDrone>(drone), Is.False);
+        Assert.That(
+            _entityManager.GetComponentData<DroneTaskStatus>(task).state,
+            Is.EqualTo(DroneTaskStateEnum.InProgress));
     }
 
     [Test]
@@ -472,6 +569,26 @@ public class ActiveDroneTransportTests
             drone,
             LocalTransform.FromPosition(new float3(0f, 0f, -0.2f)));
         return drone;
+    }
+
+    private void SetAwaitingCharge(Entity droneEntity, float currentBattery)
+    {
+        DroneBattery battery = _entityManager
+            .GetComponentData<DroneBattery>(droneEntity);
+        battery.current = currentBattery;
+        _entityManager.SetComponentData(droneEntity, battery);
+        _entityManager.SetComponentData(
+            droneEntity,
+            new DroneState { value = DroneStateEnum.AwaitingCharge });
+        Assert.That(
+            DroneStationStorageUtility.TryAddStoredDrone(
+                _entityManager,
+                _station,
+                droneEntity),
+            Is.True);
+        Assert.That(
+            _entityManager.HasComponent<DisableRendering>(droneEntity),
+            Is.False);
     }
 
     private void CreateStorageLimit()

@@ -113,6 +113,64 @@ public class DroneConstructionTests
         Assert.That(Count<DroneWorldItemRecoveryTaskData>(), Is.EqualTo(1));
     }
 
+    [Test]
+    public void ConstructionRequestCreatesMaterialTasksWithRequestedPriority()
+    {
+        CreateConstructionAndDroneConfig();
+        int2 siteCell = new(7, 8);
+        Entity request = _entityManager.CreateEntity(
+            typeof(ConstructionSiteCreateRequest));
+        _entityManager.SetComponentData(request,
+            new ConstructionSiteCreateRequest
+            {
+                type = BuildingTypeEnum.Storage,
+                gridPosition = siteCell,
+                dir = DirectionEnum.Up,
+                selectedItemType = ItemTypeEnum.None,
+                normalPriority = 2
+            });
+        DynamicBuffer<ConstructionSiteReservedCellElement> reservedCells =
+            _entityManager.AddBuffer<ConstructionSiteReservedCellElement>(
+                request);
+        reservedCells.Add(new ConstructionSiteReservedCellElement
+        {
+            cell = siteCell
+        });
+        Assert.That(_chunkMap.TryReserveBuilding(siteCell), Is.True);
+        ConstructionSiteCreationSystem creationSystem = _world
+            .GetOrCreateSystemManaged<ConstructionSiteCreationSystem>();
+
+        creationSystem.Update();
+
+        Assert.That(Count<DroneTaskCreateRequest>(), Is.EqualTo(1));
+        Entity taskRequest = GetSingleton<DroneTaskCreateRequest>();
+        DroneTaskCreateRequest task = _entityManager
+            .GetComponentData<DroneTaskCreateRequest>(taskRequest);
+        Assert.That(task.type, Is.EqualTo(DroneTaskTypeEnum.Construction));
+        Assert.That(task.normalPriority, Is.EqualTo(2));
+    }
+
+    private void CreateConstructionAndDroneConfig()
+    {
+        Entity constructionConfig = _entityManager.CreateEntity(
+            typeof(ConstructionConfig));
+        DynamicBuffer<ConstructionMaterialConfigElement> materials =
+            _entityManager.AddBuffer<ConstructionMaterialConfigElement>(
+                constructionConfig);
+        materials.Add(new ConstructionMaterialConfigElement
+        {
+            buildingType = BuildingTypeEnum.Storage,
+            itemType = ItemTypeEnum.Iron,
+            quantity = 1
+        });
+
+        Entity droneConfig = _entityManager.CreateEntity(typeof(DroneConfig));
+        _entityManager.SetComponentData(droneConfig, new DroneConfig
+        {
+            defaultTaskPriority = 5
+        });
+    }
+
     private Entity CreateSite(
         int2 anchor,
         BuildingTypeEnum type,

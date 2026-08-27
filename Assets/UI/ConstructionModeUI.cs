@@ -20,9 +20,14 @@ public class ConstructionModeUI : MonoBehaviour
     private Button coalGeneratorButton;
     private Button droneStationButton;
     private Label copyStatusLabel;
+    private readonly Button[] taskPriorityButtons = new Button[
+        DroneTaskPriorityUtility.MaximumNormalPriority];
+    private readonly Action[] taskPriorityActions = new Action[
+        DroneTaskPriorityUtility.MaximumNormalPriority];
     private BuildingTypeEnum? _selectedBuildingType;
 
     private const string SelectedButtonClass = "selected";
+    private const int DefaultNormalTaskPriority = 5;
 
     public event Action ExitRequested;
 
@@ -42,6 +47,8 @@ public class ConstructionModeUI : MonoBehaviour
         coalGeneratorButton = root.Q<Button>("coal-generator-button");
         droneStationButton = root.Q<Button>("drone-station-button");
         copyStatusLabel = root.Q<Label>("copy-status-label");
+
+        BindTaskPriorityButtons(root);
 
         beltButton.clicked += OnBeltButtonClicked;
         minerButton.clicked += OnMinerButtonClicked;
@@ -137,6 +144,8 @@ public class ConstructionModeUI : MonoBehaviour
         if (droneStationButton != null)
             droneStationButton.clicked -= OnDroneStationButtonClicked;
 
+        UnbindTaskPriorityButtons();
+
         beltButton = null;
         minerButton = null;
         crafterButton = null;
@@ -196,6 +205,63 @@ public class ConstructionModeUI : MonoBehaviour
         ToggleBuildingSelection(
             BuildingTypeEnum.DroneStation,
             droneStationButton);
+    }
+
+    private void BindTaskPriorityButtons(VisualElement root)
+    {
+        for (int priority = DroneTaskPriorityUtility.MinimumNormalPriority;
+             priority <= DroneTaskPriorityUtility.MaximumNormalPriority;
+             priority++)
+        {
+            int buttonIndex = priority -
+                              DroneTaskPriorityUtility.MinimumNormalPriority;
+            int selectedPriority = priority;
+            Button button = root.Q<Button>($"task-priority-{priority}");
+            Action action = () => SetTaskPriority(selectedPriority);
+
+            taskPriorityButtons[buttonIndex] = button;
+            taskPriorityActions[buttonIndex] = action;
+            button.clicked += action;
+        }
+
+        SetTaskPriority(DefaultNormalTaskPriority);
+    }
+
+    private void UnbindTaskPriorityButtons()
+    {
+        for (int i = 0; i < taskPriorityButtons.Length; i++)
+        {
+            Button button = taskPriorityButtons[i];
+            Action action = taskPriorityActions[i];
+
+            if (button != null && action != null)
+                button.clicked -= action;
+
+            taskPriorityButtons[i] = null;
+            taskPriorityActions[i] = null;
+        }
+    }
+
+    private void SetTaskPriority(int normalPriority)
+    {
+        _bpc.SetNormalTaskPriority(normalPriority);
+
+        for (int priority = DroneTaskPriorityUtility.MinimumNormalPriority;
+             priority <= DroneTaskPriorityUtility.MaximumNormalPriority;
+             priority++)
+        {
+            int buttonIndex = priority -
+                              DroneTaskPriorityUtility.MinimumNormalPriority;
+            Button button = taskPriorityButtons[buttonIndex];
+
+            if (button == null)
+                continue;
+
+            if (priority == normalPriority)
+                button.AddToClassList(SelectedButtonClass);
+            else
+                button.RemoveFromClassList(SelectedButtonClass);
+        }
     }
 
     private void ToggleBuildingSelection(BuildingTypeEnum type, Button button)

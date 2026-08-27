@@ -9,6 +9,16 @@ public static class DroneTaskPriorityUtility
                priority <= MaximumNormalPriority;
     }
 
+    public static int ResolveNormalPriority(
+        int requestedPriority,
+        int defaultPriority)
+    {
+        if (IsValidNormalPriority(requestedPriority))
+            return requestedPriority;
+
+        return defaultPriority;
+    }
+
     public static bool IsValidPriorityClass(
         DroneTaskPriorityClassEnum priorityClass)
     {
