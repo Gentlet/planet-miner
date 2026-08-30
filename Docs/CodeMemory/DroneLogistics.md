@@ -110,6 +110,7 @@
 - 공사/철거: construction site와 building destroy request
 - 전력: 정거장 charging demand와 공급 비율
 - UI: BuildingUI의 insert/remove 요청, ConstructionModeUI의 normal priority
+- 작업 표시: `WorldTaskMarkerPresentationSystem`이 활성 Demolition/RecoverWorldItem task를 읽어 표시 Entity를 만들지만, task·reservation·item 소유권은 바꾸지 않는다.
 
 ## 수정 시 함께 확인할 영역
 
@@ -127,3 +128,4 @@
 - 정거장 network와 power grid를 같은 ID나 같은 연결 규칙으로 취급하지 않는다.
 - partial 파일은 planning, reservation, direct task, network, identity의 동일 상태 소유자를 기능별로 나눈 것이다.
 - 자동 suspension과 사용자 suspension은 구분된다. 자동 사유가 해소될 때만 자동 재개하며 사용자가 멈춘 작업을 임의로 재개하지 않는다.
+- `DroneTaskSchedulingSystem`의 후보 인덱스와 `DroneTaskCompletionEvent`는 배차를 위한 파생 상태다. task 상태, reservation, destination capacity의 원본 소유권을 이 계층으로 옮기지 않는다.

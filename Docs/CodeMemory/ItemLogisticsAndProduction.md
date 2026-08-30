@@ -48,6 +48,8 @@
 
 `Storage.capacity`은 item entity 수가 아니라 stack slot 수다. `ItemStorageLimitElement`가 종류별 한 slot의 최대 개수를 정의한다. `StorageCapacityUtility`는 기존 partial stack, 새 stack 필요량, 드론 예약 용량, 정거장 stored drone 수를 함께 계산한다.
 
+`DroneStation`을 가진 정거장과 메인 스테이션에는 드론 전용 5 slot이 추가된다. Drone item과 stored drone은 먼저 이 전용 slot을 사용하고, 초과분만 일반 `Storage.capacity`를 사용한다. 일반 item은 전용 slot을 사용할 수 없다. 이 계산은 belt 입력, 드론 목적지 capacity reservation, 드론 identity 전환, 저장 UI가 같은 `DroneStationStorageUtility` 용량을 전달해 공유한다.
+
 Storage는 buffer append 순서를 FIFO로 사용하며 `StoredItemElement[0]`부터 출력한다. 정거장도 같은 Storage/StoredItem 구조를 사용하지만 belt output은 하지 않는다.
 
 ## 생산 흐름
@@ -82,7 +84,7 @@ Storage는 buffer append 순서를 FIFO로 사용하며 `StoredItemElement[0]`�
 
 - item ownership 변경: owner buffer, `StoredItem`, `Disabled`, 공간 역방향 인덱스, ECB 재생 시점을 함께 확인한다.
 - belt 이동 변경: 활성 벨트 set, 셀 내 정렬, spacing, `ItemCellChanged`, splitter/merger flush 순서를 확인한다.
-- 저장 용량 변경: 일반 Storage, DroneStation, 드론 destination reservation, BuildingUI slot 렌더링을 함께 확인한다.
+- 저장 용량 변경: 일반 Storage, DroneStation 전용 드론 slot, 드론 destination reservation, identity conversion, BuildingUI slot 렌더링을 함께 확인한다.
 - 레시피 변경: parser, ingredient acceptance, 예외 item 상태, 드론 제거 요청, UI 버튼과 표시를 함께 확인한다.
 - 생산 속도 변경: `PowerProductionUtility`, progress 보존, output blocked 상태를 함께 확인한다.
 

@@ -31,6 +31,7 @@
 
 - 좌클릭/drag: 현재 후보의 공사 요청 생성.
 - 우클릭/drag: 해당 셀의 `DroneDemolitionRequest`와 `ConstructionCancelRequest` 생성.
+- `Delete` 후 좌클릭 drag: 배치·복사 상태를 끝내고 붉은 경계의 철거 범위를 선택한다. 확정된 inclusive 범위는 건물 철거, 월드 아이템 회수, 공사 취소 요청으로 변환된다.
 - `R`: 후보 묶음 회전.
 - `Ctrl+C`: 등록된 건물 범위 선택과 blueprint 복사 모드.
 - Shift+우클릭/좌클릭: 설정 복사/붙여넣기. 현재 crafter 레시피는 `CrafterRecipeChangeRequest`로 전달한다.
@@ -56,6 +57,10 @@
 
 레시피 변경과 드론 아이템 이동은 직접 buffer를 수정하지 않고 각각 `CrafterRecipeChangeRequest`, `DroneBuildingItemRequestUtility` 경로를 사용한다.
 
+## 월드 작업 표시
+
+`WorldTaskMarkerPresentationSystem`은 `StructuralChangePresentationSystemGroup`에서 활성 Demolition 및 RecoverWorldItem task를 관찰한다. 작업별로 하나의 `WorldTaskMarker` 프레젠테이션 Entity만 만들고, 공용 X mesh와 URP transparent material로 표시한다. 건물 표시는 footprint와 회전을 따르며, 월드 아이템 회수 표시는 실제 `LocalTransform` 위치를 고정 크기로 따른다. 표시 Entity는 입력 대상이나 `ChunkMapSystem` 점유 상태가 아니며, task 종료·대상 소멸·회수 아이템의 `StoredItem` 전환 시 제거된다.
+
 ## 카메라와 청크 로드
 
 - `CameraMovementController`: Input System의 `Player/Move`, `ScrollWheel`, `Sprint` action을 찾아 이동·줌·가속을 처리한다. 자신이 enable한 action만 `OnDisable`에서 disable한다.
@@ -76,6 +81,7 @@
 - 새 정보 패널 타입: `IsSupportedBuilding`, refresh 분기, layout, 필요한 config query를 함께 확인한다.
 - 배치 입력 변경: `PointerUtility`, drag state reset, copy/settings 모드, reservation 요청 흐름을 확인한다.
 - 청크 로드 범위 변경: 카메라 requested set, `ChunkLoadRequest`, 자원 generated marker, unload 부재를 확인한다.
+- 월드 작업 표시 변경: task 종료/취소, 대상 소멸·저장 전환, footprint transform, Entities Graphics material/queue, `WorldTaskMarkerPresentationTests`를 함께 확인한다.
 
 ## 구현상 주의사항
 

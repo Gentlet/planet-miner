@@ -12,6 +12,7 @@
 - `BuildingPlacementReservationUtility`: 여러 후보의 모든 footprint 셀을 원자적으로 예약하고 실패 시 전체 롤백한다.
 - `BuildingPlacementPreview`, `.Power`, `.Construction`: 배치 후보와 공사 현장의 sprite/크기/색, 전신주 공급·연결 범위, 연결 가능 전신주 표시를 담당한다. `.Construction`은 `ConstructionSite`를 읽어 청색 반투명 고스트만 관리하며 시뮬레이션 컴포넌트를 만들지 않는다.
 - `BuildingCopyInteraction`, `BuildingCopyBlueprintBuilder`, `BuildingCopySelectionPreview`: 범위 선택과 등록 건물의 배치 후보 변환을 담당한다.
+- `BuildingDemolitionSelectionInteraction`, `BuildingDemolitionSelectionPreview`, `DemolitionAreaRequestUtility`: Delete로 시작하는 철거 범위 선택, 붉은 경계 표시, 범위 안의 건물 철거·월드 아이템 회수·공사 취소 요청 생성을 담당한다.
 - `BuildingSettingsTransfer`: 같은 종류 건물 사이 설정 복사/붙여넣기를 담당하며 현재는 crafter 레시피 변경 요청을 만든다.
 
 복사 blueprint는 선택 사각형의 lower-left를 `(0,0)` pivot으로 사용한다. `candidate.gridPosition`은 회전 전 blueprint-local offset이고, `candidate.position`만 현재 pivot 기준 world anchor로 갱신된다.
@@ -60,6 +61,8 @@
 
 `DroneDemolitionRequestSystem`이 우클릭 위치의 실제 건물을 찾아 `DroneTaskTypeEnum.Demolition` 작업을 만든다. 건설 모드에서 선택한 normal priority도 요청을 거쳐 이 작업에 전달된다. 드론이 대상에 도착해 철거를 완료하면 `BuildingDestroyRequest(UserDemolition)`으로 전환된다.
 
+Delete 철거 선택은 배치/복사 상태를 종료한 뒤 좌클릭 drag의 inclusive `GridBounds`를 만든다. `DemolitionAreaRequestUtility`는 그 범위의 등록 건물마다 철거 요청을, 각 셀의 월드 아이템마다 회수 요청을 만들고, 여러 셀에 걸친 동일 공사 현장은 한 번만 취소 요청으로 만든다. 이 경로의 철거·회수 요청도 현재 normal priority를 사용한다.
+
 `WorldTaskMarkerPresentationSystem`은 활성 철거 및 월드 아이템 회수 작업마다 별도의 프레젠테이션 Entity를 만들고 공용 X Mesh와 URP 머티리얼로 붉은 철거 표시를 렌더링한다. 건물 표시는 footprint 크기·방향을 따르고, 회수 표시는 월드 아이템의 `LocalTransform`을 고정 크기로 따라간다. 표시 Entity는 작업과 대상만 참조하며 공간·시뮬레이션 상태를 소유하지 않는다. 작업이 완료·취소되거나 대상이 사라지거나 아이템이 저장 소유권으로 전환되면 자동으로 제거된다.
 
 `BuildingDestroySystem`은 생산/저장/연료 처리 뒤에 실행되며 다음을 수행한다.
@@ -86,7 +89,7 @@
 - 새 건물 타입: enum, SubScene prefab DB, 공사 JSON, `BuildingSpawnSystem`, UI 선택 버튼, 전력 설정, 생산/물류 시스템, 파괴 반환을 함께 확인한다.
 - footprint 또는 anchor 변경: 복사 pivot, 미리보기, 예약, 현장 reserved buffer, spawn transform, 최종 점유, 입출력 경계를 함께 확인한다.
 - 공사 완료/취소 순서 변경: `DroneConstructionTests`, `DroneDemolitionRecoveryTests`, 예약 해제와 도착 자재 복원을 함께 확인한다.
-- 파괴 경로 변경: stored/produced item, stored drone, 전신주 등록, 벨트 활성 인덱스, 회수 작업을 함께 확인한다.
+- 파괴 경로 또는 범위 철거 변경: stored/produced item, stored drone, 전신주 등록, 벨트 활성 인덱스, 회수 작업, `DroneDemolitionRecoveryTests`와 `WorldTaskMarkerPresentationTests`를 함께 확인한다.
 
 ## 구현상 주의사항
 
