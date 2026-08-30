@@ -11,9 +11,13 @@ public static class StorageCapacityUtility
         NativeArray<ItemStorageLimitElement> storageLimits,
         ItemTypeEnum additionalItemType,
         int additionalQuantity,
-        int storedDroneCount = 0)
+        int storedDroneCount = 0,
+        int dedicatedDroneSlotCapacity = 0)
     {
-        if (capacity <= 0)
+        if (capacity < 0)
+            return false;
+
+        if (dedicatedDroneSlotCapacity < 0)
             return false;
 
         if (!additionalItemType.IsValid())
@@ -54,7 +58,17 @@ public static class StorageCapacityUtility
             if (stackLimit <= 0)
                 return false;
 
-            usedSlotCount += (itemCount + stackLimit - 1) / stackLimit;
+            int itemSlotCount = (itemCount + stackLimit - 1) / stackLimit;
+
+            if (itemType == ItemTypeEnum.Drone)
+            {
+                itemSlotCount -= dedicatedDroneSlotCapacity;
+
+                if (itemSlotCount < 0)
+                    itemSlotCount = 0;
+            }
+
+            usedSlotCount += itemSlotCount;
 
             if (usedSlotCount > capacity)
                 return false;

@@ -195,6 +195,9 @@ public partial class DroneRecoverySystem : SystemBase
                     quantity,
                     DroneStationStorageUtility.GetStoredDroneCount(
                         EntityManager,
+                        candidateEntity),
+                    DroneStationStorageUtility.GetDedicatedDroneSlotCapacity(
+                        EntityManager,
                         candidateEntity)))
                 continue;
 

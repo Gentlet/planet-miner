@@ -56,6 +56,8 @@ public partial class BuildingUI : MonoBehaviour
     private VisualElement _recipeContainer;
     private Label _inputTitleLabel;
     private VisualElement _inputContainer;
+    private Label _dedicatedDroneStorageTitleLabel;
+    private VisualElement _dedicatedDroneStorageContainer;
     private Label _outputTitleLabel;
     private VisualElement _outputContainer;
     private Label _progressTitleLabel;

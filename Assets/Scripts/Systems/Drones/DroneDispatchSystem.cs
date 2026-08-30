@@ -1,15 +1,19 @@
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Profiling;
 
 [UpdateAfter(typeof(DroneTaskReservationSystem))]
 [UpdateAfter(typeof(DroneStationNetworkSystem))]
 public partial class DroneDispatchSystem : SystemBase
 {
+    private static readonly ProfilerMarker DispatchCandidatesMarker =
+        new("DroneDispatch.DispatchCandidates");
+
     private EntityQuery _droneQuery;
-    private EntityQuery _reservationQuery;
     private DroneTaskReservationSystem _reservationSystem;
     private DroneStationNetworkSystem _networkSystem;
     private DroneDirectTaskSystem _directTaskSystem;
+    private DroneTaskSchedulingSystem _schedulingSystem;
 
     protected override void OnCreate()
     {
@@ -21,15 +25,14 @@ public partial class DroneDispatchSystem : SystemBase
             ComponentType.ReadOnly<DroneCargo>(),
             ComponentType.ReadOnly<GridPosition>(),
             ComponentType.ReadOnly<StoredItemElement>());
-        _reservationQuery = GetEntityQuery(
-            ComponentType.ReadOnly<DroneTaskReservation>(),
-            ComponentType.ReadOnly<DroneTaskReservedItemElement>());
         _reservationSystem = World.GetOrCreateSystemManaged<
             DroneTaskReservationSystem>();
         _networkSystem = World.GetOrCreateSystemManaged<
             DroneStationNetworkSystem>();
         _directTaskSystem = World.GetOrCreateSystemManaged<
             DroneDirectTaskSystem>();
+        _schedulingSystem = World.GetOrCreateSystemManaged<
+            DroneTaskSchedulingSystem>();
     }
 
     protected override void OnUpdate()
@@ -37,8 +40,13 @@ public partial class DroneDispatchSystem : SystemBase
         using NativeArray<Entity> droneEntities =
             _droneQuery.ToEntityArray(Allocator.Temp);
 
-        for (int i = 0; i < droneEntities.Length; i++)
-            TryDispatchDrone(droneEntities[i]);
+        _schedulingSystem.PrepareCandidates();
+
+        using (DispatchCandidatesMarker.Auto())
+        {
+            for (int i = 0; i < droneEntities.Length; i++)
+                TryDispatchDrone(droneEntities[i]);
+        }
     }
 
     private void TryDispatchDrone(Entity droneEntity)
@@ -47,7 +55,8 @@ public partial class DroneDispatchSystem : SystemBase
             .GetComponentData<DroneState>(droneEntity);
 
         if (state.value != DroneStateEnum.Stored &&
-            state.value != DroneStateEnum.AwaitingCharge)
+            state.value != DroneStateEnum.AwaitingCharge &&
+            state.value != DroneStateEnum.AwaitingDispatch)
             return;
 
         DroneCargo cargo = EntityManager
@@ -62,8 +71,6 @@ public partial class DroneDispatchSystem : SystemBase
         if (cargoItems.Length != 0)
             return;
 
-        ActiveDrone drone = EntityManager
-            .GetComponentData<ActiveDrone>(droneEntity);
         DroneAssignment currentAssignment = EntityManager
             .GetComponentData<DroneAssignment>(droneEntity);
 
@@ -74,34 +81,78 @@ public partial class DroneDispatchSystem : SystemBase
                 out Entity returnStation))
             return;
 
-        bool hasReservation = TrySelectReservation(
+        while (_schedulingSystem.TryGetNextCandidate(
+                   droneEntity,
+                   networkId,
+                   out DroneScheduledCandidate candidate))
+        {
+            bool dispatched = candidate.kind ==
+                              DroneScheduledCandidateKind.DirectTask
+                ? _directTaskSystem.TryClaimScheduledTask(
+                    droneEntity,
+                    candidate.taskEntity,
+                    networkId,
+                    returnStation)
+                : TryDispatchReservationCandidate(
+                    droneEntity,
+                    candidate.candidateEntity,
+                    networkId,
+                    returnStation);
+            _schedulingSystem.RemoveCandidate(candidate);
+
+            if (dispatched)
+                return;
+        }
+
+        if (state.value != DroneStateEnum.AwaitingDispatch)
+            return;
+
+        if (DroneReturnRouteUtility.TrySetReturnRoute(
+                EntityManager,
+                _networkSystem,
                 droneEntity,
+                currentAssignment,
+                false))
+            return;
+
+        DroneRecoveryRequestUtility.Request(
+            EntityManager,
+            droneEntity,
+            DroneRecoveryReasonEnum.TargetUnavailable);
+    }
+
+    private bool TryDispatchReservationCandidate(
+        Entity droneEntity,
+        Entity reservationEntity,
+        int networkId,
+        Entity returnStation)
+    {
+        ActiveDrone drone = EntityManager
+            .GetComponentData<ActiveDrone>(droneEntity);
+
+        if (!TryGetReservationCandidate(
+                droneEntity,
+                reservationEntity,
                 drone.carryingCapacity,
                 networkId,
-                out Entity reservationEntity,
                 out DroneTaskReservation reservation,
                 out Entity sourceOwner,
-                out DroneTaskPriority reservationPriority,
-                out ulong reservationCreationOrder);
-
-        if (_directTaskSystem.TryDispatchHigherPriorityTask(
-                droneEntity,
-                networkId,
-                returnStation,
-                hasReservation,
-                reservationPriority,
-                reservationCreationOrder))
-            return;
-
-        if (!hasReservation)
-            return;
+                out _,
+                out _))
+            return false;
 
         if (!_reservationSystem.TryClaimReservation(
                 reservationEntity,
                 droneEntity))
-            return;
+            return false;
 
-        if (!DroneStationStorageUtility.TryReleaseStoredDrone(
+        DroneState state = EntityManager
+            .GetComponentData<DroneState>(droneEntity);
+        bool isStored = state.value == DroneStateEnum.Stored ||
+                        state.value == DroneStateEnum.AwaitingCharge;
+
+        if (isStored &&
+            !DroneStationStorageUtility.TryReleaseStoredDrone(
                 EntityManager,
                 droneEntity))
         {
@@ -109,7 +160,7 @@ public partial class DroneDispatchSystem : SystemBase
                 reservationEntity,
                 droneEntity,
                 false);
-            return;
+            return false;
         }
 
         EntityManager.SetComponentData(
@@ -127,6 +178,7 @@ public partial class DroneDispatchSystem : SystemBase
             droneEntity,
             new DroneState { value = DroneStateEnum.MovingToPickup });
         SetTaskInProgress(reservation.taskEntity);
+        return true;
     }
 
     private bool TryResolveDroneNetwork(
@@ -157,60 +209,6 @@ public partial class DroneDispatchSystem : SystemBase
         return _networkSystem.TryGetNetworkId(
             returnStation,
             out networkId);
-    }
-
-    private bool TrySelectReservation(
-        Entity droneEntity,
-        int carryingCapacity,
-        int networkId,
-        out Entity reservationEntity,
-        out DroneTaskReservation reservation,
-        out Entity sourceOwner,
-        out DroneTaskPriority selectedPriority,
-        out ulong selectedCreationOrder)
-    {
-        reservationEntity = Entity.Null;
-        reservation = default;
-        sourceOwner = Entity.Null;
-        selectedPriority = default;
-        selectedCreationOrder = 0;
-
-        using NativeArray<Entity> reservationEntities =
-            _reservationQuery.ToEntityArray(Allocator.Temp);
-
-        for (int i = 0; i < reservationEntities.Length; i++)
-        {
-            Entity candidateEntity = reservationEntities[i];
-
-            if (!TryGetReservationCandidate(
-                    droneEntity,
-                    candidateEntity,
-                    carryingCapacity,
-                    networkId,
-                    out DroneTaskReservation candidate,
-                    out Entity candidateSource,
-                    out DroneTaskPriority candidatePriority,
-                    out ulong candidateCreationOrder))
-                continue;
-
-            if (reservationEntity != Entity.Null)
-            {
-                if (!DroneTaskPriorityUtility.IsHigherPriority(
-                        candidatePriority,
-                        candidateCreationOrder,
-                        selectedPriority,
-                        selectedCreationOrder))
-                    continue;
-            }
-
-            reservationEntity = candidateEntity;
-            reservation = candidate;
-            sourceOwner = candidateSource;
-            selectedPriority = candidatePriority;
-            selectedCreationOrder = candidateCreationOrder;
-        }
-
-        return reservationEntity != Entity.Null;
     }
 
     private bool TryGetReservationCandidate(

@@ -1,9 +1,15 @@
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Profiling;
 
 public partial class DroneDirectTaskSystem
 {
+    private static readonly ProfilerMarker FindRecoveryDestinationMarker =
+        new("DroneDirectTask.FindRecoveryDestination");
+    private static readonly ProfilerMarker ScanRecoveryStoragesMarker =
+        new("DroneDirectTask.ScanRecoveryStorages");
+
     public bool HasAvailableRecoveryDestination(
         Entity itemEntity,
         int networkId)
@@ -18,12 +24,81 @@ public partial class DroneDirectTaskSystem
             out _);
     }
 
+    public bool TryGetRecoveryDestination(
+        Entity itemEntity,
+        int networkId,
+        out Entity destinationOwner)
+    {
+        destinationOwner = Entity.Null;
+
+        if (!TryGetWorldItem(itemEntity, out Item item, out GridPosition position))
+            return false;
+
+        return TryFindRecoveryDestination(
+            position.gridPosition,
+            networkId,
+            item.type,
+            out destinationOwner);
+    }
+
+    public bool CanUseRecoveryDestination(
+        Entity itemEntity,
+        int networkId,
+        Entity destinationOwner)
+    {
+        if (!TryGetWorldItem(itemEntity, out Item item, out _))
+            return false;
+
+        if (destinationOwner == Entity.Null)
+            return false;
+
+        if (!EntityManager.Exists(destinationOwner))
+            return false;
+
+        if (!EntityManager.HasComponent<Storage>(destinationOwner))
+            return false;
+
+        if (!EntityManager.HasComponent<GridPosition>(destinationOwner))
+            return false;
+
+        if (!EntityManager.HasBuffer<StoredItemElement>(destinationOwner))
+            return false;
+
+        GridPosition destinationPosition = EntityManager
+            .GetComponentData<GridPosition>(destinationOwner);
+
+        if (!_networkSystem.TryGetNetworkIdAtCell(
+                destinationPosition.gridPosition,
+                out int destinationNetworkId))
+            return false;
+
+        if (destinationNetworkId != networkId)
+            return false;
+
+        if (_storageLimitQuery.IsEmptyIgnoreFilter)
+            return false;
+
+        Entity storageLimitEntity = _storageLimitQuery.GetSingletonEntity();
+        using NativeArray<ItemStorageLimitElement> storageLimits =
+            DynamicBufferCopyUtility.CreateNativeCopy(
+                EntityManager.GetBuffer<ItemStorageLimitElement>(
+                    storageLimitEntity,
+                    true),
+                Allocator.Temp);
+        return CanStorageAcceptItem(
+            destinationOwner,
+            item.type,
+            storageLimits);
+    }
+
     private bool TryFindRecoveryDestination(
         int2 sourceCell,
         int networkId,
         ItemTypeEnum itemType,
         out Entity destinationOwner)
     {
+        using ProfilerMarker.AutoScope findDestinationScope =
+            FindRecoveryDestinationMarker.Auto();
         destinationOwner = Entity.Null;
 
         if (_storageLimitQuery.IsEmptyIgnoreFilter)
@@ -40,33 +115,36 @@ public partial class DroneDirectTaskSystem
             _storageQuery.ToEntityArray(Allocator.Temp);
         float nearestDistanceSquared = float.MaxValue;
 
-        for (int i = 0; i < storageEntities.Length; i++)
+        using (ScanRecoveryStoragesMarker.Auto())
         {
-            Entity candidate = storageEntities[i];
-            int2 candidateCell = EntityManager
-                .GetComponentData<GridPosition>(candidate)
-                .gridPosition;
+            for (int i = 0; i < storageEntities.Length; i++)
+            {
+                Entity candidate = storageEntities[i];
+                int2 candidateCell = EntityManager
+                    .GetComponentData<GridPosition>(candidate)
+                    .gridPosition;
 
-            if (!_networkSystem.TryGetNetworkIdAtCell(
-                    candidateCell,
-                    out int candidateNetwork))
-                continue;
+                if (!_networkSystem.TryGetNetworkIdAtCell(
+                        candidateCell,
+                        out int candidateNetwork))
+                    continue;
 
-            if (candidateNetwork != networkId)
-                continue;
+                if (candidateNetwork != networkId)
+                    continue;
 
-            if (!CanStorageAcceptItem(candidate, itemType, storageLimits))
-                continue;
+                if (!CanStorageAcceptItem(candidate, itemType, storageLimits))
+                    continue;
 
-            float distanceSquared = math.distancesq(
-                new float2(sourceCell),
-                new float2(candidateCell));
+                float distanceSquared = math.distancesq(
+                    new float2(sourceCell),
+                    new float2(candidateCell));
 
-            if (distanceSquared >= nearestDistanceSquared)
-                continue;
+                if (distanceSquared >= nearestDistanceSquared)
+                    continue;
 
-            destinationOwner = candidate;
-            nearestDistanceSquared = distanceSquared;
+                destinationOwner = candidate;
+                nearestDistanceSquared = distanceSquared;
+            }
         }
 
         return destinationOwner != Entity.Null;
@@ -97,6 +175,9 @@ public partial class DroneDirectTaskSystem
             itemType,
             1,
             DroneStationStorageUtility.GetStoredDroneCount(
+                EntityManager,
+                storageEntity),
+            DroneStationStorageUtility.GetDedicatedDroneSlotCapacity(
                 EntityManager,
                 storageEntity));
     }

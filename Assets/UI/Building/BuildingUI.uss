@@ -208,6 +208,29 @@
     flex-wrap: wrap;
 }
 
+.dedicated-drone-storage-grid {
+    margin-bottom: 8px;
+    padding-top: 4px;
+    padding-left: 4px;
+    padding-right: 4px;
+    background-color: rgb(30, 48, 54);
+    border-left-width: 1px;
+    border-right-width: 1px;
+    border-top-width: 1px;
+    border-bottom-width: 1px;
+    border-left-color: rgb(73, 137, 143);
+    border-right-color: rgb(73, 137, 143);
+    border-top-color: rgb(73, 137, 143);
+    border-bottom-color: rgb(73, 137, 143);
+}
+
+.dedicated-drone-storage-grid .storage-slot-filled {
+    border-left-color: rgb(77, 181, 190);
+    border-right-color: rgb(77, 181, 190);
+    border-top-color: rgb(77, 181, 190);
+    border-bottom-color: rgb(77, 181, 190);
+}
+
 .storage-slot {
     width: 72px;
     height: 76px;

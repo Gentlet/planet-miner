@@ -10,6 +10,7 @@ public class DroneBuildingItemTaskTests
     private DroneStationNetworkSystem _networkSystem;
     private DroneBuildingItemTaskPlanningSystem _planningSystem;
     private DroneTaskReservationSystem _reservationSystem;
+    private Entity _station;
 
     [SetUp]
     public void SetUp()
@@ -24,7 +25,7 @@ public class DroneBuildingItemTaskTests
         _reservationSystem = _world.GetOrCreateSystemManaged<
             DroneTaskReservationSystem>();
         CreateConfig();
-        CreateStation(int2.zero);
+        _station = CreateStation(int2.zero);
         _networkSystem.Update();
     }
 
@@ -92,6 +93,46 @@ public class DroneBuildingItemTaskTests
         DroneTaskReservation reservation = _entityManager
             .GetComponentData<DroneTaskReservation>(reservationEntity);
         Assert.That(reservation.destinationOwner, Is.EqualTo(nearestStorage));
+    }
+
+    [Test]
+    public void RemovalWaitsUntilEntireRemainingQuantityFitsInStorage()
+    {
+        _entityManager.SetComponentData(_station, new Storage { capacity = 0 });
+        Entity source = CreateCrafter(new int2(8, 0), ItemTypeEnum.Iron);
+
+        for (int i = 0; i < 4; i++)
+            CreateStoredItem(source, ItemTypeEnum.Iron_Ore);
+
+        CreateStorage(new int2(9, 0), 1, BuildingTypeEnum.Storage);
+        Entity task = CreateBuildingItemTask(
+            DroneTaskTypeEnum.RemoveBuildingItem,
+            source,
+            ItemTypeEnum.Iron_Ore,
+            4);
+
+        PlanAndReserve();
+
+        Assert.That(CountReservations(), Is.EqualTo(0));
+        Assert.That(
+            _entityManager.GetComponentData<DroneTaskStatus>(task).state,
+            Is.EqualTo(DroneTaskStateEnum.Suspended));
+        Assert.That(
+            _entityManager.GetComponentData<DroneTaskAutomaticSuspension>(task)
+                .reason,
+            Is.EqualTo(DroneTaskAutomaticSuspensionReasonEnum
+                .DestinationCapacityUnavailable));
+
+        CreateStorage(new int2(10, 0), 1, BuildingTypeEnum.Storage);
+        PlanAndReserve();
+
+        Assert.That(CountReservations(), Is.EqualTo(1));
+        Assert.That(
+            _entityManager.GetComponentData<DroneTaskStatus>(task).state,
+            Is.EqualTo(DroneTaskStateEnum.Pending));
+        Assert.That(
+            _entityManager.HasComponent<DroneTaskAutomaticSuspension>(task),
+            Is.False);
     }
 
     [Test]
@@ -321,7 +362,7 @@ public class DroneBuildingItemTaskTests
         });
     }
 
-    private void CreateStation(int2 position)
+    private Entity CreateStation(int2 position)
     {
         Entity station = CreateStorage(
             position,
@@ -335,6 +376,7 @@ public class DroneBuildingItemTaskTests
                 isMainStation = true
             });
         _entityManager.AddComponent<BuildingOccupant>(station);
+        return station;
     }
 
     private Entity CreateStorage(

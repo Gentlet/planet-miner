@@ -1,8 +1,12 @@
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Profiling;
 
 public static class DroneDispatchBatteryUtility
 {
+    private static readonly ProfilerMarker CheckRouteMarker =
+        new("DroneDispatch.CheckBatteryRoute");
+
     public static bool CanCompleteRoute(
         EntityManager entityManager,
         DroneStationNetworkSystem networkSystem,
@@ -11,6 +15,8 @@ public static class DroneDispatchBatteryUtility
         Entity firstWaypoint,
         Entity secondWaypoint)
     {
+        using ProfilerMarker.AutoScope checkRouteScope = CheckRouteMarker.Auto();
+
         if (!TryGetGridCell(entityManager, droneEntity, out int2 droneCell))
             return false;
 

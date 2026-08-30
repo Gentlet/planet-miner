@@ -40,6 +40,29 @@ public class FloorBiomeGenerationTests
     }
 
     [Test]
+    public void TransitionVariantsAppearWhereDifferentBiomesMeet()
+    {
+        FloorGenerationSettings settings = CreateSettings(12345u, 2);
+        bool foundTransitionVariant = false;
+
+        for (int y = -128; y <= 128 && !foundTransitionVariant; y++)
+        {
+            for (int x = -128; x <= 128; x++)
+            {
+                FloorTileSelection selection = FloorBiomeSampler.SelectFloor(settings, new int2(x, y));
+
+                if (!selection.UsesTransitionVariant)
+                    continue;
+
+                foundTransitionVariant = true;
+                break;
+            }
+        }
+
+        Assert.That(foundTransitionVariant, Is.True);
+    }
+
+    [Test]
     public void InvalidTransitionWidthIsRejected()
     {
         var config = new FloorGenerationConfigFile
@@ -84,19 +107,12 @@ public class FloorBiomeGenerationTests
 
         Assert.That(loaded, Is.True);
         Assert.That(settings.Biomes.Count, Is.EqualTo(2));
+        Assert.That(settings.TransitionFloorVariants.Count, Is.EqualTo(3));
+
+        AssertVariantsReferenceSprites(settings.TransitionFloorVariants);
 
         for (int biomeIndex = 0; biomeIndex < settings.Biomes.Count; biomeIndex++)
-        {
-            FloorBiomeConfigData biome = settings.Biomes[biomeIndex];
-
-            for (int variantIndex = 0; variantIndex < biome.floorVariants.Count; variantIndex++)
-            {
-                FloorVariantConfigData variant = biome.floorVariants[variantIndex];
-                Sprite[] sprites = Resources.LoadAll<Sprite>(variant.spriteResourcePath);
-
-                Assert.That(sprites, Is.Not.Empty, $"Missing floor sprite at Resources/{variant.spriteResourcePath}");
-            }
-        }
+            AssertVariantsReferenceSprites(settings.Biomes[biomeIndex].floorVariants);
     }
 
     private static FloorGenerationSettings CreateSettings(uint worldSeed, int transitionWidthInChunks)
@@ -109,6 +125,7 @@ public class FloorBiomeGenerationTests
             boundaryNoiseScaleInCells = 24f,
             boundaryNoiseAmplitudeInCells = 6f,
             nearBiomePreferenceExponent = 0.5f,
+            transitionFloorVariants = CreateTransitionVariants(),
             biomes = CreateBiomeConfigs(2)
         };
 
@@ -145,5 +162,26 @@ public class FloorBiomeGenerationTests
                 }
             }
         };
+    }
+
+    private static List<FloorVariantConfigData> CreateTransitionVariants()
+    {
+        return new List<FloorVariantConfigData>
+        {
+            new() { spriteResourcePath = "GroundTransition01", weight = 1f },
+            new() { spriteResourcePath = "GroundTransition02", weight = 1f },
+            new() { spriteResourcePath = "GroundTransition03", weight = 1f }
+        };
+    }
+
+    private static void AssertVariantsReferenceSprites(IReadOnlyList<FloorVariantConfigData> variants)
+    {
+        for (int variantIndex = 0; variantIndex < variants.Count; variantIndex++)
+        {
+            FloorVariantConfigData variant = variants[variantIndex];
+            Sprite[] sprites = Resources.LoadAll<Sprite>(variant.spriteResourcePath);
+
+            Assert.That(sprites, Is.Not.Empty, $"Missing floor sprite at Resources/{variant.spriteResourcePath}");
+        }
     }
 }

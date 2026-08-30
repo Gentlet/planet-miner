@@ -305,6 +305,9 @@ public class ActiveDroneTransportTests
             new DroneDemolitionTaskData { targetBuilding = target });
         Entity drone = CreateDrone(3, 100f);
         SetAwaitingCharge(drone, 8f);
+        DroneDirectTaskPlanningSystem planningSystem = _world
+            .GetOrCreateSystemManaged<DroneDirectTaskPlanningSystem>();
+        planningSystem.Update();
 
         _dispatchSystem.Update();
 
@@ -315,6 +318,166 @@ public class ActiveDroneTransportTests
         Assert.That(
             _entityManager.GetComponentData<DroneTaskStatus>(task).state,
             Is.EqualTo(DroneTaskStateEnum.InProgress));
+    }
+
+    [Test]
+    public void SchedulerPrefersHigherPriorityReservationOverNearerWork()
+    {
+        Entity nearSource = CreateStorage(new int2(2, 0), 10);
+        Entity nearDestination = CreateStorage(new int2(3, 0), 10);
+        Entity farSource = CreateStorage(new int2(6, 0), 10);
+        Entity farDestination = CreateStorage(new int2(7, 0), 10);
+        CreateStoredItem(nearSource, ItemTypeEnum.Iron_Ore);
+        CreateStoredItem(farSource, ItemTypeEnum.Iron_Ore);
+        Entity nearTask = CreateTask(1);
+        Entity farTask = CreateTask(1);
+        SetTaskPriority(nearTask, 5);
+        SetTaskPriority(farTask, 1);
+        CreateReservation(
+            nearTask,
+            nearSource,
+            nearDestination,
+            ItemTypeEnum.Iron_Ore,
+            1);
+        CreateReservation(
+            farTask,
+            farSource,
+            farDestination,
+            ItemTypeEnum.Iron_Ore,
+            1);
+        _reservationSystem.Update();
+        Entity drone = CreateDrone(3, 100f);
+
+        _dispatchSystem.Update();
+
+        DroneAssignment assignment = _entityManager
+            .GetComponentData<DroneAssignment>(drone);
+        Assert.That(assignment.taskEntity, Is.EqualTo(farTask));
+    }
+
+    [Test]
+    public void SchedulerFallsBackToNearestFeasibleLowerPriorityWork()
+    {
+        Entity nearSource = CreateStorage(new int2(2, 0), 10);
+        Entity nearDestination = CreateStorage(new int2(3, 0), 10);
+        Entity farSource = CreateStorage(new int2(8, 0), 10);
+        Entity farDestination = CreateStorage(new int2(9, 0), 10);
+        CreateStoredItem(nearSource, ItemTypeEnum.Iron_Ore);
+        CreateStoredItem(farSource, ItemTypeEnum.Iron_Ore);
+        Entity nearTask = CreateTask(1);
+        Entity farTask = CreateTask(1);
+        SetTaskPriority(nearTask, 5);
+        SetTaskPriority(farTask, 1);
+        CreateReservation(
+            nearTask,
+            nearSource,
+            nearDestination,
+            ItemTypeEnum.Iron_Ore,
+            1);
+        CreateReservation(
+            farTask,
+            farSource,
+            farDestination,
+            ItemTypeEnum.Iron_Ore,
+            1);
+        _reservationSystem.Update();
+        Entity drone = CreateDrone(3, 8f);
+
+        _dispatchSystem.Update();
+
+        DroneAssignment assignment = _entityManager
+            .GetComponentData<DroneAssignment>(drone);
+        Assert.That(assignment.taskEntity, Is.EqualTo(nearTask));
+    }
+
+    [Test]
+    public void CompletedDroneChainsNearbyWorkBeforeReturning()
+    {
+        Entity firstSource = CreateStorage(new int2(2, 0), 10);
+        Entity firstDestination = CreateStorage(new int2(3, 0), 10);
+        Entity secondSource = CreateStorage(new int2(4, 0), 10);
+        Entity secondDestination = CreateStorage(new int2(5, 0), 10);
+        CreateStoredItem(firstSource, ItemTypeEnum.Iron_Ore);
+        CreateStoredItem(secondSource, ItemTypeEnum.Iron_Ore);
+        Entity firstTask = CreateTask(1);
+        Entity secondTask = CreateTask(1);
+        CreateReservation(
+            firstTask,
+            firstSource,
+            firstDestination,
+            ItemTypeEnum.Iron_Ore,
+            1);
+        CreateReservation(
+            secondTask,
+            secondSource,
+            secondDestination,
+            ItemTypeEnum.Iron_Ore,
+            1);
+        _reservationSystem.Update();
+        Entity drone = CreateDrone(3, 100f);
+
+        _dispatchSystem.Update();
+        AdvanceTransport(1f);
+        AdvanceTransport(1f);
+
+        DroneAssignment assignment = _entityManager
+            .GetComponentData<DroneAssignment>(drone);
+        Assert.That(
+            _entityManager.GetComponentData<DroneTaskStatus>(firstTask).state,
+            Is.EqualTo(DroneTaskStateEnum.Completed));
+        Assert.That(assignment.taskEntity, Is.EqualTo(secondTask));
+        Assert.That(
+            _entityManager.GetComponentData<DroneState>(drone).value,
+            Is.EqualTo(DroneStateEnum.MovingToPickup));
+    }
+
+    [Test]
+    public void SchedulerDispatchesFiveThousandSameCellTasksWithoutFrameLimit()
+    {
+        const int count = 5000;
+        int networkId = _entityManager
+            .GetComponentData<DroneStationNetwork>(_station)
+            .networkId;
+
+        for (int i = 0; i < count; i++)
+        {
+            Entity target = _entityManager.CreateEntity(
+                typeof(BuildingOccupant),
+                typeof(GridPosition));
+            _entityManager.SetComponentData(
+                target,
+                new GridPosition { gridPosition = new int2(1, 0) });
+            Entity task = CreateTask(1);
+            _entityManager.SetComponentData(
+                task,
+                new DroneTask { type = DroneTaskTypeEnum.Demolition });
+            _entityManager.SetComponentData(
+                task,
+                new DroneTaskCreationOrder { value = (ulong)(i + 1) });
+            _entityManager.AddComponentData(
+                task,
+                new DroneDemolitionTaskData { targetBuilding = target });
+            _entityManager.AddComponentData(
+                task,
+                new DroneDirectTaskPlan
+                {
+                    networkId = networkId,
+                    workCell = new int2(1, 0),
+                    destinationOwner = Entity.Null
+                });
+            Entity drone = CreateDrone(1, 100f);
+            _entityManager.SetComponentData(
+                drone,
+                new DroneState { value = DroneStateEnum.AwaitingDispatch });
+        }
+
+        _dispatchSystem.Update();
+
+        using EntityQuery assignedTaskQuery = _entityManager.CreateEntityQuery(
+            typeof(DroneDirectTaskAssignment));
+        Assert.That(
+            assignedTaskQuery.CalculateEntityCount(),
+            Is.EqualTo(count));
     }
 
     [Test]
@@ -349,6 +512,23 @@ public class ActiveDroneTransportTests
         _entityManager.SetComponentData(
             _station,
             new Storage { capacity = 0 });
+
+        for (int i = 0;
+             i < DroneStationStorageUtility.DedicatedDroneSlotCapacity;
+             i++)
+        {
+            Entity storedDrone = CreateDrone(3, 100f);
+            _entityManager.SetComponentData(
+                storedDrone,
+                new DroneState { value = DroneStateEnum.Stored });
+            Assert.That(
+                DroneStationStorageUtility.TryAddStoredDrone(
+                    _entityManager,
+                    _station,
+                    storedDrone),
+                Is.True);
+        }
+
         _networkSystem.Update();
         Entity drone = CreateDrone(3, 50f);
         _entityManager.SetComponentData(
@@ -415,6 +595,7 @@ public class ActiveDroneTransportTests
         _world.SetTime(new TimeData(_elapsedTime, deltaTime));
         _movementSystem.Update();
         _cargoSystem.Update();
+        _dispatchSystem.Update();
         _recoverySystem.Update();
     }
 
@@ -499,6 +680,14 @@ public class ActiveDroneTransportTests
             task,
             new DroneTaskQuantity { totalQuantity = quantity });
         return task;
+    }
+
+    private void SetTaskPriority(Entity taskEntity, int normalPriority)
+    {
+        DroneTaskPriority priority = _entityManager
+            .GetComponentData<DroneTaskPriority>(taskEntity);
+        priority.normalPriority = normalPriority;
+        _entityManager.SetComponentData(taskEntity, priority);
     }
 
     private void CreateReservation(

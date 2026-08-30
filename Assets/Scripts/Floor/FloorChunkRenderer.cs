@@ -119,6 +119,25 @@ public sealed class FloorChunkRenderer : MonoBehaviour
             }
         }
 
+        for (int variantIndex = 0; variantIndex < _settings.TransitionFloorVariants.Count; variantIndex++)
+        {
+            FloorVariantConfigData variant = _settings.TransitionFloorVariants[variantIndex];
+            Sprite sprite = LoadSprite(variant.spriteResourcePath);
+
+            if (sprite == null)
+            {
+                Debug.LogError($"Transition floor sprite not found. Path : Resources/{variant.spriteResourcePath}");
+                DisposeVisualVariants();
+                return false;
+            }
+
+            var material = new Material(floorShader)
+            {
+                mainTexture = sprite.texture
+            };
+            _visualVariants.Add(new FloorVisualVariant(sprite, material));
+        }
+
         return true;
     }
 
@@ -197,12 +216,25 @@ public sealed class FloorChunkRenderer : MonoBehaviour
 
     private int GetVisualVariantIndex(FloorTileSelection selection)
     {
+        if (selection.UsesTransitionVariant)
+            return GetBaseVisualVariantCount() + selection.VariantIndex;
+
         int visualVariantIndex = selection.VariantIndex;
 
         for (int biomeIndex = 0; biomeIndex < selection.BiomeIndex; biomeIndex++)
             visualVariantIndex += _settings.Biomes[biomeIndex].floorVariants.Count;
 
         return visualVariantIndex;
+    }
+
+    private int GetBaseVisualVariantCount()
+    {
+        int count = 0;
+
+        for (int biomeIndex = 0; biomeIndex < _settings.Biomes.Count; biomeIndex++)
+            count += _settings.Biomes[biomeIndex].floorVariants.Count;
+
+        return count;
     }
 
     private Material[] GetMaterials()

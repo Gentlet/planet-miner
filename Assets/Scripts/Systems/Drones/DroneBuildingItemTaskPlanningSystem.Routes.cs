@@ -62,6 +62,18 @@ public partial class DroneBuildingItemTaskPlanningSystem
         int availableQuantity = CountAvailableItems(
             taskData.targetBuilding,
             taskData.itemType);
+
+        if (!HasSufficientDestinationCapacity(
+                taskData.targetBuilding,
+                taskData.itemType,
+                unreservedQuantity,
+                networkId,
+                storageEntities,
+                storageLimits,
+                recipes,
+                ingredients))
+            return ReservationPlanResult.DestinationCapacityUnavailable;
+
         int maximumQuantity = math.min(
             math.min(unreservedQuantity, carryingCapacity),
             availableQuantity);

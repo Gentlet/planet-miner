@@ -107,6 +107,9 @@ public static class DroneItemDestinationUtility
                 quantity,
                 DroneStationStorageUtility.GetStoredDroneCount(
                     entityManager,
+                    destinationOwner),
+                DroneStationStorageUtility.GetDedicatedDroneSlotCapacity(
+                    entityManager,
                     destinationOwner));
         }
 

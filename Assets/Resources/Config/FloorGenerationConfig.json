@@ -5,13 +5,35 @@
   "boundaryNoiseScaleInCells": 24.0,
   "boundaryNoiseAmplitudeInCells": 6.0,
   "nearBiomePreferenceExponent": 0.5,
+  "transitionFloorVariants": [
+    {
+      "spriteResourcePath": "Sprites/Floor/GroundTransition01",
+      "weight": 1.0
+    },
+    {
+      "spriteResourcePath": "Sprites/Floor/GroundTransition02",
+      "weight": 1.0
+    },
+    {
+      "spriteResourcePath": "Sprites/Floor/GroundTransition03",
+      "weight": 1.0
+    }
+  ],
   "biomes": [
     {
       "id": "Grass",
       "selectionWeight": 1.0,
       "floorVariants": [
         {
-          "spriteResourcePath": "GroundGrass",
+          "spriteResourcePath": "Sprites/Floor/GroundGrass",
+          "weight": 1.0
+        },
+        {
+          "spriteResourcePath": "Sprites/Floor/GroundGrass02",
+          "weight": 1.0
+        },
+        {
+          "spriteResourcePath": "Sprites/Floor/GroundGrass03",
           "weight": 1.0
         }
       ]
@@ -21,7 +43,15 @@
       "selectionWeight": 1.0,
       "floorVariants": [
         {
-          "spriteResourcePath": "GroundDirt",
+          "spriteResourcePath": "Sprites/Floor/GroundDirt",
+          "weight": 1.0
+        },
+        {
+          "spriteResourcePath": "Sprites/Floor/GroundDirt02",
+          "weight": 1.0
+        },
+        {
+          "spriteResourcePath": "Sprites/Floor/GroundDirt03",
           "weight": 1.0
         }
       ]

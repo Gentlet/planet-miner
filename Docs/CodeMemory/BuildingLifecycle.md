@@ -60,6 +60,8 @@
 
 `DroneDemolitionRequestSystem`이 우클릭 위치의 실제 건물을 찾아 `DroneTaskTypeEnum.Demolition` 작업을 만든다. 건설 모드에서 선택한 normal priority도 요청을 거쳐 이 작업에 전달된다. 드론이 대상에 도착해 철거를 완료하면 `BuildingDestroyRequest(UserDemolition)`으로 전환된다.
 
+`WorldTaskMarkerPresentationSystem`은 활성 철거 및 월드 아이템 회수 작업마다 별도의 프레젠테이션 Entity를 만들고 공용 X Mesh와 URP 머티리얼로 붉은 철거 표시를 렌더링한다. 건물 표시는 footprint 크기·방향을 따르고, 회수 표시는 월드 아이템의 `LocalTransform`을 고정 크기로 따라간다. 표시 Entity는 작업과 대상만 참조하며 공간·시뮬레이션 상태를 소유하지 않는다. 작업이 완료·취소되거나 대상이 사라지거나 아이템이 저장 소유권으로 전환되면 자동으로 제거된다.
+
 `BuildingDestroySystem`은 생산/저장/연료 처리 뒤에 실행되며 다음을 수행한다.
 
 1. 대상 존재, `BuildingOccupant`, 파괴 가능 여부를 검증한다.

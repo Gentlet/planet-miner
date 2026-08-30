@@ -3,6 +3,23 @@ using Unity.Rendering;
 
 public static class DroneStationStorageUtility
 {
+    public const int DedicatedDroneSlotCapacity = 5;
+
+    public static int GetDedicatedDroneSlotCapacity(
+        EntityManager entityManager,
+        Entity stationEntity)
+    {
+        if (stationEntity == Entity.Null)
+            return 0;
+
+        if (!entityManager.Exists(stationEntity))
+            return 0;
+
+        return entityManager.HasComponent<DroneStation>(stationEntity)
+            ? DedicatedDroneSlotCapacity
+            : 0;
+    }
+
     public static int GetStoredDroneCount(
         EntityManager entityManager,
         Entity stationEntity)

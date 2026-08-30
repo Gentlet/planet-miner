@@ -1,198 +1,98 @@
-using Unity.Collections;
 using Unity.Entities;
-using Unity.Mathematics;
 
 public partial class DroneDirectTaskSystem
 {
-    public bool TryDispatchHigherPriorityTask(
+    public bool TryClaimScheduledTask(
         Entity droneEntity,
+        Entity taskEntity,
         int networkId,
-        Entity returnStation,
-        bool hasReservationCandidate,
-        DroneTaskPriority reservationPriority,
-        ulong reservationCreationOrder)
+        Entity returnStation)
     {
-        if (!TrySelectTask(
-                droneEntity,
-                networkId,
-                hasReservationCandidate,
-                reservationPriority,
-                reservationCreationOrder,
-                out Entity taskEntity))
+        if (!EntityManager.Exists(taskEntity))
+            return false;
+
+        if (!EntityManager.HasComponent<DroneDirectTaskPlan>(taskEntity))
+            return false;
+
+        DroneTaskStatus status = EntityManager
+            .GetComponentData<DroneTaskStatus>(taskEntity);
+
+        if (status.state != DroneTaskStateEnum.Pending)
+            return false;
+
+        DroneDirectTaskPlan plan = EntityManager
+            .GetComponentData<DroneDirectTaskPlan>(taskEntity);
+
+        if (plan.networkId != networkId)
             return false;
 
         DroneTask task = EntityManager.GetComponentData<DroneTask>(taskEntity);
 
         if (task.type == DroneTaskTypeEnum.Demolition)
         {
-            return TryClaimDemolitionTask(
-                droneEntity,
-                taskEntity,
-                networkId,
-                returnStation);
-        }
+            Entity target = EntityManager
+                .GetComponentData<DroneDemolitionTaskData>(taskEntity)
+                .targetBuilding;
 
-        if (task.type == DroneTaskTypeEnum.RecoverWorldItem)
-        {
-            return TryClaimWorldItemTask(
-                droneEntity,
-                taskEntity,
-                networkId,
-                returnStation);
-        }
-
-        return false;
-    }
-
-    private bool TrySelectTask(
-        Entity droneEntity,
-        int networkId,
-        bool hasReservationCandidate,
-        DroneTaskPriority reservationPriority,
-        ulong reservationCreationOrder,
-        out Entity taskEntity)
-    {
-        taskEntity = Entity.Null;
-        DroneTaskPriority selectedPriority = reservationPriority;
-        ulong selectedCreationOrder = reservationCreationOrder;
-        bool hasSelectedCandidate = hasReservationCandidate;
-        using NativeArray<Entity> tasks =
-            _taskQuery.ToEntityArray(Allocator.Temp);
-
-        for (int i = 0; i < tasks.Length; i++)
-        {
-            Entity candidate = tasks[i];
-            DroneTaskStatus status = EntityManager
-                .GetComponentData<DroneTaskStatus>(candidate);
-
-            if (status.state != DroneTaskStateEnum.Pending)
-                continue;
-
-            if (!IsDirectTaskAvailableInNetwork(
+            if (!DroneDispatchBatteryUtility.CanCompleteRoute(
+                    EntityManager,
+                    _networkSystem,
                     droneEntity,
-                    candidate,
-                    networkId))
-                continue;
+                    networkId,
+                    target,
+                    Entity.Null))
+                return false;
 
-            DroneTaskPriority candidatePriority = EntityManager
-                .GetComponentData<DroneTaskPriority>(candidate);
-            ulong candidateCreationOrder = EntityManager
-                .GetComponentData<DroneTaskCreationOrder>(candidate).value;
-
-            if (hasSelectedCandidate &&
-                !DroneTaskPriorityUtility.IsHigherPriority(
-                    candidatePriority,
-                    candidateCreationOrder,
-                    selectedPriority,
-                    selectedCreationOrder))
-                continue;
-
-            taskEntity = candidate;
-            selectedPriority = candidatePriority;
-            selectedCreationOrder = candidateCreationOrder;
-            hasSelectedCandidate = true;
-        }
-
-        return taskEntity != Entity.Null;
-    }
-
-    private bool IsDirectTaskAvailableInNetwork(
-        Entity droneEntity,
-        Entity taskEntity,
-        int networkId)
-    {
-        DroneTask task = EntityManager.GetComponentData<DroneTask>(taskEntity);
-
-        if (task.type == DroneTaskTypeEnum.Demolition)
-        {
-            return IsDemolitionAvailableInNetwork(
+            bool claimed = TryClaimDemolitionTask(
                 droneEntity,
                 taskEntity,
-                networkId);
+                networkId,
+                returnStation);
+
+            if (!claimed)
+                RemoveScheduledPlan(taskEntity);
+
+            return claimed;
         }
 
-        if (task.type == DroneTaskTypeEnum.RecoverWorldItem)
-        {
-            return IsWorldItemAvailableInNetwork(
-                droneEntity,
-                taskEntity,
-                networkId);
-        }
-
-        return false;
-    }
-
-    private bool IsDemolitionAvailableInNetwork(
-        Entity droneEntity,
-        Entity taskEntity,
-        int networkId)
-    {
-        if (!EntityManager.HasComponent<DroneDemolitionTaskData>(taskEntity))
-            return false;
-
-        Entity target = EntityManager
-            .GetComponentData<DroneDemolitionTaskData>(taskEntity)
-            .targetBuilding;
-
-        if (!IsValidDemolitionTarget(target))
-            return false;
-
-        int2 cell = EntityManager.GetComponentData<GridPosition>(target)
-            .gridPosition;
-        if (!_networkSystem.TryGetNetworkIdAtCell(
-                cell,
-                out int targetNetwork))
-            return false;
-
-        if (targetNetwork != networkId)
-            return false;
-
-        return DroneDispatchBatteryUtility.CanCompleteRoute(
-            EntityManager,
-            _networkSystem,
-            droneEntity,
-            networkId,
-            target,
-            Entity.Null);
-    }
-
-    private bool IsWorldItemAvailableInNetwork(
-        Entity droneEntity,
-        Entity taskEntity,
-        int networkId)
-    {
-        if (!EntityManager.HasComponent<DroneWorldItemRecoveryTaskData>(taskEntity))
+        if (task.type != DroneTaskTypeEnum.RecoverWorldItem)
             return false;
 
         Entity itemEntity = EntityManager
             .GetComponentData<DroneWorldItemRecoveryTaskData>(taskEntity)
             .itemEntity;
 
-        if (!TryGetWorldItem(itemEntity, out Item item, out GridPosition position))
-            return false;
-
-        if (!_networkSystem.TryGetNetworkIdAtCell(
-                position.gridPosition,
-                out int itemNetwork))
-            return false;
-
-        if (itemNetwork != networkId)
-            return false;
-
-        if (!TryFindRecoveryDestination(
-                position.gridPosition,
+        if (!DroneDispatchBatteryUtility.CanCompleteRoute(
+                EntityManager,
+                _networkSystem,
+                droneEntity,
                 networkId,
-                item.type,
-                out Entity destinationOwner))
+                itemEntity,
+                plan.destinationOwner))
             return false;
 
-        return DroneDispatchBatteryUtility.CanCompleteRoute(
-            EntityManager,
-            _networkSystem,
+        bool worldItemClaimed = TryClaimWorldItemTask(
             droneEntity,
+            taskEntity,
             networkId,
-            itemEntity,
-            destinationOwner);
+            returnStation,
+            plan.destinationOwner);
+
+        if (!worldItemClaimed)
+            RemoveScheduledPlan(taskEntity);
+
+        return worldItemClaimed;
+    }
+
+    private void RemoveScheduledPlan(Entity taskEntity)
+    {
+        if (!EntityManager.Exists(taskEntity))
+            return;
+
+        if (!EntityManager.HasComponent<DroneDirectTaskPlan>(taskEntity))
+            return;
+
+        EntityManager.RemoveComponent<DroneDirectTaskPlan>(taskEntity);
     }
 
     private bool TryClaimDemolitionTask(
@@ -208,9 +108,7 @@ public partial class DroneDirectTaskSystem
         if (!IsValidDemolitionTarget(target))
             return false;
 
-        if (!DroneStationStorageUtility.TryReleaseStoredDrone(
-                EntityManager,
-                droneEntity))
+        if (!TryReleaseDroneForDispatch(droneEntity))
             return false;
 
         SetTaskAssigned(
@@ -234,7 +132,8 @@ public partial class DroneDirectTaskSystem
         Entity droneEntity,
         Entity taskEntity,
         int networkId,
-        Entity returnStation)
+        Entity returnStation,
+        Entity plannedDestinationOwner = default)
     {
         Entity itemEntity = EntityManager
             .GetComponentData<DroneWorldItemRecoveryTaskData>(taskEntity)
@@ -243,12 +142,17 @@ public partial class DroneDirectTaskSystem
         if (!TryGetWorldItem(itemEntity, out Item item, out GridPosition position))
             return false;
 
-        if (!TryFindRecoveryDestination(
-                position.gridPosition,
-                networkId,
-                item.type,
-                out Entity destinationOwner))
-            return false;
+        Entity destinationOwner = plannedDestinationOwner;
+
+        if (destinationOwner == Entity.Null)
+        {
+            if (!TryFindRecoveryDestination(
+                    position.gridPosition,
+                    networkId,
+                    item.type,
+                    out destinationOwner))
+                return false;
+        }
 
         if (!_reservationSystem.TryReserveDirectDestinationCapacity(
                 destinationOwner,
@@ -256,9 +160,7 @@ public partial class DroneDirectTaskSystem
                 1))
             return false;
 
-        if (!DroneStationStorageUtility.TryReleaseStoredDrone(
-                EntityManager,
-                droneEntity))
+        if (!TryReleaseDroneForDispatch(droneEntity))
         {
             _reservationSystem.ReleaseDirectDestinationCapacity(
                 destinationOwner,
@@ -282,6 +184,19 @@ public partial class DroneDirectTaskSystem
             networkId,
             DroneStateEnum.MovingToWorldItem);
         return true;
+    }
+
+    private bool TryReleaseDroneForDispatch(Entity droneEntity)
+    {
+        DroneState state = EntityManager
+            .GetComponentData<DroneState>(droneEntity);
+
+        if (state.value == DroneStateEnum.AwaitingDispatch)
+            return true;
+
+        return DroneStationStorageUtility.TryReleaseStoredDrone(
+            EntityManager,
+            droneEntity);
     }
 
     private void SetTaskAssigned(

@@ -1,6 +1,6 @@
 <ui:UXML xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:ui="UnityEngine.UIElements" xmlns:uie="UnityEditor.UIElements" noNamespaceSchemaLocation="../../UIElementsSchema/UIElements.xsd" editor-extension-mode="False">
-    <Style src="project://database/Assets/UI/Button.uss?fileID=7433441132597879392&amp;guid=6d23cb732104f1f46931923e74a6d700&amp;type=3#Button"/>
-    <Style src="project://database/Assets/UI/BuildingUI.uss?fileID=7433441132597879392&amp;guid=ac8d39037fc94366b11e410c84009581&amp;type=3#BuildingUI"/>
+    <Style src="project://database/Assets/UI/Shared/Button.uss?fileID=7433441132597879392&amp;guid=6d23cb732104f1f46931923e74a6d700&amp;type=3#Button"/>
+    <Style src="project://database/Assets/UI/Building/BuildingUI.uss?fileID=7433441132597879392&amp;guid=ac8d39037fc94366b11e410c84009581&amp;type=3#BuildingUI"/>
     <ui:VisualElement name="root" class="root">
         <ui:VisualElement name="bottom-button-container" class="bottom-button-container">
             <ui:Button name="construction-mode-button" text="건설 모드" class="bottom-button blocking-ui"/>
@@ -40,6 +40,8 @@
                     <ui:Label name="recipe-title" text="레시피" class="section-title"/>
                     <ui:Label name="current-recipe" text="현재 레시피: 없음" class="current-recipe"/>
                     <ui:VisualElement name="recipe-container" class="recipe-container"/>
+                    <ui:Label name="dedicated-drone-storage-title" text="보관 드론" class="section-title" style="display: none;"/>
+                    <ui:VisualElement name="dedicated-drone-storage-container" class="inventory-container storage-grid dedicated-drone-storage-grid" style="display: none;"/>
                     <ui:Label name="input-title" text="투입 아이템" class="section-title"/>
                     <ui:VisualElement name="input-container" class="inventory-container"/>
                     <ui:VisualElement name="drone-transfer-container" class="drone-transfer-container">

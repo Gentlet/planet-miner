@@ -24,6 +24,7 @@ public class BuildingPlacementController : MonoBehaviour
     private BuildingPlacementPreview _preview;
     private BuildingPlacementOperation _placementOperation;
     private readonly BuildingCopyInteraction _copyInteraction = new();
+    private readonly BuildingDemolitionSelectionInteraction _demolitionSelection = new();
     private readonly BuildingSettingsTransfer _settingsTransfer = new();
 
     [SerializeField]
@@ -58,6 +59,17 @@ public class BuildingPlacementController : MonoBehaviour
             copySelectionPreview = gameObject.AddComponent<BuildingCopySelectionPreview>();
 
         _copyInteraction.AttachPreview(copySelectionPreview);
+
+        BuildingDemolitionSelectionPreview demolitionSelectionPreview =
+            GetComponent<BuildingDemolitionSelectionPreview>();
+
+        if (demolitionSelectionPreview == null)
+        {
+            demolitionSelectionPreview = gameObject.AddComponent<
+                BuildingDemolitionSelectionPreview>();
+        }
+
+        _demolitionSelection.AttachPreview(demolitionSelectionPreview);
     }
 
     private void Update()
@@ -72,9 +84,6 @@ public class BuildingPlacementController : MonoBehaviour
         HandleGlobalHotkeys(keyboard);
 
         if (!TryGetPointerGridCell(out int2 gridCell))
-            return;
-
-        if (TryHandleSettingsTransferInput(keyboard, gridCell))
             return;
 
         if (_copyInteraction.IsSelecting)
@@ -92,6 +101,27 @@ public class BuildingPlacementController : MonoBehaviour
 
             return;
         }
+
+        if (_demolitionSelection.IsSelecting)
+        {
+            _preview.HidePreview();
+
+            if (_demolitionSelection.TryHandleSelectionInput(
+                    gridCell,
+                    out GridBounds selectedBounds))
+            {
+                DemolitionAreaRequestUtility.CreateRequests(
+                    _entityManager,
+                    _chunkMap,
+                    selectedBounds,
+                    _normalTaskPriority);
+            }
+
+            return;
+        }
+
+        if (TryHandleSettingsTransferInput(keyboard, gridCell))
+            return;
 
         UpdatePlacementPreview(gridCell);
 
@@ -111,6 +141,9 @@ public class BuildingPlacementController : MonoBehaviour
         {
             BeginCopySelection();
         }
+
+        if (keyboard.deleteKey.wasPressedThisFrame)
+            BeginDemolitionSelection();
 
         if (keyboard.rKey.wasPressedThisFrame &&
             !_copyInteraction.IsSelecting &&
@@ -143,9 +176,20 @@ public class BuildingPlacementController : MonoBehaviour
 
     private void BeginCopySelection()
     {
+        _demolitionSelection.Cancel();
         _copyInteraction.BeginSelection(_placementOperation);
         ResetPointerDrag();
         _preview.HidePreview();
+    }
+
+    private void BeginDemolitionSelection()
+    {
+        ExitCopyMode(true);
+        ClearOperation();
+        ResetPointerDrag();
+        _preview.HidePreview();
+        _demolitionSelection.BeginSelection();
+        PlacementSelectionCleared?.Invoke();
     }
 
     private void HandleCopyPlacementInput()
@@ -265,6 +309,7 @@ public class BuildingPlacementController : MonoBehaviour
     {
         ResetPointerDrag();
         _copyInteraction.ResetSelectionDrag();
+        _demolitionSelection.Cancel();
     }
 
     private void CreateConstructionRequests()
@@ -359,6 +404,12 @@ public class BuildingPlacementController : MonoBehaviour
 
     public bool TryCancelCopyMode()
     {
+        if (_demolitionSelection.IsSelecting)
+        {
+            _demolitionSelection.Cancel();
+            return true;
+        }
+
         if (!_copyInteraction.IsActive)
             return false;
 
@@ -376,6 +427,7 @@ public class BuildingPlacementController : MonoBehaviour
 
     private void SetOperation(BuildingPlacementOperation operation)
     {
+        _demolitionSelection.Cancel();
         _placementOperation = operation ?? CreateEmptyOperation();
         ExitCopyMode(false);
     }
@@ -397,6 +449,10 @@ public class BuildingPlacementController : MonoBehaviour
     }
 
     public string CopyStatus => _copyInteraction.Status;
+
+    public string InteractionStatus => _demolitionSelection.IsSelecting
+        ? _demolitionSelection.Status
+        : _copyInteraction.Status;
 
     public void SetNormalTaskPriority(int normalPriority)
     {

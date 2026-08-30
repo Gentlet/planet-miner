@@ -63,6 +63,7 @@
 
 - 바이옴 영역은 설정된 `biomeRegionSizeInChunks`(기본 3×3 청크) 단위로 고정 시드 해시에서 선택한다.
 - `transitionWidthInChunks`(기본 총 2청크) 안에서는 저주파 도메인 워프와 좌표 해시로 인접 바이옴 바닥을 결정론적으로 섞는다. `nearBiomePreferenceExponent`(기본 0.5)는 완충지대에서 가까운 쪽 바이옴의 우세가 증가하는 속도를 정하며, 1보다 작을수록 더 빨리 우세해진다.
+- 서로 다른 바이옴이 실제로 만나는 완충지대에서는 `transitionFloorVariants[]`의 전이 타일도 사용한다. 경계 중심에 가까울수록 전이 타일 확률이 높고, 각 바이옴 핵심 영역에 가까울수록 해당 바이옴의 일반 바닥 타일 확률이 높다.
 - 바닥 이미지와 가중치는 `biomes[].floorVariants[]` 설정 목록에서 관리한다. 이미지는 `Resources` 경로를 사용하며, 추가 바이옴·변형은 코드를 분기하지 않고 설정으로 확장한다.
 - 각 셀 결과는 월드 시드와 월드 좌표만으로 계산하므로 청크·카메라 로드 순서와 무관하다.
 - 하나의 청크 메시 안에서 variant별 submesh/material을 사용하고, 생성한 청크 GameObject를 내부 dictionary에 보관한다.

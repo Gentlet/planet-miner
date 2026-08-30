@@ -19,6 +19,7 @@ public enum DroneStateEnum : byte
     MovingToWorldItemStorage,
     DeliveringWorldItem,
     AwaitingStorage,
+    AwaitingDispatch,
     Count
 }
 

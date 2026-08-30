@@ -129,12 +129,21 @@ public partial class BuildingUI
             _selectedBuilding);
 
         if (storedDroneCount > 0)
-            _storedCounts[ItemTypeEnum.Drone] = storedDroneCount;
+        {
+            _storedCounts.TryGetValue(
+                ItemTypeEnum.Drone,
+                out int storedDroneItemCount);
+            _storedCounts[ItemTypeEnum.Drone] =
+                storedDroneItemCount + storedDroneCount;
+        }
 
-        UpdateStorageInventory(
+        UpdateStationStorageInventories(
             _storedCounts,
             storageLimits,
-            storage.capacity);
+            storage.capacity,
+            DroneStationStorageUtility.GetDedicatedDroneSlotCapacity(
+                _entityManager,
+                _selectedBuilding));
 
         bool isConnected = TryGetConnectedGrid(
             _selectedBuilding,

@@ -46,11 +46,11 @@ Material:
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _BaseMap:
-        m_Texture: {fileID: 2800000, guid: 2db83a66763aa414197a597765d4a662, type: 3}
+        m_Texture: {fileID: 2800000, guid: bb7a7e2598e8c594b9c7562f2509457f, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _MainTex:
-        m_Texture: {fileID: 2800000, guid: 2db83a66763aa414197a597765d4a662, type: 3}
+        m_Texture: {fileID: 2800000, guid: bb7a7e2598e8c594b9c7562f2509457f, type: 3}
         m_Scale: {x: 1, y: 1}
         m_Offset: {x: 0, y: 0}
     - _MaskTex:
@@ -81,8 +81,8 @@ Material:
     - _XRMotionVectorsPass: 1
     - _ZWrite: 0
     m_Colors:
-    - _BaseColor: {r: 1, g: 0.79607844, b: 0.79607844, a: 1}
-    - _Color: {r: 1, g: 0.79607844, b: 0.79607844, a: 1}
+    - _BaseColor: {r: 1, g: 1, b: 1, a: 1}
+    - _Color: {r: 1, g: 1, b: 1, a: 1}
     - _RendererColor: {r: 1, g: 1, b: 1, a: 1}
   m_BuildTextureStacks: []
   m_AllowLocking: 1

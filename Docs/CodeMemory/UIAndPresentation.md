@@ -45,7 +45,7 @@
 - `.View`: VisualElement 바인딩, layout 전환, 공통 inventory/status 렌더링.
 - `.Crafter`: 레시피, 입력/출력, 진행도, recipe change 요청.
 - `.Miner`: 자원 생산 상태와 진행도.
-- `.Storage`: stack slot 단위 저장 상태.
+- `.Storage`: stack slot 단위 저장 상태. 드론 정거장과 메인 스테이션은 일반 보관공간과 드론 전용 5칸을 별도 grid로 표시한다.
 - `.Power`: consumer/generator/main facility/pole의 grid와 전력 상태.
 - `.DroneItems`: 선택 건물의 insert/remove drone task 요청.
 - `.Drone`: 선택 드론의 상태, 배터리, 화물, 성능, 작업 할당 표시.

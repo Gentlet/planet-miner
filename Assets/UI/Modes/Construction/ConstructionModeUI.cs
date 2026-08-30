@@ -80,7 +80,7 @@ public class ConstructionModeUI : MonoBehaviour
 
         if (copyStatusLabel != null)
         {
-            string copyStatus = _bpc.CopyStatus;
+            string copyStatus = _bpc.InteractionStatus;
             copyStatusLabel.text = copyStatus;
             copyStatusLabel.style.display =
                 string.IsNullOrEmpty(copyStatus) ? DisplayStyle.None : DisplayStyle.Flex;

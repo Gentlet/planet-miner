@@ -136,7 +136,11 @@ public partial class DroneCargoTransferSystem : SystemBase
             return;
         }
 
-        TryReturnToStation(droneEntity, assignment);
+        DroneReturnRouteUtility.SetAwaitingDispatchAfterCompletion(
+            EntityManager,
+            droneEntity,
+            assignment.taskEntity,
+            assignment.reservationEntity);
     }
 
     private bool TryTransferReservedItemToDrone(

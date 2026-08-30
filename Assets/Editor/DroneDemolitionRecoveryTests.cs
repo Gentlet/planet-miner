@@ -62,6 +62,34 @@ public class DroneDemolitionRecoveryTests
     }
 
     [Test]
+    public void AreaSelectionCreatesDemolitionAndWorldItemRecoveryRequests()
+    {
+        CreateRegisteredBuilding(new int2(3, 4), BuildingTypeEnum.Storage);
+        CreateRegisteredBuilding(new int2(5, 4), BuildingTypeEnum.Storage);
+        CreateWorldItem(new int2(3, 5), ItemTypeEnum.Iron);
+        CreateWorldItem(new int2(5, 5), ItemTypeEnum.Copper);
+
+        DemolitionAreaRequestUtility.CreateRequests(
+            _entityManager,
+            _chunkMap,
+            new GridBounds(new int2(3, 4), new int2(5, 5)),
+            3);
+
+        Assert.That(Count<DroneDemolitionRequest>(), Is.EqualTo(2));
+        Assert.That(Count<DroneWorldItemRecoveryCreateRequest>(), Is.EqualTo(2));
+
+        using EntityQuery demolitionQuery = _entityManager.CreateEntityQuery(
+            typeof(DroneDemolitionRequest));
+        using var demolitionRequests = demolitionQuery.ToComponentDataArray<
+            DroneDemolitionRequest>(Unity.Collections.Allocator.Temp);
+
+        for (int i = 0; i < demolitionRequests.Length; i++)
+        {
+            Assert.That(demolitionRequests[i].normalPriority, Is.EqualTo(3));
+        }
+    }
+
+    [Test]
     public void DroneArrivalCreatesUserDemolitionDestroyRequest()
     {
         Entity target = _entityManager.CreateEntity(
@@ -141,9 +169,9 @@ public class DroneDemolitionRecoveryTests
     }
 
     [Test]
-    public void RecoveryWithoutStorageCapacityMovesToLowestNormalPriority()
+    public void RecoveryWithoutStorageCapacityAutomaticallySuspendsAndResumes()
     {
-        CreateStation(int2.zero, 0);
+        Entity station = CreateStation(int2.zero, 0);
         _networkSystem.Update();
         Entity item = CreateWorldItem(new int2(2, 2), ItemTypeEnum.Iron);
         Entity task = CreateRecoveryTask(item, 5);
@@ -154,10 +182,42 @@ public class DroneDemolitionRecoveryTests
 
         Assert.That(
             _entityManager.GetComponentData<DroneTaskStatus>(task).state,
+            Is.EqualTo(DroneTaskStateEnum.Suspended));
+        Assert.That(
+            _entityManager.GetComponentData<DroneTaskAutomaticSuspension>(task)
+                .reason,
+            Is.EqualTo(DroneTaskAutomaticSuspensionReasonEnum
+                .DestinationCapacityUnavailable));
+
+        _entityManager.SetComponentData(station, new Storage { capacity = 1 });
+        planningSystem.Update();
+
+        Assert.That(
+            _entityManager.GetComponentData<DroneTaskStatus>(task).state,
             Is.EqualTo(DroneTaskStateEnum.Pending));
         Assert.That(
-            _entityManager.GetComponentData<DroneTaskPriority>(task).normalPriority,
-            Is.EqualTo(DroneTaskPriorityUtility.MaximumNormalPriority));
+            _entityManager.HasComponent<DroneTaskAutomaticSuspension>(task),
+            Is.False);
+        Assert.That(
+            _entityManager.HasComponent<DroneDirectTaskPlan>(task),
+            Is.True);
+
+        DynamicBuffer<DroneReservedStorageCapacityElement> reservedCapacity =
+            _entityManager.AddBuffer<DroneReservedStorageCapacityElement>(
+                station);
+        reservedCapacity.Add(new DroneReservedStorageCapacityElement
+        {
+            itemType = ItemTypeEnum.Iron,
+            quantity = 3
+        });
+        planningSystem.Update();
+
+        Assert.That(
+            _entityManager.GetComponentData<DroneTaskStatus>(task).state,
+            Is.EqualTo(DroneTaskStateEnum.Suspended));
+        Assert.That(
+            _entityManager.HasComponent<DroneDirectTaskPlan>(task),
+            Is.False);
     }
 
     [Test]

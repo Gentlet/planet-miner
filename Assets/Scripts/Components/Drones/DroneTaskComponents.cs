@@ -122,6 +122,22 @@ public struct DroneDirectTaskAssignment : IComponentData
     public bool hasReservedDestinationCapacity;
 }
 
+public struct DroneDirectTaskPlan : IComponentData
+{
+    public int networkId;
+    public int2 workCell;
+    public Entity destinationOwner;
+}
+
+public struct DroneTaskCompletionEvent : IComponentData
+{
+    public Entity droneEntity;
+    public Entity completedTaskEntity;
+    public Entity completedReservationEntity;
+    public int2 currentCell;
+    public int networkId;
+}
+
 public struct DroneTaskPriorityChangeRequest : IComponentData
 {
     public Entity taskEntity;

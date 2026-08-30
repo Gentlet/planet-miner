@@ -57,7 +57,11 @@ public partial class DroneDirectTaskSystem
             cause = BuildingDestroyCauseEnum.UserDemolition
         });
         CompleteTask(taskEntity, directAssignment);
-        ReturnDrone(droneEntity);
+        DroneReturnRouteUtility.SetAwaitingDispatchAfterCompletion(
+            EntityManager,
+            droneEntity,
+            taskEntity,
+            Entity.Null);
     }
 
     private void PickUpWorldItem(
@@ -122,7 +126,11 @@ public partial class DroneDirectTaskSystem
             droneEntity,
             new DroneCargo { itemType = ItemTypeEnum.None });
         CompleteTask(taskEntity, directAssignment);
-        ReturnDrone(droneEntity);
+        DroneReturnRouteUtility.SetAwaitingDispatchAfterCompletion(
+            EntityManager,
+            droneEntity,
+            taskEntity,
+            Entity.Null);
     }
 
     private void CompleteTask(

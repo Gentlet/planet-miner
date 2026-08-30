@@ -206,6 +206,9 @@ public partial class StorageSystem : SystemBase
             1,
             DroneStationStorageUtility.GetStoredDroneCount(
                 EntityManager,
+                storageEntity),
+            DroneStationStorageUtility.GetDedicatedDroneSlotCapacity(
+                EntityManager,
                 storageEntity));
     }
 

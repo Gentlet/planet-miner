@@ -6,7 +6,6 @@ using Unity.Entities;
 [UpdateBefore(typeof(DroneRecoverySystem))]
 public partial class DroneDirectTaskSystem : SystemBase
 {
-    private EntityQuery _taskQuery;
     private EntityQuery _assignedTaskQuery;
     private EntityQuery _storageQuery;
     private EntityQuery _storageLimitQuery;
@@ -16,11 +15,6 @@ public partial class DroneDirectTaskSystem : SystemBase
 
     protected override void OnCreate()
     {
-        _taskQuery = GetEntityQuery(
-            ComponentType.ReadOnly<DroneTask>(),
-            ComponentType.ReadOnly<DroneTaskStatus>(),
-            ComponentType.ReadOnly<DroneTaskPriority>(),
-            ComponentType.ReadOnly<DroneTaskCreationOrder>());
         _assignedTaskQuery = GetEntityQuery(
             ComponentType.ReadOnly<DroneTask>(),
             ComponentType.ReadWrite<DroneTaskStatus>(),

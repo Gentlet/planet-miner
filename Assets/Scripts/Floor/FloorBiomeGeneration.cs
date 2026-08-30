@@ -12,6 +12,7 @@ public class FloorGenerationConfigFile
     public float boundaryNoiseScaleInCells = 24f;
     public float boundaryNoiseAmplitudeInCells = 6f;
     public float nearBiomePreferenceExponent = 0.5f;
+    public List<FloorVariantConfigData> transitionFloorVariants = new();
     public List<FloorBiomeConfigData> biomes = new();
 }
 
@@ -32,14 +33,16 @@ public class FloorVariantConfigData
 
 public readonly struct FloorTileSelection
 {
-    public FloorTileSelection(int biomeIndex, int variantIndex)
+    public FloorTileSelection(int biomeIndex, int variantIndex, bool usesTransitionVariant)
     {
         BiomeIndex = biomeIndex;
         VariantIndex = variantIndex;
+        UsesTransitionVariant = usesTransitionVariant;
     }
 
     public int BiomeIndex { get; }
     public int VariantIndex { get; }
+    public bool UsesTransitionVariant { get; }
 }
 
 public sealed class FloorGenerationSettings
@@ -51,6 +54,7 @@ public sealed class FloorGenerationSettings
         float boundaryNoiseScaleInCells,
         float boundaryNoiseAmplitudeInCells,
         float nearBiomePreferenceExponent,
+        IReadOnlyList<FloorVariantConfigData> transitionFloorVariants,
         IReadOnlyList<FloorBiomeConfigData> biomes)
     {
         WorldSeed = worldSeed == 0 ? 1u : worldSeed;
@@ -59,6 +63,7 @@ public sealed class FloorGenerationSettings
         BoundaryNoiseScaleInCells = boundaryNoiseScaleInCells;
         BoundaryNoiseAmplitudeInCells = boundaryNoiseAmplitudeInCells;
         NearBiomePreferenceExponent = nearBiomePreferenceExponent;
+        TransitionFloorVariants = transitionFloorVariants;
         Biomes = biomes;
     }
 
@@ -68,6 +73,7 @@ public sealed class FloorGenerationSettings
     public float BoundaryNoiseScaleInCells { get; }
     public float BoundaryNoiseAmplitudeInCells { get; }
     public float NearBiomePreferenceExponent { get; }
+    public IReadOnlyList<FloorVariantConfigData> TransitionFloorVariants { get; }
     public IReadOnlyList<FloorBiomeConfigData> Biomes { get; }
 }
 
@@ -150,6 +156,9 @@ public static class FloorGenerationConfigLoader
             return false;
         }
 
+        if (!TryValidateVariants(config.transitionFloorVariants, "Transition", out error))
+            return false;
+
         if (config.biomes == null || config.biomes.Count == 0)
         {
             error = "At least one biome is required.";
@@ -174,30 +183,10 @@ public static class FloorGenerationConfigLoader
                 return false;
             }
 
-            if (biome.floorVariants == null || biome.floorVariants.Count == 0)
-            {
-                error = $"Biome '{biome.id}' has no floor variants.";
-                return false;
-            }
-
             totalBiomeWeight += biome.selectionWeight;
 
-            for (int variantIndex = 0; variantIndex < biome.floorVariants.Count; variantIndex++)
-            {
-                FloorVariantConfigData variant = biome.floorVariants[variantIndex];
-
-                if (variant == null || string.IsNullOrWhiteSpace(variant.spriteResourcePath))
-                {
-                    error = $"Biome '{biome.id}' has a floor variant without a resource path.";
-                    return false;
-                }
-
-                if (variant.weight <= 0f)
-                {
-                    error = $"Biome '{biome.id}' floor variant '{variant.spriteResourcePath}' must have a positive weight.";
-                    return false;
-                }
-            }
+            if (!TryValidateVariants(biome.floorVariants, $"Biome '{biome.id}'", out error))
+                return false;
         }
 
         if (totalBiomeWeight <= 0f)
@@ -213,7 +202,41 @@ public static class FloorGenerationConfigLoader
             config.boundaryNoiseScaleInCells,
             config.boundaryNoiseAmplitudeInCells,
             config.nearBiomePreferenceExponent,
+            config.transitionFloorVariants,
             config.biomes);
+        return true;
+    }
+
+    private static bool TryValidateVariants(
+        IReadOnlyList<FloorVariantConfigData> variants,
+        string owner,
+        out string error)
+    {
+        error = null;
+
+        if (variants == null || variants.Count == 0)
+        {
+            error = $"{owner} has no floor variants.";
+            return false;
+        }
+
+        for (int variantIndex = 0; variantIndex < variants.Count; variantIndex++)
+        {
+            FloorVariantConfigData variant = variants[variantIndex];
+
+            if (variant == null || string.IsNullOrWhiteSpace(variant.spriteResourcePath))
+            {
+                error = $"{owner} has a floor variant without a resource path.";
+                return false;
+            }
+
+            if (variant.weight <= 0f)
+            {
+                error = $"{owner} floor variant '{variant.spriteResourcePath}' must have a positive weight.";
+                return false;
+            }
+        }
+
         return true;
     }
 }
@@ -222,6 +245,7 @@ public static class FloorBiomeSampler
 {
     private const uint biomeSalt = 0x4F1BBCDCu;
     private const uint transitionSalt = 0x0F2C7B4Du;
+    private const uint transitionVariantSalt = 0x3F84D5B5u;
     private const uint variantSalt = 0xB5297A4Du;
     private const uint warpXSalt = 0x68E31DA4u;
     private const uint warpYSalt = 0x1B56C4E9u;
@@ -239,10 +263,16 @@ public static class FloorBiomeSampler
             regionCoordinate,
             currentRegion,
             currentBiomeIndex,
-            regionSizeInCells);
-        int variantIndex = SelectVariantIndex(settings, selectedBiomeIndex, worldCell);
+            regionSizeInCells,
+            out bool isInTransition,
+            out float distanceRatio);
+        bool usesTransitionVariant = isInTransition &&
+            ShouldUseTransitionVariant(settings, worldCell, distanceRatio);
+        int variantIndex = usesTransitionVariant
+            ? SelectTransitionVariantIndex(settings, worldCell)
+            : SelectVariantIndex(settings, selectedBiomeIndex, worldCell);
 
-        return new FloorTileSelection(selectedBiomeIndex, variantIndex);
+        return new FloorTileSelection(selectedBiomeIndex, variantIndex, usesTransitionVariant);
     }
 
     private static int SelectTransitionBiomeIndex(
@@ -251,8 +281,13 @@ public static class FloorBiomeSampler
         float2 regionCoordinate,
         int2 currentRegion,
         int currentBiomeIndex,
-        float regionSizeInCells)
+        float regionSizeInCells,
+        out bool isInTransition,
+        out float distanceRatio)
     {
+        isInTransition = false;
+        distanceRatio = 1f;
+
         if (settings.TransitionWidthInChunks == 0)
             return currentBiomeIndex;
 
@@ -277,7 +312,8 @@ public static class FloorBiomeSampler
         if (neighboringBiomeIndex == currentBiomeIndex)
             return currentBiomeIndex;
 
-        float distanceRatio = math.saturate(boundaryDistance / halfTransitionWidthInCells);
+        isInTransition = true;
+        distanceRatio = math.saturate(boundaryDistance / halfTransitionWidthInCells);
         float nearBiomePreference = math.pow(
             SmoothStep(distanceRatio),
             settings.NearBiomePreferenceExponent);
@@ -285,6 +321,17 @@ public static class FloorBiomeSampler
         float selection = HashToUnitFloat(Hash(settings.WorldSeed, worldCell.x, worldCell.y, transitionSalt));
 
         return selection <= currentBiomeProbability ? currentBiomeIndex : neighboringBiomeIndex;
+    }
+
+    private static bool ShouldUseTransitionVariant(
+        FloorGenerationSettings settings,
+        int2 worldCell,
+        float distanceRatio)
+    {
+        float transitionVariantProbability = 1f - SmoothStep(distanceRatio);
+        float selection = HashToUnitFloat(Hash(settings.WorldSeed, worldCell.x, worldCell.y, transitionVariantSalt));
+
+        return selection <= transitionVariantProbability;
     }
 
     private static int SelectBiomeIndex(FloorGenerationSettings settings, int2 region)
@@ -299,6 +346,13 @@ public static class FloorBiomeSampler
         float selection = HashToUnitFloat(Hash(settings.WorldSeed, worldCell.x, worldCell.y, variantSalt + (uint)biomeIndex));
 
         return SelectWeightedIndex(biome.floorVariants, selection, variant => variant.weight);
+    }
+
+    private static int SelectTransitionVariantIndex(FloorGenerationSettings settings, int2 worldCell)
+    {
+        float selection = HashToUnitFloat(Hash(settings.WorldSeed, worldCell.x, worldCell.y, transitionVariantSalt + 1u));
+
+        return SelectWeightedIndex(settings.TransitionFloorVariants, selection, variant => variant.weight);
     }
 
     private static float2 GetBoundaryWarp(FloorGenerationSettings settings, int2 worldCell)

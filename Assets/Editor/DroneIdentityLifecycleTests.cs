@@ -53,7 +53,7 @@ public class DroneIdentityLifecycleTests
     }
 
     [Test]
-    public void StoredDroneConsumesSharedStationCellCapacity()
+    public void DedicatedDroneSlotsDoNotConsumeSharedStationCapacity()
     {
         Entity station = CreateStation(1);
         CreateStoredDroneItem(station);
@@ -78,9 +78,103 @@ public class DroneIdentityLifecycleTests
             1,
             DroneStationStorageUtility.GetStoredDroneCount(
                 _entityManager,
+                station),
+            DroneStationStorageUtility.GetDedicatedDroneSlotCapacity(
+                _entityManager,
+                station));
+
+        Assert.That(canStoreIron, Is.True);
+    }
+
+    [Test]
+    public void DronesUseSharedCapacityAfterDedicatedSlotsAreFull()
+    {
+        Entity station = CreateStation(1);
+
+        for (int i = 0;
+             i < DroneStationStorageUtility.DedicatedDroneSlotCapacity + 1;
+             i++)
+        {
+            CreateStoredDroneItem(station);
+        }
+
+        _conversionSystem.Update();
+        DynamicBuffer<StoredItemElement> storedItems = _entityManager
+            .GetBuffer<StoredItemElement>(station, true);
+        DynamicBuffer<DroneReservedStorageCapacityElement> reserved = default;
+        using NativeArray<ItemStorageLimitElement> limits =
+            DynamicBufferCopyUtility.CreateNativeCopy(
+                _entityManager.GetBuffer<ItemStorageLimitElement>(
+                    _configEntity,
+                    true),
+                Allocator.Temp);
+
+        bool canStoreIron = StorageCapacityUtility.CanStoreAdditionalItems(
+            storedItems,
+            reserved,
+            false,
+            1,
+            limits,
+            ItemTypeEnum.Iron,
+            1,
+            DroneStationStorageUtility.GetStoredDroneCount(
+                _entityManager,
+                station),
+            DroneStationStorageUtility.GetDedicatedDroneSlotCapacity(
+                _entityManager,
                 station));
 
         Assert.That(canStoreIron, Is.False);
+    }
+
+    [Test]
+    public void DedicatedDroneSlotsRejectOrdinaryItemsWhenSharedStorageIsFull()
+    {
+        Entity station = CreateStation(1);
+        DynamicBuffer<StoredItemElement> storedItems = _entityManager
+            .GetBuffer<StoredItemElement>(station);
+
+        for (int i = 0; i < 10; i++)
+        {
+            storedItems.Add(new StoredItemElement
+            {
+                itemEntity = _entityManager.CreateEntity(),
+                type = ItemTypeEnum.Iron
+            });
+        }
+
+        DynamicBuffer<DroneReservedStorageCapacityElement> reserved = default;
+        using NativeArray<ItemStorageLimitElement> limits =
+            DynamicBufferCopyUtility.CreateNativeCopy(
+                _entityManager.GetBuffer<ItemStorageLimitElement>(
+                    _configEntity,
+                    true),
+                Allocator.Temp);
+        int dedicatedDroneSlotCapacity = DroneStationStorageUtility
+            .GetDedicatedDroneSlotCapacity(_entityManager, station);
+        bool canStoreIron = StorageCapacityUtility.CanStoreAdditionalItems(
+            storedItems,
+            reserved,
+            false,
+            1,
+            limits,
+            ItemTypeEnum.Iron,
+            1,
+            0,
+            dedicatedDroneSlotCapacity);
+        bool canStoreDrone = StorageCapacityUtility.CanStoreAdditionalItems(
+            storedItems,
+            reserved,
+            false,
+            1,
+            limits,
+            ItemTypeEnum.Drone,
+            1,
+            0,
+            dedicatedDroneSlotCapacity);
+
+        Assert.That(canStoreIron, Is.False);
+        Assert.That(canStoreDrone, Is.True);
     }
 
     [Test]

@@ -1,11 +1,18 @@
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Mathematics;
+using Unity.Profiling;
 
 [UpdateAfter(typeof(DroneTaskCommandSystem))]
 [UpdateAfter(typeof(DroneStationNetworkSystem))]
 [UpdateBefore(typeof(DroneDispatchSystem))]
 public partial class DroneDirectTaskPlanningSystem : SystemBase
 {
+    private static readonly ProfilerMarker ScanDirectTaskPlansMarker =
+        new("DroneDirectTaskPlanning.ScanTasks");
+    private static readonly ProfilerMarker PlanWorldItemRecoveryMarker =
+        new("DroneDirectTaskPlanning.PlanWorldItemRecovery");
+
     private EntityQuery _taskQuery;
     private DroneStationNetworkSystem _networkSystem;
     private DroneDirectTaskSystem _directTaskSystem;
@@ -27,28 +34,43 @@ public partial class DroneDirectTaskPlanningSystem : SystemBase
         using NativeArray<Entity> tasks =
             _taskQuery.ToEntityArray(Allocator.Temp);
 
-        for (int i = 0; i < tasks.Length; i++)
+        using (ScanDirectTaskPlansMarker.Auto())
         {
-            Entity taskEntity = tasks[i];
-            DroneTask task = EntityManager.GetComponentData<DroneTask>(taskEntity);
+            for (int i = 0; i < tasks.Length; i++)
+            {
+                Entity taskEntity = tasks[i];
+                DroneTask task = EntityManager.GetComponentData<DroneTask>(taskEntity);
 
-            if (task.type == DroneTaskTypeEnum.Demolition)
-                ValidateDemolitionTask(taskEntity);
-            else if (task.type == DroneTaskTypeEnum.RecoverWorldItem)
-                PlanWorldItemRecovery(taskEntity);
+                if (task.type == DroneTaskTypeEnum.Demolition)
+                {
+                    PlanDemolitionTask(taskEntity);
+                }
+                else if (task.type == DroneTaskTypeEnum.RecoverWorldItem)
+                {
+                    using (PlanWorldItemRecoveryMarker.Auto())
+                        PlanWorldItemRecovery(taskEntity);
+                }
+            }
         }
     }
 
-    private void ValidateDemolitionTask(Entity taskEntity)
+    private void PlanDemolitionTask(Entity taskEntity)
     {
         DroneTaskStatus status = EntityManager
             .GetComponentData<DroneTaskStatus>(taskEntity);
 
         if (status.state != DroneTaskStateEnum.Pending)
+        {
+            if (status.state == DroneTaskStateEnum.Completed ||
+                status.state == DroneTaskStateEnum.Cancelled)
+                RemovePlan(taskEntity);
+
             return;
+        }
 
         if (!EntityManager.HasComponent<DroneDemolitionTaskData>(taskEntity))
         {
+            RemovePlan(taskEntity);
             CancelTask(taskEntity, status);
             return;
         }
@@ -59,24 +81,42 @@ public partial class DroneDirectTaskPlanningSystem : SystemBase
 
         if (target == Entity.Null)
         {
+            RemovePlan(taskEntity);
             CancelTask(taskEntity, status);
             return;
         }
 
         if (!EntityManager.Exists(target))
         {
+            RemovePlan(taskEntity);
             CancelTask(taskEntity, status);
             return;
         }
 
         if (!EntityManager.HasComponent<BuildingOccupant>(target))
         {
+            RemovePlan(taskEntity);
             CancelTask(taskEntity, status);
             return;
         }
 
         if (EntityManager.HasComponent<IndestructibleBuilding>(target))
+        {
+            RemovePlan(taskEntity);
             CancelTask(taskEntity, status);
+            return;
+        }
+
+        int2 workCell = EntityManager.GetComponentData<GridPosition>(target)
+            .gridPosition;
+
+        if (!_networkSystem.TryGetNetworkIdAtCell(workCell, out int networkId))
+        {
+            RemovePlan(taskEntity);
+            return;
+        }
+
+        SetPlan(taskEntity, networkId, workCell, Entity.Null);
     }
 
     private void PlanWorldItemRecovery(Entity taskEntity)
@@ -90,11 +130,18 @@ public partial class DroneDirectTaskPlanningSystem : SystemBase
 
         if (status.state != DroneTaskStateEnum.Pending &&
             !isAutomaticallySuspended)
+        {
+            if (status.state == DroneTaskStateEnum.Completed ||
+                status.state == DroneTaskStateEnum.Cancelled)
+                RemovePlan(taskEntity);
+
             return;
+        }
 
         if (!EntityManager.HasComponent<DroneWorldItemRecoveryTaskData>(
                 taskEntity))
         {
+            RemovePlan(taskEntity);
             CancelTask(taskEntity, status);
             return;
         }
@@ -105,6 +152,7 @@ public partial class DroneDirectTaskPlanningSystem : SystemBase
 
         if (!TryGetWorldItemPosition(itemEntity, out GridPosition position))
         {
+            RemovePlan(taskEntity);
             CancelTask(taskEntity, status);
             return;
         }
@@ -113,6 +161,7 @@ public partial class DroneDirectTaskPlanningSystem : SystemBase
                 position.gridPosition,
                 out int networkId))
         {
+            RemovePlan(taskEntity);
             DroneTaskAutomaticSuspensionUtility.Suspend(
                 EntityManager,
                 taskEntity,
@@ -124,19 +173,95 @@ public partial class DroneDirectTaskPlanningSystem : SystemBase
             EntityManager,
             taskEntity);
 
-        if (_directTaskSystem.HasAvailableRecoveryDestination(
+        if (TryGetCurrentPlan(
+                taskEntity,
+                networkId,
+                position.gridPosition,
+                out DroneDirectTaskPlan currentPlan))
+        {
+            if (_directTaskSystem.CanUseRecoveryDestination(
+                    itemEntity,
+                    networkId,
+                    currentPlan.destinationOwner))
+                return;
+
+            RemovePlan(taskEntity);
+        }
+
+        if (_directTaskSystem.TryGetRecoveryDestination(
                 itemEntity,
-                networkId))
+                networkId,
+                out Entity destinationOwner))
+        {
+            SetPlan(
+                taskEntity,
+                networkId,
+                position.gridPosition,
+                destinationOwner);
+            return;
+        }
+
+        RemovePlan(taskEntity);
+        DroneTaskAutomaticSuspensionUtility.Suspend(
+            EntityManager,
+            taskEntity,
+            DroneTaskAutomaticSuspensionReasonEnum
+                .DestinationCapacityUnavailable);
+    }
+
+    private bool TryGetCurrentPlan(
+        Entity taskEntity,
+        int networkId,
+        int2 workCell,
+        out DroneDirectTaskPlan plan)
+    {
+        plan = default;
+
+        if (!EntityManager.HasComponent<DroneDirectTaskPlan>(taskEntity))
+            return false;
+
+        plan = EntityManager.GetComponentData<DroneDirectTaskPlan>(taskEntity);
+
+        if (plan.networkId != networkId)
+            return false;
+
+        if (!plan.workCell.Equals(workCell))
+            return false;
+
+        if (plan.destinationOwner == Entity.Null)
+            return false;
+
+        return EntityManager.Exists(plan.destinationOwner);
+    }
+
+    private void SetPlan(
+        Entity taskEntity,
+        int networkId,
+        int2 workCell,
+        Entity destinationOwner)
+    {
+        var plan = new DroneDirectTaskPlan
+        {
+            networkId = networkId,
+            workCell = workCell,
+            destinationOwner = destinationOwner
+        };
+
+        if (EntityManager.HasComponent<DroneDirectTaskPlan>(taskEntity))
+        {
+            EntityManager.SetComponentData(taskEntity, plan);
+            return;
+        }
+
+        EntityManager.AddComponentData(taskEntity, plan);
+    }
+
+    private void RemovePlan(Entity taskEntity)
+    {
+        if (!EntityManager.HasComponent<DroneDirectTaskPlan>(taskEntity))
             return;
 
-        DroneTaskPriority priority = EntityManager
-            .GetComponentData<DroneTaskPriority>(taskEntity);
-
-        if (priority.priorityClass != DroneTaskPriorityClassEnum.Normal)
-            return;
-
-        priority.normalPriority = DroneTaskPriorityUtility.MaximumNormalPriority;
-        EntityManager.SetComponentData(taskEntity, priority);
+        EntityManager.RemoveComponent<DroneDirectTaskPlan>(taskEntity);
     }
 
     private bool TryGetWorldItemPosition(

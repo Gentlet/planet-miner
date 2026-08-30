@@ -2,6 +2,39 @@ using Unity.Entities;
 
 public static class DroneReturnRouteUtility
 {
+    public static void SetAwaitingDispatchAfterCompletion(
+        EntityManager entityManager,
+        Entity droneEntity,
+        Entity completedTaskEntity,
+        Entity completedReservationEntity)
+    {
+        DroneAssignment assignment = entityManager
+            .GetComponentData<DroneAssignment>(droneEntity);
+        GridPosition position = entityManager
+            .GetComponentData<GridPosition>(droneEntity);
+        int networkId = assignment.networkId;
+        assignment.taskEntity = Entity.Null;
+        assignment.reservationEntity = Entity.Null;
+        assignment.sourceOwner = Entity.Null;
+        assignment.destinationOwner = Entity.Null;
+        assignment.emergencyReturn = false;
+        entityManager.SetComponentData(droneEntity, assignment);
+        entityManager.SetComponentData(
+            droneEntity,
+            new DroneState { value = DroneStateEnum.AwaitingDispatch });
+        Entity completionEvent = entityManager.CreateEntity();
+        entityManager.AddComponentData(
+            completionEvent,
+            new DroneTaskCompletionEvent
+            {
+                droneEntity = droneEntity,
+                completedTaskEntity = completedTaskEntity,
+                completedReservationEntity = completedReservationEntity,
+                currentCell = position.gridPosition,
+                networkId = networkId
+            });
+    }
+
     public static bool TrySetReturnRoute(
         EntityManager entityManager,
         DroneStationNetworkSystem networkSystem,

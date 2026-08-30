@@ -43,9 +43,21 @@
 - `DroneTaskCommandSystem`이 요청을 실제 task entity로 변환하고 priority, creation order, quantity를 붙인다. 우선순위 변경, 수동 suspend/resume, cancel 요청도 여기서 처리한다.
 - `DroneBuildingItemTaskPlanningSystem`은 Construction/Insert/Remove 작업의 target과 network를 검증하고 source/destination을 찾는다.
 - insertion/construction은 같은 network의 storage/producer에서 item을 찾고 target capacity를 확인한다.
-- removal은 target building의 item을 source로 삼고 같은 network의 수용 가능한 storage를 찾는다.
-- source 부족, destination capacity 부족, network 밖 상태는 자동 suspension reason으로 기록하며 조건이 회복되면 재개할 수 있다. 이미 예약된 수량이 있으면 그 운송을 유지하고, 예약이 전혀 없는 작업만 자동 중단한다.
+- removal은 target building의 item을 source로 삼는다. 첫 예약 전에 같은 network의 모든 storage가 남은 작업 수량 전체를 수용할 수 있는지 합산 검사하며, 충분할 때만 가까운 destination부터 운송 예약을 만든다.
+- source 부족, destination capacity 부족, network 밖 상태는 자동 suspension reason으로 기록하며 조건이 회복되면 재개할 수 있다. 보관 공간이 부족한 removal과 world item recovery는 `DestinationCapacityUnavailable`로 보류한다. 이미 예약된 수량이 있으면 그 운송을 유지하고, 예약이 전혀 없는 작업만 자동 중단한다.
 - `DroneDirectTaskPlanningSystem`은 demolition과 world item recovery 대상의 유효성과 목적지를 준비한다.
+- 직접 작업 계획은 `DroneDirectTaskPlan`에 network, 작업 셀, 회수 목적지를 저장한다. 배차 중에는 storage 목적지를 다시 전역 검색하지 않는다.
+
+## 작업 스케줄링
+
+`DroneTaskSchedulingSystem`은 예약과 직접 작업을 하나의 배차 후보로 구성한다. 원본 task 상태나 item/capacity reservation을 소유하지 않으며, 기존 task와 reservation entity를 가리키는 검색 인덱스만 관리한다.
+
+- 후보는 network -> priority -> chunk -> cell 순서로 분류한다.
+- Emergency를 먼저 처리하고 normal priority 1~10을 순서대로 처리한다.
+- 같은 priority에서는 드론의 현재 셀과 가장 가까운 작업을 선택하고, 거리가 같으면 creation order가 빠른 후보를 선택한다.
+- 현재 배터리로 작업 경유지와 귀환 정거장까지 갈 수 없는 후보는 건너뛰고 다음 priority를 계속 확인한다.
+- 한 프레임의 배차 수를 인위적으로 제한하지 않으며, 성공한 후보는 즉시 인덱스에서 제거하여 다른 드론이 다시 검사하지 않게 한다.
+- 예약 후보의 실제 claim과 item/capacity reservation 정합성은 계속 `DroneTaskReservationSystem`이 소유한다.
 
 ## 예약
 
@@ -62,13 +74,14 @@
 
 ## 배차, 이동, 전달
 
-1. `DroneDispatchSystem`이 `Stored` 또는 `AwaitingCharge` 드론의 network를 확인하고 예약 작업과 direct 작업을 우선순위/creation order로 비교한다.
-2. 배터리가 source -> destination -> 귀환 정거장 경로를 완료할 수 있는지 `DroneDispatchBatteryUtility`로 확인한다. 완충 여부 자체가 아니라 이 전체 경로의 필요량이 배차 기준이며, 부족한 `AwaitingCharge` 드론은 충전을 계속한다.
-3. 예약을 claim하고 `DroneAssignment`, `DroneState`를 이동 상태로 갱신한다.
-4. `DroneMovementSystem`이 상태별 목표 셀을 향해 직선 이동하며 이동 거리만큼 배터리를 소비한다. 도착 시 PickingUp/Delivering/Demolishing 등의 실행 상태로 전환한다.
-5. `DroneCargoTransferSystem`은 reserved item을 `ItemStorageSystem`으로 drone owner에 옮기고, 목적지에 전달한 뒤 reservation/task quantity를 완료한다.
-6. `DroneDirectTaskSystem`은 demolition과 world item pickup/delivery를 실행한다.
-7. 작업이 끝나면 `DroneReturnRouteUtility`가 적절한 return station을 선택하고 귀환 상태로 전환한다.
+1. `DroneTaskSchedulingSystem`이 예약과 계획 완료된 direct 작업을 network/priority/chunk/cell 후보로 한 번 구성한다.
+2. `DroneDispatchSystem`이 `Stored`, `AwaitingCharge`, `AwaitingDispatch` 드론의 network를 확인하고 스케줄러에서 배터리로 처리 가능한 가장 높은 우선순위의 가까운 후보를 받는다.
+3. 배터리가 source -> destination -> 귀환 정거장 경로를 완료할 수 있는지 확인한다. 완충 여부 자체가 아니라 이 전체 경로의 필요량이 배차 기준이며, 부족한 `AwaitingCharge` 드론은 충전을 계속한다.
+4. 예약 또는 direct 작업을 claim하고 `DroneAssignment`, `DroneState`를 이동 상태로 갱신한다.
+5. `DroneMovementSystem`이 상태별 목표 셀을 향해 직선 이동하며 이동 거리만큼 배터리를 소비한다. 도착 시 PickingUp/Delivering/Demolishing 등의 실행 상태로 전환한다.
+6. `DroneCargoTransferSystem`은 reserved item을 `ItemStorageSystem`으로 drone owner에 옮기고, 목적지에 전달한 뒤 reservation/task quantity를 완료한다.
+7. `DroneDirectTaskSystem`은 demolition과 world item pickup/delivery를 실행한다.
+8. 정상 완료한 드론은 `AwaitingDispatch`와 `DroneTaskCompletionEvent`를 게시한다. 다음 배차에 적합한 작업이 있으면 현 위치에서 연속 배차하고, 없으면 `DroneReturnRouteUtility`로 복귀한다.
 
 ## 귀환, 충전, 보관, identity 전환
 
@@ -77,7 +90,7 @@
 - `DroneChargingSystem`: 정거장의 실제 supply ratio와 충전 설정으로 stored drone battery를 채운다. 완충 후 `Stored` 상태가 된다.
 - `DroneIdentityConversionSystem`: 정거장에 저장된 `ItemTypeEnum.Drone` item을 active drone identity로 전환한다. 정거장 파괴 시 반대로 active/stored drone을 월드 Drone item으로 복원한다.
 
-정거장의 일반 item 저장과 stored drone은 같은 `Storage.capacity` slot 계산을 공유한다. Drone item의 stack limit과 `StoredDroneElement` 개수도 용량 계산에 포함된다.
+드론 정거장과 메인 스테이션은 일반 `Storage.capacity`에 더해 드론만 사용할 수 있는 5개의 전용 slot을 가진다. Drone item의 stack limit과 `StoredDroneElement` 개수를 합쳐 드론 slot 사용량을 계산하며, 전용 5칸을 넘는 드론만 일반 storage slot을 사용한다. 일반 item은 드론 전용 slot을 사용할 수 없다. `BuildingUI`에서도 일반 보관공간과 드론 전용공간을 별도 제목과 slot grid로 표시한다.
 
 정거장 안에서도 `AwaitingCharge` 드론은 화면에 남고 완충되어 `Stored`가 된 드론만 `DisableRendering`으로 숨긴다. 저장된 드론을 배차할 때는 렌더링을 다시 활성화한다.
 

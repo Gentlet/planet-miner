@@ -34,6 +34,10 @@ public partial class BuildingUI
         _recipeContainer = _root.Q<VisualElement>("recipe-container");
         _inputTitleLabel = _root.Q<Label>("input-title");
         _inputContainer = _root.Q<VisualElement>("input-container");
+        _dedicatedDroneStorageTitleLabel = _root.Q<Label>(
+            "dedicated-drone-storage-title");
+        _dedicatedDroneStorageContainer = _root.Q<VisualElement>(
+            "dedicated-drone-storage-container");
         _outputTitleLabel = _root.Q<Label>("output-title");
         _outputContainer = _root.Q<VisualElement>("output-container");
         _progressTitleLabel = _root.Q<Label>("progress-title");
@@ -92,6 +96,8 @@ public partial class BuildingUI
         _recipeContainer = null;
         _inputTitleLabel = null;
         _inputContainer = null;
+        _dedicatedDroneStorageTitleLabel = null;
+        _dedicatedDroneStorageContainer = null;
         _outputTitleLabel = null;
         _outputContainer = null;
         _progressTitleLabel = null;
@@ -126,6 +132,7 @@ public partial class BuildingUI
         SetVisible(_recipeContainer, true);
         SetVisible(_inputTitleLabel, true);
         SetVisible(_inputContainer, true);
+        SetDedicatedDroneStorageVisible(false);
         SetVisible(_outputTitleLabel, true);
         SetVisible(_outputContainer, true);
         SetVisible(_droneTransferContainer, true);
@@ -147,15 +154,18 @@ public partial class BuildingUI
         SetVisible(_recipeContainer, false);
         SetVisible(_inputTitleLabel, false);
         SetVisible(_inputContainer, false);
+        SetDedicatedDroneStorageVisible(false);
         SetVisible(_outputTitleLabel, true);
         SetVisible(_outputContainer, true);
         SetVisible(_droneTransferContainer, false);
         SetProgressVisible(true);
     }
 
-    private void SetStorageLayout()
+    private void SetStorageLayout(bool hasDedicatedDroneStorage)
     {
-        _buildingTitleLabel.text = "창고";
+        _buildingTitleLabel.text = hasDedicatedDroneStorage
+            ? "드론 정거장"
+            : "창고";
         _inputTitleLabel.text = "보관 아이템";
         _inputContainer.AddToClassList("storage-grid");
         SetVisible(_powerContainer, false);
@@ -167,6 +177,7 @@ public partial class BuildingUI
         SetVisible(_recipeContainer, false);
         SetVisible(_inputTitleLabel, true);
         SetVisible(_inputContainer, true);
+        SetDedicatedDroneStorageVisible(hasDedicatedDroneStorage);
         SetVisible(_outputTitleLabel, false);
         SetVisible(_outputContainer, false);
         SetVisible(_droneTransferContainer, true);
@@ -186,6 +197,7 @@ public partial class BuildingUI
         SetVisible(_recipeContainer, false);
         SetVisible(_inputTitleLabel, false);
         SetVisible(_inputContainer, false);
+        SetDedicatedDroneStorageVisible(false);
         SetVisible(_outputTitleLabel, false);
         SetVisible(_outputContainer, false);
         SetVisible(_droneTransferContainer, false);
@@ -206,6 +218,7 @@ public partial class BuildingUI
         SetVisible(_recipeContainer, false);
         SetVisible(_inputTitleLabel, true);
         SetVisible(_inputContainer, true);
+        SetDedicatedDroneStorageVisible(true);
         SetVisible(_outputTitleLabel, false);
         SetVisible(_outputContainer, false);
         SetVisible(_droneTransferContainer, true);
@@ -225,6 +238,7 @@ public partial class BuildingUI
         SetVisible(_recipeContainer, false);
         SetVisible(_inputTitleLabel, false);
         SetVisible(_inputContainer, false);
+        SetDedicatedDroneStorageVisible(false);
         SetVisible(_outputTitleLabel, false);
         SetVisible(_outputContainer, false);
         SetVisible(_droneTransferContainer, false);
@@ -246,6 +260,7 @@ public partial class BuildingUI
         SetVisible(_recipeContainer, false);
         SetVisible(_inputTitleLabel, true);
         SetVisible(_inputContainer, true);
+        SetDedicatedDroneStorageVisible(false);
         SetVisible(_outputTitleLabel, false);
         SetVisible(_outputContainer, false);
         SetVisible(_droneTransferContainer, false);
@@ -266,6 +281,7 @@ public partial class BuildingUI
         SetVisible(_recipeContainer, false);
         SetVisible(_inputTitleLabel, false);
         SetVisible(_inputContainer, false);
+        SetDedicatedDroneStorageVisible(false);
         SetVisible(_outputTitleLabel, false);
         SetVisible(_outputContainer, false);
         SetVisible(_droneTransferContainer, false);
@@ -285,6 +301,7 @@ public partial class BuildingUI
         SetVisible(_recipeContainer, false);
         SetVisible(_inputTitleLabel, false);
         SetVisible(_inputContainer, false);
+        SetDedicatedDroneStorageVisible(false);
         SetVisible(_outputTitleLabel, false);
         SetVisible(_outputContainer, false);
         SetVisible(_droneTransferContainer, false);
@@ -298,6 +315,12 @@ public partial class BuildingUI
         SetVisible(_remainingTimeLabel, visible);
         SetVisible(_speedLabel, visible);
         SetVisible(_speedReasonLabel, visible);
+    }
+
+    private void SetDedicatedDroneStorageVisible(bool visible)
+    {
+        SetVisible(_dedicatedDroneStorageTitleLabel, visible);
+        SetVisible(_dedicatedDroneStorageContainer, visible);
     }
 
     private static void SetVisible(VisualElement element, bool visible)

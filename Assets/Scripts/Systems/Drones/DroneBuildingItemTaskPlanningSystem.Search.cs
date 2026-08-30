@@ -125,8 +125,14 @@ public partial class DroneBuildingItemTaskPlanningSystem
         NativeArray<CrafterRecipeElement> recipes,
         NativeArray<CrafterRecipeIngredientElement> ingredients)
     {
-        for (int quantity = maximumQuantity; quantity > 0; quantity--)
+        int minimumQuantity = 1;
+        int reservableQuantity = 0;
+
+        while (minimumQuantity <= maximumQuantity)
         {
+            int quantity = minimumQuantity +
+                           (maximumQuantity - minimumQuantity) / 2;
+
             if (DroneItemDestinationUtility.CanReserveAdditionalQuantity(
                     EntityManager,
                     destinationOwner,
@@ -135,10 +141,57 @@ public partial class DroneBuildingItemTaskPlanningSystem
                     storageLimits,
                     recipes,
                     ingredients))
-                return quantity;
+            {
+                reservableQuantity = quantity;
+                minimumQuantity = quantity + 1;
+            }
+            else
+            {
+                maximumQuantity = quantity - 1;
+            }
         }
 
-        return 0;
+        return reservableQuantity;
+    }
+
+    private bool HasSufficientDestinationCapacity(
+        Entity sourceOwner,
+        ItemTypeEnum itemType,
+        int requiredQuantity,
+        int networkId,
+        NativeArray<Entity> storageEntities,
+        NativeArray<ItemStorageLimitElement> storageLimits,
+        NativeArray<CrafterRecipeElement> recipes,
+        NativeArray<CrafterRecipeIngredientElement> ingredients)
+    {
+        int remainingQuantity = requiredQuantity;
+
+        for (int i = 0; i < storageEntities.Length; i++)
+        {
+            Entity candidate = storageEntities[i];
+
+            if (candidate == sourceOwner)
+                continue;
+
+            if (!IsSearchableStorage(candidate))
+                continue;
+
+            if (!IsInNetwork(candidate, networkId))
+                continue;
+
+            remainingQuantity -= FindReservableQuantity(
+                candidate,
+                itemType,
+                remainingQuantity,
+                storageLimits,
+                recipes,
+                ingredients);
+
+            if (remainingQuantity <= 0)
+                return true;
+        }
+
+        return false;
     }
 
     private int CountAvailableItems(
