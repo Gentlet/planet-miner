@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 public sealed class FloorChunkRenderer : MonoBehaviour
 {
@@ -10,7 +11,12 @@ public sealed class FloorChunkRenderer : MonoBehaviour
     private const float floorDepth = 1f;
     private const int floorSortingOrder = -100;
 
-    private readonly Dictionary<int2, GameObject> _chunkObjects = new();
+    [Header("Culling Settings")]
+    [SerializeField]
+    private int _cullingRadiusInChunks = 6;
+
+    private readonly Dictionary<int2, FloorChunkEntry> _chunkObjects = new();
+    private readonly HashSet<int2> _currentlyVisibleChunks = new();
     private readonly List<FloorVisualVariant> _visualVariants = new();
     private readonly List<Vector3> _vertices = new(ChunkUtility.cellCount * 4);
     private readonly List<Vector2> _uvs = new(ChunkUtility.cellCount * 4);
@@ -18,6 +24,9 @@ public sealed class FloorChunkRenderer : MonoBehaviour
     private Material[] _materials;
     private FloorGenerationSettings _settings;
     private ChunkMapSystem _chunkMap;
+    private Camera _targetCamera;
+    private int2 _lastCameraChunkPos;
+    private bool _hasCameraChunkPos;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void CreateRuntimeRenderer()
@@ -47,6 +56,8 @@ public sealed class FloorChunkRenderer : MonoBehaviour
         if (!TryInitializeChunkMap())
             return;
 
+        UpdateCulling();
+
         while (_chunkMap.TryDequeueResourceGeneratedChunk(out Chunk chunk))
         {
             if (_chunkObjects.ContainsKey(chunk.ChunkPosition))
@@ -58,21 +69,83 @@ public sealed class FloorChunkRenderer : MonoBehaviour
 
     private void OnDestroy()
     {
-        foreach (GameObject chunkObject in _chunkObjects.Values)
+        foreach (FloorChunkEntry entry in _chunkObjects.Values)
         {
-            if (chunkObject == null)
+            if (entry.GameObject == null)
                 continue;
 
-            MeshFilter meshFilter = chunkObject.GetComponent<MeshFilter>();
+            MeshFilter meshFilter = entry.GameObject.GetComponent<MeshFilter>();
 
             if (meshFilter != null && meshFilter.sharedMesh != null)
                 Destroy(meshFilter.sharedMesh);
 
-            Destroy(chunkObject);
+            Destroy(entry.GameObject);
         }
+
+        _chunkObjects.Clear();
+        _currentlyVisibleChunks.Clear();
 
         for (int i = 0; i < _visualVariants.Count; i++)
             Destroy(_visualVariants[i].Material);
+    }
+
+    private void UpdateCulling()
+    {
+        if (_targetCamera == null)
+        {
+            _targetCamera = Camera.main;
+            if (_targetCamera == null)
+            {
+                var loader = FindFirstObjectByType<CameraChunkLoader>();
+                if (loader != null)
+                    _targetCamera = loader.GetComponent<Camera>();
+            }
+
+            if (_targetCamera == null)
+                return;
+        }
+
+        int2 cameraCell = _targetCamera.transform.position.ToGridCell();
+        int2 currentCameraChunk = ChunkUtility.ToChunkPosition(cameraCell);
+
+        if (_hasCameraChunkPos && currentCameraChunk.Equals(_lastCameraChunkPos))
+            return;
+
+        _lastCameraChunkPos = currentCameraChunk;
+        _hasCameraChunkPos = true;
+
+        var newVisibleChunks = new HashSet<int2>();
+        for (int y = -_cullingRadiusInChunks; y <= _cullingRadiusInChunks; y++)
+        {
+            for (int x = -_cullingRadiusInChunks; x <= _cullingRadiusInChunks; x++)
+            {
+                newVisibleChunks.Add(currentCameraChunk + new int2(x, y));
+            }
+        }
+
+        foreach (int2 oldChunkPos in _currentlyVisibleChunks)
+        {
+            if (!newVisibleChunks.Contains(oldChunkPos) && _chunkObjects.TryGetValue(oldChunkPos, out FloorChunkEntry entry))
+            {
+                if (entry.Renderer != null)
+                    entry.Renderer.enabled = false;
+            }
+        }
+
+        foreach (int2 newChunkPos in newVisibleChunks)
+        {
+            if (!_currentlyVisibleChunks.Contains(newChunkPos) && _chunkObjects.TryGetValue(newChunkPos, out FloorChunkEntry entry))
+            {
+                if (entry.Renderer != null)
+                    entry.Renderer.enabled = true;
+            }
+        }
+
+        _currentlyVisibleChunks.Clear();
+        foreach (int2 pos in newVisibleChunks)
+        {
+            _currentlyVisibleChunks.Add(pos);
+        }
     }
 
     private bool TryInitializeChunkMap()
@@ -174,7 +247,13 @@ public sealed class FloorChunkRenderer : MonoBehaviour
         MeshRenderer meshRenderer = chunkObject.AddComponent<MeshRenderer>();
         meshRenderer.sharedMaterials = _materials;
         meshRenderer.sortingOrder = floorSortingOrder;
-        _chunkObjects.Add(chunk.ChunkPosition, chunkObject);
+        meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
+        meshRenderer.receiveShadows = true;
+
+        bool isVisible = !_hasCameraChunkPos || _currentlyVisibleChunks.Contains(chunk.ChunkPosition);
+        meshRenderer.enabled = isVisible;
+
+        _chunkObjects.Add(chunk.ChunkPosition, new FloorChunkEntry(chunkObject, meshRenderer));
     }
 
     private Mesh BuildMesh(Chunk chunk)
@@ -274,6 +353,18 @@ public sealed class FloorChunkRenderer : MonoBehaviour
             Destroy(_visualVariants[i].Material);
 
         _visualVariants.Clear();
+    }
+
+    private readonly struct FloorChunkEntry
+    {
+        public FloorChunkEntry(GameObject gameObject, MeshRenderer renderer)
+        {
+            GameObject = gameObject;
+            Renderer = renderer;
+        }
+
+        public GameObject GameObject { get; }
+        public MeshRenderer Renderer { get; }
     }
 
     private readonly struct FloorVisualVariant
