@@ -60,6 +60,8 @@
 - 한 프레임의 배차 수를 인위적으로 제한하지 않으며, 성공한 후보는 즉시 인덱스에서 제거하여 다른 드론이 다시 검사하지 않게 한다.
 - 예약 후보의 실제 claim과 item/capacity reservation 정합성은 계속 `DroneTaskReservationSystem`이 소유한다.
 
+`DroneDiagnostics`는 task 생성·우선순위·중단·취소와 reservation 생성·해제의 수명주기 로그를 한 형식으로 모은다. 로그 호출은 Editor 또는 Development Build에만 포함되고 `LifecycleLoggingEnabled`가 켜졌을 때만 출력되며, task나 reservation 상태를 변경하지 않는다.
+
 ## 예약
 
 `DroneTaskReservationSystem`과 partial 파일이 reservation의 단일 소유자다.
@@ -116,6 +118,7 @@
 ## 수정 시 함께 확인할 영역
 
 - 작업 상태/우선순위: command, planning, scheduling/dispatch, reservation release, automatic suspension을 함께 확인한다.
+- 후보 선택/인덱스 변경: emergency 우선, 거리·creation order tie-break, 배터리 불가능 후보 건너뛰기, 제거된 후보 재선택 방지를 `DroneTaskCandidateIndexTests`에서 확인한다.
 - reservation 구조: 실제 item marker, task reserved quantity, destination capacity, drone assignment의 네 방향 롤백을 확인한다.
 - 이동/배터리: dispatch route feasibility, emergency return, charging demand, station selection, `ActiveDroneTransportTests`와 `DroneChargingPowerTests`를 확인한다.
 - 정거장 범위: `ChunkMapSystem.DroneStations`, network topology, task coverage, station destruction을 확인한다.
@@ -130,3 +133,4 @@
 - partial 파일은 planning, reservation, direct task, network, identity의 동일 상태 소유자를 기능별로 나눈 것이다.
 - 자동 suspension과 사용자 suspension은 구분된다. 자동 사유가 해소될 때만 자동 재개하며 사용자가 멈춘 작업을 임의로 재개하지 않는다.
 - `DroneTaskSchedulingSystem`이 소유하는 `DroneTaskCandidateIndex`와 `DroneTaskCompletionEvent`는 배차를 위한 파생 상태다. task 상태, reservation, destination capacity의 원본 소유권을 이 계층으로 옮기지 않는다.
+- 수명주기 진단이 필요하면 `DroneDiagnostics.LifecycleLoggingEnabled`를 명시적으로 켠다. 일반 실행의 기본 로그나 Release Build 동작에 의존하지 않는다.

@@ -24,6 +24,8 @@
 
 ### 런타임 JSON 로더
 
+`ConfigResourceLoader`는 각 런타임 loader가 공통으로 사용하는 `Resources` TextAsset 조회와 누락 오류 보고만 담당한다. JSON 스키마 검증과 ECS 데이터 게시 여부는 아래 각 도메인의 parser와 load system이 계속 소유한다.
+
 - `BuildingRuntimeConfigLoadSystem` + `BuildingRuntimeConfigParser`: Belt/Miner/Crafter 속도와 일반 Storage 용량을 `BuildingRuntimeConfigElement`로 게시한다.
 - `CrafterConfigLoadSystem` + `CrafterConfigParser`: 레시피와 아이템별 저장 한도를 `CrafterConfig`, `CrafterRecipeElement`, `CrafterRecipeIngredientElement`, `ItemStorageLimitElement`로 게시한다.
 - `ConstructionConfigLoadSystem` + `ConstructionConfigParser`: 건물별 공사 재료를 `ConstructionConfig`, `ConstructionMaterialConfigElement`로 게시한다.
@@ -31,7 +33,7 @@
 - `DroneConfigLoadSystem` + `DroneConfigParser`: 정거장 저장량, 운반량, 이동·배터리·충전 수치를 `DroneConfig`로 게시한다.
 - `StartingItemConfigLoadSystem` + `StartingItemConfigParser`: Main Facility의 초기 지급 목록을 `StartingItemConfigElement(itemType, quantity)` 버퍼로 게시한다.
 
-설정 원본은 `Assets/Resources/Config/`에 있다. 자원 생성 설정만 Baker가 읽고, 일반 건물·공사·레시피·저장·전력·드론·시작 아이템 설정은 런타임 시스템이 `Resources.Load<TextAsset>`로 읽는다. 바닥 바이옴 설정도 `Resources`에서 읽지만 ECS 설정 엔티티가 아니라 `FloorChunkRenderer`의 프레젠테이션 설정으로 사용된다.
+설정 원본은 `Assets/Resources/Config/`에 있다. 자원 생성 설정만 Baker가 읽고, 일반 건물·공사·레시피·저장·전력·드론·시작 아이템 설정은 런타임 시스템이 `ConfigResourceLoader`를 통해 읽는다. 바닥 바이옴 설정도 `Resources`에서 읽지만 ECS 설정 엔티티가 아니라 `FloorChunkRenderer`의 프레젠테이션 설정으로 사용된다.
 
 ## 초기 실행 흐름
 
@@ -57,10 +59,12 @@
 - 건물 footprint 변경: SubScene `BuildingPrefabDatabaseAuthoring` 항목, 배치/예약, 공간 등록, 입출력 경계, 전력/정거장 중심 계산, 시각 scale을 함께 확인한다.
 - 프리팹에 시뮬레이션 컴포넌트를 추가: spawn 시스템의 `AddComponent`와 중복되지 않는지 확인한다.
 - 설정 스키마 변경: DTO, parser 검증 순서, loader 게시 조건, 소비 시스템 쿼리와 EditMode 테스트를 함께 확인한다.
+- 런타임 설정 파일 조회 방식 변경: `ConfigResourceLoader`와 이를 사용하는 모든 config load system의 누락 처리 경로를 함께 확인한다.
 
 ## 구현상 주의사항
 
 - 프리팹 데이터베이스는 SubScene singleton buffer라는 전제가 여러 시스템에 있다. 중복 데이터베이스 엔티티를 만들면 `GetSingletonBuffer` 호출이 깨진다.
 - 현재 생성 프리팹은 주로 렌더 역할이며 실제 게임플레이 컴포넌트는 spawn 시스템이 붙인다.
 - 설정 파싱 실패를 빈 설정과 동일하게 숨기지 않는다. 특히 전력 설정은 부분 게시가 아니라 전체 성공 후 게시하는 계약이다.
+- `ConfigResourceLoader`에 도메인별 파싱이나 ECS 게시 책임을 넣지 않는다. 공용 helper는 파일 조회 성공 여부와 JSON 문자열만 반환한다.
 - `MainFacilityBootstrapSystem`의 주 시설은 일반 `BuildingSpawnRequest` 경로가 아니라 전용 부트스트랩 경로를 사용하지만, 마지막 공간 등록은 같은 `BuildingOccupantRequest -> ChunkMapSystem` 수명주기를 따른다.

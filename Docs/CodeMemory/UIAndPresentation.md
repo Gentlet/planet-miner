@@ -36,6 +36,8 @@
 - `Ctrl+C`: 등록된 건물 범위 선택과 blueprint 복사 모드.
 - Shift+우클릭/좌클릭: 설정 복사/붙여넣기. 현재 crafter 레시피는 `CrafterRecipeChangeRequest`로 전달한다.
 
+컨트롤러는 `Awake`에서 기본 ECS World, `ChunkMapSystem`, 월드 카메라를 확인한다. `_worldCamera`가 지정되지 않았으면 `Camera.main`을 사용하며, 필수 의존성을 얻지 못하면 입력 처리를 시작하지 않고 컴포넌트를 비활성화한다.
+
 `PointerUtility.IsPointerOverUi`는 모든 활성 UIDocument에서 `blocking-ui` class를 가진 element를 검사한다. UI 위 입력은 배치, 파괴, 건물 선택으로 통과하지 않는다.
 
 ## 건물 정보 UI
@@ -52,6 +54,10 @@
 - `.Drone`: 선택 드론의 상태, 배터리, 화물, 성능, 작업 할당 표시.
 - `.Belt`: 선택 벨트 셀의 월드 아이템 종류별 개수와 `Belt.speed` 최대 이동 속도 표시.
 - `.Construction`: `ConstructionSite`의 필요/도착 자재, 납품률, 집계 운송 상태를 표시하고, 현장이 실제 건물로 전환되면 같은 셀의 건물 UI로 선택을 넘긴다.
+
+`BindVisualTree`는 패널이 사용하는 필수 UXML element를 한 번에 검증한다. 하나라도 없으면 누락 목록을 기록하고 다시 unbind하여 `IsBound == false`로 남기므로 `Update`의 선택·refresh가 진행되지 않는다. 정상 바인딩 때만 버튼 callback을 연결하며 `OnDisable` 또는 재바인딩 전에 해제한다.
+
+0.05초 refresh 중 inventory row, storage slot, belt item row와 빈 상태 label은 기존 `VisualElement`를 재사용한다. 필요한 수만 갱신하고 남는 element는 숨기며, storage/crafter처럼 같은 container의 표현 형식이 바뀔 때 호환되지 않는 기존 child도 숨긴다. 전체 unbind나 레시피 버튼 목록 재구성처럼 구조 자체를 버리는 시점에만 container를 비운다.
 
 건물 선택은 먼저 화면상의 활성 드론을 반경 기반으로 찾고, 그 다음 `ChunkMapSystem.TryGetConstructionSite`, `TryGetBuilding` 순으로 셀의 엔티티를 찾는다. 공사 현장은 기본 모드에서만 선택 가능하며, 실제 건물이 생성될 때까지 footprint 예약이 남아 있으면 UI는 완료 전환 상태를 표시한다. 벨트 UI는 선택 엔티티의 `GridPosition`으로 `ChunkMapSystem.GetItems`를 조회한다. UI는 ECS 컴포넌트와 config buffer를 읽어 표시한다.
 
@@ -77,8 +83,9 @@
 ## 수정 시 함께 확인할 영역
 
 - UI 모드 전환: 두 UIDocument의 display, component enabled, BuildingUI selection, placement enable을 함께 확인한다.
-- UXML element 이름 변경: 해당 controller의 `Q<T>` 바인딩과 callback 해제를 함께 수정한다.
+- UXML element 이름 변경: `BindVisualTree`의 필수 element 목록, callback 해제, `BuildingUIBindingTests`를 함께 수정한다.
 - 새 정보 패널 타입: `IsSupportedBuilding`, refresh 분기, layout, 필요한 config query를 함께 확인한다.
+- 반복 갱신 UI 변경: 기존 row/slot/empty label 재사용과 다른 layout element 숨김 규칙을 유지하고 `BuildingUIPoolingTests`를 확인한다.
 - 배치 입력 변경: `PointerUtility`, drag state reset, copy/settings 모드, reservation 요청 흐름을 확인한다.
 - 청크 로드 범위 변경: 카메라 requested set, `ChunkLoadRequest`, 자원 generated marker, unload 부재를 확인한다.
 - 월드 작업 표시 변경: task 종료/취소, 대상 소멸·저장 전환, footprint transform, Entities Graphics material/queue, `WorldTaskMarkerPresentationTests`를 함께 확인한다.
@@ -88,6 +95,8 @@
 - UI는 표시와 명령 생성 계층이다. ECS owner buffer나 task status를 직접 수정하지 않는다.
 - 드론 선택은 `Stored` 상태를 제외한 `ActiveDrone`만 대상으로 하며 건물/공사 현장보다 클릭 우선순위가 높다.
 - Visual Tree는 재생성될 수 있으므로 callback을 `Awake` 한 번만 연결하지 않는다.
+- 필수 UXML element 누락을 부분 바인딩으로 허용하지 않는다. 실패한 tree에서는 선택과 refresh를 진행하지 않는다.
+- 반복 refresh에서 container를 매번 `Clear`하거나 row/slot을 새로 만들지 않는다. `Set*`, `GetOrCreate*`, `Trim*` 경로로 기존 element를 갱신·숨긴다.
 - 별도 fullscreen BuildingUI UIDocument를 추가하면 모드 버튼 입력을 가릴 수 있다. 현재 DefaultUI 문서 안의 panel 구조를 유지한다.
 - `blocking-ui`가 빠진 UI는 월드 클릭이 뒤로 통과한다.
 - 컴파일 성공만으로 UI Toolkit element 이름, 화면 배치, pointer 차단, 실제 입력 동작은 검증되지 않는다.
