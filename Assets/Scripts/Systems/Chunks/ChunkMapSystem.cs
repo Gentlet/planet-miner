@@ -7,6 +7,7 @@ public partial class ChunkMapSystem : SystemBase
 {
     private const int initialCapacity = 1024;
     private readonly Dictionary<int2, Chunk> _chunks = new();
+    private readonly Queue<Chunk> _resourceGeneratedChunks = new();
     private readonly Dictionary<Entity, int2> _itemCellByEntity = new();
     private readonly Dictionary<int2, Entity> _constructionSiteByCell = new();
     private readonly HashSet<int2> _activeBeltCells = new();
@@ -76,9 +77,18 @@ public partial class ChunkMapSystem : SystemBase
         return true;
     }
 
-    public IEnumerable<Chunk> GetChunks()
+    public void MarkChunkResourcesGenerated(Chunk chunk)
     {
-        return _chunks.Values;
+        if (chunk.HasGeneratedResources)
+            return;
+
+        chunk.MarkResourcesGenerated();
+        _resourceGeneratedChunks.Enqueue(chunk);
+    }
+
+    public bool TryDequeueResourceGeneratedChunk(out Chunk chunk)
+    {
+        return _resourceGeneratedChunks.TryDequeue(out chunk);
     }
 
     public FloorTypeEnum GetFloor(int2 cell)
@@ -97,6 +107,7 @@ public partial class ChunkMapSystem : SystemBase
     private void Clear()
     {
         _chunks.Clear();
+        _resourceGeneratedChunks.Clear();
         _itemCellByEntity.Clear();
         _activeBeltCells.Clear();
         _beltByCell.Clear();

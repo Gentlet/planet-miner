@@ -3,10 +3,8 @@ using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 
-public class DroneBuildingItemTaskTests
+public class DroneBuildingItemTaskTests : EcsWorldTestFixture
 {
-    private World _world;
-    private EntityManager _entityManager;
     private DroneStationNetworkSystem _networkSystem;
     private DroneBuildingItemTaskPlanningSystem _planningSystem;
     private DroneTaskReservationSystem _reservationSystem;
@@ -15,8 +13,6 @@ public class DroneBuildingItemTaskTests
     [SetUp]
     public void SetUp()
     {
-        _world = new World(nameof(DroneBuildingItemTaskTests));
-        _entityManager = _world.EntityManager;
         _world.GetOrCreateSystemManaged<ChunkMapSystem>();
         _networkSystem = _world.GetOrCreateSystemManaged<
             DroneStationNetworkSystem>();
@@ -27,12 +23,6 @@ public class DroneBuildingItemTaskTests
         CreateConfig();
         _station = CreateStation(int2.zero);
         _networkSystem.Update();
-    }
-
-    [TearDown]
-    public void TearDown()
-    {
-        _world.Dispose();
     }
 
     [Test]

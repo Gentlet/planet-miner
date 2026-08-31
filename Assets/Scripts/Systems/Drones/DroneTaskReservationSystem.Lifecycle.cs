@@ -102,9 +102,9 @@ public partial class DroneTaskReservationSystem
             EntityManager.DestroyEntity(reservationEntity);
 
         _releaseItems.Clear();
-        Debug.Log(
-            $"Released drone task reservation. Entity : {reservationEntity}, " +
-            $"Task : {reservation.taskEntity}");
+        DroneDiagnostics.LogReservationReleased(
+            reservationEntity,
+            reservation.taskEntity);
     }
 
     private void CopyReservedItems(Entity reservationEntity)

@@ -82,9 +82,10 @@ public partial class DroneTaskCommandSystem : SystemBase
             }
 
             schedulerState.nextCreationOrder++;
-            Debug.Log(
-                $"Created drone task. Entity : {taskEntity}, Type : {request.type}, " +
-                $"CreationOrder : {schedulerState.nextCreationOrder - 1}");
+            DroneDiagnostics.LogTaskCreated(
+                taskEntity,
+                request.type,
+                schedulerState.nextCreationOrder - 1);
             ecb.DestroyEntity(requestEntity);
         }
 
@@ -324,9 +325,10 @@ public partial class DroneTaskCommandSystem : SystemBase
                 priorityClass = request.priorityClass,
                 normalPriority = normalPriority
             });
-        Debug.Log(
-            $"Changed drone task priority. Entity : {request.taskEntity}, " +
-            $"Class : {request.priorityClass}, Priority : {normalPriority}");
+        DroneDiagnostics.LogTaskPriorityChanged(
+            request.taskEntity,
+            request.priorityClass,
+            normalPriority);
     }
 
     private void ApplySuspensionChange(DroneTaskSuspensionRequest request)
@@ -368,8 +370,9 @@ public partial class DroneTaskCommandSystem : SystemBase
         }
 
         EntityManager.SetComponentData(request.taskEntity, status);
-        Debug.Log(
-            $"Changed drone task suspension. Entity : {request.taskEntity}, State : {status.state}");
+        DroneDiagnostics.LogTaskSuspensionChanged(
+            request.taskEntity,
+            status.state);
     }
 
     private void ApplyCancellation(DroneTaskCancelRequest request)
@@ -388,7 +391,7 @@ public partial class DroneTaskCommandSystem : SystemBase
             request.taskEntity);
         status.state = DroneTaskStateEnum.Cancelled;
         EntityManager.SetComponentData(request.taskEntity, status);
-        Debug.Log($"Cancelled drone task. Entity : {request.taskEntity}");
+        DroneDiagnostics.LogTaskCancelled(request.taskEntity);
     }
 
     private bool ValidateTaskCommandTarget(Entity taskEntity)

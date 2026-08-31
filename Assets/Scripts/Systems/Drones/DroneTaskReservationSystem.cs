@@ -62,10 +62,11 @@ public partial class DroneTaskReservationSystem : SystemBase
 
             if (TryCreateReservation(request, out Entity reservationEntity))
             {
-                Debug.Log(
-                    $"Created drone task reservation. Entity : {reservationEntity}, " +
-                    $"Task : {request.taskEntity}, Item : {request.itemType}, " +
-                    $"Quantity : {request.quantity}");
+                DroneDiagnostics.LogReservationCreated(
+                    reservationEntity,
+                    request.taskEntity,
+                    request.itemType,
+                    request.quantity);
             }
 
             if (EntityManager.Exists(requestEntity))

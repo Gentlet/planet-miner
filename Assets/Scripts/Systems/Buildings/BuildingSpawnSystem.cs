@@ -6,14 +6,17 @@ using UnityEngine;
 [UpdateAfter(typeof(ConstructionCompletionSystem))]
 public partial class BuildingSpawnSystem : SystemBase
 {
-    private const int DefaultStorageCapacity = 10;
     private ChunkMapSystem _chunkMap;
+    private EntityQuery _buildingRuntimeConfigQuery;
     private EntityQuery _powerConfigQuery;
     private EntityQuery _droneConfigQuery;
 
     protected override void OnCreate()
     {
         _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
+        _buildingRuntimeConfigQuery = GetEntityQuery(
+            ComponentType.ReadOnly<BuildingRuntimeConfig>(),
+            ComponentType.ReadOnly<BuildingRuntimeConfigElement>());
         _powerConfigQuery = GetEntityQuery(
             ComponentType.ReadOnly<PowerConfig>(),
             ComponentType.ReadOnly<PowerConsumerConfigElement>(),
@@ -70,11 +73,37 @@ public partial class BuildingSpawnSystem : SystemBase
         DroneConfig droneConfig = hasDroneConfig
             ? _droneConfigQuery.GetSingleton<DroneConfig>()
             : default;
+        bool hasBuildingRuntimeConfig =
+            !_buildingRuntimeConfigQuery.IsEmptyIgnoreFilter;
+        DynamicBuffer<BuildingRuntimeConfigElement> buildingRuntimeConfigs =
+            hasBuildingRuntimeConfig
+                ? _buildingRuntimeConfigQuery
+                    .GetSingletonBuffer<BuildingRuntimeConfigElement>(true)
+                : default;
 
         foreach (var (request, requestEntity) in
                  SystemAPI.Query<RefRO<BuildingSpawnRequest>>().WithEntityAccess())
         {
             BuildingSpawnRequest spawnRequest = request.ValueRO;
+            BuildingRuntimeConfigElement runtimeConfig = default;
+
+            if (BuildingRuntimeConfigParser.RequiresRuntimeConfig(
+                    spawnRequest.type) &&
+                (!hasBuildingRuntimeConfig ||
+                 !TryGetRuntimeConfig(
+                     buildingRuntimeConfigs,
+                     spawnRequest.type,
+                     out runtimeConfig)))
+            {
+                Debug.LogError(
+                    $"Building spawn request was rejected because its runtime config was not loaded. Type : {spawnRequest.type}");
+                _chunkMap.ReleaseBuildingReservation(
+                    spawnRequest.gridPosition,
+                    spawnRequest.type,
+                    spawnRequest.dir);
+                ecb.DestroyEntity(requestEntity);
+                continue;
+            }
 
             if (spawnRequest.type == BuildingTypeEnum.DroneStation &&
                 !hasDroneConfig)
@@ -146,6 +175,7 @@ public partial class BuildingSpawnSystem : SystemBase
                 instance,
                 spawnRequest,
                 anchor,
+                runtimeConfig,
                 droneConfig);
             AddPowerComponents(
                 ref ecb,
@@ -162,37 +192,23 @@ public partial class BuildingSpawnSystem : SystemBase
         Entity instance,
         BuildingSpawnRequest request,
         int2 anchor,
+        BuildingRuntimeConfigElement runtimeConfig,
         DroneConfig droneConfig)
     {
         switch (request.type)
         {
             case BuildingTypeEnum.Belt:
-                ecb.AddComponent(instance, new Belt { speed = 10f });
+                AddBeltBehavior(ref ecb, instance, runtimeConfig);
                 break;
             case BuildingTypeEnum.Miner:
-                uint randomState = math.hash(anchor);
-                ecb.AddComponent(instance, new Miner
-                {
-                    speed = 0.1f,
-                    randomState = randomState == 0 ? 1u : randomState
-                });
-                ecb.AddComponent(instance, new BuildingOutputCursor());
-                ecb.AddBuffer<ProducedItemElement>(instance);
+                AddMinerBehavior(ref ecb, instance, anchor, runtimeConfig);
                 break;
             case BuildingTypeEnum.Crafter:
-                ItemTypeEnum selectedItemType = request.selectedItemType;
-                ecb.AddComponent(instance, new Crafter
-                {
-                    speed = 1f,
-                    selectedItemType = selectedItemType,
-                    progress = 0f,
-                    state = selectedItemType.IsValid()
-                        ? CrafterStateEnum.Idle
-                        : CrafterStateEnum.NoRecipe
-                });
-                ecb.AddComponent(instance, new BuildingOutputCursor());
-                ecb.AddBuffer<StoredItemElement>(instance);
-                ecb.AddBuffer<ProducedItemElement>(instance);
+                AddCrafterBehavior(
+                    ref ecb,
+                    instance,
+                    request.selectedItemType,
+                    runtimeConfig);
                 break;
             case BuildingTypeEnum.Splitter:
                 ecb.AddComponent(instance, new Splitter
@@ -209,12 +225,7 @@ public partial class BuildingSpawnSystem : SystemBase
                 });
                 break;
             case BuildingTypeEnum.Storage:
-                ecb.AddComponent(instance, new Storage
-                {
-                    capacity = DefaultStorageCapacity
-                });
-                ecb.AddComponent(instance, new BuildingOutputCursor());
-                ecb.AddBuffer<StoredItemElement>(instance);
+                AddStorageBehavior(ref ecb, instance, runtimeConfig);
                 break;
             case BuildingTypeEnum.PowerPole:
                 ecb.AddComponent(instance, new PowerPole());
@@ -243,6 +254,81 @@ public partial class BuildingSpawnSystem : SystemBase
                     });
                 break;
         }
+    }
+
+    private static void AddBeltBehavior(
+        ref EntityCommandBuffer ecb,
+        Entity instance,
+        BuildingRuntimeConfigElement config)
+    {
+        ecb.AddComponent(instance, new Belt { speed = config.speed });
+    }
+
+    private static void AddMinerBehavior(
+        ref EntityCommandBuffer ecb,
+        Entity instance,
+        int2 anchor,
+        BuildingRuntimeConfigElement config)
+    {
+        uint randomState = math.hash(anchor);
+        ecb.AddComponent(instance, new Miner
+        {
+            speed = config.speed,
+            randomState = randomState == 0 ? 1u : randomState
+        });
+        ecb.AddComponent(instance, new BuildingOutputCursor());
+        ecb.AddBuffer<ProducedItemElement>(instance);
+    }
+
+    private static void AddCrafterBehavior(
+        ref EntityCommandBuffer ecb,
+        Entity instance,
+        ItemTypeEnum selectedItemType,
+        BuildingRuntimeConfigElement config)
+    {
+        ecb.AddComponent(instance, new Crafter
+        {
+            speed = config.speed,
+            selectedItemType = selectedItemType,
+            progress = 0f,
+            state = selectedItemType.IsValid()
+                ? CrafterStateEnum.Idle
+                : CrafterStateEnum.NoRecipe
+        });
+        ecb.AddComponent(instance, new BuildingOutputCursor());
+        ecb.AddBuffer<StoredItemElement>(instance);
+        ecb.AddBuffer<ProducedItemElement>(instance);
+    }
+
+    private static void AddStorageBehavior(
+        ref EntityCommandBuffer ecb,
+        Entity instance,
+        BuildingRuntimeConfigElement config)
+    {
+        ecb.AddComponent(instance, new Storage
+        {
+            capacity = config.storageCapacity
+        });
+        ecb.AddComponent(instance, new BuildingOutputCursor());
+        ecb.AddBuffer<StoredItemElement>(instance);
+    }
+
+    private static bool TryGetRuntimeConfig(
+        DynamicBuffer<BuildingRuntimeConfigElement> configs,
+        BuildingTypeEnum buildingType,
+        out BuildingRuntimeConfigElement config)
+    {
+        for (int i = 0; i < configs.Length; i++)
+        {
+            if (configs[i].buildingType != buildingType)
+                continue;
+
+            config = configs[i];
+            return true;
+        }
+
+        config = default;
+        return false;
     }
 
     private static void AddPowerComponents(

@@ -24,13 +24,14 @@
 
 ### 런타임 JSON 로더
 
+- `BuildingRuntimeConfigLoadSystem` + `BuildingRuntimeConfigParser`: Belt/Miner/Crafter 속도와 일반 Storage 용량을 `BuildingRuntimeConfigElement`로 게시한다.
 - `CrafterConfigLoadSystem` + `CrafterConfigParser`: 레시피와 아이템별 저장 한도를 `CrafterConfig`, `CrafterRecipeElement`, `CrafterRecipeIngredientElement`, `ItemStorageLimitElement`로 게시한다.
 - `ConstructionConfigLoadSystem` + `ConstructionConfigParser`: 건물별 공사 재료를 `ConstructionConfig`, `ConstructionMaterialConfigElement`로 게시한다.
 - `PowerConfigLoadSystem` + `PowerConfigParser.*`: 전신주 범위, 발전기 출력, 석탄 연료, 소비 건물 설정을 게시한다. 전체 문서 검증이 성공한 뒤에만 ready config 엔티티를 공개한다.
 - `DroneConfigLoadSystem` + `DroneConfigParser`: 정거장 저장량, 운반량, 이동·배터리·충전 수치를 `DroneConfig`로 게시한다.
 - `StartingItemConfigLoadSystem` + `StartingItemConfigParser`: Main Facility의 초기 지급 목록을 `StartingItemConfigElement(itemType, quantity)` 버퍼로 게시한다.
 
-설정 원본은 `Assets/Resources/Config/`에 있다. 자원 생성 설정만 Baker가 읽고, 공사·레시피·저장·전력·드론·시작 아이템 설정은 런타임 시스템이 `Resources.Load<TextAsset>`로 읽는다. 바닥 바이옴 설정도 `Resources`에서 읽지만 ECS 설정 엔티티가 아니라 `FloorChunkRenderer`의 프레젠테이션 설정으로 사용된다.
+설정 원본은 `Assets/Resources/Config/`에 있다. 자원 생성 설정만 Baker가 읽고, 일반 건물·공사·레시피·저장·전력·드론·시작 아이템 설정은 런타임 시스템이 `Resources.Load<TextAsset>`로 읽는다. 바닥 바이옴 설정도 `Resources`에서 읽지만 ECS 설정 엔티티가 아니라 `FloorChunkRenderer`의 프레젠테이션 설정으로 사용된다.
 
 ## 초기 실행 흐름
 

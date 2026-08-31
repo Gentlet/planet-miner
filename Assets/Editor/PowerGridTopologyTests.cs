@@ -4,28 +4,18 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
 
-public class PowerGridTopologyTests
+public class PowerGridTopologyTests : EcsWorldTestFixture
 {
-    private World _world;
-    private EntityManager _entityManager;
     private ChunkMapSystem _chunkMap;
     private PowerGridSystem _powerGrid;
 
     [SetUp]
     public void SetUp()
     {
-        _world = new World(nameof(PowerGridTopologyTests));
-        _entityManager = _world.EntityManager;
         _chunkMap = _world.GetOrCreateSystemManaged<ChunkMapSystem>();
         _world.GetOrCreateSystemManaged<ItemStorageSystem>();
         _powerGrid = _world.GetOrCreateSystemManaged<PowerGridSystem>();
         CreatePowerConfig(new int2(5, 5), new int2(8, 8));
-    }
-
-    [TearDown]
-    public void TearDown()
-    {
-        _world.Dispose();
     }
 
     [Test]

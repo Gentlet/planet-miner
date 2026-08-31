@@ -21,6 +21,9 @@ public class BuildingPlacementController : MonoBehaviour
     private ChunkMapSystem _chunkMap;
 
     [SerializeField]
+    private Camera _worldCamera;
+
+    [SerializeField]
     private BuildingPlacementPreview _preview;
     private BuildingPlacementOperation _placementOperation;
     private readonly BuildingCopyInteraction _copyInteraction = new();
@@ -37,19 +40,14 @@ public class BuildingPlacementController : MonoBehaviour
 
     public event Action PlacementSelectionCleared;
 
-    private void Start()
-    {
-        _entityManager = World.DefaultGameObjectInjectionWorld.EntityManager;
-        _placementOperation ??= CreateEmptyOperation();
-    }
-
     private void Awake()
     {
-        _chunkMap = World.DefaultGameObjectInjectionWorld.GetExistingSystemManaged<ChunkMapSystem>();
+        _placementOperation ??= CreateEmptyOperation();
 
-        if (_chunkMap == null)
+        if (!TryInitializeDependencies())
         {
-            Debug.LogError("ChunkMapSystem not found.");
+            enabled = false;
+            return;
         }
 
         BuildingCopySelectionPreview copySelectionPreview =
@@ -70,6 +68,51 @@ public class BuildingPlacementController : MonoBehaviour
         }
 
         _demolitionSelection.AttachPreview(demolitionSelectionPreview);
+    }
+
+    private bool TryInitializeDependencies()
+    {
+        World world = World.DefaultGameObjectInjectionWorld;
+
+        if (world == null)
+        {
+            Debug.LogError(
+                "BuildingPlacementController requires the default ECS World.",
+                this);
+            return false;
+        }
+
+        if (!world.IsCreated)
+        {
+            Debug.LogError(
+                "BuildingPlacementController cannot use a disposed ECS World.",
+                this);
+            return false;
+        }
+
+        _entityManager = world.EntityManager;
+        _chunkMap = world.GetExistingSystemManaged<ChunkMapSystem>();
+
+        if (_chunkMap == null)
+        {
+            Debug.LogError(
+                "BuildingPlacementController requires ChunkMapSystem.",
+                this);
+            return false;
+        }
+
+        if (_worldCamera == null)
+            _worldCamera = Camera.main;
+
+        if (_worldCamera == null)
+        {
+            Debug.LogError(
+                "BuildingPlacementController requires a world camera.",
+                this);
+            return false;
+        }
+
+        return true;
     }
 
     private void Update()
@@ -157,11 +200,17 @@ public class BuildingPlacementController : MonoBehaviour
     {
         gridCell = default;
 
-        if (Mouse.current == null || _chunkMap == null)
+        if (Mouse.current == null)
+            return false;
+
+        if (_chunkMap == null)
+            return false;
+
+        if (_worldCamera == null)
             return false;
 
         Vector3 pointerWorldPosition =
-            Camera.main.ScreenToWorldPoint(Mouse.current.position.ReadValue());
+            _worldCamera.ScreenToWorldPoint(Mouse.current.position.ReadValue());
         gridCell = pointerWorldPosition.ToGridCell();
         return true;
     }

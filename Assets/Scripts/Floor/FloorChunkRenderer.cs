@@ -12,6 +12,10 @@ public sealed class FloorChunkRenderer : MonoBehaviour
 
     private readonly Dictionary<int2, GameObject> _chunkObjects = new();
     private readonly List<FloorVisualVariant> _visualVariants = new();
+    private readonly List<Vector3> _vertices = new(ChunkUtility.cellCount * 4);
+    private readonly List<Vector2> _uvs = new(ChunkUtility.cellCount * 4);
+    private List<int>[] _trianglesByVariant;
+    private Material[] _materials;
     private FloorGenerationSettings _settings;
     private ChunkMapSystem _chunkMap;
 
@@ -43,9 +47,9 @@ public sealed class FloorChunkRenderer : MonoBehaviour
         if (!TryInitializeChunkMap())
             return;
 
-        foreach (Chunk chunk in _chunkMap.GetChunks())
+        while (_chunkMap.TryDequeueResourceGeneratedChunk(out Chunk chunk))
         {
-            if (!chunk.HasGeneratedResources || _chunkObjects.ContainsKey(chunk.ChunkPosition))
+            if (_chunkObjects.ContainsKey(chunk.ChunkPosition))
                 continue;
 
             CreateChunkFloor(chunk);
@@ -138,7 +142,23 @@ public sealed class FloorChunkRenderer : MonoBehaviour
             _visualVariants.Add(new FloorVisualVariant(sprite, material));
         }
 
+        InitializeMeshBuffers();
         return true;
+    }
+
+    private void InitializeMeshBuffers()
+    {
+        _trianglesByVariant = new List<int>[_visualVariants.Count];
+        int initialTriangleCapacity =
+            ChunkUtility.cellCount * 6 / _visualVariants.Count;
+
+        for (int i = 0; i < _trianglesByVariant.Length; i++)
+            _trianglesByVariant[i] = new List<int>(initialTriangleCapacity);
+
+        _materials = new Material[_visualVariants.Count];
+
+        for (int i = 0; i < _visualVariants.Count; i++)
+            _materials[i] = _visualVariants[i].Material;
     }
 
     private void CreateChunkFloor(Chunk chunk)
@@ -152,20 +172,18 @@ public sealed class FloorChunkRenderer : MonoBehaviour
         meshFilter.sharedMesh = mesh;
 
         MeshRenderer meshRenderer = chunkObject.AddComponent<MeshRenderer>();
-        meshRenderer.sharedMaterials = GetMaterials();
+        meshRenderer.sharedMaterials = _materials;
         meshRenderer.sortingOrder = floorSortingOrder;
         _chunkObjects.Add(chunk.ChunkPosition, chunkObject);
     }
 
     private Mesh BuildMesh(Chunk chunk)
     {
-        int cellCount = ChunkUtility.cellCount;
-        var vertices = new List<Vector3>(cellCount * 4);
-        var uvs = new List<Vector2>(cellCount * 4);
-        var trianglesByVariant = new List<int>[_visualVariants.Count];
+        _vertices.Clear();
+        _uvs.Clear();
 
-        for (int i = 0; i < trianglesByVariant.Length; i++)
-            trianglesByVariant[i] = new List<int>();
+        for (int i = 0; i < _trianglesByVariant.Length; i++)
+            _trianglesByVariant[i].Clear();
 
         for (int y = 0; y < GameConstants.chunkSize; y++)
         {
@@ -174,22 +192,24 @@ public sealed class FloorChunkRenderer : MonoBehaviour
                 int2 worldCell = chunk.ChunkPosition * GameConstants.chunkSize + new int2(x, y);
                 FloorTileSelection selection = FloorBiomeSampler.SelectFloor(_settings, worldCell);
                 int visualVariantIndex = GetVisualVariantIndex(selection);
-                int vertexStart = vertices.Count;
+                int vertexStart = _vertices.Count;
                 float minimumX = worldCell.x - 0.5f;
                 float minimumY = worldCell.y - 0.5f;
 
-                vertices.Add(new Vector3(minimumX, minimumY));
-                vertices.Add(new Vector3(minimumX, minimumY + 1f));
-                vertices.Add(new Vector3(minimumX + 1f, minimumY + 1f));
-                vertices.Add(new Vector3(minimumX + 1f, minimumY));
+                _vertices.Add(new Vector3(minimumX, minimumY));
+                _vertices.Add(new Vector3(minimumX, minimumY + 1f));
+                _vertices.Add(new Vector3(minimumX + 1f, minimumY + 1f));
+                _vertices.Add(new Vector3(minimumX + 1f, minimumY));
 
-                Vector2[] spriteUvs = _visualVariants[visualVariantIndex].Sprite.uv;
-                uvs.Add(spriteUvs[0]);
-                uvs.Add(spriteUvs[1]);
-                uvs.Add(spriteUvs[2]);
-                uvs.Add(spriteUvs[3]);
+                FloorVisualVariant visualVariant =
+                    _visualVariants[visualVariantIndex];
+                _uvs.Add(visualVariant.Uv0);
+                _uvs.Add(visualVariant.Uv1);
+                _uvs.Add(visualVariant.Uv2);
+                _uvs.Add(visualVariant.Uv3);
 
-                List<int> triangles = trianglesByVariant[visualVariantIndex];
+                List<int> triangles =
+                    _trianglesByVariant[visualVariantIndex];
                 triangles.Add(vertexStart);
                 triangles.Add(vertexStart + 1);
                 triangles.Add(vertexStart + 2);
@@ -204,11 +224,11 @@ public sealed class FloorChunkRenderer : MonoBehaviour
             name = $"Floor Chunk Mesh ({chunk.ChunkPosition.x}, {chunk.ChunkPosition.y})",
             subMeshCount = _visualVariants.Count
         };
-        mesh.SetVertices(vertices);
-        mesh.SetUVs(0, uvs);
+        mesh.SetVertices(_vertices);
+        mesh.SetUVs(0, _uvs);
 
-        for (int i = 0; i < trianglesByVariant.Length; i++)
-            mesh.SetTriangles(trianglesByVariant[i], i);
+        for (int i = 0; i < _trianglesByVariant.Length; i++)
+            mesh.SetTriangles(_trianglesByVariant[i], i);
 
         mesh.RecalculateBounds();
         return mesh;
@@ -237,16 +257,6 @@ public sealed class FloorChunkRenderer : MonoBehaviour
         return count;
     }
 
-    private Material[] GetMaterials()
-    {
-        var materials = new Material[_visualVariants.Count];
-
-        for (int i = 0; i < _visualVariants.Count; i++)
-            materials[i] = _visualVariants[i].Material;
-
-        return materials;
-    }
-
     private static Sprite LoadSprite(string resourcePath)
     {
         Sprite sprite = Resources.Load<Sprite>(resourcePath);
@@ -270,11 +280,18 @@ public sealed class FloorChunkRenderer : MonoBehaviour
     {
         public FloorVisualVariant(Sprite sprite, Material material)
         {
-            Sprite = sprite;
+            Vector2[] spriteUvs = sprite.uv;
             Material = material;
+            Uv0 = spriteUvs[0];
+            Uv1 = spriteUvs[1];
+            Uv2 = spriteUvs[2];
+            Uv3 = spriteUvs[3];
         }
 
-        public Sprite Sprite { get; }
         public Material Material { get; }
+        public Vector2 Uv0 { get; }
+        public Vector2 Uv1 { get; }
+        public Vector2 Uv2 { get; }
+        public Vector2 Uv3 { get; }
     }
 }

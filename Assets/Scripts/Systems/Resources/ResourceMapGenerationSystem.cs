@@ -34,7 +34,7 @@ public partial class ResourceMapGenerationSystem : SystemBase
             if (!chunk.HasGeneratedResources)
             {
                 GenerateChunkResources(ecb, chunk, settings, configs);
-                chunk.MarkResourcesGenerated();
+                _chunkMap.MarkChunkResourcesGenerated(chunk);
             }
 
             ecb.DestroyEntity(requestEntity);

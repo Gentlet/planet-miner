@@ -1,5 +1,4 @@
 using Unity.Entities;
-using UnityEngine;
 
 public partial class StartingItemConfigLoadSystem : SystemBase
 {
@@ -31,18 +30,14 @@ public partial class StartingItemConfigLoadSystem : SystemBase
 
     private static StartingItemConfigElement[] LoadConfig()
     {
-        TextAsset configAsset = Resources.Load<TextAsset>(
-            startingItemConfigResourcePath);
-
-        if (configAsset == null)
-        {
-            Debug.LogError(
-                $"Starting item config file not found. Path : Resources/{startingItemConfigResourcePath}");
+        if (!ConfigResourceLoader.TryLoadJson(
+                "Starting item",
+                startingItemConfigResourcePath,
+                out string json))
             return null;
-        }
 
         return StartingItemConfigParser.Parse(
-            configAsset.text,
+            json,
             startingItemConfigResourcePath);
     }
 }

@@ -50,8 +50,9 @@
 
 ## 작업 스케줄링
 
-`DroneTaskSchedulingSystem`은 예약과 직접 작업을 하나의 배차 후보로 구성한다. 원본 task 상태나 item/capacity reservation을 소유하지 않으며, 기존 task와 reservation entity를 가리키는 검색 인덱스만 관리한다.
+`DroneTaskSchedulingSystem`은 ECS에서 예약과 직접 작업을 수집하고 배차 API를 제공한다. 시스템이 단독으로 소유하는 `DroneTaskCandidateIndex`는 기존 task와 reservation entity를 가리키는 파생 검색 인덱스이며, 원본 task 상태나 item/capacity reservation을 소유하지 않는다.
 
+- `DroneTaskCandidateIndex`가 후보 세대, network -> priority -> chunk -> cell 버킷, dirty cell 정렬, ring 탐색, 운반량·경로 배터리 가능성 검사를 담당한다.
 - 후보는 network -> priority -> chunk -> cell 순서로 분류한다.
 - Emergency를 먼저 처리하고 normal priority 1~10을 순서대로 처리한다.
 - 같은 priority에서는 드론의 현재 셀과 가장 가까운 작업을 선택하고, 거리가 같으면 creation order가 빠른 후보를 선택한다.
@@ -128,4 +129,4 @@
 - 정거장 network와 power grid를 같은 ID나 같은 연결 규칙으로 취급하지 않는다.
 - partial 파일은 planning, reservation, direct task, network, identity의 동일 상태 소유자를 기능별로 나눈 것이다.
 - 자동 suspension과 사용자 suspension은 구분된다. 자동 사유가 해소될 때만 자동 재개하며 사용자가 멈춘 작업을 임의로 재개하지 않는다.
-- `DroneTaskSchedulingSystem`의 후보 인덱스와 `DroneTaskCompletionEvent`는 배차를 위한 파생 상태다. task 상태, reservation, destination capacity의 원본 소유권을 이 계층으로 옮기지 않는다.
+- `DroneTaskSchedulingSystem`이 소유하는 `DroneTaskCandidateIndex`와 `DroneTaskCompletionEvent`는 배차를 위한 파생 상태다. task 상태, reservation, destination capacity의 원본 소유권을 이 계층으로 옮기지 않는다.

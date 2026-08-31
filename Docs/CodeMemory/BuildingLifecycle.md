@@ -38,16 +38,16 @@
 
 `BuildingSpawnSystem`은 공통 transform, `PostTransformMatrix`, `BuildingType`, `GridPosition`, `Direction`, `BuildingOccupantRequest`를 설정한 뒤 타입별 컴포넌트를 추가한다.
 
-- Belt: `Belt`
-- Miner: `Miner`, `BuildingOutputCursor`, `ProducedItemElement`
-- Crafter: `Crafter`, `BuildingOutputCursor`, `StoredItemElement`, `ProducedItemElement`
+- Belt: `BuildingRuntimeConfigElement.speed`를 적용한 `Belt`
+- Miner: `BuildingRuntimeConfigElement.speed`를 적용한 `Miner`, `BuildingOutputCursor`, `ProducedItemElement`
+- Crafter: `BuildingRuntimeConfigElement.speed`를 적용한 `Crafter`, `BuildingOutputCursor`, `StoredItemElement`, `ProducedItemElement`
 - Splitter/Merger: 각 방향 cursor 컴포넌트
-- Storage: `Storage`, `BuildingOutputCursor`, `StoredItemElement`
+- Storage: `BuildingRuntimeConfigElement.storageCapacity`를 적용한 `Storage`, `BuildingOutputCursor`, `StoredItemElement`
 - PowerPole: `PowerPole`
 - CoalGenerator: `CoalGenerator`, `StoredItemElement`, 설정 기반 `PowerGenerator`
 - DroneStation: `Storage`, item/drone 버퍼, `PowerConsumer`, `DroneStation`
 
-전력 소비 설정에 등록된 건물은 `PowerConsumer`도 받는다. 타입별 수치는 config buffer 또는 현재 spawn 기본값에서 온다.
+전력 소비 설정에 등록된 건물은 `PowerConsumer`도 받는다. 일반 Belt/Miner/Crafter/Storage의 조정값은 `BuildingRuntimeConfig.json`, 발전·소비는 `PowerConfig.json`, DroneStation은 `DroneConfig.json`이 소유한다. `progress`, `timer`, output cursor, 방향 cursor 같은 순수 런타임 초기값은 spawn 코드가 설정한다.
 
 ## 취소와 철거
 
@@ -82,11 +82,12 @@ Delete 철거 선택은 배치/복사 상태를 종료한 뒤 좌클릭 drag의 
 - 자재 운반과 철거 실행: 드론 작업/예약/이동 시스템
 - 소유 아이템 소비·복원: `ItemStorageSystem`
 - 건물 렌더 프리팹과 footprint: `BuildingPrefabElement`
+- 일반 건물 속도와 Storage 용량: `BuildingRuntimeConfig`, `BuildingRuntimeConfigElement`
 - 전력/정거장 타입 초기화: `PowerConfig`, `DroneConfig`
 
 ## 수정 시 함께 확인할 영역
 
-- 새 건물 타입: enum, SubScene prefab DB, 공사 JSON, `BuildingSpawnSystem`, UI 선택 버튼, 전력 설정, 생산/물류 시스템, 파괴 반환을 함께 확인한다.
+- 새 건물 타입: enum, SubScene prefab DB, 공사 JSON, `BuildingSpawnSystem`, `BuildingRuntimeConfig.json`, UI 선택 버튼, 전력 설정, 생산/물류 시스템, 파괴 반환을 함께 확인한다.
 - footprint 또는 anchor 변경: 복사 pivot, 미리보기, 예약, 현장 reserved buffer, spawn transform, 최종 점유, 입출력 경계를 함께 확인한다.
 - 공사 완료/취소 순서 변경: `DroneConstructionTests`, `DroneDemolitionRecoveryTests`, 예약 해제와 도착 자재 복원을 함께 확인한다.
 - 파괴 경로 또는 범위 철거 변경: stored/produced item, stored drone, 전신주 등록, 벨트 활성 인덱스, 회수 작업, `DroneDemolitionRecoveryTests`와 `WorldTaskMarkerPresentationTests`를 함께 확인한다.

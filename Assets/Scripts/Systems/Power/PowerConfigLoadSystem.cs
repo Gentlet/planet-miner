@@ -1,5 +1,4 @@
 using Unity.Entities;
-using UnityEngine;
 
 public partial class PowerConfigLoadSystem : SystemBase
 {
@@ -32,16 +31,14 @@ public partial class PowerConfigLoadSystem : SystemBase
 
     private static PowerConfigParseResult LoadConfig()
     {
-        TextAsset configAsset = Resources.Load<TextAsset>(powerConfigResourcePath);
-
-        if (configAsset == null)
-        {
-            Debug.LogError($"Power config file not found. Path : Resources/{powerConfigResourcePath}");
+        if (!ConfigResourceLoader.TryLoadJson(
+                "Power",
+                powerConfigResourcePath,
+                out string json))
             return null;
-        }
 
         return PowerConfigParser.Parse(
-            configAsset.text,
+            json,
             powerConfigResourcePath);
     }
 

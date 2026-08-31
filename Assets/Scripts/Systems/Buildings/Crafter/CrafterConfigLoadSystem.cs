@@ -1,5 +1,4 @@
 using Unity.Entities;
-using UnityEngine;
 
 public partial class CrafterConfigLoadSystem : SystemBase
 {
@@ -32,16 +31,14 @@ public partial class CrafterConfigLoadSystem : SystemBase
         DynamicBuffer<CrafterRecipeElement> recipes,
         DynamicBuffer<CrafterRecipeIngredientElement> ingredients)
     {
-        TextAsset configAsset = Resources.Load<TextAsset>(recipeConfigResourcePath);
-
-        if (configAsset == null)
-        {
-            Debug.LogError($"Crafter recipe config file not found. Path : Resources/{recipeConfigResourcePath}");
+        if (!ConfigResourceLoader.TryLoadJson(
+                "Crafter recipe",
+                recipeConfigResourcePath,
+                out string json))
             return;
-        }
 
         CrafterRecipeParseResult result = CrafterConfigParser.ParseRecipes(
-            configAsset.text,
+            json,
             recipeConfigResourcePath);
 
         if (result == null)
@@ -56,16 +53,14 @@ public partial class CrafterConfigLoadSystem : SystemBase
 
     private static void LoadStorageLimits(DynamicBuffer<ItemStorageLimitElement> storageLimits)
     {
-        TextAsset configAsset = Resources.Load<TextAsset>(storageLimitConfigResourcePath);
-
-        if (configAsset == null)
-        {
-            Debug.LogError($"Item storage limit config file not found. Path : Resources/{storageLimitConfigResourcePath}");
+        if (!ConfigResourceLoader.TryLoadJson(
+                "Item storage limit",
+                storageLimitConfigResourcePath,
+                out string json))
             return;
-        }
 
         ItemStorageLimitParseResult result = CrafterConfigParser.ParseStorageLimits(
-            configAsset.text,
+            json,
             storageLimitConfigResourcePath);
 
         if (result == null)

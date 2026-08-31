@@ -1,5 +1,4 @@
 using Unity.Entities;
-using UnityEngine;
 
 public partial class DroneConfigLoadSystem : SystemBase
 {
@@ -26,17 +25,14 @@ public partial class DroneConfigLoadSystem : SystemBase
 
     private static DroneConfig? LoadConfig()
     {
-        TextAsset configAsset = Resources.Load<TextAsset>(droneConfigResourcePath);
-
-        if (configAsset == null)
-        {
-            Debug.LogError(
-                $"Drone config file not found. Path : Resources/{droneConfigResourcePath}");
+        if (!ConfigResourceLoader.TryLoadJson(
+                "Drone",
+                droneConfigResourcePath,
+                out string json))
             return null;
-        }
 
         return DroneConfigParser.Parse(
-            configAsset.text,
+            json,
             droneConfigResourcePath);
     }
 }

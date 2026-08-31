@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -11,10 +12,13 @@ public enum FloorTypeEnum : byte
 
 public class ChunkCell
 {
+    private static readonly IReadOnlyList<Entity> emptyEntities =
+        Array.Empty<Entity>();
+
     private readonly int2 _worldPosition;
-    private readonly List<Entity> _items = new();
-    private readonly List<Entity> _coveringPowerPoles = new();
-    private readonly List<Entity> _coveringDroneStations = new();
+    private List<Entity> _items;
+    private List<Entity> _coveringPowerPoles;
+    private List<Entity> _coveringDroneStations;
     private Entity _buildingEntity;
     private Entity _resourceEntity;
     private ResourceTypeEnum _resourceType;
@@ -81,69 +85,87 @@ public class ChunkCell
 
     public bool TryAddItem(Entity item)
     {
-        if (_items.Contains(item))
+        if (_items != null && _items.Contains(item))
             return false;
 
+        _items ??= new List<Entity>();
         _items.Add(item);
         return true;
     }
 
     public bool RemoveItem(Entity item)
     {
-        return _items.Remove(item);
+        return _items != null && _items.Remove(item);
     }
 
     public void RemoveItemAt(int index)
     {
+        if (_items == null)
+            throw new ArgumentOutOfRangeException(nameof(index));
+
         _items.RemoveAt(index);
     }
 
     public void SwapItems(int firstIndex, int secondIndex)
     {
+        if (_items == null)
+            throw new ArgumentOutOfRangeException(nameof(firstIndex));
+
         (_items[firstIndex], _items[secondIndex]) = (_items[secondIndex], _items[firstIndex]);
     }
 
     public void ClearItems()
     {
+        if (_items == null)
+            return;
+
         _items.Clear();
     }
 
     public bool TryAddCoveringPowerPole(Entity powerPoleEntity)
     {
-        if (_coveringPowerPoles.Contains(powerPoleEntity))
+        if (_coveringPowerPoles != null &&
+            _coveringPowerPoles.Contains(powerPoleEntity))
             return false;
 
+        _coveringPowerPoles ??= new List<Entity>();
         _coveringPowerPoles.Add(powerPoleEntity);
         return true;
     }
 
     public bool TryRemoveCoveringPowerPole(Entity powerPoleEntity)
     {
-        return _coveringPowerPoles.Remove(powerPoleEntity);
+        return _coveringPowerPoles != null &&
+            _coveringPowerPoles.Remove(powerPoleEntity);
     }
 
     public bool HasCoveringPowerPole(Entity powerPoleEntity)
     {
-        return _coveringPowerPoles.Contains(powerPoleEntity);
+        return _coveringPowerPoles != null &&
+            _coveringPowerPoles.Contains(powerPoleEntity);
     }
 
     public bool TryAddCoveringDroneStation(Entity stationEntity)
     {
-        if (_coveringDroneStations.Contains(stationEntity))
+        if (_coveringDroneStations != null &&
+            _coveringDroneStations.Contains(stationEntity))
             return false;
 
+        _coveringDroneStations ??= new List<Entity>();
         _coveringDroneStations.Add(stationEntity);
         return true;
     }
 
     public bool TryRemoveCoveringDroneStation(Entity stationEntity)
     {
-        return _coveringDroneStations.Remove(stationEntity);
+        return _coveringDroneStations != null &&
+            _coveringDroneStations.Remove(stationEntity);
     }
 
     public bool HasCoveringDroneStation(Entity stationEntity)
     {
-        return _coveringDroneStations.Contains(stationEntity);
+        return _coveringDroneStations != null &&
+            _coveringDroneStations.Contains(stationEntity);
     }
 
     public int2 WorldPosition => _worldPosition;
@@ -151,10 +173,11 @@ public class ChunkCell
     public Entity ResourceEntity => _resourceEntity;
     public ResourceTypeEnum ResourceType => _resourceType;
     public FloorTypeEnum Floor => _floor;
-    public IReadOnlyList<Entity> Items => _items;
-    public IReadOnlyList<Entity> CoveringPowerPoles => _coveringPowerPoles;
+    public IReadOnlyList<Entity> Items => _items ?? emptyEntities;
+    public IReadOnlyList<Entity> CoveringPowerPoles =>
+        _coveringPowerPoles ?? emptyEntities;
     public IReadOnlyList<Entity> CoveringDroneStations =>
-        _coveringDroneStations;
+        _coveringDroneStations ?? emptyEntities;
     public bool HasBuilding => _buildingEntity != Entity.Null;
     public bool HasResource =>
         _resourceEntity != Entity.Null && _resourceType != ResourceTypeEnum.None;

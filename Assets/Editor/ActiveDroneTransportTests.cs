@@ -5,10 +5,8 @@ using Unity.Mathematics;
 using Unity.Rendering;
 using Unity.Transforms;
 
-public class ActiveDroneTransportTests
+public class ActiveDroneTransportTests : EcsWorldTestFixture
 {
-    private World _world;
-    private EntityManager _entityManager;
     private DroneTaskReservationSystem _reservationSystem;
     private DroneStationNetworkSystem _networkSystem;
     private DroneDispatchSystem _dispatchSystem;
@@ -21,8 +19,6 @@ public class ActiveDroneTransportTests
     [SetUp]
     public void SetUp()
     {
-        _world = new World(nameof(ActiveDroneTransportTests));
-        _entityManager = _world.EntityManager;
         _world.GetOrCreateSystemManaged<ChunkMapSystem>();
         _world.GetOrCreateSystemManaged<ItemTrackingSystem>();
         _world.GetOrCreateSystemManaged<ItemStorageSystem>();
@@ -41,12 +37,6 @@ public class ActiveDroneTransportTests
         CreateStorageLimit();
         _station = CreateStation(int2.zero);
         _networkSystem.Update();
-    }
-
-    [TearDown]
-    public void TearDown()
-    {
-        _world.Dispose();
     }
 
     [Test]

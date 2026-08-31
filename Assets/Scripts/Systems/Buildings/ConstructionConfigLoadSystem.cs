@@ -1,6 +1,5 @@
 using System.Collections.Generic;
 using Unity.Entities;
-using UnityEngine;
 
 [UpdateBefore(typeof(ConstructionSiteCreationSystem))]
 public partial class ConstructionConfigLoadSystem : SystemBase
@@ -9,18 +8,17 @@ public partial class ConstructionConfigLoadSystem : SystemBase
 
     protected override void OnCreate()
     {
-        TextAsset configAsset = Resources.Load<TextAsset>(ConfigResourcePath);
-
-        if (configAsset == null)
+        if (!ConfigResourceLoader.TryLoadJson(
+                "Construction",
+                ConfigResourcePath,
+                out string json))
         {
-            Debug.LogError(
-                $"Construction config file not found. Path : Resources/{ConfigResourcePath}");
             Enabled = false;
             return;
         }
 
         List<ConstructionMaterialConfigElement> materials =
-            ConstructionConfigParser.Parse(configAsset.text, ConfigResourcePath);
+            ConstructionConfigParser.Parse(json, ConfigResourcePath);
 
         if (materials == null)
         {

@@ -5,27 +5,17 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
 
-public class DroneStationNetworkTests
+public class DroneStationNetworkTests : EcsWorldTestFixture
 {
-    private World _world;
-    private EntityManager _entityManager;
     private ChunkMapSystem _chunkMap;
     private DroneStationNetworkSystem _networkSystem;
 
     [SetUp]
     public void SetUp()
     {
-        _world = new World(nameof(DroneStationNetworkTests));
-        _entityManager = _world.EntityManager;
         _chunkMap = _world.GetOrCreateSystemManaged<ChunkMapSystem>();
         _networkSystem = _world
             .GetOrCreateSystemManaged<DroneStationNetworkSystem>();
-    }
-
-    [TearDown]
-    public void TearDown()
-    {
-        _world.Dispose();
     }
 
     [Test]
