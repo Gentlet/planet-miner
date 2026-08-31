@@ -177,9 +177,8 @@ public partial class BuildingUI
         DynamicBuffer<CrafterRecipeIngredientElement> ingredients,
         DynamicBuffer<ItemStorageLimitElement> storageLimits)
     {
-        _inputContainer.Clear();
-        _outputContainer.Clear();
         _listedInputTypes.Clear();
+        int inputRowIndex = 0;
 
         if (hasRecipe)
         {
@@ -192,13 +191,15 @@ public partial class BuildingUI
 
                 _storedCounts.TryGetValue(ingredient.itemType, out int count);
                 int capacity = storageLimits.GetStorageLimit(ingredient.itemType);
-                AddItemRow(
+                SetItemRow(
                     _inputContainer,
+                    inputRowIndex,
                     ingredient.itemType,
                     count,
                     capacity,
                     $"필요 {ingredient.amount}개",
                     false);
+                inputRowIndex++;
                 _listedInputTypes.Add(ingredient.itemType);
             }
         }
@@ -212,18 +213,20 @@ public partial class BuildingUI
                 continue;
 
             int capacity = storageLimits.GetStorageLimit(itemType);
-            AddItemRow(
+            SetItemRow(
                 _inputContainer,
+                inputRowIndex,
                 itemType,
                 count,
                 capacity,
                 hasRecipe ? "현재 레시피에서 사용 불가" : "보관 중",
                 hasRecipe);
+            inputRowIndex++;
         }
 
-        if (_inputContainer.childCount == 0)
-            AddEmptyLabel(_inputContainer);
+        TrimItemRowsAndSetEmptyState(_inputContainer, inputRowIndex);
 
+        int outputRowIndex = 0;
         for (ItemTypeEnum itemType = ItemTypeEnum.Iron_Ore;
              itemType < ItemTypeEnum.Count;
              itemType++)
@@ -232,11 +235,18 @@ public partial class BuildingUI
                 continue;
 
             int capacity = storageLimits.GetStorageLimit(itemType);
-            AddItemRow(_outputContainer, itemType, count, capacity, "배출 대기", false);
+            SetItemRow(
+                _outputContainer,
+                outputRowIndex,
+                itemType,
+                count,
+                capacity,
+                "배출 대기",
+                false);
+            outputRowIndex++;
         }
 
-        if (_outputContainer.childCount == 0)
-            AddEmptyLabel(_outputContainer);
+        TrimItemRowsAndSetEmptyState(_outputContainer, outputRowIndex);
     }
 
     private void UpdateProgress(

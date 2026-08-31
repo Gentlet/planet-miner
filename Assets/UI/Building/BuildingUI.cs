@@ -22,6 +22,7 @@ public partial class BuildingUI : MonoBehaviour
     private EntityManager _entityManager;
     private ChunkMapSystem _chunkMap;
     private EntityQuery _activeDroneQuery;
+    private EntityQuery _droneBuildingTaskQuery;
     private Entity _configEntity;
     private Entity _selectedBuilding;
     private Entity _selectedDrone;
@@ -72,16 +73,23 @@ public partial class BuildingUI : MonoBehaviour
     private Button _droneRemoveButton;
     private Button _closeButton;
 
+    public bool IsBound { get; private set; }
+
     private void Awake()
     {
         World world = World.DefaultGameObjectInjectionWorld;
-        _entityManager = world.EntityManager;
-        _chunkMap = world.GetExistingSystemManaged<ChunkMapSystem>();
-        _activeDroneQuery = _entityManager.CreateEntityQuery(
-            ComponentType.ReadOnly<ActiveDrone>(),
-            ComponentType.ReadOnly<DroneBattery>(),
-            ComponentType.ReadOnly<DroneState>(),
-            ComponentType.ReadOnly<LocalTransform>());
+        if (world != null && world.IsCreated)
+        {
+            _entityManager = world.EntityManager;
+            _chunkMap = world.GetExistingSystemManaged<ChunkMapSystem>();
+            _activeDroneQuery = _entityManager.CreateEntityQuery(
+                ComponentType.ReadOnly<ActiveDrone>(),
+                ComponentType.ReadOnly<DroneBattery>(),
+                ComponentType.ReadOnly<DroneState>(),
+                ComponentType.ReadOnly<LocalTransform>());
+            _droneBuildingTaskQuery = _entityManager.CreateEntityQuery(
+                ComponentType.ReadOnly<DroneBuildingItemTaskData>());
+        }
         _uiDocument = GetComponent<UIDocument>();
         _configEntity = Entity.Null;
         _selectedBuilding = Entity.Null;
@@ -102,6 +110,9 @@ public partial class BuildingUI : MonoBehaviour
 
     private void Update()
     {
+        if (!IsBound)
+            return;
+
         if (!_selectionEnabled)
             return;
 

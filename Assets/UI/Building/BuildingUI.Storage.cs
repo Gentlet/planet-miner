@@ -90,11 +90,10 @@ public partial class BuildingUI
         DynamicBuffer<ItemStorageLimitElement> storageLimits,
         int capacity)
     {
-        _inputContainer.Clear();
-        int createdSlotCount = 0;
+        int slotIndex = 0;
 
         for (ItemTypeEnum itemType = ItemTypeEnum.Iron_Ore;
-             itemType < ItemTypeEnum.Count && createdSlotCount < capacity;
+             itemType < ItemTypeEnum.Count && slotIndex < capacity;
              itemType++)
         {
             if (!counts.TryGetValue(itemType, out int count))
@@ -104,26 +103,29 @@ public partial class BuildingUI
             int effectiveStackLimit = stackLimit > 0 ? stackLimit : 1;
             int remainingCount = count;
 
-            while (remainingCount > 0 && createdSlotCount < capacity)
+            while (remainingCount > 0 && slotIndex < capacity)
             {
                 int stackCount = remainingCount > effectiveStackLimit
                     ? effectiveStackLimit
                     : remainingCount;
-                AddStorageSlot(
+                SetStorageSlot(
                     _inputContainer,
+                    slotIndex,
                     itemType,
                     stackCount,
                     effectiveStackLimit);
                 remainingCount -= stackCount;
-                createdSlotCount++;
+                slotIndex++;
             }
         }
 
-        while (createdSlotCount < capacity)
+        while (slotIndex < capacity)
         {
-            AddEmptyStorageSlot(_inputContainer);
-            createdSlotCount++;
+            SetEmptyStorageSlot(_inputContainer, slotIndex);
+            slotIndex++;
         }
+
+        TrimStorageSlots(_inputContainer, slotIndex);
     }
 
     private void UpdateStationStorageInventories(
@@ -135,7 +137,7 @@ public partial class BuildingUI
         if (dedicatedDroneSlotCapacity <= 0)
         {
             UpdateStorageInventory(counts, storageLimits, sharedCapacity);
-            _dedicatedDroneStorageContainer.Clear();
+            TrimStorageSlots(_dedicatedDroneStorageContainer, 0);
             return;
         }
 
@@ -173,29 +175,31 @@ public partial class BuildingUI
         int stackLimit,
         int capacity)
     {
-        _dedicatedDroneStorageContainer.Clear();
         int remainingDroneCount = droneCount;
-        int createdSlotCount = 0;
+        int slotIndex = 0;
 
-        while (remainingDroneCount > 0 && createdSlotCount < capacity)
+        while (remainingDroneCount > 0 && slotIndex < capacity)
         {
             int stackCount = remainingDroneCount > stackLimit
                 ? stackLimit
                 : remainingDroneCount;
-            AddStorageSlot(
+            SetStorageSlot(
                 _dedicatedDroneStorageContainer,
+                slotIndex,
                 ItemTypeEnum.Drone,
                 stackCount,
                 stackLimit);
             remainingDroneCount -= stackCount;
-            createdSlotCount++;
+            slotIndex++;
         }
 
-        while (createdSlotCount < capacity)
+        while (slotIndex < capacity)
         {
-            AddEmptyStorageSlot(_dedicatedDroneStorageContainer);
-            createdSlotCount++;
+            SetEmptyStorageSlot(_dedicatedDroneStorageContainer, slotIndex);
+            slotIndex++;
         }
+
+        TrimStorageSlots(_dedicatedDroneStorageContainer, slotIndex);
     }
 
     private static int GetUsedSlotCount(

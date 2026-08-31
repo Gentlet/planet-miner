@@ -1,66 +1,105 @@
 using System.Collections.Generic;
 using Unity.Entities;
+using UnityEngine;
 using UnityEngine.UIElements;
 
 public partial class BuildingUI
 {
-    private void BindVisualTree()
+    public bool BindVisualTree(VisualElement rootElement = null)
     {
         UnbindVisualTree();
 
-        _root = _uiDocument.rootVisualElement;
-        _panel = _root.Q<VisualElement>("building-panel");
-        _panel.pickingMode = PickingMode.Position;
-        _buildingTitleLabel = _root.Q<Label>("building-title");
-        _statusLabel = _root.Q<Label>("building-status");
-        _powerContainer = _root.Q<VisualElement>("power-container");
-        _powerGridLabel = _root.Q<Label>("power-grid");
-        _powerPrimaryLabel = _root.Q<Label>("power-primary");
-        _powerSecondaryLabel = _root.Q<Label>("power-secondary");
-        _powerTertiaryLabel = _root.Q<Label>("power-tertiary");
-        _powerQuaternaryLabel = _root.Q<Label>("power-quaternary");
-        _droneContainer = _root.Q<VisualElement>("drone-container");
-        _droneBatteryProgress = _root.Q<ProgressBar>("drone-battery-progress");
-        _droneBatteryLabel = _root.Q<Label>("drone-battery");
-        _droneCargoLabel = _root.Q<Label>("drone-cargo");
-        _droneCapabilityLabel = _root.Q<Label>("drone-capability");
-        _droneTaskLabel = _root.Q<Label>("drone-task");
-        _droneAssignmentLabel = _root.Q<Label>("drone-assignment");
-        _beltContainer = _root.Q<VisualElement>("belt-container");
-        _beltMaximumSpeedLabel = _root.Q<Label>("belt-maximum-speed");
-        _beltItemContainer = _root.Q<VisualElement>("belt-item-container");
-        _recipeTitleLabel = _root.Q<Label>("recipe-title");
-        _currentRecipeLabel = _root.Q<Label>("current-recipe");
-        _recipeContainer = _root.Q<VisualElement>("recipe-container");
-        _inputTitleLabel = _root.Q<Label>("input-title");
-        _inputContainer = _root.Q<VisualElement>("input-container");
-        _dedicatedDroneStorageTitleLabel = _root.Q<Label>(
-            "dedicated-drone-storage-title");
-        _dedicatedDroneStorageContainer = _root.Q<VisualElement>(
-            "dedicated-drone-storage-container");
-        _outputTitleLabel = _root.Q<Label>("output-title");
-        _outputContainer = _root.Q<VisualElement>("output-container");
-        _progressTitleLabel = _root.Q<Label>("progress-title");
-        _progressBar = _root.Q<ProgressBar>("production-progress");
-        _remainingTimeLabel = _root.Q<Label>("remaining-time");
-        _speedLabel = _root.Q<Label>("production-speed");
-        _speedReasonLabel = _root.Q<Label>("production-speed-reason");
-        _droneTransferContainer = _root.Q<VisualElement>(
-            "drone-transfer-container");
-        _droneItemField = _root.Q<DropdownField>("drone-item");
-        _droneQuantityField = _root.Q<IntegerField>("drone-quantity");
-        _droneInsertButton = _root.Q<Button>("drone-insert-button");
-        _droneRemoveButton = _root.Q<Button>("drone-remove-button");
-        _closeButton = _root.Q<Button>("close-button");
+        VisualElement root = rootElement;
+        if (root == null)
+        {
+            if (_uiDocument == null)
+                _uiDocument = GetComponent<UIDocument>();
 
+            if (_uiDocument == null || _uiDocument.rootVisualElement == null)
+            {
+                Debug.LogError($"[BuildingUI] 바인딩 실패: UIDocument 또는 rootVisualElement가 유효하지 않습니다. (GameObject: {gameObject.name})");
+                return false;
+            }
+
+            root = _uiDocument.rootVisualElement;
+        }
+
+        _root = root;
+        List<string> missingElements = new();
+
+        _panel = QueryRequired<VisualElement>(_root, "building-panel", missingElements);
+        _buildingTitleLabel = QueryRequired<Label>(_root, "building-title", missingElements);
+        _statusLabel = QueryRequired<Label>(_root, "building-status", missingElements);
+        _powerContainer = QueryRequired<VisualElement>(_root, "power-container", missingElements);
+        _powerGridLabel = QueryRequired<Label>(_root, "power-grid", missingElements);
+        _powerPrimaryLabel = QueryRequired<Label>(_root, "power-primary", missingElements);
+        _powerSecondaryLabel = QueryRequired<Label>(_root, "power-secondary", missingElements);
+        _powerTertiaryLabel = QueryRequired<Label>(_root, "power-tertiary", missingElements);
+        _powerQuaternaryLabel = QueryRequired<Label>(_root, "power-quaternary", missingElements);
+        _droneContainer = QueryRequired<VisualElement>(_root, "drone-container", missingElements);
+        _droneBatteryProgress = QueryRequired<ProgressBar>(_root, "drone-battery-progress", missingElements);
+        _droneBatteryLabel = QueryRequired<Label>(_root, "drone-battery", missingElements);
+        _droneCargoLabel = QueryRequired<Label>(_root, "drone-cargo", missingElements);
+        _droneCapabilityLabel = QueryRequired<Label>(_root, "drone-capability", missingElements);
+        _droneTaskLabel = QueryRequired<Label>(_root, "drone-task", missingElements);
+        _droneAssignmentLabel = QueryRequired<Label>(_root, "drone-assignment", missingElements);
+        _beltContainer = QueryRequired<VisualElement>(_root, "belt-container", missingElements);
+        _beltMaximumSpeedLabel = QueryRequired<Label>(_root, "belt-maximum-speed", missingElements);
+        _beltItemContainer = QueryRequired<VisualElement>(_root, "belt-item-container", missingElements);
+        _recipeTitleLabel = QueryRequired<Label>(_root, "recipe-title", missingElements);
+        _currentRecipeLabel = QueryRequired<Label>(_root, "current-recipe", missingElements);
+        _recipeContainer = QueryRequired<VisualElement>(_root, "recipe-container", missingElements);
+        _inputTitleLabel = QueryRequired<Label>(_root, "input-title", missingElements);
+        _inputContainer = QueryRequired<VisualElement>(_root, "input-container", missingElements);
+        _dedicatedDroneStorageTitleLabel = QueryRequired<Label>(
+            _root, "dedicated-drone-storage-title", missingElements);
+        _dedicatedDroneStorageContainer = QueryRequired<VisualElement>(
+            _root, "dedicated-drone-storage-container", missingElements);
+        _outputTitleLabel = QueryRequired<Label>(_root, "output-title", missingElements);
+        _outputContainer = QueryRequired<VisualElement>(_root, "output-container", missingElements);
+        _progressTitleLabel = QueryRequired<Label>(_root, "progress-title", missingElements);
+        _progressBar = QueryRequired<ProgressBar>(_root, "production-progress", missingElements);
+        _remainingTimeLabel = QueryRequired<Label>(_root, "remaining-time", missingElements);
+        _speedLabel = QueryRequired<Label>(_root, "production-speed", missingElements);
+        _speedReasonLabel = QueryRequired<Label>(_root, "production-speed-reason", missingElements);
+        _droneTransferContainer = QueryRequired<VisualElement>(
+            _root, "drone-transfer-container", missingElements);
+        _droneItemField = QueryRequired<DropdownField>(_root, "drone-item", missingElements);
+        _droneQuantityField = QueryRequired<IntegerField>(_root, "drone-quantity", missingElements);
+        _droneInsertButton = QueryRequired<Button>(_root, "drone-insert-button", missingElements);
+        _droneRemoveButton = QueryRequired<Button>(_root, "drone-remove-button", missingElements);
+        _closeButton = QueryRequired<Button>(_root, "close-button", missingElements);
+
+        if (missingElements.Count > 0)
+        {
+            string missingList = string.Join(", ", missingElements);
+            Debug.LogError($"[BuildingUI] 필수 UXML 요소 바인딩 실패 ({missingElements.Count}개 누락): [{missingList}] (GameObject: {gameObject.name})");
+            UnbindVisualTree();
+            return false;
+        }
+
+        _panel.pickingMode = PickingMode.Position;
         BuildDroneItemChoices();
         _droneInsertButton.clicked += RequestDroneItemInsertion;
         _droneRemoveButton.clicked += RequestDroneItemRemoval;
         _closeButton.clicked += Close;
         _recipeButtons.Clear();
+
+        IsBound = true;
+        return true;
     }
 
-    private void UnbindVisualTree()
+    private static T QueryRequired<T>(VisualElement root, string name, List<string> missingElements)
+        where T : VisualElement
+    {
+        T element = root.Q<T>(name);
+        if (element == null)
+            missingElements.Add($"{name} ({typeof(T).Name})");
+
+        return element;
+    }
+
+    public void UnbindVisualTree()
     {
         if (_droneInsertButton != null)
             _droneInsertButton.clicked -= RequestDroneItemInsertion;
@@ -70,6 +109,17 @@ public partial class BuildingUI
 
         if (_closeButton != null)
             _closeButton.clicked -= Close;
+
+        if (_inputContainer != null)
+            _inputContainer.Clear();
+        if (_outputContainer != null)
+            _outputContainer.Clear();
+        if (_dedicatedDroneStorageContainer != null)
+            _dedicatedDroneStorageContainer.Clear();
+        if (_beltItemContainer != null)
+            _beltItemContainer.Clear();
+        if (_recipeContainer != null)
+            _recipeContainer.Clear();
 
         _root = null;
         _panel = null;
@@ -114,6 +164,7 @@ public partial class BuildingUI
         _transferItemTypes.Clear();
         _transferItemNames.Clear();
         _recipeButtons.Clear();
+        IsBound = false;
     }
 
     private void SetCrafterLayout()
@@ -334,7 +385,7 @@ public partial class BuildingUI
         DynamicBuffer<ItemStorageLimitElement> storageLimits,
         string detail)
     {
-        container.Clear();
+        int rowIndex = 0;
 
         for (ItemTypeEnum itemType = ItemTypeEnum.Iron_Ore;
              itemType < ItemTypeEnum.Count;
@@ -343,17 +394,18 @@ public partial class BuildingUI
             if (!counts.TryGetValue(itemType, out int count))
                 continue;
 
-            AddItemRow(
+            SetItemRow(
                 container,
+                rowIndex,
                 itemType,
                 count,
                 storageLimits.GetStorageLimit(itemType),
                 detail,
                 false);
+            rowIndex++;
         }
 
-        if (container.childCount == 0)
-            AddEmptyLabel(container);
+        TrimItemRowsAndSetEmptyState(container, rowIndex);
     }
 
     private void SetStatus(string status, string statusClass)
@@ -381,75 +433,218 @@ public partial class BuildingUI
         }
     }
 
-    private static void AddItemRow(
+    public static void SetItemRow(
         VisualElement container,
+        int index,
         ItemTypeEnum itemType,
         int count,
         int capacity,
         string detail,
         bool isException)
     {
-        VisualElement row = new();
-        row.AddToClassList("item-row");
+        VisualElement row = GetOrCreateItemRow(container, index);
+        row.EnableInClassList("item-row-exception", isException);
 
-        if (isException)
-            row.AddToClassList("item-row-exception");
+        Label nameLabel = (Label)row[0];
+        Label countLabel = (Label)row[1];
+        Label detailLabel = (Label)row[2];
 
-        Label nameLabel = new(GetItemDisplayName(itemType));
-        nameLabel.AddToClassList("item-name");
-
-        Label countLabel = new($"{count} / {capacity}");
-        countLabel.AddToClassList("item-count");
-
-        Label detailLabel = new(detail);
-        detailLabel.AddToClassList("item-detail");
-
-        row.Add(nameLabel);
-        row.Add(countLabel);
-        row.Add(detailLabel);
-        container.Add(row);
+        nameLabel.text = GetItemDisplayName(itemType);
+        countLabel.text = $"{count} / {capacity}";
+        detailLabel.text = detail;
     }
 
-    private static void AddStorageSlot(
+    public static VisualElement GetOrCreateItemRow(VisualElement container, int index)
+    {
+        int currentRowCount = 0;
+        VisualElement targetRow = null;
+
+        for (int i = 0; i < container.childCount; i++)
+        {
+            VisualElement child = container[i];
+            if (!child.ClassListContains("item-row"))
+                continue;
+
+            if (currentRowCount == index)
+            {
+                targetRow = child;
+                break;
+            }
+            currentRowCount++;
+        }
+
+        if (targetRow == null)
+        {
+            targetRow = new VisualElement();
+            targetRow.AddToClassList("item-row");
+
+            Label nameLabel = new();
+            nameLabel.AddToClassList("item-name");
+            targetRow.Add(nameLabel);
+
+            Label countLabel = new();
+            countLabel.AddToClassList("item-count");
+            targetRow.Add(countLabel);
+
+            Label detailLabel = new();
+            detailLabel.AddToClassList("item-detail");
+            targetRow.Add(detailLabel);
+
+            container.Add(targetRow);
+        }
+
+        targetRow.style.display = DisplayStyle.Flex;
+        return targetRow;
+    }
+
+    public static void TrimItemRowsAndSetEmptyState(VisualElement container, int activeCount)
+    {
+        int currentRowCount = 0;
+        for (int i = 0; i < container.childCount; i++)
+        {
+            VisualElement child = container[i];
+            if (child.ClassListContains("item-row"))
+            {
+                if (currentRowCount >= activeCount)
+                    child.style.display = DisplayStyle.None;
+                else
+                    child.style.display = DisplayStyle.Flex;
+
+                currentRowCount++;
+            }
+            else if (!child.ClassListContains("empty-label"))
+            {
+                child.style.display = DisplayStyle.None;
+            }
+        }
+
+        Label emptyLabel = GetOrCreateEmptyLabel(container);
+        emptyLabel.style.display = activeCount == 0 ? DisplayStyle.Flex : DisplayStyle.None;
+    }
+
+    public static void SetStorageSlot(
         VisualElement container,
+        int index,
         ItemTypeEnum itemType,
         int count,
         int stackLimit)
     {
-        VisualElement slot = new();
-        slot.AddToClassList("storage-slot");
+        VisualElement slot = GetOrCreateStorageSlot(container, index);
+        slot.RemoveFromClassList("storage-slot-empty");
         slot.AddToClassList("storage-slot-filled");
         slot.tooltip = $"{GetItemDisplayName(itemType)} {count} / {stackLimit}";
 
-        Label itemLabel = new(GetItemDisplayName(itemType));
+        Label itemLabel = (Label)slot[0];
+        Label countLabel = (Label)slot[1];
+
+        itemLabel.RemoveFromClassList("storage-slot-empty-label");
         itemLabel.AddToClassList("storage-slot-item");
+        itemLabel.text = GetItemDisplayName(itemType);
 
-        Label countLabel = new($"{count} / {stackLimit}");
-        countLabel.AddToClassList("storage-slot-count");
-
-        slot.Add(itemLabel);
-        slot.Add(countLabel);
-        container.Add(slot);
+        countLabel.style.display = DisplayStyle.Flex;
+        countLabel.text = $"{count} / {stackLimit}";
     }
 
-    private static void AddEmptyStorageSlot(VisualElement container)
+    public static void SetEmptyStorageSlot(
+        VisualElement container,
+        int index)
     {
-        VisualElement slot = new();
-        slot.AddToClassList("storage-slot");
+        VisualElement slot = GetOrCreateStorageSlot(container, index);
+        slot.RemoveFromClassList("storage-slot-filled");
         slot.AddToClassList("storage-slot-empty");
+        slot.tooltip = string.Empty;
 
-        Label emptyLabel = new("빈 칸");
-        emptyLabel.AddToClassList("storage-slot-empty-label");
+        Label itemLabel = (Label)slot[0];
+        Label countLabel = (Label)slot[1];
 
-        slot.Add(emptyLabel);
-        container.Add(slot);
+        itemLabel.RemoveFromClassList("storage-slot-item");
+        itemLabel.AddToClassList("storage-slot-empty-label");
+        itemLabel.text = "빈 칸";
+
+        countLabel.style.display = DisplayStyle.None;
+        countLabel.text = string.Empty;
     }
 
-    private static void AddEmptyLabel(VisualElement container)
+    public static VisualElement GetOrCreateStorageSlot(VisualElement container, int index)
     {
-        Label emptyLabel = new("없음");
-        emptyLabel.AddToClassList("empty-label");
-        container.Add(emptyLabel);
+        int currentSlotCount = 0;
+        VisualElement targetSlot = null;
+
+        for (int i = 0; i < container.childCount; i++)
+        {
+            VisualElement child = container[i];
+            if (!child.ClassListContains("storage-slot"))
+                continue;
+
+            if (currentSlotCount == index)
+            {
+                targetSlot = child;
+                break;
+            }
+            currentSlotCount++;
+        }
+
+        if (targetSlot == null)
+        {
+            targetSlot = new VisualElement();
+            targetSlot.AddToClassList("storage-slot");
+
+            Label itemLabel = new();
+            targetSlot.Add(itemLabel);
+
+            Label countLabel = new();
+            countLabel.AddToClassList("storage-slot-count");
+            targetSlot.Add(countLabel);
+
+            container.Add(targetSlot);
+        }
+
+        targetSlot.style.display = DisplayStyle.Flex;
+        return targetSlot;
+    }
+
+    public static void TrimStorageSlots(VisualElement container, int activeCount)
+    {
+        int currentSlotCount = 0;
+        for (int i = 0; i < container.childCount; i++)
+        {
+            VisualElement child = container[i];
+            if (child.ClassListContains("storage-slot"))
+            {
+                if (currentSlotCount >= activeCount)
+                    child.style.display = DisplayStyle.None;
+                else
+                    child.style.display = DisplayStyle.Flex;
+
+                currentSlotCount++;
+            }
+            else
+            {
+                child.style.display = DisplayStyle.None;
+            }
+        }
+    }
+
+    public static Label GetOrCreateEmptyLabel(VisualElement container)
+    {
+        Label emptyLabel = null;
+        for (int i = 0; i < container.childCount; i++)
+        {
+            if (container[i] is Label label && label.ClassListContains("empty-label"))
+            {
+                emptyLabel = label;
+                break;
+            }
+        }
+
+        if (emptyLabel == null)
+        {
+            emptyLabel = new Label("없음");
+            emptyLabel.AddToClassList("empty-label");
+            container.Add(emptyLabel);
+        }
+
+        return emptyLabel;
     }
 
     private static string GetItemDisplayName(ItemTypeEnum itemType)

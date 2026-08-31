@@ -34,7 +34,6 @@ public partial class BuildingUI
 
         SetConstructionSiteLayout(GetBuildingDisplayName(site.type));
         CountItems(storedItems, _storedCounts, static item => item.type);
-        _inputContainer.Clear();
 
         int totalRequired = 0;
         int totalDelivered = 0;
@@ -50,8 +49,9 @@ public partial class BuildingUI
 
             totalRequired += requirement.quantity;
             totalDelivered += delivered;
-            AddItemRow(
+            SetItemRow(
                 _inputContainer,
+                index,
                 requirement.itemType,
                 delivered,
                 requirement.quantity,
@@ -59,8 +59,7 @@ public partial class BuildingUI
                 false);
         }
 
-        if (_inputContainer.childCount == 0)
-            AddEmptyLabel(_inputContainer);
+        TrimItemRowsAndSetEmptyState(_inputContainer, requirements.Length);
 
         float progress = totalRequired > 0
             ? (float)totalDelivered / totalRequired
@@ -93,8 +92,7 @@ public partial class BuildingUI
         if (_chunkMap.IsBuildingReserved(_selectedConstructionSiteCell))
         {
             SetConstructionSiteLayout("건물");
-            _inputContainer.Clear();
-            AddEmptyLabel(_inputContainer);
+            TrimItemRowsAndSetEmptyState(_inputContainer, 0);
             _progressBar.value = 100f;
             _progressBar.title = "100%";
             _remainingTimeLabel.text = "건물 생성 중";
@@ -109,8 +107,13 @@ public partial class BuildingUI
 
     private string GetConstructionTransportStatus()
     {
-        using EntityQuery taskQuery = _entityManager.CreateEntityQuery(
-            ComponentType.ReadOnly<DroneBuildingItemTaskData>());
+        EntityQuery taskQuery = _droneBuildingTaskQuery;
+        if (taskQuery == default)
+        {
+            taskQuery = _entityManager.CreateEntityQuery(
+                ComponentType.ReadOnly<DroneBuildingItemTaskData>());
+        }
+
         using NativeArray<Entity> taskEntities =
             taskQuery.ToEntityArray(Allocator.Temp);
 
