@@ -4,6 +4,7 @@ using Unity.Mathematics;
 public struct DroneStation : IComponentData
 {
     public int2 activityRangeInChunks;
+    public int2 footprintSize;
     public bool isMainStation;
 }
 

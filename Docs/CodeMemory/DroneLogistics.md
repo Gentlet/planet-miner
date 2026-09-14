@@ -30,7 +30,7 @@
 
 `DroneStationNetworkSystem`은 매 프레임 `BuildingOccupant`가 된 정거장을 동기화한다.
 
-1. `DroneStationRangeUtility`가 정거장 셀의 chunk와 `activityRangeInChunks`로 inclusive activity bounds를 만든다.
+1. `DroneStationRangeUtility`가 정거장의 회전된 footprint 최소·최대 셀을 구하고, 각 방향으로 `activityRangeInChunks * GameConstants.chunkSize`만큼 확장하여 중심 대칭인 inclusive activity bounds를 만든다. `DroneStation.footprintSize`는 생성 시 건물 정의 크기로 설정한다.
 2. 범위를 `ChunkMapSystem` 셀 coverage에 등록하고 사라진/이동한 정거장의 이전 범위를 해제한다.
 3. bounds가 겹치는 정거장을 union-find로 병합한다.
 4. component 안에서 가장 작은 entity index 기반 값을 network ID로 게시한다.
@@ -91,7 +91,7 @@
 - `DroneStationStorageSystem`: 귀환 드론을 정거장에 넣는다. 현재 정거장에 공간이 없으면 우선 같은 network, 이후 다른 사용 가능한 정거장으로 reroute하며, 없으면 `AwaitingStorage`가 된다.
 - `DroneChargingDemandSystem`: 충전이 필요한 stored drone을 기준으로 정거장 `PowerConsumer.maximumConsumption`을 갱신한다.
 - `DroneChargingSystem`: 정거장의 실제 supply ratio와 충전 설정으로 stored drone battery를 채운다. 완충 후 `Stored` 상태가 된다.
-- `DroneIdentityConversionSystem`: 정거장에 저장된 `ItemTypeEnum.Drone` item을 active drone identity로 전환한다. 정거장 파괴 시 반대로 active/stored drone을 월드 Drone item으로 복원한다.
+- `DroneIdentityConversionSystem`: 정거장에 저장된 `ItemTypeEnum.Drone` item을 active drone identity로 전환한다. 정거장 파괴 시 stored drone 전체의 수용 공간을 먼저 계산하고, 같은 network의 가까운 정거장부터 우선하여 다른 정거장으로 귀환시킨다.
 
 드론 정거장과 메인 스테이션은 일반 `Storage.capacity`에 더해 드론만 사용할 수 있는 5개의 전용 slot을 가진다. Drone item의 stack limit과 `StoredDroneElement` 개수를 합쳐 드론 slot 사용량을 계산하며, 전용 5칸을 넘는 드론만 일반 storage slot을 사용한다. 일반 item은 드론 전용 slot을 사용할 수 없다. `BuildingUI`에서도 일반 보관공간과 드론 전용공간을 별도 제목과 slot grid로 표시한다.
 
@@ -103,7 +103,7 @@
 - `DroneRecoverySystem`은 assignment reservation을 해제하고, 실은 화물을 주변 storage에 넣거나 가능한 월드 셀에 떨어뜨린 뒤 귀환시킨다.
 - 월드에 떨어진 item은 `DroneWorldItemRecoveryRequestSystem`과 task utility를 통해 별도 RecoverWorldItem 작업이 된다.
 - 작업 범위 밖 world item은 자동 suspended 상태가 될 수 있으며 coverage가 생기면 다시 계획된다.
-- 정거장 파괴 시 stored drone 복원이 실패하면 `BuildingDestroySystem`이 파괴를 보류한다.
+- 정거장 파괴 시 모든 stored drone을 수용할 다른 정거장이 없거나 identity가 유효하지 않으면 `BuildingDestroySystem`이 파괴를 보류한다. 목적지가 확정된 드론은 world item으로 바꾸지 않고 `Returning` 상태로 비행하며, 도착 시 기존 보관·충전 흐름을 따른다.
 
 ## 다른 시스템과의 의존 관계
 
@@ -121,8 +121,8 @@
 - 후보 선택/인덱스 변경: emergency 우선, 거리·creation order tie-break, 배터리 불가능 후보 건너뛰기, 제거된 후보 재선택 방지를 `DroneTaskCandidateIndexTests`에서 확인한다.
 - reservation 구조: 실제 item marker, task reserved quantity, destination capacity, drone assignment의 네 방향 롤백을 확인한다.
 - 이동/배터리: dispatch route feasibility, emergency return, charging demand, station selection, `ActiveDroneTransportTests`와 `DroneChargingPowerTests`를 확인한다.
-- 정거장 범위: `ChunkMapSystem.DroneStations`, network topology, task coverage, station destruction을 확인한다.
-- Drone item identity: crafter output, station storage, active conversion, 파괴 복원, `DroneIdentityLifecycleTests`를 확인한다.
+- 정거장 범위: 회전 footprint, `ChunkMapSystem.DroneStations`, network topology, task coverage와 `DroneStationNetworkTests`의 단일 셀·다중 셀·회전 범위 사례를 확인한다.
+- Drone item identity: crafter output, station storage, active conversion, 파괴 시 정거장 재배치, `DroneIdentityLifecycleTests`를 확인한다.
 
 ## 구현상 주의사항
 

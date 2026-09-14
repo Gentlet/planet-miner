@@ -178,76 +178,110 @@ public class DroneIdentityLifecycleTests
     }
 
     [Test]
-    public void UserDemolitionRecoveryConvertsStoredDroneBackToWorldItem()
+    public void StationDestructionRelocatesStoredDroneWithoutWorldItem()
     {
-        Entity station = CreateStation(2);
+        Entity station = CreateStation(2, int2.zero, 7);
+        Entity targetStation = CreateStation(2, new int2(4, 0), 7);
         Entity droneEntity = CreateStoredDroneItem(station);
         _conversionSystem.Update();
 
-        bool converted = _conversionSystem
-            .TryRestoreStoredDronesForStationDestruction(
-                station,
-                int2.zero,
-                true);
+        bool relocated = _conversionSystem
+            .TryRelocateStoredDronesForStationDestruction(station);
 
-        Assert.That(converted, Is.True);
-        Assert.That(_entityManager.HasComponent<Item>(droneEntity), Is.True);
+        Assert.That(relocated, Is.True);
+        Assert.That(_entityManager.HasComponent<Item>(droneEntity), Is.False);
         Assert.That(
-            _entityManager.GetComponentData<Item>(droneEntity).type,
-            Is.EqualTo(ItemTypeEnum.Drone));
-        Assert.That(_entityManager.HasComponent<ActiveDrone>(droneEntity), Is.False);
+            _entityManager.HasComponent<ActiveDrone>(droneEntity),
+            Is.True);
         Assert.That(_entityManager.HasComponent<StoredDrone>(droneEntity), Is.False);
         Assert.That(
             _entityManager.GetBuffer<StoredDroneElement>(station).Length,
             Is.EqualTo(0));
         Assert.That(
-            Count<DroneWorldItemRecoveryCreateRequest>(),
-            Is.EqualTo(1));
-    }
-
-    [Test]
-    public void ExternalDestructionDoesNotCreateAutomaticDroneRecovery()
-    {
-        Entity station = CreateStation(2);
-        CreateStoredDroneItem(station);
-        _conversionSystem.Update();
-
-        bool converted = _conversionSystem
-            .TryRestoreStoredDronesForStationDestruction(
-                station,
-                int2.zero,
-                false);
-
-        Assert.That(converted, Is.True);
+            _entityManager.GetComponentData<DroneState>(droneEntity).value,
+            Is.EqualTo(DroneStateEnum.Returning));
+        Assert.That(
+            _entityManager.GetComponentData<DroneAssignment>(droneEntity)
+                .returnStation,
+            Is.EqualTo(targetStation));
         Assert.That(
             Count<DroneWorldItemRecoveryCreateRequest>(),
             Is.EqualTo(0));
     }
 
     [Test]
-    public void StationDestructionPreservesEveryStoredDroneIdentity()
+    public void StationDestructionPrefersAvailableStationInCurrentNetwork()
     {
-        Entity station = CreateStation(2);
+        Entity station = CreateStation(2, int2.zero, 7);
+        Entity sameNetworkStation = CreateStation(2, new int2(8, 0), 7);
+        CreateStation(2, new int2(1, 0), 8);
+        Entity droneEntity = CreateStoredDroneItem(station);
+        _conversionSystem.Update();
+
+        bool relocated = _conversionSystem
+            .TryRelocateStoredDronesForStationDestruction(station);
+
+        Assert.That(
+            relocated,
+            Is.True);
+        Assert.That(
+            _entityManager.GetComponentData<DroneAssignment>(droneEntity)
+                .returnStation,
+            Is.EqualTo(sameNetworkStation));
+    }
+
+    [Test]
+    public void StationDestructionPlansCapacityAcrossAllStoredDrones()
+    {
+        Entity station = CreateStation(2, int2.zero, 7);
+        Entity nearStation = CreateStation(0, new int2(2, 0), 7);
+        Entity farStation = CreateStation(0, new int2(6, 0), 7);
+
+        for (int i = 0;
+             i < DroneStationStorageUtility.DedicatedDroneSlotCapacity - 1;
+             i++)
+        {
+            CreateStoredDroneItem(nearStation);
+        }
+
         Entity firstDrone = CreateStoredDroneItem(station);
         Entity secondDrone = CreateStoredDroneItem(station);
         _conversionSystem.Update();
 
-        bool converted = _conversionSystem
-            .TryRestoreStoredDronesForStationDestruction(
-                station,
-                int2.zero,
-                false);
+        bool relocated = _conversionSystem
+            .TryRelocateStoredDronesForStationDestruction(station);
 
-        Assert.That(converted, Is.True);
-        Assert.That(_entityManager.HasComponent<Item>(firstDrone), Is.True);
-        Assert.That(_entityManager.HasComponent<Item>(secondDrone), Is.True);
+        Assert.That(relocated, Is.True);
         Assert.That(
-            _entityManager.GetComponentData<GridPosition>(firstDrone).gridPosition,
-            Is.Not.EqualTo(
-                _entityManager.GetComponentData<GridPosition>(secondDrone)
-                    .gridPosition));
-        Assert.That(Count<ActiveDrone>(), Is.EqualTo(0));
-        Assert.That(Count<Item>(), Is.EqualTo(2));
+            _entityManager.GetComponentData<DroneAssignment>(firstDrone)
+                .returnStation,
+            Is.EqualTo(nearStation));
+        Assert.That(
+            _entityManager.GetComponentData<DroneAssignment>(secondDrone)
+                .returnStation,
+            Is.EqualTo(farStation));
+        Assert.That(_entityManager.HasComponent<Item>(firstDrone), Is.False);
+        Assert.That(_entityManager.HasComponent<Item>(secondDrone), Is.False);
+    }
+
+    [Test]
+    public void StationDestructionIsDeferredWhenNoStationCanAcceptEveryDrone()
+    {
+        Entity station = CreateStation(2);
+        Entity droneEntity = CreateStoredDroneItem(station);
+        _conversionSystem.Update();
+
+        bool relocated = _conversionSystem
+            .TryRelocateStoredDronesForStationDestruction(station);
+
+        Assert.That(relocated, Is.False);
+        Assert.That(_entityManager.HasComponent<StoredDrone>(droneEntity), Is.True);
+        Assert.That(
+            _entityManager.GetBuffer<StoredDroneElement>(station).Length,
+            Is.EqualTo(1));
+        Assert.That(
+            _entityManager.GetComponentData<DroneState>(droneEntity).value,
+            Is.EqualTo(DroneStateEnum.Stored));
     }
 
     private Entity CreateConfiguration()
@@ -281,30 +315,42 @@ public class DroneIdentityLifecycleTests
 
     private Entity CreateStation(int capacity)
     {
+        return CreateStation(capacity, int2.zero, 7);
+    }
+
+    private Entity CreateStation(
+        int capacity,
+        int2 gridPosition,
+        int networkId)
+    {
         Entity station = _entityManager.CreateEntity(
             typeof(DroneStation),
             typeof(DroneStationNetwork),
             typeof(Storage),
             typeof(GridPosition),
             typeof(StoredItemElement),
-            typeof(StoredDroneElement));
+            typeof(StoredDroneElement),
+            typeof(BuildingOccupant));
         _entityManager.SetComponentData(
             station,
             new DroneStation { activityRangeInChunks = new int2(1) });
         _entityManager.SetComponentData(
             station,
-            new DroneStationNetwork { networkId = 7 });
+            new DroneStationNetwork { networkId = networkId });
         _entityManager.SetComponentData(
             station,
             new Storage { capacity = capacity });
         _entityManager.SetComponentData(
             station,
-            new GridPosition { gridPosition = int2.zero });
+            new GridPosition { gridPosition = gridPosition });
         return station;
     }
 
     private Entity CreateStoredDroneItem(Entity station)
     {
+        int2 stationCell = _entityManager
+            .GetComponentData<GridPosition>(station)
+            .gridPosition;
         Entity itemEntity = _entityManager.CreateEntity(
             typeof(LocalTransform),
             typeof(LocalToWorld),
@@ -315,10 +361,11 @@ public class DroneIdentityLifecycleTests
             typeof(Disabled));
         _entityManager.SetComponentData(
             itemEntity,
-            LocalTransform.FromPosition(new float3(0f, 0f, -0.2f)));
+            LocalTransform.FromPosition(
+                new float3(stationCell.x, stationCell.y, -0.2f)));
         _entityManager.SetComponentData(
             itemEntity,
-            new GridPosition { gridPosition = int2.zero });
+            new GridPosition { gridPosition = stationCell });
         _entityManager.SetComponentData(
             itemEntity,
             new Item { type = ItemTypeEnum.Drone });

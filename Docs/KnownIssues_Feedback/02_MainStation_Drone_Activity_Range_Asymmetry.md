@@ -1,46 +1,48 @@
 # 메인 스테이션 드론 작업 범위 좌우 비대칭 문제
 
 ## 1. 개요
+
 - **구분**: 버그 / 알려진 문제 (Bug / Known Issue)
-- **상태**: 분석 완료 및 수정 대기 (Open)
+- **상태**: 구현 완료 (Resolved)
 - **관련 시스템**: `DroneStationNetworkSystem`, `DroneStationRangeUtility`, `MainFacilityBootstrapSystem`
 
 ---
 
 ## 2. 현상 및 문제점
-- 메인 스테이션(Main Station / Main Facility)의 드론 작업 가능 범위(커버리지)가 **우측 방향은 길고, 좌측 방향은 짧게 비대칭**으로 적용되는 현상이 발생합니다.
-- 사용자가 체감하기에 중앙을 기준으로 대칭적인 범위를 가져야 하나 편향되어 작동합니다.
+
+- 메인 스테이션의 드론 작업 범위가 우측은 길고 좌측은 짧게 적용되었습니다.
+- 3×3 시설의 실제 중심이 아니라 앵커가 속한 청크 전체를 기준으로 범위를 만들었기 때문에 청크 안의 앵커 위치만큼 범위가 편향되었습니다.
 
 ---
 
-## 3. 원인 분석
-1. **청크(Chunk) 기반 범위 스냅 및 바운드 계산**:
-   - [`DroneStationRangeUtility.cs`](file:///c:/Projects/unity/PlanetMiner/planet%20miner/Assets/Scripts/Components/Drones/DroneStationRangeUtility.cs)에서 작업 범위(`GridBounds`)를 계산할 때, 시설의 Anchor 위치가 속한 단일 청크(`stationChunk`)를 기준으로 `[-range, +range]` 청크를 포함하도록 계산합니다.
-     ```csharp
-     int2 stationChunk = ChunkUtility.ToChunkPosition(stationCell);
-     int2 minimumChunk = stationChunk - normalizedRange;
-     int2 maximumChunk = stationChunk + normalizedRange;
-     ```
-2. **다중 타일 건물 크기 및 앵커 오프셋 편향**:
-   - 메인 시설은 크기가 다중 셀(예: 3x3 등)을 차지할 수 있으나, 기준 좌표(`stationCell` / 앵커)가 좌하단(Min)에 위치하는 경우:
-     - 앵커가 청크 내 좌측/하단 쪽에 걸치게 되면 우측 청크로 넘어가는 경계에 따라 실제 시설 중심 대비 우측으로 더 많은 청크/셀이 포함될 수 있습니다.
-3. **셀 단위 바운드 변환 오차**:
-   - `maximumCell = (maximumChunk + new int2(1)) * GameConstants.chunkSize - new int2(1);` 계산 시 청크 단위 정렬로 인해 시설 중심점 대비 비대칭 마진이 발생합니다.
+## 3. 요구사항
+
+- 메인 스테이션의 실제 점유 영역을 기준으로 좌우·상하 대칭인 작업 범위를 적용합니다.
+- 일반 드론 정거장과 회전 가능한 footprint에도 같은 계산 규칙을 적용합니다.
+- 음수 활동 범위는 기존과 같이 0으로 정규화합니다.
+- 범위 변경 후에도 정거장 네트워크 병합·분리와 드론 작업 탐색이 정상 동작해야 합니다.
 
 ---
 
-## 4. 관련 코드 위치
-- [`DroneStationRangeUtility.cs`](file:///c:/Projects/unity/PlanetMiner/planet%20miner/Assets/Scripts/Components/Drones/DroneStationRangeUtility.cs)
-  - `GetActivityBounds(int2 stationCell, int2 activityRangeInChunks)`
-- [`DroneStationNetworkSystem.Registration.cs`](file:///c:/Projects/unity/PlanetMiner/planet%20miner/Assets/Scripts/Systems/Drones/DroneStationNetworkSystem.Registration.cs)
-  - `SynchronizeStationRegistration()`
-- [`MainFacilityBootstrapSystem.cs`](file:///c:/Projects/unity/PlanetMiner/planet%20miner/Assets/Scripts/Systems/Power/MainFacilityBootstrapSystem.cs)
-  - 메인 스테이션 생성 및 `GridPosition`, `DroneStation` 컴포넌트 초기화
+## 4. 구현 결과
+
+- `DroneStation`에 생성 당시의 정규화된 `footprintSize`를 저장합니다.
+- 활동 범위는 회전된 footprint의 최소·최대 점유 셀을 계산한 뒤, 각 방향으로 `activityRangeInChunks * GameConstants.chunkSize`만큼 확장합니다.
+- 3×3 메인 스테이션이 `(0,0)`에 있고 범위가 1청크일 때 활동 범위는 기존 `(-16,-16) ~ (31,31)`에서 `(-16,-16) ~ (18,18)`로 변경됩니다.
+- 새 범위는 시설 중심 `(1,1)`을 기준으로 좌우·상하가 대칭이며, 일반 정거장도 동일하게 실제 footprint를 기준으로 계산합니다.
 
 ---
 
-## 5. 해결 방안 (검토)
-1. **중심점 기반 범위 계산 도입**:
-   - 스테이션의 앵커 대신 시설의 중앙 타일 좌표(또는 건물 크기(`BuildingFootprint` 등)를 고려한 중심 셀)를 기준으로 청크/셀 범위를 계산하도록 보정.
-2. **청크 단위 스냅 vs 셀 반경 방식 검토**:
-   - 청크 정렬이 필수적인 경우 중심 셀이 속한 청크 기준으로 정렬하거나, 셀 단위 대칭 반경을 청크 바운드에 대칭적으로 포함하도록 보정.
+## 5. 완료 기준 및 검증
+
+- [x] 메인 스테이션 3×3 footprint의 양쪽 경계가 중심 기준으로 대칭입니다.
+- [x] 경계 바로 바깥 셀은 작업 범위에서 제외됩니다.
+- [x] 회전된 비정사각형 footprint의 점유 경계를 올바르게 반영합니다.
+- [x] 정거장 네트워크 병합·분리 동작을 유지합니다.
+- [x] Unity 스크립트 재컴파일 성공
+- [x] `DroneStationNetworkTests` EditMode 테스트 8개 통과
+- [x] `DroneBuildingItemTaskTests` EditMode 테스트 7개 통과
+- [x] `DroneDemolitionRecoveryTests` EditMode 테스트 7개 통과
+- [x] `ActiveDroneTransportTests` EditMode 테스트 16개 통과
+
+Play Mode에서의 실제 작업 가능 범위, 입력, UI 및 시각적 범위 표시는 별도로 확인하지 않았습니다.

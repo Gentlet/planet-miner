@@ -131,13 +131,11 @@ public partial class BuildingDestroySystem : SystemBase
 
             if (EntityManager.HasComponent<DroneStation>(targetEntity) &&
                 !_droneIdentityConversion
-                    .TryRestoreStoredDronesForStationDestruction(
-                        targetEntity,
-                        anchor,
-                        createRecoveryTasks))
+                    .TryRelocateStoredDronesForStationDestruction(
+                        targetEntity))
             {
                 Debug.LogError(
-                    $"Drone station destruction was deferred because stored drones could not be restored. Station: {targetEntity}");
+                    $"Drone station destruction was deferred because stored drones could not be relocated. Station: {targetEntity}");
                 continue;
             }
 

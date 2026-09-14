@@ -1,19 +1,16 @@
 using System.Collections.Generic;
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
-using Unity.Transforms;
 
 public partial class DroneIdentityConversionSystem
 {
-    private const int MaximumDropSearchRadius = 16;
-    private readonly List<int2> _dropCells = new();
-    private readonly List<float3> _dropPositions = new();
-    private readonly HashSet<int2> _plannedDropCells = new();
+    private readonly List<Entity> _relocationTargets = new();
+    private readonly Dictionary<Entity, int> _plannedRelocationCounts = new();
+    private readonly HashSet<Entity> _uniqueStoredDrones = new();
 
-    public bool TryRestoreStoredDronesForStationDestruction(
-        Entity stationEntity,
-        int2 originCell,
-        bool createRecoveryTasks)
+    public bool TryRelocateStoredDronesForStationDestruction(
+        Entity stationEntity)
     {
         if (!EntityManager.Exists(stationEntity))
             return false;
@@ -22,11 +19,31 @@ public partial class DroneIdentityConversionSystem
             return true;
 
         _storedDrones.Clear();
+        _uniqueStoredDrones.Clear();
         DynamicBuffer<StoredDroneElement> storedDrones = EntityManager
             .GetBuffer<StoredDroneElement>(stationEntity, true);
 
         for (int i = 0; i < storedDrones.Length; i++)
-            _storedDrones.Add(storedDrones[i].droneEntity);
+        {
+            Entity droneEntity = storedDrones[i].droneEntity;
+
+            if (!_uniqueStoredDrones.Add(droneEntity))
+                return false;
+
+            _storedDrones.Add(droneEntity);
+        }
+
+        if (_storedDrones.Count == 0)
+            return true;
+
+        if (_storageLimitQuery.IsEmptyIgnoreFilter)
+            return false;
+
+        if (!EntityManager.HasComponent<DroneStationNetwork>(stationEntity))
+            return false;
+
+        if (!EntityManager.HasComponent<GridPosition>(stationEntity))
+            return false;
 
         for (int i = 0; i < _storedDrones.Count; i++)
         {
@@ -36,95 +53,130 @@ public partial class DroneIdentityConversionSystem
                 return false;
         }
 
-        _dropCells.Clear();
-        _dropPositions.Clear();
-        _plannedDropCells.Clear();
+        Entity storageLimitEntity = _storageLimitQuery.GetSingletonEntity();
+        using NativeArray<ItemStorageLimitElement> storageLimits =
+            DynamicBufferCopyUtility.CreateNativeCopy(
+                EntityManager.GetBuffer<ItemStorageLimitElement>(
+                    storageLimitEntity,
+                    true),
+                Allocator.Temp);
+        using NativeArray<Entity> stationEntities =
+            _stationQuery.ToEntityArray(Allocator.Temp);
+        DroneStationNetwork sourceNetwork = EntityManager
+            .GetComponentData<DroneStationNetwork>(stationEntity);
+        int2 originCell = EntityManager
+            .GetComponentData<GridPosition>(stationEntity)
+            .gridPosition;
+
+        _relocationTargets.Clear();
+        _plannedRelocationCounts.Clear();
 
         for (int i = 0; i < _storedDrones.Count; i++)
         {
-            Entity droneEntity = _storedDrones[i];
-
-            if (!TryFindDropPosition(
-                    droneEntity,
+            if (!TryFindRelocationTarget(
+                    stationEntity,
                     originCell,
-                    out int2 targetCell,
-                    out float3 targetPosition))
+                    sourceNetwork.networkId,
+                    stationEntities,
+                    storageLimits,
+                    out Entity targetStation))
                 return false;
 
-            _dropCells.Add(targetCell);
-            _dropPositions.Add(targetPosition);
+            _relocationTargets.Add(targetStation);
+            _plannedRelocationCounts.TryGetValue(
+                targetStation,
+                out int plannedCount);
+            _plannedRelocationCounts[targetStation] = plannedCount + 1;
         }
 
         for (int i = 0; i < _storedDrones.Count; i++)
         {
             Entity droneEntity = _storedDrones[i];
+            Entity targetStation = _relocationTargets[i];
 
-            if (!TryConvertStoredDroneToWorldItem(
-                    stationEntity,
-                    droneEntity,
-                    _dropCells[i],
-                    _dropPositions[i]))
+            if (!DroneStationStorageUtility.TryReleaseStoredDrone(
+                    EntityManager,
+                    droneEntity))
                 return false;
 
-            if (createRecoveryTasks)
-            {
-                DroneWorldItemRecoveryTaskUtility.TryCreateRequest(
-                    EntityManager,
-                    droneEntity,
-                    0);
-            }
+            DroneAssignment assignment = EntityManager
+                .GetComponentData<DroneAssignment>(droneEntity);
+            assignment.taskEntity = Entity.Null;
+            assignment.reservationEntity = Entity.Null;
+            assignment.sourceOwner = Entity.Null;
+            assignment.destinationOwner = Entity.Null;
+            assignment.returnStation = targetStation;
+            assignment.networkId = EntityManager
+                .GetComponentData<DroneStationNetwork>(targetStation)
+                .networkId;
+            assignment.emergencyReturn = false;
+            EntityManager.SetComponentData(droneEntity, assignment);
+            EntityManager.SetComponentData(
+                droneEntity,
+                new DroneState { value = DroneStateEnum.Returning });
         }
 
         return true;
     }
 
-    private bool TryConvertStoredDroneToWorldItem(
-        Entity stationEntity,
-        Entity droneEntity,
-        int2 targetCell,
-        float3 targetPosition)
+    private bool TryFindRelocationTarget(
+        Entity destroyedStation,
+        int2 originCell,
+        int sourceNetworkId,
+        NativeArray<Entity> stationEntities,
+        NativeArray<ItemStorageLimitElement> storageLimits,
+        out Entity targetStation)
     {
-        if (!IsValidStoredDrone(stationEntity, droneEntity))
-            return false;
+        targetStation = Entity.Null;
 
-        ActiveDrone activeDrone = EntityManager
-            .GetComponentData<ActiveDrone>(droneEntity);
-        DroneBattery battery = EntityManager
-            .GetComponentData<DroneBattery>(droneEntity);
-        DroneState state = EntityManager
-            .GetComponentData<DroneState>(droneEntity);
-        DroneAssignment assignment = EntityManager
-            .GetComponentData<DroneAssignment>(droneEntity);
-        DroneCargo cargo = EntityManager
-            .GetComponentData<DroneCargo>(droneEntity);
+        for (int pass = 0; pass < 2; pass++)
+        {
+            bool currentNetworkOnly = pass == 0 && sourceNetworkId > 0;
+            float nearestDistanceSquared = float.MaxValue;
 
-        if (!DroneStationStorageUtility.TryReleaseStoredDrone(
-                EntityManager,
-                droneEntity))
-            return false;
+            for (int i = 0; i < stationEntities.Length; i++)
+            {
+                Entity candidate = stationEntities[i];
 
-        RemoveActiveDroneIdentity(droneEntity);
-        EntityManager.AddComponentData(
-            droneEntity,
-            new Item { type = ItemTypeEnum.Drone });
-        EntityManager.AddComponent<ItemCellChanged>(droneEntity);
+                if (candidate == destroyedStation)
+                    continue;
 
-        if (_itemTracking.TryRegisterItemImmediate(
-                droneEntity,
-                targetCell,
-                targetPosition))
-            return true;
+                if (!EntityManager.HasComponent<BuildingOccupant>(candidate))
+                    continue;
 
-        EntityManager.RemoveComponent<Item>(droneEntity);
-        EntityManager.RemoveComponent<ItemCellChanged>(droneEntity);
-        RestoreActiveDroneIdentity(
-            stationEntity,
-            droneEntity,
-            activeDrone,
-            battery,
-            state,
-            assignment,
-            cargo);
+                DroneStationNetwork candidateNetwork = EntityManager
+                    .GetComponentData<DroneStationNetwork>(candidate);
+
+                if (currentNetworkOnly &&
+                    candidateNetwork.networkId != sourceNetworkId)
+                    continue;
+
+                if (!CanPlanRelocation(candidate, storageLimits))
+                    continue;
+
+                int2 candidateCell = EntityManager
+                    .GetComponentData<GridPosition>(candidate)
+                    .gridPosition;
+                float distanceSquared = math.distancesq(
+                    new float2(originCell),
+                    new float2(candidateCell));
+
+                if (distanceSquared > nearestDistanceSquared)
+                    continue;
+
+                if (distanceSquared == nearestDistanceSquared &&
+                    targetStation != Entity.Null &&
+                    candidate.Index >= targetStation.Index)
+                    continue;
+
+                targetStation = candidate;
+                nearestDistanceSquared = distanceSquared;
+            }
+
+            if (targetStation != Entity.Null)
+                return true;
+        }
+
         return false;
     }
 
@@ -148,6 +200,21 @@ public partial class DroneIdentityConversionSystem
         if (!EntityManager.HasComponent<ActiveDrone>(droneEntity))
             return false;
 
+        if (!EntityManager.HasComponent<DroneBattery>(droneEntity))
+            return false;
+
+        if (!EntityManager.HasComponent<DroneState>(droneEntity))
+            return false;
+
+        if (!EntityManager.HasComponent<DroneAssignment>(droneEntity))
+            return false;
+
+        if (!EntityManager.HasComponent<DroneCargo>(droneEntity))
+            return false;
+
+        if (!EntityManager.HasComponent<GridPosition>(droneEntity))
+            return false;
+
         if (!EntityManager.HasBuffer<StoredItemElement>(droneEntity))
             return false;
 
@@ -156,83 +223,40 @@ public partial class DroneIdentityConversionSystem
             true).Length == 0;
     }
 
-    private void RemoveActiveDroneIdentity(Entity droneEntity)
-    {
-        if (EntityManager.HasBuffer<StoredItemElement>(droneEntity))
-            EntityManager.RemoveComponent<StoredItemElement>(droneEntity);
-
-        EntityManager.RemoveComponent<ActiveDrone>(droneEntity);
-        EntityManager.RemoveComponent<DroneBattery>(droneEntity);
-        EntityManager.RemoveComponent<DroneState>(droneEntity);
-        EntityManager.RemoveComponent<DroneAssignment>(droneEntity);
-        EntityManager.RemoveComponent<DroneCargo>(droneEntity);
-
-        if (EntityManager.HasComponent<ValidationDrone>(droneEntity))
-            EntityManager.RemoveComponent<ValidationDrone>(droneEntity);
-    }
-
-    private void RestoreActiveDroneIdentity(
+    private bool CanPlanRelocation(
         Entity stationEntity,
-        Entity droneEntity,
-        ActiveDrone activeDrone,
-        DroneBattery battery,
-        DroneState state,
-        DroneAssignment assignment,
-        DroneCargo cargo)
+        NativeArray<ItemStorageLimitElement> storageLimits)
     {
-        EntityManager.AddComponentData(droneEntity, activeDrone);
-        EntityManager.AddComponentData(droneEntity, battery);
-        EntityManager.AddComponentData(droneEntity, state);
-        EntityManager.AddComponentData(droneEntity, assignment);
-        EntityManager.AddComponentData(droneEntity, cargo);
-        EntityManager.AddBuffer<StoredItemElement>(droneEntity);
-        DroneStationStorageUtility.TryAddStoredDrone(
-            EntityManager,
+        Storage storage = EntityManager.GetComponentData<Storage>(
+            stationEntity);
+        DynamicBuffer<StoredItemElement> storedItems = EntityManager
+            .GetBuffer<StoredItemElement>(stationEntity, true);
+        bool hasReservedCapacity = EntityManager.HasBuffer<
+            DroneReservedStorageCapacityElement>(stationEntity);
+        DynamicBuffer<DroneReservedStorageCapacityElement> reservedCapacity =
+            hasReservedCapacity
+                ? EntityManager.GetBuffer<DroneReservedStorageCapacityElement>(
+                    stationEntity,
+                    true)
+                : default;
+        _plannedRelocationCounts.TryGetValue(
             stationEntity,
-            droneEntity);
-    }
+            out int plannedCount);
+        int storedDroneCount = DroneStationStorageUtility.GetStoredDroneCount(
+            EntityManager,
+            stationEntity);
 
-    private bool TryFindDropPosition(
-        Entity droneEntity,
-        int2 originCell,
-        out int2 targetCell,
-        out float3 targetPosition)
-    {
-        float z = EntityManager.GetComponentData<LocalTransform>(droneEntity)
-            .Position.z;
-
-        for (int radius = 0; radius <= MaximumDropSearchRadius; radius++)
-        {
-            for (int y = -radius; y <= radius; y++)
-            {
-                for (int x = -radius; x <= radius; x++)
-                {
-                    if (math.max(math.abs(x), math.abs(y)) != radius)
-                        continue;
-
-                    targetCell = originCell + new int2(x, y);
-                    targetPosition = new float3(
-                        targetCell.x,
-                        targetCell.y,
-                        z);
-
-                    if (_plannedDropCells.Contains(targetCell))
-                        continue;
-
-                    if (!_itemTracking.CanPlaceItemAt(
-                            droneEntity,
-                            targetCell,
-                            targetPosition))
-                        continue;
-
-                    _plannedDropCells.Add(targetCell);
-                    return true;
-                }
-            }
-        }
-
-        targetCell = default;
-        targetPosition = default;
-        return false;
+        return StorageCapacityUtility.CanStoreAdditionalItems(
+            storedItems,
+            reservedCapacity,
+            hasReservedCapacity,
+            storage.capacity,
+            storageLimits,
+            ItemTypeEnum.Drone,
+            1,
+            storedDroneCount + plannedCount,
+            DroneStationStorageUtility.GetDedicatedDroneSlotCapacity(
+                EntityManager,
+                stationEntity));
     }
 }

@@ -71,7 +71,7 @@ Delete 철거 선택은 배치/복사 상태를 종료한 뒤 좌클릭 drag의 
 `BuildingDestroySystem`은 생산/저장/연료 처리 뒤에 실행되며 다음을 수행한다.
 
 1. 대상 존재, `BuildingOccupant`, 파괴 가능 여부를 검증한다.
-2. 정거장이면 stored drone을 월드 Drone 아이템으로 복원한다.
+2. 정거장이면 stored drone 전체를 수용 가능한 다른 정거장에 선배정하고 `Returning` 상태로 해제한다. 같은 network를 우선하며, 전체 수용 공간이 없으면 파괴를 보류한다.
 3. `StoredItemElement`와 `ProducedItemElement`를 `ItemStorageSystem`으로 월드에 복원한다.
 4. 공사 설정의 건설 재료 100%를 `WorldItemSpawnRequest`로 반환한다.
 5. 사용자 철거인 경우 복원된 아이템에 회수 작업을 만든다.

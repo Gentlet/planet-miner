@@ -8,8 +8,8 @@ using Unity.Entities;
 public partial class DroneIdentityConversionSystem : SystemBase
 {
     private EntityQuery _stationQuery;
+    private EntityQuery _storageLimitQuery;
     private ItemStorageSystem _itemStorage;
-    private ItemTrackingSystem _itemTracking;
     private readonly List<Entity> _activationCandidates = new();
     private readonly List<Entity> _storedDrones = new();
 
@@ -18,10 +18,13 @@ public partial class DroneIdentityConversionSystem : SystemBase
         _stationQuery = GetEntityQuery(
             ComponentType.ReadOnly<DroneStation>(),
             ComponentType.ReadOnly<DroneStationNetwork>(),
+            ComponentType.ReadOnly<Storage>(),
+            ComponentType.ReadOnly<GridPosition>(),
             ComponentType.ReadOnly<StoredItemElement>(),
             ComponentType.ReadOnly<StoredDroneElement>());
+        _storageLimitQuery = GetEntityQuery(
+            ComponentType.ReadOnly<ItemStorageLimitElement>());
         _itemStorage = World.GetOrCreateSystemManaged<ItemStorageSystem>();
-        _itemTracking = World.GetOrCreateSystemManaged<ItemTrackingSystem>();
         RequireForUpdate<DroneConfig>();
     }
 

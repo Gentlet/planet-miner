@@ -165,4 +165,19 @@ public partial class DroneIdentityConversionSystem
             itemEntity,
             itemType);
     }
+
+    private void RemoveActiveDroneIdentity(Entity droneEntity)
+    {
+        if (EntityManager.HasBuffer<StoredItemElement>(droneEntity))
+            EntityManager.RemoveComponent<StoredItemElement>(droneEntity);
+
+        EntityManager.RemoveComponent<ActiveDrone>(droneEntity);
+        EntityManager.RemoveComponent<DroneBattery>(droneEntity);
+        EntityManager.RemoveComponent<DroneState>(droneEntity);
+        EntityManager.RemoveComponent<DroneAssignment>(droneEntity);
+        EntityManager.RemoveComponent<DroneCargo>(droneEntity);
+
+        if (EntityManager.HasComponent<ValidationDrone>(droneEntity))
+            EntityManager.RemoveComponent<ValidationDrone>(droneEntity);
+    }
 }

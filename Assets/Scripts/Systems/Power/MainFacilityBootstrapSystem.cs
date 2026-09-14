@@ -137,6 +137,7 @@ public partial class MainFacilityBootstrapSystem : SystemBase
             {
                 activityRangeInChunks =
                     droneConfig.stationActivityRangeInChunks,
+                footprintSize = footprintSize,
                 isMainStation = true
             });
         EntityManager.AddComponentData(

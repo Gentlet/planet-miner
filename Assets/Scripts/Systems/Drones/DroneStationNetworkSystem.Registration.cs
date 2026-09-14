@@ -68,9 +68,15 @@ public partial class DroneStationNetworkSystem
             .GetComponentData<GridPosition>(stationEntity);
         DroneStation station = EntityManager
             .GetComponentData<DroneStation>(stationEntity);
+        DirectionEnum direction = EntityManager.HasComponent<Direction>(
+                stationEntity)
+            ? EntityManager.GetComponentData<Direction>(stationEntity).dir
+            : DirectionEnum.Up;
         GridBounds activityBounds = DroneStationRangeUtility
             .GetActivityBounds(
                 gridPosition.gridPosition,
+                station.footprintSize,
+                direction,
                 station.activityRangeInChunks);
 
         bool hasCurrentRegistration = _registrations.TryGetValue(

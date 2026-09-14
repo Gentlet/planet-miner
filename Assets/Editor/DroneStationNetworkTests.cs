@@ -61,7 +61,7 @@ public class DroneStationNetworkTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void ChunkAlignedRangeUsesInclusiveCellBounds()
+    public void ActivityRangeIsSymmetricAroundSingleCellStation()
     {
         Entity station = CreateStation(0, 1);
         _networkSystem.Update();
@@ -73,16 +73,61 @@ public class DroneStationNetworkTests : EcsWorldTestFixture
         Assert.That(coveringStations.Contains(station), Is.True);
 
         _chunkMap.GetDroneStationsCoveringCell(
-            new int2(
-                GameConstants.chunkSize * 2 - 1,
-                GameConstants.chunkSize * 2 - 1),
+            new int2(GameConstants.chunkSize, GameConstants.chunkSize),
             coveringStations);
         Assert.That(coveringStations.Contains(station), Is.True);
 
         _chunkMap.GetDroneStationsCoveringCell(
-            new int2(GameConstants.chunkSize * 2, 0),
+            new int2(GameConstants.chunkSize + 1, 0),
             coveringStations);
         Assert.That(coveringStations.Contains(station), Is.False);
+    }
+
+    [Test]
+    public void MainFacilityRangeExpandsSymmetricallyFromThreeByThreeFootprint()
+    {
+        Entity station = CreateStation(
+            int2.zero,
+            1,
+            new int2(3),
+            DirectionEnum.Up);
+        _networkSystem.Update();
+        List<Entity> coveringStations = new();
+
+        int minimum = -GameConstants.chunkSize;
+        int maximum = GameConstants.chunkSize + 2;
+        _chunkMap.GetDroneStationsCoveringCell(
+            new int2(minimum, 1),
+            coveringStations);
+        Assert.That(coveringStations.Contains(station), Is.True);
+
+        _chunkMap.GetDroneStationsCoveringCell(
+            new int2(maximum, 1),
+            coveringStations);
+        Assert.That(coveringStations.Contains(station), Is.True);
+
+        _chunkMap.GetDroneStationsCoveringCell(
+            new int2(minimum - 1, 1),
+            coveringStations);
+        Assert.That(coveringStations.Contains(station), Is.False);
+
+        _chunkMap.GetDroneStationsCoveringCell(
+            new int2(maximum + 1, 1),
+            coveringStations);
+        Assert.That(coveringStations.Contains(station), Is.False);
+    }
+
+    [Test]
+    public void RotatedFootprintRangeUsesRotatedOccupiedBounds()
+    {
+        GridBounds bounds = DroneStationRangeUtility.GetActivityBounds(
+            new int2(10, -4),
+            new int2(2, 3),
+            DirectionEnum.Right,
+            new int2(1, 2));
+
+        Assert.That(bounds.Min, Is.EqualTo(new int2(-6, -37)));
+        Assert.That(bounds.Max, Is.EqualTo(new int2(28, 28)));
     }
 
     [Test]
@@ -114,6 +159,10 @@ public class DroneStationNetworkTests : EcsWorldTestFixture
         Assert.That(
             _entityManager.GetComponentData<Storage>(mainFacility).capacity,
             Is.EqualTo(13));
+        Assert.That(
+            _entityManager.GetComponentData<DroneStation>(mainFacility)
+                .footprintSize,
+            Is.EqualTo(new int2(3)));
         Assert.That(
             _entityManager.HasComponent<BuildingOutputCursor>(mainFacility),
             Is.False);
@@ -268,6 +317,10 @@ public class DroneStationNetworkTests : EcsWorldTestFixture
             _entityManager.GetComponentData<Storage>(station).capacity,
             Is.EqualTo(10));
         Assert.That(
+            _entityManager.GetComponentData<DroneStation>(station)
+                .footprintSize,
+            Is.EqualTo(new int2(2)));
+        Assert.That(
             _entityManager.HasBuffer<StoredItemElement>(station),
             Is.True);
         Assert.That(
@@ -277,25 +330,38 @@ public class DroneStationNetworkTests : EcsWorldTestFixture
 
     private Entity CreateStation(int chunkX, int rangeInChunks)
     {
+        return CreateStation(
+            new int2(chunkX * GameConstants.chunkSize, 0),
+            rangeInChunks,
+            new int2(1),
+            DirectionEnum.Up);
+    }
+
+    private Entity CreateStation(
+        int2 gridPosition,
+        int rangeInChunks,
+        int2 footprintSize,
+        DirectionEnum direction)
+    {
         Entity station = _entityManager.CreateEntity(
             typeof(DroneStation),
             typeof(GridPosition),
+            typeof(Direction),
             typeof(BuildingOccupant));
         _entityManager.SetComponentData(
             station,
             new DroneStation
             {
                 activityRangeInChunks = new int2(rangeInChunks),
+                footprintSize = footprintSize,
                 isMainStation = false
             });
         _entityManager.SetComponentData(
             station,
-            new GridPosition
-            {
-                gridPosition = new int2(
-                    chunkX * GameConstants.chunkSize,
-                    0)
-            });
+            new GridPosition { gridPosition = gridPosition });
+        _entityManager.SetComponentData(
+            station,
+            new Direction { dir = direction });
         return station;
     }
 

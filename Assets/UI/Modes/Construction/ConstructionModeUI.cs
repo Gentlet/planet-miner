@@ -22,6 +22,25 @@ public class ConstructionModeUI : MonoBehaviour
     private Button droneStationButton;
     private Button researchBuildingButton;
     private Label copyStatusLabel;
+    private static readonly BuildingTypeEnum[] BuildingButtonOrder =
+    {
+        BuildingTypeEnum.Belt,
+        BuildingTypeEnum.Splitter,
+        BuildingTypeEnum.Merger,
+        BuildingTypeEnum.Miner,
+        BuildingTypeEnum.Crafter,
+        BuildingTypeEnum.Storage,
+        BuildingTypeEnum.PowerPole,
+        BuildingTypeEnum.CoalGenerator,
+        BuildingTypeEnum.DroneStation,
+        BuildingTypeEnum.ResearchBuilding
+    };
+    private readonly Button[] buildingButtons = new Button[
+        BuildingButtonOrder.Length];
+    private readonly Action[] buildingButtonActions = new Action[
+        BuildingButtonOrder.Length];
+    private readonly bool[] buildingButtonVisibility = new bool[
+        BuildingButtonOrder.Length];
     private readonly Button[] taskPriorityButtons = new Button[
         DroneTaskPriorityUtility.MaximumNormalPriority];
     private readonly Action[] taskPriorityActions = new Action[
@@ -54,6 +73,7 @@ public class ConstructionModeUI : MonoBehaviour
         researchBuildingButton = root.Q<Button>("research-building-button");
         copyStatusLabel = root.Q<Label>("copy-status-label");
 
+        BindBuildingButtonOrder();
         BindTaskPriorityButtons(root);
 
         beltButton.clicked += OnBeltButtonClicked;
@@ -101,26 +121,20 @@ public class ConstructionModeUI : MonoBehaviour
         if (keyboard == null)
             return;
 
-        if (keyboard.digit1Key.wasPressedThisFrame)
-            OnBeltButtonClicked();
-        else if (keyboard.digit2Key.wasPressedThisFrame)
-            OnSplitterButtonClicked();
-        else if (keyboard.digit3Key.wasPressedThisFrame)
-            OnMergerButtonClicked();
-        else if (keyboard.digit4Key.wasPressedThisFrame)
-            OnMinerButtonClicked();
-        else if (keyboard.digit5Key.wasPressedThisFrame)
-            OnCrafterButtonClicked();
-        else if (keyboard.digit6Key.wasPressedThisFrame)
-            OnStorageButtonClicked();
-        else if (keyboard.digit7Key.wasPressedThisFrame)
-            OnPowerPoleButtonClicked();
-        else if (keyboard.digit8Key.wasPressedThisFrame)
-            OnCoalGeneratorButtonClicked();
-        else if (keyboard.digit9Key.wasPressedThisFrame)
-            OnDroneStationButtonClicked();
-        else if (keyboard.digit0Key.wasPressedThisFrame)
-            OnResearchBuildingButtonClicked();
+        int visibleHotkeySlot = GetPressedBuildingHotkeySlot(keyboard);
+
+        if (visibleHotkeySlot < 0)
+            return;
+
+        int buttonIndex = ConstructionBuildingHotkeyUtility
+            .GetButtonIndexForVisibleSlot(
+                buildingButtonVisibility,
+                visibleHotkeySlot);
+
+        if (buttonIndex < 0)
+            return;
+
+        buildingButtonActions[buttonIndex]?.Invoke();
     }
 
     private void OnDisable()
@@ -158,6 +172,7 @@ public class ConstructionModeUI : MonoBehaviour
         if (researchBuildingButton != null)
             researchBuildingButton.clicked -= OnResearchBuildingButtonClicked;
 
+        ClearBuildingButtonOrder();
         UnbindTaskPriorityButtons();
 
         beltButton = null;
@@ -227,6 +242,67 @@ public class ConstructionModeUI : MonoBehaviour
         ToggleBuildingSelection(
             BuildingTypeEnum.ResearchBuilding,
             researchBuildingButton);
+    }
+
+    private void BindBuildingButtonOrder()
+    {
+        buildingButtons[0] = beltButton;
+        buildingButtons[1] = splitterButton;
+        buildingButtons[2] = mergerButton;
+        buildingButtons[3] = minerButton;
+        buildingButtons[4] = crafterButton;
+        buildingButtons[5] = storageButton;
+        buildingButtons[6] = powerPoleButton;
+        buildingButtons[7] = coalGeneratorButton;
+        buildingButtons[8] = droneStationButton;
+        buildingButtons[9] = researchBuildingButton;
+
+        buildingButtonActions[0] = OnBeltButtonClicked;
+        buildingButtonActions[1] = OnSplitterButtonClicked;
+        buildingButtonActions[2] = OnMergerButtonClicked;
+        buildingButtonActions[3] = OnMinerButtonClicked;
+        buildingButtonActions[4] = OnCrafterButtonClicked;
+        buildingButtonActions[5] = OnStorageButtonClicked;
+        buildingButtonActions[6] = OnPowerPoleButtonClicked;
+        buildingButtonActions[7] = OnCoalGeneratorButtonClicked;
+        buildingButtonActions[8] = OnDroneStationButtonClicked;
+        buildingButtonActions[9] = OnResearchBuildingButtonClicked;
+    }
+
+    private void ClearBuildingButtonOrder()
+    {
+        for (int i = 0; i < buildingButtons.Length; i++)
+        {
+            buildingButtons[i] = null;
+            buildingButtonActions[i] = null;
+            buildingButtonVisibility[i] = false;
+        }
+    }
+
+    private static int GetPressedBuildingHotkeySlot(Keyboard keyboard)
+    {
+        if (keyboard.digit1Key.wasPressedThisFrame)
+            return 0;
+        if (keyboard.digit2Key.wasPressedThisFrame)
+            return 1;
+        if (keyboard.digit3Key.wasPressedThisFrame)
+            return 2;
+        if (keyboard.digit4Key.wasPressedThisFrame)
+            return 3;
+        if (keyboard.digit5Key.wasPressedThisFrame)
+            return 4;
+        if (keyboard.digit6Key.wasPressedThisFrame)
+            return 5;
+        if (keyboard.digit7Key.wasPressedThisFrame)
+            return 6;
+        if (keyboard.digit8Key.wasPressedThisFrame)
+            return 7;
+        if (keyboard.digit9Key.wasPressedThisFrame)
+            return 8;
+        if (keyboard.digit0Key.wasPressedThisFrame)
+            return 9;
+
+        return -1;
     }
 
     private void BindTaskPriorityButtons(VisualElement root)
@@ -375,25 +451,13 @@ public class ConstructionModeUI : MonoBehaviour
 
         DynamicBuffer<BuildingUnlockElement> unlocks = _buildingUnlockQuery
             .GetSingletonBuffer<BuildingUnlockElement>(true);
-        SetBuildingButtonVisible(beltButton, BuildingTypeEnum.Belt, unlocks);
-        SetBuildingButtonVisible(minerButton, BuildingTypeEnum.Miner, unlocks);
-        SetBuildingButtonVisible(crafterButton, BuildingTypeEnum.Crafter, unlocks);
-        SetBuildingButtonVisible(splitterButton, BuildingTypeEnum.Splitter, unlocks);
-        SetBuildingButtonVisible(mergerButton, BuildingTypeEnum.Merger, unlocks);
-        SetBuildingButtonVisible(storageButton, BuildingTypeEnum.Storage, unlocks);
-        SetBuildingButtonVisible(powerPoleButton, BuildingTypeEnum.PowerPole, unlocks);
-        SetBuildingButtonVisible(
-            coalGeneratorButton,
-            BuildingTypeEnum.CoalGenerator,
-            unlocks);
-        SetBuildingButtonVisible(
-            droneStationButton,
-            BuildingTypeEnum.DroneStation,
-            unlocks);
-        SetBuildingButtonVisible(
-            researchBuildingButton,
-            BuildingTypeEnum.ResearchBuilding,
-            unlocks);
+        for (int i = 0; i < BuildingButtonOrder.Length; i++)
+        {
+            bool isVisible = unlocks.IsBuildingUnlocked(
+                BuildingButtonOrder[i]);
+            buildingButtonVisibility[i] = isVisible;
+            SetBuildingButtonVisible(buildingButtons[i], isVisible);
+        }
 
         if (_selectedBuildingType.HasValue &&
             !unlocks.IsBuildingUnlocked(_selectedBuildingType.Value))
@@ -402,13 +466,12 @@ public class ConstructionModeUI : MonoBehaviour
 
     private static void SetBuildingButtonVisible(
         Button button,
-        BuildingTypeEnum buildingType,
-        DynamicBuffer<BuildingUnlockElement> unlocks)
+        bool isVisible)
     {
         if (button == null)
             return;
 
-        button.style.display = unlocks.IsBuildingUnlocked(buildingType)
+        button.style.display = isVisible
             ? DisplayStyle.Flex
             : DisplayStyle.None;
     }

@@ -175,6 +175,7 @@ public partial class BuildingSpawnSystem : SystemBase
                 instance,
                 spawnRequest,
                 anchor,
+                visualSize,
                 runtimeConfig,
                 droneConfig);
             AddPowerComponents(
@@ -192,6 +193,7 @@ public partial class BuildingSpawnSystem : SystemBase
         Entity instance,
         BuildingSpawnRequest request,
         int2 anchor,
+        int2 footprintSize,
         BuildingRuntimeConfigElement runtimeConfig,
         DroneConfig droneConfig)
     {
@@ -250,6 +252,7 @@ public partial class BuildingSpawnSystem : SystemBase
                     {
                         activityRangeInChunks =
                             droneConfig.stationActivityRangeInChunks,
+                        footprintSize = footprintSize,
                         isMainStation = false
                     });
                 break;

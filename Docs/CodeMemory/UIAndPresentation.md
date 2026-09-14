@@ -27,7 +27,7 @@
 
 ## 건설 모드 입력
 
-`ConstructionModeUI`는 건물 버튼과 키보드 단축키를 `BuildingPlacementOperation`으로 변환한다. 동일 버튼을 다시 누르면 선택을 해제한다. normal task priority 1~10 선택은 `BuildingPlacementController`에 전달되어 새 공사/철거 요청에 기록되며, 1이 가장 높고 10이 가장 낮고 기본 선택은 5다.
+`ConstructionModeUI`는 건물 버튼과 키보드 단축키를 `BuildingPlacementOperation`으로 변환한다. `BuildingButtonOrder`와 버튼·액션 배열은 UXML 표시 순서를 명시적으로 미러링하며, 숫자 키는 잠긴 버튼을 제외한 이 순서에 `1`부터 연속 배정되고 `0`은 열 번째 표시 버튼에 대응한다. `RefreshBuildingUnlocks()`가 갱신한 표시 상태를 같은 프레임의 단축키 처리에서 사용하므로 연구 해금 뒤에도 순서가 함께 바뀐다. 동일 버튼을 다시 누르면 선택을 해제한다. normal task priority 1~10 선택은 `BuildingPlacementController`에 전달되어 새 공사/철거 요청에 기록되며, 1이 가장 높고 10이 가장 낮고 기본 선택은 5다.
 
 `BuildingPlacementController` 입력은 다음 역할로 분리된다.
 
@@ -92,6 +92,7 @@
 - 새 정보 패널 타입: `IsSupportedBuilding`, refresh 분기, layout, 필요한 config query를 함께 확인한다.
 - 연구 UI 변경: 전역 `DefaultUI.Research`의 조회/시작 요청과 개별 `BuildingUI`의 읽기 전용 상태 표시를 분리하고, `ResearchTreeLayout`, 건물·레시피 해금 UI, 권위 시스템 검증과 `ResearchUITests`를 함께 확인한다. 상세 수명주기는 [`ResearchSystem.md`](ResearchSystem.md)를 따른다.
 - 반복 갱신 UI 변경: 기존 row/slot/empty label 재사용과 다른 layout element 숨김 규칙을 유지하고 `BuildingUIPoolingTests`를 확인한다.
+- 건설 버튼 순서·잠금·단축키 변경: UXML 표시 순서, `BuildingButtonOrder`, 버튼·액션 배열을 함께 맞추고 `ConstructionBuildingHotkeyUtilityTests`를 확인한다.
 - 배치 입력 변경: `PointerUtility`, drag state reset, copy/settings 모드, reservation 요청 흐름을 확인한다.
 - 청크 로드 범위 변경: 카메라 requested set, `ChunkLoadRequest`, 자원 generated marker, unload 부재를 확인한다.
 - 월드 작업 표시 변경: task 종료/취소, 대상 소멸·저장 전환, footprint transform, Entities Graphics material/queue, `WorldTaskMarkerPresentationTests`를 함께 확인한다.

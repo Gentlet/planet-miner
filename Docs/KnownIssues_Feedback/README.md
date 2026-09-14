@@ -6,9 +6,9 @@
 
 | 번호 | 문서명 | 구분 | 상태 | 주요 내용 요약 |
 | :--- | :--- | :--- | :--- | :--- |
-| **01** | [드론 스테이션 철거 시 보관 드론 이동 개선](01_DroneStation_Demolition_Drone_Relocation.md) | 피드백 / 개선 | `Open` | 철거 시 보관 드론이 바닥에 아이템으로 떨어지지 않고 근처 다른 스테이션으로 이동하도록 개선 |
-| **02** | [메인 스테이션 드론 작업 범위 좌우 비대칭 문제](02_MainStation_Drone_Activity_Range_Asymmetry.md) | 버그 / 이슈 | `Open` | 메인 스테이션의 드론 작업 범위가 우측은 길고 좌측은 짧게 편향되는 비대칭 원인 및 해결 방안 |
-| **03** | [연구 잠금 상태에 따른 건설 단축키 순서 불일치](03_Construction_Hotkey_Visible_Order_Mismatch.md) | 피드백 / 개선 | `Open` | 연구로 숨겨진 건물이 있어도 고정 단축키 번호를 유지하여 화면의 건물 순서와 숫자 키가 일치하지 않는 문제 |
+| **01** | [드론 스테이션 철거 시 보관 드론 이동 개선](01_DroneStation_Demolition_Drone_Relocation.md) | 피드백 / 개선 | `Resolved` | 철거 시 보관 드론의 identity를 유지하고 수용 가능한 다른 스테이션으로 귀환하도록 개선 |
+| **02** | [메인 스테이션 드론 작업 범위 좌우 비대칭 문제](02_MainStation_Drone_Activity_Range_Asymmetry.md) | 버그 / 이슈 | `Resolved` | 메인 스테이션의 실제 3×3 footprint를 기준으로 드론 작업 범위를 좌우·상하 대칭 적용 |
+| **03** | [연구 잠금 상태에 따른 건설 단축키 순서 불일치](03_Construction_Hotkey_Visible_Order_Mismatch.md) | 피드백 / 개선 | `Resolved` | 잠긴 건물을 제외한 현재 표시 순서대로 숫자 단축키를 1부터 연속 배정 |
 | **04** | [다중 칸 건물의 전력망 연결 판정 개선](04_MultiCell_Building_Power_Coverage.md) | 피드백 / 개선 | `Open` | 2×2·3×3 건물의 기준 좌표뿐 아니라 점유 칸 중 하나라도 전력 공급 범위에 닿으면 전력을 공급하도록 개선 |
 | **05** | [완전 충전된 드론의 충전 대기 상태 지속](05_Fully_Charged_Drone_Awaiting_Charge.md) | 버그 / 이슈 | `Open` | 배터리가 모두 충전된 드론이 충전 대기 상태에 머물러 화면에 지속적으로 표시되는 문제 |
 | **06** | [드론 수납 조건과 화면 표시 상태 불일치](06_Drone_Storage_Condition_And_Visibility.md) | 버그 / 이슈 | `Open` | 충전 대기 중인 드론이 스테이션에 수납되며, 수납 상태와 화면 표시가 일치하지 않는 문제 |
