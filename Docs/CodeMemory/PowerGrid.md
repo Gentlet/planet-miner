@@ -53,14 +53,14 @@
 6. `supplyRatio = min(1, availableGeneration / maximumDemand)`를 계산하고 소비자 상태를 갱신한다.
 7. 실제 소비량을 우선 기초 발전으로 충당하고, 부족분을 석탄 발전에 배정한다.
 8. `CoalGeneratorFuelSystem`이 배정된 실제 발전 에너지만 소비한다. 연료가 부족하면 실제 `currentGeneration`을 가능한 값으로 낮춘다.
-9. `DroneChargingSystem`, `MiningSystem`, `CrafterSystem`이 게시된 공급 비율을 사용한다.
+9. `DroneChargingSystem`, `MiningSystem`, `CrafterSystem`, `ResearchSystem`이 게시된 공급 비율을 사용한다.
 
 ## 다른 시스템과의 의존 관계
 
 - 전신주 공급 셀 인덱스: `ChunkMapSystem`
 - 건물 생성/파괴: `BuildingSpawnSystem`이 설정 기반 power component를 추가하고, `BuildingDestroySystem`이 pole 등록을 해제한다.
 - 석탄 소유권: `ItemStorageSystem`
-- 생산: miner/crafter가 `PowerProductionUtility`를 사용한다.
+- 생산과 연구: miner/crafter/research building이 `PowerProductionUtility`를 사용한다. 연구건물은 0 전력에서 이미 시작한 로컬 주기의 진행도를 보존한다.
 - 드론 충전: 정거장의 `PowerConsumer` 수요를 `DroneChargingDemandSystem`이 계산하고, 충전량은 실제 공급 비율을 사용한다.
 - UI: `BuildingUI.Power`가 connection과 grid state를 표시한다.
 

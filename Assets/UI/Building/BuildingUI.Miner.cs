@@ -59,6 +59,11 @@ public partial class BuildingUI
     {
         float productionSpeedMultiplier = GetProductionSpeedMultiplier(
             out string speedChangeReason);
+        float researchSpeedMultiplier = GetResearchSpeedMultiplier(
+            ResearchStatModifierTypeEnum.MiningSpeed);
+        productionSpeedMultiplier *= researchSpeedMultiplier;
+        if (researchSpeedMultiplier > 1f)
+            speedChangeReason += $" · 채굴 연구 보너스 ×{researchSpeedMultiplier:0.##}";
         _speedReasonLabel.text = speedChangeReason;
         float progressRatio = miner.speed > 0f
             ? math.saturate(miner.timer / miner.speed)

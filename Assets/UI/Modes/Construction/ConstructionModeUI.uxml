@@ -4,9 +4,10 @@
         <ui:VisualElement name="construction-guide" class="construction-guide blocking-ui">
             <ui:Label text="건설 모드 조작" class="construction-guide-title"/>
             <ui:Label text="건물 복사: Ctrl+C → 좌클릭 드래그로 선택 → 좌클릭으로 배치 · R 회전 · Esc 취소" class="construction-guide-text"/>
+            <ui:Label text="Del -&gt; 좌클릭 드래그로 선택 -&gt; 범위 건물 철거 및 아이템 회수" class="construction-guide-text"/>
             <ui:Label text="건물 설정 복사: Shift+우클릭 → Shift+좌클릭 또는 드래그로 붙여넣기" class="construction-guide-text"/>
         </ui:VisualElement>
-        <ui:Label name="copy-status-label" class="copy-status blocking-ui" />
+        <ui:Label name="copy-status-label" class="copy-status blocking-ui"/>
         <ui:VisualElement name="task-priority-container" class="task-priority-container blocking-ui">
             <ui:Button name="task-priority-1" text="1" tooltip="작업 우선순위 1 (가장 높음)" class="task-priority-button blocking-ui"/>
             <ui:Button name="task-priority-2" text="2" tooltip="작업 우선순위 2" class="task-priority-button blocking-ui"/>
@@ -20,15 +21,16 @@
             <ui:Button name="task-priority-10" text="10" tooltip="작업 우선순위 10 (가장 낮음)" class="task-priority-button blocking-ui"/>
         </ui:VisualElement>
         <ui:VisualElement name="bottom-button-container" class="bottom-button-container">
-            <ui:Button name="belt-button" text="벨트" class="bottom-button blocking-ui"/>
-            <ui:Button name="splitter-button" text="분배기" class="bottom-button blocking-ui"/>
-            <ui:Button name="merger-button" text="병합기" class="bottom-button blocking-ui"/>
-            <ui:Button name="miner-button" text="채굴기" class="bottom-button blocking-ui"/>
-            <ui:Button name="crafter-button" text="제작기" class="bottom-button blocking-ui"/>
-            <ui:Button name="storage-button" text="창고" class="bottom-button blocking-ui"/>
-            <ui:Button name="power-pole-button" text="전신주" class="bottom-button blocking-ui"/>
-            <ui:Button name="coal-generator-button" text="석탄 발전기" class="bottom-button blocking-ui"/>
-            <ui:Button name="drone-station-button" text="드론 스테이션" class="bottom-button blocking-ui"/>
+            <ui:Button name="belt-button" text="벨트" class="bottom-button blocking-ui" style="display: none;"/>
+            <ui:Button name="splitter-button" text="분배기" class="bottom-button blocking-ui" style="display: none;"/>
+            <ui:Button name="merger-button" text="병합기" class="bottom-button blocking-ui" style="display: none;"/>
+            <ui:Button name="miner-button" text="채굴기" class="bottom-button blocking-ui" style="display: none;"/>
+            <ui:Button name="crafter-button" text="제작기" class="bottom-button blocking-ui" style="display: none;"/>
+            <ui:Button name="storage-button" text="창고" class="bottom-button blocking-ui" style="display: none;"/>
+            <ui:Button name="power-pole-button" text="전신주" class="bottom-button blocking-ui" style="display: none;"/>
+            <ui:Button name="coal-generator-button" text="석탄 발전기" class="bottom-button blocking-ui" style="display: none;"/>
+            <ui:Button name="drone-station-button" text="드론 스테이션" class="bottom-button blocking-ui" style="display: none;"/>
+            <ui:Button name="research-building-button" text="연구건물" class="bottom-button blocking-ui" style="display: none;"/>
         </ui:VisualElement>
     </ui:VisualElement>
 </ui:UXML>

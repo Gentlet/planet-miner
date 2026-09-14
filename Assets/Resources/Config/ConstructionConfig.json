@@ -8,6 +8,8 @@
     { "buildingType": "Storage", "itemType": "Iron", "quantity": 2 },
     { "buildingType": "PowerPole", "itemType": "Copper", "quantity": 1 },
     { "buildingType": "CoalGenerator", "itemType": "Iron", "quantity": 4 },
-    { "buildingType": "DroneStation", "itemType": "Iron", "quantity": 5 }
+    { "buildingType": "DroneStation", "itemType": "Iron", "quantity": 5 },
+    { "buildingType": "ResearchBuilding", "itemType": "Iron", "quantity": 3 },
+    { "buildingType": "ResearchBuilding", "itemType": "Copper", "quantity": 3 }
   ]
 }

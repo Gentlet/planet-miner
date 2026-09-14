@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.InputSystem;
@@ -19,12 +20,16 @@ public class ConstructionModeUI : MonoBehaviour
     private Button powerPoleButton;
     private Button coalGeneratorButton;
     private Button droneStationButton;
+    private Button researchBuildingButton;
     private Label copyStatusLabel;
     private readonly Button[] taskPriorityButtons = new Button[
         DroneTaskPriorityUtility.MaximumNormalPriority];
     private readonly Action[] taskPriorityActions = new Action[
         DroneTaskPriorityUtility.MaximumNormalPriority];
     private BuildingTypeEnum? _selectedBuildingType;
+    private EntityManager _entityManager;
+    private EntityQuery _buildingUnlockQuery;
+    private bool _hasBuildingUnlockQuery;
 
     private const string SelectedButtonClass = "selected";
     private const int DefaultNormalTaskPriority = 5;
@@ -46,6 +51,7 @@ public class ConstructionModeUI : MonoBehaviour
         powerPoleButton = root.Q<Button>("power-pole-button");
         coalGeneratorButton = root.Q<Button>("coal-generator-button");
         droneStationButton = root.Q<Button>("drone-station-button");
+        researchBuildingButton = root.Q<Button>("research-building-button");
         copyStatusLabel = root.Q<Label>("copy-status-label");
 
         BindTaskPriorityButtons(root);
@@ -59,9 +65,11 @@ public class ConstructionModeUI : MonoBehaviour
         powerPoleButton.clicked += OnPowerPoleButtonClicked;
         coalGeneratorButton.clicked += OnCoalGeneratorButtonClicked;
         droneStationButton.clicked += OnDroneStationButtonClicked;
+        researchBuildingButton.clicked += OnResearchBuildingButtonClicked;
         _bpc.PlacementSelectionCleared += OnPlacementSelectionCleared;
 
         ClearBuildingSelection();
+        RefreshBuildingUnlocks();
     }
 
     private void Update()
@@ -76,6 +84,7 @@ public class ConstructionModeUI : MonoBehaviour
             return;
         }
 
+        RefreshBuildingUnlocks();
         HandleBuildingHotkeys(keyboard);
 
         if (copyStatusLabel != null)
@@ -110,6 +119,8 @@ public class ConstructionModeUI : MonoBehaviour
             OnCoalGeneratorButtonClicked();
         else if (keyboard.digit9Key.wasPressedThisFrame)
             OnDroneStationButtonClicked();
+        else if (keyboard.digit0Key.wasPressedThisFrame)
+            OnResearchBuildingButtonClicked();
     }
 
     private void OnDisable()
@@ -144,6 +155,9 @@ public class ConstructionModeUI : MonoBehaviour
         if (droneStationButton != null)
             droneStationButton.clicked -= OnDroneStationButtonClicked;
 
+        if (researchBuildingButton != null)
+            researchBuildingButton.clicked -= OnResearchBuildingButtonClicked;
+
         UnbindTaskPriorityButtons();
 
         beltButton = null;
@@ -155,6 +169,7 @@ public class ConstructionModeUI : MonoBehaviour
         powerPoleButton = null;
         coalGeneratorButton = null;
         droneStationButton = null;
+        researchBuildingButton = null;
         copyStatusLabel = null;
     }
 
@@ -205,6 +220,13 @@ public class ConstructionModeUI : MonoBehaviour
         ToggleBuildingSelection(
             BuildingTypeEnum.DroneStation,
             droneStationButton);
+    }
+
+    private void OnResearchBuildingButtonClicked()
+    {
+        ToggleBuildingSelection(
+            BuildingTypeEnum.ResearchBuilding,
+            researchBuildingButton);
     }
 
     private void BindTaskPriorityButtons(VisualElement root)
@@ -266,6 +288,12 @@ public class ConstructionModeUI : MonoBehaviour
 
     private void ToggleBuildingSelection(BuildingTypeEnum type, Button button)
     {
+        if (button == null)
+            return;
+
+        if (button.resolvedStyle.display == DisplayStyle.None)
+            return;
+
         if (_selectedBuildingType == type)
         {
             ClearBuildingSelection();
@@ -315,5 +343,73 @@ public class ConstructionModeUI : MonoBehaviour
         powerPoleButton?.RemoveFromClassList(SelectedButtonClass);
         coalGeneratorButton?.RemoveFromClassList(SelectedButtonClass);
         droneStationButton?.RemoveFromClassList(SelectedButtonClass);
+        researchBuildingButton?.RemoveFromClassList(SelectedButtonClass);
+    }
+
+    private bool EnsureBuildingUnlockQuery()
+    {
+        World world = World.DefaultGameObjectInjectionWorld;
+
+        if (world == null || !world.IsCreated)
+            return false;
+
+        if (!_hasBuildingUnlockQuery || _entityManager != world.EntityManager)
+        {
+            _entityManager = world.EntityManager;
+            _buildingUnlockQuery = _entityManager.CreateEntityQuery(
+                ComponentType.ReadOnly<ResearchConfig>(),
+                ComponentType.ReadOnly<BuildingUnlockElement>());
+            _hasBuildingUnlockQuery = true;
+        }
+
+        return true;
+    }
+
+    private void RefreshBuildingUnlocks()
+    {
+        if (!EnsureBuildingUnlockQuery())
+            return;
+
+        if (_buildingUnlockQuery.IsEmptyIgnoreFilter)
+            return;
+
+        DynamicBuffer<BuildingUnlockElement> unlocks = _buildingUnlockQuery
+            .GetSingletonBuffer<BuildingUnlockElement>(true);
+        SetBuildingButtonVisible(beltButton, BuildingTypeEnum.Belt, unlocks);
+        SetBuildingButtonVisible(minerButton, BuildingTypeEnum.Miner, unlocks);
+        SetBuildingButtonVisible(crafterButton, BuildingTypeEnum.Crafter, unlocks);
+        SetBuildingButtonVisible(splitterButton, BuildingTypeEnum.Splitter, unlocks);
+        SetBuildingButtonVisible(mergerButton, BuildingTypeEnum.Merger, unlocks);
+        SetBuildingButtonVisible(storageButton, BuildingTypeEnum.Storage, unlocks);
+        SetBuildingButtonVisible(powerPoleButton, BuildingTypeEnum.PowerPole, unlocks);
+        SetBuildingButtonVisible(
+            coalGeneratorButton,
+            BuildingTypeEnum.CoalGenerator,
+            unlocks);
+        SetBuildingButtonVisible(
+            droneStationButton,
+            BuildingTypeEnum.DroneStation,
+            unlocks);
+        SetBuildingButtonVisible(
+            researchBuildingButton,
+            BuildingTypeEnum.ResearchBuilding,
+            unlocks);
+
+        if (_selectedBuildingType.HasValue &&
+            !unlocks.IsBuildingUnlocked(_selectedBuildingType.Value))
+            ClearBuildingSelection();
+    }
+
+    private static void SetBuildingButtonVisible(
+        Button button,
+        BuildingTypeEnum buildingType,
+        DynamicBuffer<BuildingUnlockElement> unlocks)
+    {
+        if (button == null)
+            return;
+
+        button.style.display = unlocks.IsBuildingUnlocked(buildingType)
+            ? DisplayStyle.Flex
+            : DisplayStyle.None;
     }
 }

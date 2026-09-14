@@ -33,6 +33,7 @@ public partial class CrafterSystem : SystemBase
         RequireForUpdate<CrafterConfig>();
         RequireForUpdate<ItemPrefabElement>();
         RequireForUpdate<BuildingPrefabElement>();
+        RequireForUpdate<ResearchConfig>();
     }
 
     protected override void OnUpdate()
@@ -64,11 +65,29 @@ public partial class CrafterSystem : SystemBase
         EntityCommandBuffer ecb = SystemAPI.GetSingleton<EndSimulationEntityCommandBufferSystem.Singleton>()
             .CreateCommandBuffer(World.Unmanaged);
         float deltaTime = SystemAPI.Time.DeltaTime;
+        DynamicBuffer<ResearchStatModifierElement> researchModifiers =
+            SystemAPI.GetSingletonBuffer<ResearchStatModifierElement>(true);
+        using NativeArray<RecipeUnlockElement> recipeUnlocks =
+            DynamicBufferCopyUtility.CreateNativeCopy(
+                SystemAPI.GetSingletonBuffer<RecipeUnlockElement>(true),
+                Allocator.Temp);
+        float craftingSpeedMultiplier = researchModifiers.GetStatMultiplier(
+            ResearchStatModifierTypeEnum.CraftingSpeed);
 
         for (int i = 0; i < crafters.Length; i++)
         {
             Entity crafterEntity = crafters[i];
             Crafter crafter = EntityManager.GetComponentData<Crafter>(crafterEntity);
+
+            if (!IsSelectedRecipeUnlocked(crafter, recipes, recipeUnlocks))
+            {
+                crafter.selectedItemType = ItemTypeEnum.None;
+                crafter.progress = 0f;
+                crafter.state = CrafterStateEnum.NoRecipe;
+                EntityManager.SetComponentData(crafterEntity, crafter);
+                continue;
+            }
+
             int2 crafterCell = EntityManager.GetComponentData<GridPosition>(crafterEntity).gridPosition;
             DirectionEnum direction = EntityManager
                 .GetComponentData<Direction>(crafterEntity)
@@ -90,7 +109,7 @@ public partial class CrafterSystem : SystemBase
                 .GetProgressDeltaTime(
                     EntityManager,
                     crafterEntity,
-                    deltaTime);
+                    deltaTime) * craftingSpeedMultiplier;
             UpdateCrafting(
                 ref crafter,
                 storedItems,
@@ -110,6 +129,22 @@ public partial class CrafterSystem : SystemBase
 
             EntityManager.SetComponentData(crafterEntity, crafter);
         }
+    }
+
+    private static bool IsSelectedRecipeUnlocked(
+        in Crafter crafter,
+        NativeArray<CrafterRecipeElement> recipes,
+        NativeArray<RecipeUnlockElement> recipeUnlocks)
+    {
+        if (!crafter.selectedItemType.IsValid())
+            return true;
+
+        if (!recipes.TryFindRecipe(
+                crafter.selectedItemType,
+                out CrafterRecipeElement recipe))
+            return false;
+
+        return recipeUnlocks.IsRecipeUnlocked(recipe.id);
     }
 
     private void TryOutputProducedItems(

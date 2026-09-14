@@ -169,6 +169,15 @@ public class DroneConstructionTests
         {
             defaultTaskPriority = 5
         });
+
+        Entity researchConfig = _entityManager.CreateEntity(
+            typeof(ResearchConfig),
+            typeof(BuildingUnlockElement));
+        _entityManager.GetBuffer<BuildingUnlockElement>(researchConfig).Add(
+            new BuildingUnlockElement
+            {
+                buildingType = BuildingTypeEnum.Storage
+            });
     }
 
     private Entity CreateSite(

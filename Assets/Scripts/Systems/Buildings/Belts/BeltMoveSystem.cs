@@ -20,6 +20,7 @@ public partial class BeltMoveSystem : SystemBase
     protected override void OnCreate()
     {
         _chunkMap = World.GetExistingSystemManaged<ChunkMapSystem>();
+        RequireForUpdate<ResearchConfig>();
     }
 
     protected override void OnUpdate()
@@ -31,7 +32,11 @@ public partial class BeltMoveSystem : SystemBase
                 return;
         }
 
-        BuildActiveCellSnapshots();
+        DynamicBuffer<ResearchStatModifierElement> researchModifiers =
+            SystemAPI.GetSingletonBuffer<ResearchStatModifierElement>(true);
+        float beltSpeedMultiplier = researchModifiers.GetStatMultiplier(
+            ResearchStatModifierTypeEnum.BeltSpeed);
+        BuildActiveCellSnapshots(beltSpeedMultiplier);
 
         if (_activeCells.Count == 0)
             return;
@@ -66,7 +71,7 @@ public partial class BeltMoveSystem : SystemBase
         Dependency = moveResults.Dispose(Dependency);
     }
 
-    private void BuildActiveCellSnapshots()
+    private void BuildActiveCellSnapshots(float speedMultiplier)
     {
         _activeCells.Clear();
         _itemSnapshots.Clear();
@@ -112,7 +117,7 @@ public partial class BeltMoveSystem : SystemBase
             {
                 cell = cell,
                 direction = direction.dir,
-                speed = belt.speed,
+                speed = belt.speed * speedMultiplier,
                 currentStartIndex = currentStartIndex,
                 currentItemCount = currentItemCount,
                 nextStartIndex = nextStartIndex,

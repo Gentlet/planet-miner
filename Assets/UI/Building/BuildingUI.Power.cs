@@ -307,4 +307,15 @@ public partial class BuildingUI
         reason = "속도 변경 이유: 전력 정상 공급 (100%)";
         return 1f;
     }
+
+    private float GetResearchSpeedMultiplier(
+        ResearchStatModifierTypeEnum type)
+    {
+        if (!TryGetResearchConfigEntity(out Entity configEntity))
+            return 1f;
+
+        DynamicBuffer<ResearchStatModifierElement> modifiers = _entityManager
+            .GetBuffer<ResearchStatModifierElement>(configEntity, true);
+        return modifiers.GetStatMultiplier(type);
+    }
 }

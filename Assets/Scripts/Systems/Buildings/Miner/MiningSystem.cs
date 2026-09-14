@@ -34,6 +34,7 @@ public partial class MiningSystem : SystemBase
         RequireForUpdate<ItemPrefabElement>();
         RequireForUpdate<ItemStorageLimitElement>();
         RequireForUpdate<BuildingPrefabElement>();
+        RequireForUpdate<ResearchConfig>();
     }
 
     protected override void OnUpdate()
@@ -59,6 +60,10 @@ public partial class MiningSystem : SystemBase
             .GetSingleton<EndSimulationEntityCommandBufferSystem.Singleton>()
             .CreateCommandBuffer(World.Unmanaged);
         float deltaTime = SystemAPI.Time.DeltaTime;
+        DynamicBuffer<ResearchStatModifierElement> researchModifiers =
+            SystemAPI.GetSingletonBuffer<ResearchStatModifierElement>(true);
+        float miningSpeedMultiplier = researchModifiers.GetStatMultiplier(
+            ResearchStatModifierTypeEnum.MiningSpeed);
 
         for (int i = 0; i < miners.Length; i++)
         {
@@ -76,7 +81,7 @@ public partial class MiningSystem : SystemBase
                 .GetProgressDeltaTime(
                     EntityManager,
                     minerEntity,
-                    deltaTime);
+                    deltaTime) * miningSpeedMultiplier;
 
             Mine(
                 ref ecb,

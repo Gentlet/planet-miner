@@ -253,6 +253,14 @@ public partial class BuildingSpawnSystem : SystemBase
                         isMainStation = false
                     });
                 break;
+            case BuildingTypeEnum.ResearchBuilding:
+                ecb.AddComponent(instance, new ResearchBuilding
+                {
+                    speed = runtimeConfig.speed,
+                    state = ResearchBuildingStateEnum.NoActiveResearch
+                });
+                ecb.AddBuffer<StoredItemElement>(instance);
+                break;
         }
     }
 

@@ -186,6 +186,7 @@ public partial class BuildingUI
             BuildingTypeEnum.CoalGenerator => "석탄 발전기",
             BuildingTypeEnum.MainFacility => "메인스테이션",
             BuildingTypeEnum.DroneStation => "드론 정거장",
+            BuildingTypeEnum.ResearchBuilding => "연구건물",
             _ => "건물"
         };
     }

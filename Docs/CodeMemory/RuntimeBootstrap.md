@@ -32,13 +32,14 @@
 - `PowerConfigLoadSystem` + `PowerConfigParser.*`: 전신주 범위, 발전기 출력, 석탄 연료, 소비 건물 설정을 게시한다. 전체 문서 검증이 성공한 뒤에만 ready config 엔티티를 공개한다.
 - `DroneConfigLoadSystem` + `DroneConfigParser`: 정거장 저장량, 운반량, 이동·배터리·충전 수치를 `DroneConfig`로 게시한다.
 - `StartingItemConfigLoadSystem` + `StartingItemConfigParser`: Main Facility의 초기 지급 목록을 `StartingItemConfigElement(itemType, quantity)` 버퍼로 게시한다.
+- `ResearchConfigLoadSystem` + `ResearchConfigParser`: 제작 레시피 ID를 기준으로 연구 정의, 선행 관계, 주기 재료, 보상, 초기 건물·레시피 해금을 검증해 하나의 `ResearchConfig` 엔티티에 게시한다. 하나라도 잘못되면 부분 게시하지 않는다.
 
-설정 원본은 `Assets/Resources/Config/`에 있다. 자원 생성 설정만 Baker가 읽고, 일반 건물·공사·레시피·저장·전력·드론·시작 아이템 설정은 런타임 시스템이 `ConfigResourceLoader`를 통해 읽는다. 바닥 바이옴 설정도 `Resources`에서 읽지만 ECS 설정 엔티티가 아니라 `FloorChunkRenderer`의 프레젠테이션 설정으로 사용된다.
+설정 원본은 `Assets/Resources/Config/`에 있다. 자원 생성 설정만 Baker가 읽고, 일반 건물·공사·레시피·저장·전력·드론·연구·시작 아이템 설정은 런타임 시스템이 `ConfigResourceLoader`를 통해 읽는다. 바닥 바이옴 설정도 `Resources`에서 읽지만 ECS 설정 엔티티가 아니라 `FloorChunkRenderer`의 프레젠테이션 설정으로 사용된다.
 
 ## 초기 실행 흐름
 
 1. SubScene이 베이크된 프리팹 버퍼와 초기 청크/자원 설정을 ECS 월드에 넣는다.
-2. config loader의 `OnCreate`가 JSON을 파싱하고 설정 엔티티를 만든다.
+2. config loader가 JSON을 파싱하고 설정 엔티티를 만든다. `ResearchConfigLoadSystem`은 `CrafterConfig`가 준비된 뒤 레시피 보상 대상을 검증한다.
 3. `MainFacilityBootstrapSystem`이 `PowerConfig`, `DroneConfig`, `StartingItemConfigElement`, 건물 프리팹 버퍼를 기다린다.
 4. 주 시설이 없으면 `(0,0)` footprint를 `ChunkMapSystem`에 예약하고 MainFacility 프리팹을 인스턴스화한다.
 5. 주 시설에 `BuildingOccupantRequest`, `Storage`, `StoredItemElement`, `StoredDroneElement`, `DroneStation`, `PowerConsumer`, `PowerGenerator`, 가상 `PowerPole`, `IndestructibleBuilding`을 추가한다.
@@ -51,6 +52,7 @@
 - `ItemSpawnSystem`, `WorldItemSpawnSystem`은 `ItemPrefabElement`에 의존한다.
 - `ResourceSpawnSystem`은 `ResourcePrefabElement`, 자원 생성은 SubScene의 생성 설정에 의존한다.
 - 공사, 드론 작업, 저장 용량, 전력 토폴로지와 생산 속도는 런타임 config singleton이 없으면 시작하거나 진행할 수 없다.
+- `ResearchConfig`는 연구뿐 아니라 건물·레시피 해금과 채굴·제작·벨트 속도 보너스의 기준이다. 로드에 실패하면 이를 요구하는 공사 생성과 주요 생산 시스템도 실행되지 않는다.
 - UI의 레시피/저장 표시는 `CrafterConfig` 엔티티와 그 버퍼를 직접 조회한다.
 
 ## 수정 시 함께 확인할 영역

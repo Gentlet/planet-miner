@@ -417,6 +417,9 @@ MonoBehaviour:
   - type: 9
     prefab: {fileID: 2222127362126821372, guid: d4b5408225a54ef5874d7eac0cbb0f2f, type: 3}
     size: {x: 2, y: 2}
+  - type: 10
+    prefab: {fileID: 2222127362126821372, guid: 185e9f5b58f333045a2c3a39f2de1555, type: 3}
+    size: {x: 3, y: 3}
 --- !u!114 &1731399919
 MonoBehaviour:
   m_ObjectHideFlags: 0

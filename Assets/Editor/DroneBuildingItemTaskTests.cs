@@ -350,6 +350,14 @@ public class DroneBuildingItemTaskTests : EcsWorldTestFixture
             itemType = ItemTypeEnum.Copper_Ore,
             amount = 1
         });
+
+        Entity researchConfig = _entityManager.CreateEntity(
+            typeof(ResearchConfig),
+            typeof(RecipeUnlockElement));
+        DynamicBuffer<RecipeUnlockElement> recipeUnlocks = _entityManager
+            .GetBuffer<RecipeUnlockElement>(researchConfig);
+        recipeUnlocks.Add(new RecipeUnlockElement { recipeId = 1 });
+        recipeUnlocks.Add(new RecipeUnlockElement { recipeId = 2 });
     }
 
     private Entity CreateStation(int2 position)

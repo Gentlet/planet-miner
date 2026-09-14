@@ -29,8 +29,11 @@ public partial class BuildingUI
                 ? $"벨트 위 아이템 {totalItemCount}개"
                 : "벨트 위 아이템 없음",
             totalItemCount > 0 ? "status-normal" : "status-waiting");
-        _beltMaximumSpeedLabel.text =
-            $"최대 이동 속도: {belt.speed:0.##} 칸/초";
+        float researchSpeedMultiplier = GetResearchSpeedMultiplier(
+            ResearchStatModifierTypeEnum.BeltSpeed);
+        _beltMaximumSpeedLabel.text = researchSpeedMultiplier > 1f
+            ? $"최대 이동 속도: {belt.speed * researchSpeedMultiplier:0.##} 칸/초 (연구 ×{researchSpeedMultiplier:0.##})"
+            : $"최대 이동 속도: {belt.speed:0.##} 칸/초";
     }
 
     private int CountBeltItems(Unity.Mathematics.int2 beltCell)

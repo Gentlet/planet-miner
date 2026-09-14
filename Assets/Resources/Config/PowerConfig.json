@@ -30,6 +30,10 @@
     {
       "buildingType": "Crafter",
       "maximumConsumption": 20.0
+    },
+    {
+      "buildingType": "ResearchBuilding",
+      "maximumConsumption": 20.0
     }
   ]
 }

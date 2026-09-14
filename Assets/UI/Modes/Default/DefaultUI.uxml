@@ -4,6 +4,33 @@
     <ui:VisualElement name="root" class="root">
         <ui:VisualElement name="bottom-button-container" class="bottom-button-container">
             <ui:Button name="construction-mode-button" text="건설 모드" class="bottom-button blocking-ui"/>
+            <ui:Button name="research-button" text="연구" class="bottom-button blocking-ui"/>
+        </ui:VisualElement>
+        <ui:VisualElement name="research-panel-root" class="research-panel-root blocking-ui" picking-mode="Position" style="display: none;">
+            <ui:VisualElement class="research-panel">
+                <ui:VisualElement class="header-row">
+                    <ui:Label text="연구" class="building-title"/>
+                    <ui:Button name="research-close-button" text="×" class="close-button"/>
+                </ui:VisualElement>
+                <ui:Label name="research-active-label" text="활성 연구: 없음" class="research-summary-label"/>
+                <ui:Label name="research-building-count-label" text="작동 가능한 연구건물: 0개" class="research-summary-label"/>
+                <ui:VisualElement class="research-body">
+                    <ui:VisualElement class="research-list-panel">
+                        <ui:Label text="연구 가능한 목록" class="section-title"/>
+                        <ui:Label name="research-list-empty" text="현재 연구 가능한 항목이 없습니다." class="research-detail"/>
+                        <ui:ScrollView name="research-available-list" class="research-list-scroll" horizontal-scroller-visibility="Hidden"/>
+                    </ui:VisualElement>
+                    <ui:VisualElement class="research-detail-panel">
+                        <ui:Label name="research-inspected-label" text="연구를 선택하세요" class="section-title"/>
+                        <ui:Label name="research-inspected-description" class="research-detail"/>
+                        <ui:Button name="research-start-button" text="연구 시작" class="research-start-button"/>
+                        <ui:Label text="목록에서 선택한 연구의 후속 경로 · 노드를 클릭하면 배치를 유지하고 상세 정보를 표시합니다." class="research-detail"/>
+                        <ui:ScrollView name="research-tree-scroll" mode="VerticalAndHorizontal" class="research-tree-scroll" horizontal-scroller-visibility="Auto" vertical-scroller-visibility="Auto">
+                            <ui:VisualElement name="research-tree-canvas" class="research-tree-canvas"/>
+                        </ui:ScrollView>
+                    </ui:VisualElement>
+                </ui:VisualElement>
+            </ui:VisualElement>
         </ui:VisualElement>
         <ui:VisualElement name="building-ui-root" class="building-ui-root" picking-mode="Ignore">
             <ui:VisualElement name="building-panel" class="building-panel blocking-ui" picking-mode="Position" style="display: none;">

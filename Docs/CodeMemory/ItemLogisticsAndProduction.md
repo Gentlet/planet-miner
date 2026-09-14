@@ -72,6 +72,14 @@ Storage는 buffer append 순서를 FIFO로 사용하며 `StoredItemElement[0]`�
 
 새 crafter는 기본적으로 `ItemTypeEnum.None`, `CrafterStateEnum.NoRecipe`이며 UI에서 첫 레시피를 명시적으로 선택한다.
 
+### ResearchBuilding
+
+`ResearchSystem`은 전역 `ResearchState.activeResearchId` 하나를 기준으로 모든 연구건물을 병렬 갱신한다. 각 건물은 footprint 전체에서 현재 연구 재료만 주기당 필요량의 2배까지 받고, 전체 묶음과 전력이 준비됐을 때 재료를 먼저 소비해 로컬 주기를 시작한다. 주기 완료 시에만 전역 확정 진척도를 올린다. 연구 변경과 완료는 로컬 주기를 반환 없이 초기화하지만 아직 소비하지 않은 저장 재료는 유지하며, 부적합 재료는 기존 드론 회수 요청 경로를 사용한다.
+
+건물·레시피 해금과 속도 보너스는 `ResearchConfig` 엔티티의 버퍼가 소유한다. 잠긴 레시피는 UI에서 숨기며 `CrafterRecipeChangeSystem`과 `CrafterSystem`도 우회 선택을 거부한다. 채굴, 제작, 벨트, 연구 속도 보너스는 기본값에 완료 연구의 퍼센트 합계를 곱한다.
+
+연구 선택·진척도·완료·보상과 연구건물의 상세 수명주기는 [`ResearchSystem.md`](ResearchSystem.md)를 따른다. 이 문서에서는 연구건물이 기존 월드 입력 및 `ItemStorageSystem` 소유권 경계를 공유한다는 연결만 다룬다.
+
 ## 다른 시스템과의 의존 관계
 
 - 공간과 벨트 조회: `ChunkMapSystem`

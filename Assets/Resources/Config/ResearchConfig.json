@@ -1,0 +1,80 @@
+{
+  "initiallyUnlockedBuildings": [
+    "Belt",
+    "Miner",
+    "Crafter",
+    "Storage",
+    "PowerPole",
+    "ResearchBuilding"
+  ],
+  "initiallyUnlockedRecipeIds": [1, 2],
+  "researches": [
+    {
+      "stableId": "logistics_distribution",
+      "displayName": "물류 분배",
+      "description": "물류 흐름을 나누고 합치는 기초 설비를 해금합니다.",
+      "prerequisiteIds": [],
+      "ingredients": [
+        { "itemType": "Iron", "amount": 1 },
+        { "itemType": "Copper", "amount": 1 }
+      ],
+      "cycleDuration": 5.0,
+      "progressPerCycle": 10.0,
+      "requiredProgress": 100.0,
+      "rewards": [
+        { "type": "BuildingUnlock", "buildingType": "Splitter" },
+        { "type": "BuildingUnlock", "buildingType": "Merger" }
+      ]
+    },
+    {
+      "stableId": "material_processing",
+      "displayName": "소재 가공",
+      "description": "철봉과 구리봉 제작 기술을 해금합니다.",
+      "prerequisiteIds": [],
+      "ingredients": [
+        { "itemType": "Iron", "amount": 1 },
+        { "itemType": "Copper", "amount": 1 }
+      ],
+      "cycleDuration": 5.0,
+      "progressPerCycle": 10.0,
+      "requiredProgress": 100.0,
+      "rewards": [
+        { "type": "RecipeUnlock", "recipeId": 3 },
+        { "type": "RecipeUnlock", "recipeId": 4 }
+      ]
+    },
+    {
+      "stableId": "coal_power",
+      "displayName": "석탄 발전",
+      "description": "석탄을 연료로 사용하는 발전 설비를 해금합니다.",
+      "prerequisiteIds": ["material_processing"],
+      "ingredients": [
+        { "itemType": "Iron_Stick", "amount": 1 },
+        { "itemType": "Copper_Stick", "amount": 1 }
+      ],
+      "cycleDuration": 5.0,
+      "progressPerCycle": 10.0,
+      "requiredProgress": 100.0,
+      "rewards": [
+        { "type": "BuildingUnlock", "buildingType": "CoalGenerator" }
+      ]
+    },
+    {
+      "stableId": "drone_logistics",
+      "displayName": "드론 물류",
+      "description": "드론 제작과 전용 정거장 운용 기술을 해금합니다.",
+      "prerequisiteIds": ["logistics_distribution", "material_processing"],
+      "ingredients": [
+        { "itemType": "Iron_Stick", "amount": 2 },
+        { "itemType": "Copper_Stick", "amount": 2 }
+      ],
+      "cycleDuration": 5.0,
+      "progressPerCycle": 10.0,
+      "requiredProgress": 100.0,
+      "rewards": [
+        { "type": "BuildingUnlock", "buildingType": "DroneStation" },
+        { "type": "RecipeUnlock", "recipeId": 5 }
+      ]
+    }
+  ]
+}

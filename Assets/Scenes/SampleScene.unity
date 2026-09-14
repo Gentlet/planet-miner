@@ -173,6 +173,8 @@ MonoBehaviour:
     sprite: {fileID: 746440195830365729, guid: 166e46e5583893446a36c920f0f26d4c, type: 3}
   - type: 9
     sprite: {fileID: -8853323488981343470, guid: 71c57f0f08335244aa663059fc0a8726, type: 3}
+  - type: 10
+    sprite: {fileID: -3790502976114559023, guid: 63e3f8c8bf373344194f0614d76c4b64, type: 3}
   canPlaceColor: {r: 0, g: 1, b: 0, a: 0.5}
   blockedColor: {r: 1, g: 0, b: 0, a: 0.5}
 --- !u!114 &50267807

@@ -3,6 +3,7 @@
     { "buildingType": "Belt", "speed": 10.0 },
     { "buildingType": "Miner", "speed": 0.1 },
     { "buildingType": "Crafter", "speed": 1.0 },
-    { "buildingType": "Storage", "storageCapacity": 10 }
+    { "buildingType": "Storage", "storageCapacity": 10 },
+    { "buildingType": "ResearchBuilding", "speed": 1.0 }
   ]
 }

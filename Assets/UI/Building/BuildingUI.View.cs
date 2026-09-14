@@ -212,6 +212,28 @@ public partial class BuildingUI
         SetProgressVisible(true);
     }
 
+    private void SetResearchBuildingLayout()
+    {
+        _buildingTitleLabel.text = "연구건물";
+        _recipeTitleLabel.text = "현재 연구";
+        _inputTitleLabel.text = "연구 재료 (벨트 투입 전용)";
+        _progressTitleLabel.text = "현재 주기 진행도";
+        _inputContainer.RemoveFromClassList("storage-grid");
+        SetVisible(_powerContainer, true);
+        SetVisible(_droneContainer, false);
+        SetVisible(_beltContainer, false);
+        SetVisible(_recipeTitleLabel, true);
+        SetVisible(_currentRecipeLabel, true);
+        SetVisible(_recipeContainer, false);
+        SetVisible(_inputTitleLabel, true);
+        SetVisible(_inputContainer, true);
+        SetDedicatedDroneStorageVisible(false);
+        SetVisible(_outputTitleLabel, false);
+        SetVisible(_outputContainer, false);
+        SetVisible(_droneTransferContainer, false);
+        SetProgressVisible(true);
+    }
+
     private void SetStorageLayout(bool hasDedicatedDroneStorage)
     {
         _buildingTitleLabel.text = hasDedicatedDroneStorage
@@ -649,19 +671,7 @@ public partial class BuildingUI
 
     private static string GetItemDisplayName(ItemTypeEnum itemType)
     {
-        return itemType switch
-        {
-            ItemTypeEnum.Iron_Ore => "철 광석",
-            ItemTypeEnum.Copper_Ore => "구리 광석",
-            ItemTypeEnum.Coal => "석탄",
-            ItemTypeEnum.Stone => "돌",
-            ItemTypeEnum.Iron => "철",
-            ItemTypeEnum.Copper => "구리",
-            ItemTypeEnum.Iron_Stick => "철 막대",
-            ItemTypeEnum.Copper_Stick => "구리 막대",
-            ItemTypeEnum.Drone => "드론",
-            _ => "없음"
-        };
+        return itemType.GetDisplayName();
     }
 
     private void SetPanelVisible(bool visible)

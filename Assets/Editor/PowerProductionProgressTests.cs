@@ -2,6 +2,7 @@ using NUnit.Framework;
 using Unity.Core;
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Transforms;
 
 public class PowerProductionProgressTests
 {
@@ -157,11 +158,250 @@ public class PowerProductionProgressTests
         Assert.That(crafter.state, Is.EqualTo(CrafterStateEnum.Crafting));
     }
 
+    [Test]
+    public void TwoResearchBuildingsCompleteOneGlobalResearchInParallel()
+    {
+        _world.GetOrCreateSystemManaged<ChunkMapSystem>();
+        _world.GetOrCreateSystemManaged<ItemTrackingSystem>();
+        _world.GetOrCreateSystemManaged<ItemStorageSystem>();
+        EndSimulationEntityCommandBufferSystem endSimulationEcb = _world
+            .GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>();
+
+        Entity buildingConfig = _entityManager.CreateEntity(
+            typeof(BuildingPrefabElement));
+        _entityManager.GetBuffer<BuildingPrefabElement>(buildingConfig).Add(
+            new BuildingPrefabElement
+            {
+                type = BuildingTypeEnum.ResearchBuilding,
+                size = new int2(3, 3)
+            });
+
+        Entity researchConfig = _entityManager.CreateEntity(
+            typeof(ResearchConfig),
+            typeof(ResearchState),
+            typeof(ResearchDefinitionElement),
+            typeof(ResearchIngredientElement),
+            typeof(ResearchRewardElement),
+            typeof(ResearchProgressElement),
+            typeof(BuildingUnlockElement),
+            typeof(RecipeUnlockElement),
+            typeof(ResearchStatModifierElement));
+        Unity.Collections.FixedString64Bytes researchId =
+            new("parallel_test");
+        _entityManager.SetComponentData(researchConfig, new ResearchState
+        {
+            activeResearchId = researchId
+        });
+        _entityManager.GetBuffer<ResearchDefinitionElement>(researchConfig).Add(
+            new ResearchDefinitionElement
+            {
+                stableId = researchId,
+                cycleDuration = 5f,
+                progressPerCycle = 10f,
+                requiredProgress = 20f
+            });
+        _entityManager.GetBuffer<ResearchIngredientElement>(researchConfig).Add(
+            new ResearchIngredientElement
+            {
+                researchId = researchId,
+                itemType = ItemTypeEnum.Iron,
+                amount = 1
+            });
+        _entityManager.GetBuffer<ResearchRewardElement>(researchConfig).Add(
+            new ResearchRewardElement
+            {
+                researchId = researchId,
+                type = ResearchRewardTypeEnum.BuildingUnlock,
+                buildingType = BuildingTypeEnum.Splitter
+            });
+        _entityManager.GetBuffer<ResearchProgressElement>(researchConfig).Add(
+            new ResearchProgressElement { researchId = researchId });
+
+        Entity firstBuilding = CreateResearchBuilding(new int2(0, 0));
+        Entity secondBuilding = CreateResearchBuilding(new int2(5, 0));
+        AddStoredResearchItem(firstBuilding, ItemTypeEnum.Iron);
+        AddStoredResearchItem(secondBuilding, ItemTypeEnum.Iron);
+        ResearchSystem researchSystem = _world
+            .GetOrCreateSystemManaged<ResearchSystem>();
+
+        _world.SetTime(new TimeData(0d, 0f));
+        researchSystem.Update();
+
+        Assert.That(
+            _entityManager.GetComponentData<ResearchBuilding>(firstBuilding)
+                .cycleActive,
+            Is.True);
+        Assert.That(
+            _entityManager.GetComponentData<ResearchBuilding>(secondBuilding)
+                .cycleActive,
+            Is.True);
+        Assert.That(
+            _entityManager.GetBuffer<StoredItemElement>(firstBuilding).Length,
+            Is.Zero);
+        Assert.That(
+            _entityManager.GetBuffer<StoredItemElement>(secondBuilding).Length,
+            Is.Zero);
+
+        _world.SetTime(new TimeData(5d, 5f));
+        researchSystem.Update();
+        endSimulationEcb.Update();
+
+        ResearchProgressElement completedProgress = _entityManager
+            .GetBuffer<ResearchProgressElement>(researchConfig)[0];
+        ResearchState state = _entityManager
+            .GetComponentData<ResearchState>(researchConfig);
+        DynamicBuffer<BuildingUnlockElement> unlocks = _entityManager
+            .GetBuffer<BuildingUnlockElement>(researchConfig);
+        Assert.That(completedProgress.progress, Is.EqualTo(20f));
+        Assert.That(completedProgress.completed, Is.True);
+        Assert.That(state.activeResearchId.Length, Is.Zero);
+        Assert.That(
+            unlocks.IsBuildingUnlocked(BuildingTypeEnum.Splitter),
+            Is.True);
+        Assert.That(
+            _entityManager.GetComponentData<ResearchBuilding>(firstBuilding)
+                .cycleActive,
+            Is.False);
+        Assert.That(
+            _entityManager.GetComponentData<ResearchBuilding>(secondBuilding)
+                .cycleActive,
+            Is.False);
+    }
+
+    [Test]
+    public void ResearchSystemStoresFirstWorldInputWithoutInvalidatingConfigBuffers()
+    {
+        ChunkMapSystem chunkMap = _world
+            .GetOrCreateSystemManaged<ChunkMapSystem>();
+        _world.GetOrCreateSystemManaged<ItemTrackingSystem>();
+        _world.GetOrCreateSystemManaged<ItemStorageSystem>();
+        _world.GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>();
+
+        Entity buildingConfig = _entityManager.CreateEntity(
+            typeof(BuildingPrefabElement));
+        _entityManager.GetBuffer<BuildingPrefabElement>(buildingConfig).Add(
+            new BuildingPrefabElement
+            {
+                type = BuildingTypeEnum.ResearchBuilding,
+                size = new int2(3, 3)
+            });
+
+        Unity.Collections.FixedString64Bytes researchId =
+            new("world_input_test");
+        Entity researchConfig = _entityManager.CreateEntity(
+            typeof(ResearchConfig),
+            typeof(ResearchState),
+            typeof(ResearchDefinitionElement),
+            typeof(ResearchIngredientElement),
+            typeof(ResearchRewardElement),
+            typeof(ResearchProgressElement),
+            typeof(BuildingUnlockElement),
+            typeof(RecipeUnlockElement),
+            typeof(ResearchStatModifierElement));
+        _entityManager.SetComponentData(researchConfig, new ResearchState
+        {
+            activeResearchId = researchId
+        });
+        _entityManager.GetBuffer<ResearchDefinitionElement>(researchConfig).Add(
+            new ResearchDefinitionElement
+            {
+                stableId = researchId,
+                cycleDuration = 5f,
+                progressPerCycle = 10f,
+                requiredProgress = 100f
+            });
+        _entityManager.GetBuffer<ResearchIngredientElement>(researchConfig).Add(
+            new ResearchIngredientElement
+            {
+                researchId = researchId,
+                itemType = ItemTypeEnum.Iron,
+                amount = 1
+            });
+        _entityManager.GetBuffer<ResearchProgressElement>(researchConfig).Add(
+            new ResearchProgressElement { researchId = researchId });
+
+        Entity researchBuilding = CreateResearchBuilding(int2.zero);
+        Entity worldItem = _entityManager.CreateEntity(
+            typeof(Item),
+            typeof(LocalTransform),
+            typeof(LocalToWorld),
+            typeof(GridPosition),
+            typeof(ItemCellChanged));
+        _entityManager.SetComponentData(
+            worldItem,
+            new Item { type = ItemTypeEnum.Iron });
+        _entityManager.SetComponentData(
+            worldItem,
+            LocalTransform.FromPosition(float3.zero));
+        _entityManager.SetComponentData(
+            worldItem,
+            new GridPosition { gridPosition = int2.zero });
+        _entityManager.SetComponentEnabled<ItemCellChanged>(worldItem, false);
+        Assert.That(chunkMap.TryRegisterItem(int2.zero, worldItem), Is.True);
+
+        ResearchSystem researchSystem = _world
+            .GetOrCreateSystemManaged<ResearchSystem>();
+        _world.SetTime(new TimeData(0d, 0f));
+
+        Assert.DoesNotThrow(() => researchSystem.Update());
+
+        ResearchBuilding building = _entityManager
+            .GetComponentData<ResearchBuilding>(researchBuilding);
+        Assert.That(building.cycleActive, Is.True);
+        Assert.That(
+            _entityManager.GetBuffer<StoredItemElement>(researchBuilding).Length,
+            Is.Zero);
+    }
+
     private Entity CreatePowerConsumer(float supplyRatio)
     {
         Entity entity = _entityManager.CreateEntity(typeof(PowerConsumer));
         SetSupplyRatio(entity, supplyRatio);
         return entity;
+    }
+
+    private Entity CreateResearchBuilding(int2 position)
+    {
+        Entity entity = _entityManager.CreateEntity(
+            typeof(ResearchBuilding),
+            typeof(GridPosition),
+            typeof(Direction),
+            typeof(StoredItemElement),
+            typeof(PowerConsumer));
+        _entityManager.SetComponentData(entity, new ResearchBuilding
+        {
+            speed = 1f,
+            state = ResearchBuildingStateEnum.WaitingForMaterials
+        });
+        _entityManager.SetComponentData(entity, new GridPosition
+        {
+            gridPosition = position
+        });
+        _entityManager.SetComponentData(entity, new Direction
+        {
+            dir = DirectionEnum.Up
+        });
+        _entityManager.SetComponentData(entity, new PowerConsumer
+        {
+            supplyRatio = 1f
+        });
+        return entity;
+    }
+
+    private void AddStoredResearchItem(Entity owner, ItemTypeEnum itemType)
+    {
+        Entity item = _entityManager.CreateEntity(
+            typeof(Item),
+            typeof(StoredItem),
+            typeof(Disabled));
+        _entityManager.SetComponentData(item, new Item { type = itemType });
+        _entityManager.SetComponentData(item, new StoredItem { owner = owner });
+        _entityManager.GetBuffer<StoredItemElement>(owner).Add(
+            new StoredItemElement
+            {
+                itemEntity = item,
+                type = itemType
+            });
     }
 
     private void SetSupplyRatio(Entity entity, float supplyRatio)
@@ -205,6 +445,13 @@ public class PowerProductionProgressTests
         _entityManager.CreateEntity(
             typeof(ItemPrefabElement),
             typeof(ItemStorageLimitElement));
+        Entity researchConfigEntity = _entityManager.CreateEntity(
+            typeof(ResearchConfig),
+            typeof(ResearchState),
+            typeof(ResearchStatModifierElement),
+            typeof(RecipeUnlockElement));
+        _entityManager.GetBuffer<RecipeUnlockElement>(researchConfigEntity).Add(
+            new RecipeUnlockElement { recipeId = 1 });
         return _entityManager.CreateEntity(
             typeof(CrafterConfig),
             typeof(CrafterRecipeElement),

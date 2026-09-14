@@ -23,6 +23,8 @@
 
 `DefaultUI`는 건설 모드 버튼 callback을 `OnEnable/OnDisable`에서 관리한다. `ConstructionModeUI`도 건물·우선순위 버튼과 placement event를 같은 lifecycle에서 연결/해제한다.
 
+`DefaultUI.Research`는 같은 UIDocument 안의 전역 연구 오버레이를 제어한다. 왼쪽 목록 선택은 그래프 루트와 상세 조회를 바꾸며, 그래프 노드 선택은 배치와 스크롤을 유지하고 상세 조회만 바꾼다. `ResearchTreeLayout`이 선행 관계로 위→아래 배치를 계산하며 수동 UI 좌표는 사용하지 않는다. 연구 시작 버튼만 `ResearchSelectionRequest`를 만든다. 상단에는 실제 활성 연구의 설명과 주기당 재료, 상세에는 조회 연구의 처음부터 완료 기준 총 재료량을 표시한다. 잠긴 노드도 조회할 수 있으며 미완료 선행 조건을 표시한다. 목록에서 루트 변경 때만 트리를 다시 만들고, 0.1초 갱신에서는 버튼과 `FixedString64Bytes` 키 딕셔너리 및 바인딩 시 캐싱한 `EntityQuery`를 재사용한다. 연구건물 수와 전역 확정 진척도는 ECS에서 직접 읽는다. 상세 규칙은 [ResearchSystem.md](ResearchSystem.md)를 따른다.
+
 ## 건설 모드 입력
 
 `ConstructionModeUI`는 건물 버튼과 키보드 단축키를 `BuildingPlacementOperation`으로 변환한다. 동일 버튼을 다시 누르면 선택을 해제한다. normal task priority 1~10 선택은 `BuildingPlacementController`에 전달되어 새 공사/철거 요청에 기록되며, 1이 가장 높고 10이 가장 낮고 기본 선택은 5다.
@@ -54,6 +56,7 @@
 - `.Drone`: 선택 드론의 상태, 배터리, 화물, 성능, 작업 할당 표시.
 - `.Belt`: 선택 벨트 셀의 월드 아이템 종류별 개수와 `Belt.speed` 최대 이동 속도 표시.
 - `.Construction`: `ConstructionSite`의 필요/도착 자재, 납품률, 집계 운송 상태를 표시하고, 현장이 실제 건물로 전환되면 같은 셀의 건물 UI로 선택을 넘긴다.
+- `BuildingUI.cs`의 연구건물 분기: 활성 연구, 전역/로컬 진척도, 2주기 입력 용량, 회수 대기 재료, 전력과 유효 연구 속도, 짧은 주기 초기화 결과를 표시한다. 연구 선택 기능은 두지 않는다.
 
 `BindVisualTree`는 패널이 사용하는 필수 UXML element를 한 번에 검증한다. 하나라도 없으면 누락 목록을 기록하고 다시 unbind하여 `IsBound == false`로 남기므로 `Update`의 선택·refresh가 진행되지 않는다. 정상 바인딩 때만 버튼 callback을 연결하며 `OnDisable` 또는 재바인딩 전에 해제한다.
 
@@ -62,6 +65,8 @@
 건물 선택은 먼저 화면상의 활성 드론을 반경 기반으로 찾고, 그 다음 `ChunkMapSystem.TryGetConstructionSite`, `TryGetBuilding` 순으로 셀의 엔티티를 찾는다. 공사 현장은 기본 모드에서만 선택 가능하며, 실제 건물이 생성될 때까지 footprint 예약이 남아 있으면 UI는 완료 전환 상태를 표시한다. 벨트 UI는 선택 엔티티의 `GridPosition`으로 `ChunkMapSystem.GetItems`를 조회한다. UI는 ECS 컴포넌트와 config buffer를 읽어 표시한다.
 
 레시피 변경과 드론 아이템 이동은 직접 buffer를 수정하지 않고 각각 `CrafterRecipeChangeRequest`, `DroneBuildingItemRequestUtility` 경로를 사용한다.
+
+잠긴 건물과 제작 레시피는 각각 건설 UI와 제작기 UI에서 숨긴다. `ConstructionModeUI`는 매 프레임 쿼리를 생성하지 않고 캐싱된 `_buildingUnlockQuery`로 잠금 상태를 갱신하며, 선택된 건물이 잠기면 선택을 해제한다. 표시 계층 외에도 공사 생성 및 레시피 변경 시스템이 같은 해금 버퍼를 확인한다.
 
 ## 월드 작업 표시
 
@@ -85,6 +90,7 @@
 - UI 모드 전환: 두 UIDocument의 display, component enabled, BuildingUI selection, placement enable을 함께 확인한다.
 - UXML element 이름 변경: `BindVisualTree`의 필수 element 목록, callback 해제, `BuildingUIBindingTests`를 함께 수정한다.
 - 새 정보 패널 타입: `IsSupportedBuilding`, refresh 분기, layout, 필요한 config query를 함께 확인한다.
+- 연구 UI 변경: 전역 `DefaultUI.Research`의 조회/시작 요청과 개별 `BuildingUI`의 읽기 전용 상태 표시를 분리하고, `ResearchTreeLayout`, 건물·레시피 해금 UI, 권위 시스템 검증과 `ResearchUITests`를 함께 확인한다. 상세 수명주기는 [`ResearchSystem.md`](ResearchSystem.md)를 따른다.
 - 반복 갱신 UI 변경: 기존 row/slot/empty label 재사용과 다른 layout element 숨김 규칙을 유지하고 `BuildingUIPoolingTests`를 확인한다.
 - 배치 입력 변경: `PointerUtility`, drag state reset, copy/settings 모드, reservation 요청 흐름을 확인한다.
 - 청크 로드 범위 변경: 카메라 requested set, `ChunkLoadRequest`, 자원 generated marker, unload 부재를 확인한다.
@@ -97,6 +103,8 @@
 - Visual Tree는 재생성될 수 있으므로 callback을 `Awake` 한 번만 연결하지 않는다.
 - 필수 UXML element 누락을 부분 바인딩으로 허용하지 않는다. 실패한 tree에서는 선택과 refresh를 진행하지 않는다.
 - 반복 refresh에서 container를 매번 `Clear`하거나 row/slot을 새로 만들지 않는다. `Set*`, `GetOrCreate*`, `Trim*` 경로로 기존 element를 갱신·숨긴다.
+- UI의 매 프레임(`Update`) 또는 주기적 갱신(`0.05~0.1초`)에서 `CreateEntityQuery`를 매번 생성/해제하지 않는다. `Awake`, `OnEnable`, 또는 바인딩 수명주기에서 `EntityQuery`를 캐싱하여 재사용한다.
+- 반복 갱신 루프에서 `FixedString64Bytes`를 `ToString()`으로 변환하여 키 조회를 수행하지 않는다. `FixedString64Bytes` 자체를 딕셔너리 키로 사용하여 GC 가비지를 방지한다.
 - 별도 fullscreen BuildingUI UIDocument를 추가하면 모드 버튼 입력을 가릴 수 있다. 현재 DefaultUI 문서 안의 panel 구조를 유지한다.
 - `blocking-ui`가 빠진 UI는 월드 클릭이 뒤로 통과한다.
 - 컴파일 성공만으로 UI Toolkit element 이름, 화면 배치, pointer 차단, 실제 입력 동작은 검증되지 않는다.

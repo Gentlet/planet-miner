@@ -16,6 +16,7 @@ public partial class ConstructionSiteCreationSystem : SystemBase
         _chunkMap = World.GetOrCreateSystemManaged<ChunkMapSystem>();
         RequireForUpdate<ConstructionConfig>();
         RequireForUpdate<DroneConfig>();
+        RequireForUpdate<ResearchConfig>();
     }
 
     protected override void OnUpdate()
@@ -44,6 +45,16 @@ public partial class ConstructionSiteCreationSystem : SystemBase
             droneConfig.defaultTaskPriority);
         DynamicBuffer<ConstructionSiteReservedCellElement> reservedCells =
             EntityManager.GetBuffer<ConstructionSiteReservedCellElement>(requestEntity);
+
+        DynamicBuffer<BuildingUnlockElement> buildingUnlocks = SystemAPI
+            .GetSingletonBuffer<BuildingUnlockElement>(true);
+
+        if (!buildingUnlocks.IsBuildingUnlocked(request.type))
+        {
+            RejectRequest(requestEntity, reservedCells,
+                $"Construction request targets a locked building. Type : {request.type}");
+            return;
+        }
 
         if (!HasMaterialConfig(configs, request.type))
         {

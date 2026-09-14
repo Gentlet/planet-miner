@@ -9,7 +9,8 @@ internal static class BuildingRuntimeConfigParser
         BuildingTypeEnum.Belt,
         BuildingTypeEnum.Miner,
         BuildingTypeEnum.Crafter,
-        BuildingTypeEnum.Storage
+        BuildingTypeEnum.Storage,
+        BuildingTypeEnum.ResearchBuilding
     };
 
     public static List<BuildingRuntimeConfigElement> Parse(
@@ -119,7 +120,8 @@ internal static class BuildingRuntimeConfigParser
         return buildingType == BuildingTypeEnum.Belt ||
             buildingType == BuildingTypeEnum.Miner ||
             buildingType == BuildingTypeEnum.Crafter ||
-            buildingType == BuildingTypeEnum.Storage;
+            buildingType == BuildingTypeEnum.Storage ||
+            buildingType == BuildingTypeEnum.ResearchBuilding;
     }
 
     private static List<BuildingRuntimeConfigElement> LogInvalidEntry(

@@ -24,6 +24,7 @@ public partial class BuildingUI : MonoBehaviour
     private EntityQuery _activeDroneQuery;
     private EntityQuery _droneBuildingTaskQuery;
     private Entity _configEntity;
+    private Entity _researchConfigEntity;
     private Entity _selectedBuilding;
     private Entity _selectedDrone;
     private Entity _selectedConstructionSite;
@@ -92,6 +93,7 @@ public partial class BuildingUI : MonoBehaviour
         }
         _uiDocument = GetComponent<UIDocument>();
         _configEntity = Entity.Null;
+        _researchConfigEntity = Entity.Null;
         _selectedBuilding = Entity.Null;
         _selectedDrone = Entity.Null;
         _selectedConstructionSite = Entity.Null;
@@ -279,6 +281,12 @@ public partial class BuildingUI : MonoBehaviour
             return;
         }
 
+        if (_entityManager.HasComponent<ResearchBuilding>(_selectedBuilding))
+        {
+            RefreshResearchBuilding();
+            return;
+        }
+
         if (!TryGetConfigEntity(out Entity configEntity))
         {
             Close();
@@ -342,8 +350,235 @@ public partial class BuildingUI : MonoBehaviour
         return true;
     }
 
+    private bool TryGetResearchConfigEntity(out Entity configEntity)
+    {
+        if (_researchConfigEntity != Entity.Null &&
+            _entityManager.Exists(_researchConfigEntity))
+        {
+            configEntity = _researchConfigEntity;
+            return true;
+        }
+
+        using EntityQuery configQuery =
+            _entityManager.CreateEntityQuery(ComponentType.ReadOnly<ResearchConfig>());
+
+        if (configQuery.IsEmptyIgnoreFilter)
+        {
+            configEntity = Entity.Null;
+            return false;
+        }
+
+        _researchConfigEntity = configQuery.GetSingletonEntity();
+        configEntity = _researchConfigEntity;
+        return true;
+    }
+
     private bool IsOpen =>
         _selectedBuilding != Entity.Null ||
         _selectedDrone != Entity.Null ||
         _selectedConstructionSite != Entity.Null;
+    private const int ResearchInputBufferCycleCount = 2;
+
+    private void RefreshResearchBuilding()
+    {
+        if (!_entityManager.HasBuffer<StoredItemElement>(_selectedBuilding) ||
+            !TryGetResearchConfigEntity(out Entity configEntity))
+        {
+            Close();
+            return;
+        }
+
+        SetResearchBuildingLayout();
+        ResearchBuilding researchBuilding = _entityManager
+            .GetComponentData<ResearchBuilding>(_selectedBuilding);
+        ResearchState researchState = _entityManager
+            .GetComponentData<ResearchState>(configEntity);
+        DynamicBuffer<ResearchDefinitionElement> definitions = _entityManager
+            .GetBuffer<ResearchDefinitionElement>(configEntity, true);
+        DynamicBuffer<ResearchIngredientElement> ingredients = _entityManager
+            .GetBuffer<ResearchIngredientElement>(configEntity, true);
+        DynamicBuffer<ResearchProgressElement> globalProgress = _entityManager
+            .GetBuffer<ResearchProgressElement>(configEntity, true);
+        DynamicBuffer<ResearchStatModifierElement> modifiers = _entityManager
+            .GetBuffer<ResearchStatModifierElement>(configEntity, true);
+        DynamicBuffer<StoredItemElement> storedItems = _entityManager
+            .GetBuffer<StoredItemElement>(_selectedBuilding, true);
+
+        CountItems(storedItems, _storedCounts, static item => item.type);
+
+        ResearchDefinitionElement activeResearch = default;
+        bool hasActiveResearch = researchState.activeResearchId.Length > 0 &&
+            definitions.TryGetDefinition(
+                researchState.activeResearchId,
+                out activeResearch);
+
+        UpdateResearchBuildingSummary(
+            researchBuilding,
+            hasActiveResearch,
+            activeResearch,
+            globalProgress);
+        UpdateResearchBuildingInventory(
+            hasActiveResearch,
+            activeResearch,
+            ingredients);
+        UpdateResearchBuildingProgress(
+            researchBuilding,
+            hasActiveResearch,
+            activeResearch,
+            modifiers);
+        RefreshPowerConsumer();
+        UpdateResearchBuildingStatus(researchBuilding, hasActiveResearch);
+    }
+
+    private void UpdateResearchBuildingSummary(
+        ResearchBuilding researchBuilding,
+        bool hasActiveResearch,
+        ResearchDefinitionElement activeResearch,
+        DynamicBuffer<ResearchProgressElement> globalProgress)
+    {
+        if (!hasActiveResearch)
+        {
+            _currentRecipeLabel.text = "활성 연구: 없음";
+            return;
+        }
+
+        int progressIndex = globalProgress.FindProgressIndex(activeResearch.stableId);
+        float progress = progressIndex >= 0
+            ? globalProgress[progressIndex].progress
+            : 0f;
+        _currentRecipeLabel.text =
+            $"{activeResearch.displayName} · 전체 {progress:0.#} / {activeResearch.requiredProgress:0.#}";
+    }
+
+    private void UpdateResearchBuildingInventory(
+        bool hasActiveResearch,
+        ResearchDefinitionElement activeResearch,
+        DynamicBuffer<ResearchIngredientElement> ingredients)
+    {
+        _listedInputTypes.Clear();
+        int rowIndex = 0;
+
+        if (hasActiveResearch)
+        {
+            for (int i = 0; i < ingredients.Length; i++)
+            {
+                ResearchIngredientElement ingredient = ingredients[i];
+
+                if (!ingredient.researchId.Equals(activeResearch.stableId))
+                    continue;
+
+                _storedCounts.TryGetValue(ingredient.itemType, out int count);
+                int capacity = ingredient.amount * ResearchInputBufferCycleCount;
+                SetItemRow(
+                    _inputContainer,
+                    rowIndex,
+                    ingredient.itemType,
+                    count,
+                    capacity,
+                    $"주기당 {ingredient.amount}개",
+                    false);
+                _listedInputTypes.Add(ingredient.itemType);
+                rowIndex++;
+            }
+        }
+
+        for (ItemTypeEnum itemType = ItemTypeEnum.Iron_Ore;
+             itemType < ItemTypeEnum.Count;
+             itemType++)
+        {
+            if (!_storedCounts.TryGetValue(itemType, out int count) ||
+                _listedInputTypes.Contains(itemType))
+                continue;
+
+            SetItemRow(
+                _inputContainer,
+                rowIndex,
+                itemType,
+                count,
+                count,
+                hasActiveResearch ? "현재 연구에서 사용 불가" : "배출 대기",
+                true);
+            rowIndex++;
+        }
+
+        TrimItemRowsAndSetEmptyState(_inputContainer, rowIndex);
+    }
+
+    private void UpdateResearchBuildingStatus(
+        ResearchBuilding researchBuilding,
+        bool hasActiveResearch)
+    {
+        if (researchBuilding.resetNoticeRemaining > 0f)
+        {
+            string message = researchBuilding.resetReason ==
+                             ResearchCycleResetReasonEnum.ResearchChanged
+                ? "연구 변경으로 진행 중이던 주기가 초기화되었습니다"
+                : "연구 완료로 진행 중이던 다른 주기가 초기화되었습니다";
+            SetStatus(message, "status-waiting");
+            return;
+        }
+
+        if (!hasActiveResearch)
+        {
+            SetStatus("연구 화면에서 연구를 선택하세요", "status-waiting");
+            return;
+        }
+
+        switch (researchBuilding.state)
+        {
+            case ResearchBuildingStateEnum.Researching:
+                if (_entityManager.HasComponent<PowerConsumer>(_selectedBuilding) &&
+                    _entityManager.GetComponentData<PowerConsumer>(
+                        _selectedBuilding).supplyRatio < 0.9999f)
+                    SetStatus("전력 부족으로 감속 중", "status-waiting");
+                else
+                    SetStatus("연구 중", "status-normal");
+                break;
+            case ResearchBuildingStateEnum.NoPower:
+                SetStatus("전력 없음", "status-error");
+                break;
+            default:
+                SetStatus("재료 대기 중", "status-waiting");
+                break;
+        }
+    }
+
+    private void UpdateResearchBuildingProgress(
+        ResearchBuilding researchBuilding,
+        bool hasActiveResearch,
+        ResearchDefinitionElement activeResearch,
+        DynamicBuffer<ResearchStatModifierElement> modifiers)
+    {
+        float duration = hasActiveResearch ? activeResearch.cycleDuration : 0f;
+        float ratio = duration > 0f && researchBuilding.cycleActive
+            ? math.saturate(researchBuilding.progress / duration)
+            : 0f;
+        float percent = ratio * 100f;
+        _progressBar.value = percent;
+        _progressBar.title = $"{percent:0}%";
+
+        float powerMultiplier = GetProductionSpeedMultiplier(
+            out string powerReason);
+        float researchMultiplier = modifiers.GetStatMultiplier(
+            ResearchStatModifierTypeEnum.ResearchSpeed);
+        float effectiveSpeed = researchBuilding.speed *
+                               powerMultiplier *
+                               researchMultiplier;
+        _speedLabel.text = effectiveSpeed > 0f
+            ? $"연구 속도: ×{effectiveSpeed:0.##}"
+            : "연구 속도: 정지";
+        _speedReasonLabel.text = researchMultiplier > 1f
+            ? $"{powerReason} · 연구 보너스 ×{researchMultiplier:0.##}"
+            : powerReason;
+
+        if (!researchBuilding.cycleActive)
+        {
+            _remainingTimeLabel.text = "주기 시작 대기";
+            return;
+        }
+
+        _remainingTimeLabel.text = effectiveSpeed > 0f
+            ? $"주기 남은 시간: {math.max(0f, duration - researchBuilding.progress) / effectiveSpeed:0.0}초"
+            : "주기 남은 시간: 전력 공급 대기";
+    }
 }

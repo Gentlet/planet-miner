@@ -46,8 +46,11 @@
 - PowerPole: `PowerPole`
 - CoalGenerator: `CoalGenerator`, `StoredItemElement`, 설정 기반 `PowerGenerator`
 - DroneStation: `Storage`, item/drone 버퍼, `PowerConsumer`, `DroneStation`
+- ResearchBuilding: 설정 속도를 적용한 `ResearchBuilding`, `StoredItemElement`, 설정 기반 `PowerConsumer`
 
 전력 소비 설정에 등록된 건물은 `PowerConsumer`도 받는다. 일반 Belt/Miner/Crafter/Storage의 조정값은 `BuildingRuntimeConfig.json`, 발전·소비는 `PowerConfig.json`, DroneStation은 `DroneConfig.json`이 소유한다. `progress`, `timer`, output cursor, 방향 cursor 같은 순수 런타임 초기값은 spawn 코드가 설정한다.
+
+`ConstructionSiteCreationSystem`은 `BuildingUnlockElement`도 권위 있게 확인한다. 잠긴 건물은 UI에서 숨기지만 복사나 직접 요청으로 우회해도 공사 현장으로 전환되지 않는다.
 
 ## 취소와 철거
 

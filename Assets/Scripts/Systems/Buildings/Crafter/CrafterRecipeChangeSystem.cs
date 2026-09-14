@@ -5,6 +5,7 @@ public partial class CrafterRecipeChangeSystem : SystemBase
     protected override void OnCreate()
     {
         RequireForUpdate<CrafterConfig>();
+        RequireForUpdate<ResearchConfig>();
         RequireForUpdate<CrafterRecipeChangeRequest>();
     }
 
@@ -12,13 +13,20 @@ public partial class CrafterRecipeChangeSystem : SystemBase
     {
         DynamicBuffer<CrafterRecipeElement> recipes = SystemAPI.GetSingletonBuffer<CrafterRecipeElement>(true);
         DynamicBuffer<CrafterRecipeIngredientElement> ingredients = SystemAPI.GetSingletonBuffer<CrafterRecipeIngredientElement>(true);
+        DynamicBuffer<RecipeUnlockElement> recipeUnlocks = SystemAPI
+            .GetSingletonBuffer<RecipeUnlockElement>(true);
         EntityCommandBuffer ecb = SystemAPI.GetSingleton<EndSimulationEntityCommandBufferSystem.Singleton>().CreateCommandBuffer(World.Unmanaged);
 
         foreach (var (request, requestEntity) in SystemAPI.Query<RefRO<CrafterRecipeChangeRequest>>().WithEntityAccess())
         {
             Entity crafterEntity = request.ValueRO.crafterEntity == Entity.Null ? requestEntity : request.ValueRO.crafterEntity;
 
-            if (EntityManager.Exists(crafterEntity) && EntityManager.HasComponent<Crafter>(crafterEntity))
+            if (EntityManager.Exists(crafterEntity) &&
+                EntityManager.HasComponent<Crafter>(crafterEntity) &&
+                IsRequestedRecipeUnlocked(
+                    request.ValueRO.selectedItemType,
+                    recipes,
+                    recipeUnlocks))
             {
                 Crafter crafter = EntityManager.GetComponentData<Crafter>(crafterEntity);
                 crafter.selectedItemType = request.ValueRO.selectedItemType;
@@ -38,6 +46,19 @@ public partial class CrafterRecipeChangeSystem : SystemBase
             else
                 ecb.RemoveComponent<CrafterRecipeChangeRequest>(requestEntity);
         }
+    }
+
+    private static bool IsRequestedRecipeUnlocked(
+        ItemTypeEnum selectedItemType,
+        DynamicBuffer<CrafterRecipeElement> recipes,
+        DynamicBuffer<RecipeUnlockElement> recipeUnlocks)
+    {
+        if (!recipes.TryFindRecipe(
+                selectedItemType,
+                out CrafterRecipeElement recipe))
+            return false;
+
+        return recipeUnlocks.IsRecipeUnlocked(recipe.id);
     }
 
     private CrafterStateEnum GetRecipeState(

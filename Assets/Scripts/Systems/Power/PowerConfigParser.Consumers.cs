@@ -43,6 +43,12 @@ internal static partial class PowerConfigParser
             return false;
         }
 
+        if (!usedBuildingTypes.Contains(BuildingTypeEnum.ResearchBuilding))
+        {
+            Debug.LogError("Required power consumer config was not found. Type : ResearchBuilding");
+            return false;
+        }
+
         return true;
     }
 
@@ -82,6 +88,7 @@ internal static partial class PowerConfigParser
     private static bool IsPowerConsumer(BuildingTypeEnum buildingType)
     {
         return buildingType == BuildingTypeEnum.Miner ||
-               buildingType == BuildingTypeEnum.Crafter;
+               buildingType == BuildingTypeEnum.Crafter ||
+               buildingType == BuildingTypeEnum.ResearchBuilding;
     }
 }

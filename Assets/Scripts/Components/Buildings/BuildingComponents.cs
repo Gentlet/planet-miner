@@ -13,6 +13,7 @@ public enum BuildingTypeEnum : byte
     CoalGenerator,
     MainFacility,
     DroneStation,
+    ResearchBuilding,
     Count
 }
 

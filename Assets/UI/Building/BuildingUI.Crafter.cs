@@ -27,10 +27,19 @@ public partial class BuildingUI
         DynamicBuffer<CrafterRecipeIngredientElement> ingredients =
             _entityManager.GetBuffer<CrafterRecipeIngredientElement>(configEntity, true);
 
+        if (!TryGetResearchConfigEntity(out Entity researchConfigEntity))
+        {
+            Close();
+            return;
+        }
+
+        DynamicBuffer<RecipeUnlockElement> recipeUnlocks =
+            _entityManager.GetBuffer<RecipeUnlockElement>(researchConfigEntity, true);
+
         CountItems(storedItems, _storedCounts, static item => item.type);
         CountItems(producedItems, _producedCounts, static item => item.type);
 
-        BuildRecipeButtons(recipes, ingredients);
+        BuildRecipeButtons(recipes, ingredients, recipeUnlocks);
 
         bool hasRecipe = recipes.TryFindRecipe(
             crafter.selectedItemType,
@@ -50,9 +59,37 @@ public partial class BuildingUI
 
     private void BuildRecipeButtons(
         DynamicBuffer<CrafterRecipeElement> recipes,
-        DynamicBuffer<CrafterRecipeIngredientElement> ingredients)
+        DynamicBuffer<CrafterRecipeIngredientElement> ingredients,
+        DynamicBuffer<RecipeUnlockElement> recipeUnlocks)
     {
-        if (_recipeButtons.Count == recipes.Length)
+        int unlockedRecipeCount = 0;
+
+        for (int i = 0; i < recipes.Length; i++)
+        {
+            if (recipeUnlocks.IsRecipeUnlocked(recipes[i].id))
+                unlockedRecipeCount++;
+        }
+
+        bool matchesUnlockedRecipes = _recipeButtons.Count == unlockedRecipeCount;
+
+        if (matchesUnlockedRecipes)
+        {
+            for (int i = 0; i < recipes.Length; i++)
+            {
+                CrafterRecipeElement recipe = recipes[i];
+
+                if (!recipeUnlocks.IsRecipeUnlocked(recipe.id))
+                    continue;
+
+                if (!_recipeButtons.ContainsKey(recipe.outputItemType))
+                {
+                    matchesUnlockedRecipes = false;
+                    break;
+                }
+            }
+        }
+
+        if (matchesUnlockedRecipes)
             return;
 
         _recipeContainer.Clear();
@@ -61,6 +98,10 @@ public partial class BuildingUI
         for (int recipeIndex = 0; recipeIndex < recipes.Length; recipeIndex++)
         {
             CrafterRecipeElement recipe = recipes[recipeIndex];
+
+            if (!recipeUnlocks.IsRecipeUnlocked(recipe.id))
+                continue;
+
             ItemTypeEnum outputItemType = recipe.outputItemType;
             string ingredientText = GetIngredientText(ingredients, recipe.id);
 
@@ -256,6 +297,11 @@ public partial class BuildingUI
     {
         float productionSpeedMultiplier = GetProductionSpeedMultiplier(
             out string speedChangeReason);
+        float researchSpeedMultiplier = GetResearchSpeedMultiplier(
+            ResearchStatModifierTypeEnum.CraftingSpeed);
+        productionSpeedMultiplier *= researchSpeedMultiplier;
+        if (researchSpeedMultiplier > 1f)
+            speedChangeReason += $" · 제작 연구 보너스 ×{researchSpeedMultiplier:0.##}";
         _speedReasonLabel.text = speedChangeReason;
         float progressRatio = 0f;
         float requiredTime = 0f;

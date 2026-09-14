@@ -34,11 +34,15 @@ public class ConfigLoadSystemTests : EcsWorldTestFixture
         _world.GetOrCreateSystemManaged<DroneConfigLoadSystem>();
         _world.GetOrCreateSystemManaged<StartingItemConfigLoadSystem>();
         _world.GetOrCreateSystemManaged<PowerConfigLoadSystem>();
+        ResearchConfigLoadSystem researchConfigLoadSystem = _world
+            .GetOrCreateSystemManaged<ResearchConfigLoadSystem>();
+        researchConfigLoadSystem.Update();
 
         AssertSingletonExists<ConstructionConfig>();
         AssertSingletonExists<CrafterConfig>();
         AssertSingletonExists<DroneConfig>();
         AssertSingletonExists<PowerConfig>();
+        AssertSingletonExists<ResearchConfig>();
         AssertBufferHasElements<BuildingRuntimeConfigElement>();
         AssertBufferHasElements<ConstructionMaterialConfigElement>();
         AssertBufferHasElements<CrafterRecipeElement>();
@@ -48,6 +52,10 @@ public class ConfigLoadSystemTests : EcsWorldTestFixture
         AssertBufferHasElements<PowerPoleConfigElement>();
         AssertBufferHasElements<PowerGeneratorConfigElement>();
         AssertBufferHasElements<PowerConsumerConfigElement>();
+        AssertBufferHasElements<ResearchDefinitionElement>();
+        AssertBufferHasElements<ResearchProgressElement>();
+        AssertBufferHasElements<BuildingUnlockElement>();
+        AssertBufferHasElements<RecipeUnlockElement>();
         AssertBuildingRuntimeConfig(
             BuildingTypeEnum.Belt,
             expectedSpeed: 10f);
@@ -60,6 +68,71 @@ public class ConfigLoadSystemTests : EcsWorldTestFixture
         AssertBuildingRuntimeConfig(
             BuildingTypeEnum.Storage,
             expectedStorageCapacity: 10);
+    }
+
+    [Test]
+    public void ResearchSelectionPreservesGlobalProgressAndResetsLocalCycle()
+    {
+        _world.GetOrCreateSystemManaged<CrafterConfigLoadSystem>();
+        ResearchConfigLoadSystem loadSystem = _world
+            .GetOrCreateSystemManaged<ResearchConfigLoadSystem>();
+        loadSystem.Update();
+        EndSimulationEntityCommandBufferSystem endSimulationEcb = _world
+            .GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>();
+        ResearchSelectionSystem selectionSystem = _world
+            .GetOrCreateSystemManaged<ResearchSelectionSystem>();
+
+        using EntityQuery configQuery = _entityManager.CreateEntityQuery(
+            ComponentType.ReadOnly<ResearchConfig>());
+        Entity configEntity = configQuery.GetSingletonEntity();
+        DynamicBuffer<ResearchProgressElement> progress = _entityManager
+            .GetBuffer<ResearchProgressElement>(configEntity);
+        int logisticsProgressIndex = progress.FindProgressIndex(
+            new Unity.Collections.FixedString64Bytes("logistics_distribution"));
+        ResearchProgressElement logisticsProgress = progress[logisticsProgressIndex];
+        logisticsProgress.progress = 30f;
+        progress[logisticsProgressIndex] = logisticsProgress;
+
+        Entity buildingEntity = _entityManager.CreateEntity(
+            typeof(ResearchBuilding));
+        _entityManager.SetComponentData(buildingEntity, new ResearchBuilding
+        {
+            cycleActive = true,
+            cycleResearchId = new Unity.Collections.FixedString64Bytes(
+                "logistics_distribution"),
+            progress = 2f,
+            state = ResearchBuildingStateEnum.Researching
+        });
+        CreateResearchSelectionRequest("material_processing");
+
+        selectionSystem.Update();
+        endSimulationEcb.Update();
+
+        ResearchState state = _entityManager
+            .GetComponentData<ResearchState>(configEntity);
+        ResearchBuilding building = _entityManager
+            .GetComponentData<ResearchBuilding>(buildingEntity);
+        progress = _entityManager.GetBuffer<ResearchProgressElement>(
+            configEntity);
+        Assert.That(
+            state.activeResearchId.ToString(),
+            Is.EqualTo("material_processing"));
+        Assert.That(progress[logisticsProgressIndex].progress, Is.EqualTo(30f));
+        Assert.That(building.cycleActive, Is.False);
+        Assert.That(building.progress, Is.Zero);
+        Assert.That(
+            building.resetReason,
+            Is.EqualTo(ResearchCycleResetReasonEnum.ResearchChanged));
+
+        CreateResearchSelectionRequest("drone_logistics");
+        selectionSystem.Update();
+        endSimulationEcb.Update();
+
+        state = _entityManager.GetComponentData<ResearchState>(configEntity);
+        Assert.That(
+            state.activeResearchId.ToString(),
+            Is.EqualTo("material_processing"),
+            "Locked research must not replace the active research.");
     }
 
     [Test]
@@ -236,6 +309,16 @@ public class ConfigLoadSystemTests : EcsWorldTestFixture
                 dir = DirectionEnum.Up,
                 selectedItemType = selectedItemType
             });
+    }
+
+    private void CreateResearchSelectionRequest(string researchId)
+    {
+        Entity request = _entityManager.CreateEntity(
+            typeof(ResearchSelectionRequest));
+        _entityManager.SetComponentData(request, new ResearchSelectionRequest
+        {
+            researchId = new Unity.Collections.FixedString64Bytes(researchId)
+        });
     }
 
     private T GetSingletonComponent<T>()
