@@ -135,11 +135,14 @@ public class WorldTaskMarkerPresentationTests
             typeof(BuildingOccupant),
             typeof(BuildingType),
             typeof(GridPosition),
+            typeof(BuildingFootprint),
             typeof(Direction));
         _entityManager.SetComponentData(building,
             new BuildingType { type = BuildingTypeEnum.Storage });
         _entityManager.SetComponentData(building,
             new GridPosition { gridPosition = gridPosition });
+        _entityManager.SetComponentData(building,
+            new BuildingFootprint { size = new int2(2, 1) });
         _entityManager.SetComponentData(building,
             new Direction { dir = direction });
         return building;

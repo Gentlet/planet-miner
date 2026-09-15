@@ -41,6 +41,8 @@
 
 공급 범위가 겹치는 것만으로 망을 병합하지 않는다. 한 셀을 여러 pole이 덮으면 `PowerGridSystem.TryGetNearestPowerPole`이 거리 제곱이 가장 작은 pole을 선택하고, 동률은 낮은 stable ID로 결정한다.
 
+건물 참가자는 회전된 footprint의 모든 점유 셀을 검사한다. 각 셀을 실제로 덮으며 유효한 grid가 있는 pole 후보에 대해 셀과 pole 중심 사이 거리 제곱을 비교하고, 전체 후보 중 최소 거리, 동률이면 낮은 stable ID를 선택한다. 첫 번째로 덮인 셀에서 검색을 끝내거나 anchor/시각 중심 거리로 순위를 정하지 않는다. 단일 셀은 기존 nearest 규칙과 같다.
+
 전신주 추가/제거로 topology dirty가 되면 기존 grid entity와 pole connection을 제거하고, stable ID 순서로 connected component를 다시 만든다. 각 component의 grid stable ID는 포함 pole의 최소 stable ID다.
 
 ## 프레임 실행 흐름
@@ -48,7 +50,7 @@
 1. `CoalGeneratorInputSystem`이 storage 처리 뒤, grid 계산 전에 Coal 입력을 수집한다.
 2. `PowerGridSystem`이 새 전신주 등록과 사라진 전신주 정리를 동기화한다.
 3. 토폴로지가 변했으면 grid entity와 pole connection을 재구축한다.
-4. 소비자와 발전기를 현재 셀의 nearest pole/grid에 연결하거나 연결을 제거한다.
+4. `GridPosition`, `BuildingFootprint`, `Direction`, `BuildingOccupant`가 있는 소비자와 발전기를 점유 셀 전체에서 선택한 pole/grid에 연결하거나 연결을 제거한다.
 5. grid별 maximum demand와 가용 발전량을 집계한다. 석탄 발전기는 남은 에너지와 stored Coal로 현재 프레임의 가능 출력을 제한한다.
 6. `supplyRatio = min(1, availableGeneration / maximumDemand)`를 계산하고 소비자 상태를 갱신한다.
 7. 실제 소비량을 우선 기초 발전으로 충당하고, 부족분을 석탄 발전에 배정한다.

@@ -130,6 +130,7 @@ public class MergerConnectionTests
             typeof(BuildingType),
             typeof(GridPosition),
             typeof(Direction),
+            typeof(BuildingFootprint),
             typeof(BuildingOccupantRequest));
         _entityManager.SetComponentData(
             belt,
@@ -143,6 +144,9 @@ public class MergerConnectionTests
         _entityManager.SetComponentData(
             belt,
             new Direction { dir = direction });
+        _entityManager.SetComponentData(
+            belt,
+            new BuildingFootprint { size = new int2(1, 1) });
 
         Assert.That(_chunkMap.TryReserveBuilding(cell), Is.True);
         _chunkMap.Update();

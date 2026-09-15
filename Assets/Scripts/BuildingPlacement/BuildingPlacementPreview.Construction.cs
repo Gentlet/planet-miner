@@ -26,7 +26,8 @@ public partial class BuildingPlacementPreview
         _chunkMap = world.GetExistingSystemManaged<ChunkMapSystem>();
         _constructionSiteQuery = _entityManager.CreateEntityQuery(
             ComponentType.ReadOnly<ConstructionSite>(),
-            ComponentType.ReadOnly<GridPosition>());
+            ComponentType.ReadOnly<GridPosition>(),
+            ComponentType.ReadOnly<BuildingFootprint>());
     }
 
     private void LateUpdate()
@@ -64,7 +65,9 @@ public partial class BuildingPlacementPreview
     {
         ConstructionSite site = _entityManager.GetComponentData<ConstructionSite>(siteEntity);
         GridPosition gridPosition = _entityManager.GetComponentData<GridPosition>(siteEntity);
-        int2 size = _chunkMap.GetBuildingSize(site.type);
+        int2 size = _entityManager
+            .GetComponentData<BuildingFootprint>(siteEntity)
+            .size;
 
         if (!_constructionSitePreviews.TryGetValue(siteEntity, out GameObject previewObject))
         {

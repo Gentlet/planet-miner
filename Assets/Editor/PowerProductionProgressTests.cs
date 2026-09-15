@@ -106,6 +106,8 @@ public class PowerProductionProgressTests
                 randomState = 1u
             });
         SetSupplyRatio(minerEntity, 0.5f);
+        _entityManager.AddComponentData(minerEntity,
+            new BuildingFootprint { size = new int2(1, 1) });
         _world.SetTime(new TimeData(1d, 4f));
 
         MiningSystem miningSystem =
@@ -146,6 +148,8 @@ public class PowerProductionProgressTests
                 state = CrafterStateEnum.Crafting
             });
         SetSupplyRatio(crafterEntity, 0.5f);
+        _entityManager.AddComponentData(crafterEntity,
+            new BuildingFootprint { size = new int2(1, 1) });
         _world.SetTime(new TimeData(1d, 4f));
 
         CrafterSystem crafterSystem =
@@ -373,6 +377,8 @@ public class PowerProductionProgressTests
             speed = 1f,
             state = ResearchBuildingStateEnum.WaitingForMaterials
         });
+        _entityManager.AddComponentData(entity,
+            new BuildingFootprint { size = new int2(1, 1) });
         _entityManager.SetComponentData(entity, new GridPosition
         {
             gridPosition = position

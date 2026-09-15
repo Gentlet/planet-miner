@@ -27,14 +27,24 @@
 
 ## 공간 등록 흐름
 
+### 크기 데이터 계약
+
+- `GridPosition.gridPosition`은 회전 기준 anchor이며 시각 중심이 아니다.
+- `BuildingFootprint.size`는 생성 시 `NormalizeSize`로 각 축을 최소 1로 만든 회전 전 크기다. 런타임 변경은 지원하지 않는다.
+- 완성 건물은 `GridPosition + BuildingFootprint + Direction`을 `BuildingFootprintUtility`에 전달한다. 공사 현장은 기존 `ConstructionSite.direction`에 방향을 보관한다.
+- 생성 전 배치 후보와 예약·spawn 실패 정리는 `BuildingPrefabElement.size`를 사용한다. 생성 후 점유 등록/해제, 생산 입출력, 전력, 정거장 범위, 공사 고스트와 철거 표시는 인스턴스 크기를 사용한다. 아이템·자원·이동 드론은 대상이 아니다.
+- 공사 현장 인덱스와 취소/완료 정리는 실제 예약 셀 버퍼를 유지한다. 크기를 담지 않는 요청 계약이므로 예약부터 완성까지 정의 크기 변경은 지원하지 않는다.
+
 ### 건물
 
 1. 배치 계층이 모든 footprint 셀을 `TryReserveBuilding`으로 예약한다.
 2. 공사 현장은 예약 셀을 `TryRegisterConstructionSite`에 등록해 취소/완성 전까지 소유한다.
 3. 완성 후 생성된 건물은 `BuildingOccupantRequest`를 가진다.
-4. `ChunkMapSystem.OnUpdate`가 필수 공간 컴포넌트와 footprint 충돌을 검사하고 모든 셀에 같은 건물 엔티티를 기록한다.
+4. `ChunkMapSystem.OnUpdate`가 `BuildingFootprint`를 포함한 필수 공간 컴포넌트와 footprint 충돌을 검사하고 모든 셀에 같은 건물 엔티티를 기록한다. 누락 요청은 오류를 기록하고 엔티티를 제거한다.
 5. 벨트면 anchor 셀 벨트 인덱스도 등록한다.
 6. 등록 성공 시 예약을 해제하고 `BuildingOccupant`로 전환한다. 중간 실패 시 이미 쓴 셀과 예약을 롤백한다.
+
+`TryUnregisterBuilding`도 등록과 동일한 인스턴스 anchor·size·direction을 사용한다. 프리팹 정의를 재조회해 해제 셀을 계산하지 않는다.
 
 ### 월드 아이템
 

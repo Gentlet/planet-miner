@@ -25,6 +25,7 @@ public partial class CrafterSystem : SystemBase
         _crafterOutputQuery = GetEntityQuery(
             ComponentType.ReadWrite<Crafter>(),
             ComponentType.ReadOnly<GridPosition>(),
+            ComponentType.ReadOnly<BuildingFootprint>(),
             ComponentType.ReadOnly<Direction>(),
             ComponentType.ReadWrite<BuildingOutputCursor>(),
             ComponentType.ReadWrite<StoredItemElement>(),
@@ -32,7 +33,6 @@ public partial class CrafterSystem : SystemBase
 
         RequireForUpdate<CrafterConfig>();
         RequireForUpdate<ItemPrefabElement>();
-        RequireForUpdate<BuildingPrefabElement>();
         RequireForUpdate<ResearchConfig>();
     }
 
@@ -42,13 +42,7 @@ public partial class CrafterSystem : SystemBase
             return;
 
         using NativeArray<Entity> crafters = _crafterOutputQuery.ToEntityArray(Allocator.Temp);
-        using NativeArray<BuildingPrefabElement> buildingDefinitions =
-            DynamicBufferCopyUtility.CreateNativeCopy(
-                SystemAPI.GetSingletonBuffer<BuildingPrefabElement>(true),
-                Allocator.Temp);
-        int2 crafterSize =
-            buildingDefinitions.GetFootprintSize(BuildingTypeEnum.Crafter);
-        TryOutputProducedItems(crafters, crafterSize);
+        TryOutputProducedItems(crafters);
 
         using NativeArray<CrafterRecipeElement> recipes =
             DynamicBufferCopyUtility.CreateNativeCopy(
@@ -92,13 +86,16 @@ public partial class CrafterSystem : SystemBase
             DirectionEnum direction = EntityManager
                 .GetComponentData<Direction>(crafterEntity)
                 .dir;
+            int2 footprintSize = EntityManager
+                .GetComponentData<BuildingFootprint>(crafterEntity)
+                .size;
 
             TryDepositItems(
                 crafter,
                 crafterEntity,
                 crafterCell,
                 direction,
-                crafterSize,
+                footprintSize,
                 recipes,
                 ingredients,
                 storageLimits);
@@ -148,8 +145,7 @@ public partial class CrafterSystem : SystemBase
     }
 
     private void TryOutputProducedItems(
-        NativeArray<Entity> crafters,
-        int2 crafterSize)
+        NativeArray<Entity> crafters)
     {
         for (int i = 0; i < crafters.Length; i++)
         {
@@ -162,6 +158,9 @@ public partial class CrafterSystem : SystemBase
 
             int2 crafterCell = EntityManager.GetComponentData<GridPosition>(crafterEntity).gridPosition;
             DirectionEnum direction = EntityManager.GetComponentData<Direction>(crafterEntity).dir;
+            int2 footprintSize = EntityManager
+                .GetComponentData<BuildingFootprint>(crafterEntity)
+                .size;
             BuildingOutputCursor cursor = EntityManager
                 .GetComponentData<BuildingOutputCursor>(crafterEntity);
             BuildingBeltConnectionUtility.TryOutputItem<ProducedItemElement>(
@@ -170,7 +169,7 @@ public partial class CrafterSystem : SystemBase
                 _itemStorage,
                 crafterEntity,
                 crafterCell,
-                crafterSize,
+                footprintSize,
                 direction,
                 ref cursor,
                 _boundaryConnections,

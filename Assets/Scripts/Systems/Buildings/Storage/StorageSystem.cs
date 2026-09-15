@@ -26,13 +26,12 @@ public partial class StorageSystem : SystemBase
         _itemTracking = World.GetExistingSystemManaged<ItemTrackingSystem>();
         _storageQuery = GetEntityQuery(
             ComponentType.ReadOnly<Storage>(),
-            ComponentType.ReadOnly<BuildingType>(),
             ComponentType.ReadOnly<GridPosition>(),
+            ComponentType.ReadOnly<BuildingFootprint>(),
             ComponentType.ReadOnly<Direction>(),
             ComponentType.ReadWrite<StoredItemElement>());
         RequireForUpdate<Storage>();
         RequireForUpdate<ItemStorageLimitElement>();
-        RequireForUpdate<BuildingPrefabElement>();
     }
 
     protected override void OnUpdate()
@@ -45,10 +44,6 @@ public partial class StorageSystem : SystemBase
         using NativeArray<ItemStorageLimitElement> storageLimits =
             DynamicBufferCopyUtility.CreateNativeCopy(
                 SystemAPI.GetSingletonBuffer<ItemStorageLimitElement>(true),
-                Allocator.Temp);
-        using NativeArray<BuildingPrefabElement> buildingDefinitions =
-            DynamicBufferCopyUtility.CreateNativeCopy(
-                SystemAPI.GetSingletonBuffer<BuildingPrefabElement>(true),
                 Allocator.Temp);
         using NativeArray<Entity> storages =
             _storageQuery.ToEntityArray(Allocator.Temp);
@@ -63,11 +58,9 @@ public partial class StorageSystem : SystemBase
                 EntityManager.GetComponentData<Direction>(storageEntity).dir;
             int capacity =
                 EntityManager.GetComponentData<Storage>(storageEntity).capacity;
-            BuildingTypeEnum buildingType = EntityManager
-                .GetComponentData<BuildingType>(storageEntity)
-                .type;
-            int2 storageSize = buildingDefinitions.GetFootprintSize(
-                buildingType);
+            int2 storageSize = EntityManager
+                .GetComponentData<BuildingFootprint>(storageEntity)
+                .size;
 
             TryOutputOldestItem(
                 storageEntity,

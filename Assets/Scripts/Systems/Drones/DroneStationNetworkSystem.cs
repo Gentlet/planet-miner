@@ -23,6 +23,8 @@ public partial class DroneStationNetworkSystem : SystemBase
         _stationQuery = GetEntityQuery(
             ComponentType.ReadOnly<DroneStation>(),
             ComponentType.ReadOnly<GridPosition>(),
+            ComponentType.ReadOnly<BuildingFootprint>(),
+            ComponentType.ReadOnly<Direction>(),
             ComponentType.ReadOnly<BuildingOccupant>());
     }
 

@@ -142,9 +142,11 @@ public partial class BuildingSpawnSystem : SystemBase
             Entity instance = ecb.Instantiate(definition.prefab);
             int2 anchor = spawnRequest.gridPosition;
             DirectionEnum direction = spawnRequest.dir;
+            int2 footprintSize = BuildingFootprintUtility.NormalizeSize(
+                definition.size);
             float2 visualCenterOffset =
                 BuildingFootprintUtility.GetVisualCenterOffset(
-                    definition.size,
+                    footprintSize,
                     direction);
 
             ecb.SetComponent(
@@ -156,18 +158,17 @@ public partial class BuildingSpawnSystem : SystemBase
                         0f),
                     quaternion.RotateZ(
                         Mathf.Deg2Rad * direction.ToDegrees())));
-            int2 visualSize = BuildingFootprintUtility.NormalizeSize(
-                definition.size);
             ecb.AddComponent(
                 instance,
                 new PostTransformMatrix
                 {
                     Value = float4x4.Scale(
-                        new float3(visualSize.x, visualSize.y, 1f))
+                        new float3(footprintSize.x, footprintSize.y, 1f))
                 });
             ecb.AddComponent(instance, new BuildingType { type = spawnRequest.type });
             ecb.AddComponent(instance, new GridPosition { gridPosition = anchor });
             ecb.AddComponent(instance, new Direction { dir = direction });
+            ecb.AddComponent(instance, new BuildingFootprint { size = footprintSize });
             ecb.AddComponent(instance, new BuildingOccupantRequest());
 
             AddBuildingBehavior(
@@ -175,7 +176,7 @@ public partial class BuildingSpawnSystem : SystemBase
                 instance,
                 spawnRequest,
                 anchor,
-                visualSize,
+                footprintSize,
                 runtimeConfig,
                 droneConfig);
             AddPowerComponents(
@@ -252,7 +253,6 @@ public partial class BuildingSpawnSystem : SystemBase
                     {
                         activityRangeInChunks =
                             droneConfig.stationActivityRangeInChunks,
-                        footprintSize = footprintSize,
                         isMainStation = false
                     });
                 break;

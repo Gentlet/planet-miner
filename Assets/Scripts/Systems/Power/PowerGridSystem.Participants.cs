@@ -7,6 +7,7 @@ public partial class PowerGridSystem
 {
     private readonly Dictionary<Entity, PowerGridState> _powerGridStates = new();
     private readonly HashSet<Entity> _connectedPowerParticipants = new();
+    private readonly List<int2> _participantFootprintCells = new();
 
     private void ReconnectPowerParticipants()
     {
@@ -16,12 +17,20 @@ public partial class PowerGridSystem
         for (int i = 0; i < participants.Length; i++)
         {
             Entity participant = participants[i];
-            int2 cell = EntityManager
+            int2 anchor = EntityManager
                 .GetComponentData<GridPosition>(participant)
                 .gridPosition;
+            int2 footprintSize = EntityManager
+                .GetComponentData<BuildingFootprint>(participant)
+                .size;
+            DirectionEnum direction = EntityManager
+                .GetComponentData<Direction>(participant)
+                .dir;
 
             if (TryResolvePowerGrid(
-                    cell,
+                    anchor,
+                    footprintSize,
+                    direction,
                     out Entity powerPoleEntity,
                     out Entity powerGridEntity))
             {
@@ -37,17 +46,63 @@ public partial class PowerGridSystem
     }
 
     private bool TryResolvePowerGrid(
-        int2 cell,
+        int2 anchor,
+        int2 footprintSize,
+        DirectionEnum direction,
         out Entity powerPoleEntity,
         out Entity powerGridEntity)
     {
-        if (!TryGetNearestPowerPole(cell, out powerPoleEntity))
+        powerPoleEntity = Entity.Null;
+        powerGridEntity = Entity.Null;
+        long nearestSquaredDistance = long.MaxValue;
+        int nearestStableId = int.MaxValue;
+
+        BuildingFootprintUtility.GetOccupiedCells(
+            anchor,
+            footprintSize,
+            direction,
+            _participantFootprintCells);
+
+        for (int cellIndex = 0;
+             cellIndex < _participantFootprintCells.Count;
+             cellIndex++)
         {
-            powerGridEntity = Entity.Null;
-            return false;
+            int2 cell = _participantFootprintCells[cellIndex];
+            _chunkMap.GetPowerPolesCoveringCell(cell, _coveringPowerPoles);
+
+            for (int poleIndex = 0;
+                 poleIndex < _coveringPowerPoles.Count;
+                 poleIndex++)
+            {
+                Entity candidateEntity = _coveringPowerPoles[poleIndex];
+
+                if (!_powerPoles.TryGetValue(
+                        candidateEntity,
+                        out PowerPoleTopologyData candidate))
+                    continue;
+
+                if (!TryGetPowerGrid(candidateEntity, out Entity candidateGrid))
+                    continue;
+
+                long squaredDistance = PowerGridRangeUtility.GetSquaredDistance(
+                    cell,
+                    candidate.Center);
+
+                if (squaredDistance > nearestSquaredDistance)
+                    continue;
+
+                if (squaredDistance == nearestSquaredDistance &&
+                    candidate.StableId >= nearestStableId)
+                    continue;
+
+                powerPoleEntity = candidateEntity;
+                powerGridEntity = candidateGrid;
+                nearestSquaredDistance = squaredDistance;
+                nearestStableId = candidate.StableId;
+            }
         }
 
-        return TryGetPowerGrid(powerPoleEntity, out powerGridEntity);
+        return powerPoleEntity != Entity.Null;
     }
 
     private void SetPowerGridConnection(

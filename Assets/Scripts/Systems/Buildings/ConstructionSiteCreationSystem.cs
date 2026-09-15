@@ -1,5 +1,6 @@
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Mathematics;
 using UnityEngine;
 
 [UpdateBefore(typeof(DroneTaskCommandSystem))]
@@ -17,6 +18,7 @@ public partial class ConstructionSiteCreationSystem : SystemBase
         RequireForUpdate<ConstructionConfig>();
         RequireForUpdate<DroneConfig>();
         RequireForUpdate<ResearchConfig>();
+        RequireForUpdate<BuildingPrefabElement>();
     }
 
     protected override void OnUpdate()
@@ -26,17 +28,26 @@ public partial class ConstructionSiteCreationSystem : SystemBase
                 SystemAPI.GetSingletonBuffer<ConstructionMaterialConfigElement>(true),
                 Allocator.Temp);
         DroneConfig droneConfig = SystemAPI.GetSingleton<DroneConfig>();
+        using NativeArray<BuildingPrefabElement> buildingDefinitions =
+            DynamicBufferCopyUtility.CreateNativeCopy(
+                SystemAPI.GetSingletonBuffer<BuildingPrefabElement>(true),
+                Allocator.Temp);
         using NativeArray<Entity> requests =
             _requestQuery.ToEntityArray(Allocator.Temp);
 
         for (int i = 0; i < requests.Length; i++)
-            CreateConstructionSite(requests[i], configs, droneConfig);
+            CreateConstructionSite(
+                requests[i],
+                configs,
+                droneConfig,
+                buildingDefinitions);
     }
 
     private void CreateConstructionSite(
         Entity requestEntity,
         NativeArray<ConstructionMaterialConfigElement> configs,
-        DroneConfig droneConfig)
+        DroneConfig droneConfig,
+        NativeArray<BuildingPrefabElement> buildingDefinitions)
     {
         ConstructionSiteCreateRequest request = EntityManager
             .GetComponentData<ConstructionSiteCreateRequest>(requestEntity);
@@ -63,6 +74,18 @@ public partial class ConstructionSiteCreationSystem : SystemBase
             return;
         }
 
+        if (!buildingDefinitions.TryGetDefinition(
+                request.type,
+                out BuildingPrefabElement definition))
+        {
+            RejectRequest(requestEntity, reservedCells,
+                $"Construction request has no prefab definition. Type : {request.type}");
+            return;
+        }
+
+        int2 footprintSize = BuildingFootprintUtility.NormalizeSize(
+            definition.size);
+
         EntityManager.AddComponentData(requestEntity, new ConstructionSite
         {
             type = request.type,
@@ -72,6 +95,10 @@ public partial class ConstructionSiteCreationSystem : SystemBase
         EntityManager.AddComponentData(requestEntity, new GridPosition
         {
             gridPosition = request.gridPosition
+        });
+        EntityManager.AddComponentData(requestEntity, new BuildingFootprint
+        {
+            size = footprintSize
         });
         EntityManager.AddBuffer<StoredItemElement>(requestEntity);
         EntityManager.AddBuffer<DroneReservedStorageCapacityElement>(requestEntity);

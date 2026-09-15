@@ -24,11 +24,11 @@ public partial class CoalGeneratorInputSystem : SystemBase
         _generatorQuery = GetEntityQuery(
             ComponentType.ReadOnly<CoalGenerator>(),
             ComponentType.ReadOnly<GridPosition>(),
+            ComponentType.ReadOnly<BuildingFootprint>(),
             ComponentType.ReadOnly<Direction>(),
             ComponentType.ReadOnly<StoredItemElement>());
         RequireForUpdate<CoalGenerator>();
         RequireForUpdate<CoalGeneratorConfig>();
-        RequireForUpdate<BuildingPrefabElement>();
     }
 
     protected override void OnUpdate()
@@ -40,11 +40,6 @@ public partial class CoalGeneratorInputSystem : SystemBase
 
         CoalGeneratorConfig config =
             SystemAPI.GetSingleton<CoalGeneratorConfig>();
-        DynamicBuffer<BuildingPrefabElement> definitions =
-            SystemAPI.GetSingletonBuffer<BuildingPrefabElement>(true);
-        int2 generatorSize =
-            definitions.GetFootprintSize(BuildingTypeEnum.CoalGenerator);
-
         using NativeArray<Entity> generators =
             _generatorQuery.ToEntityArray(Allocator.Temp);
 
@@ -64,7 +59,10 @@ public partial class CoalGeneratorInputSystem : SystemBase
             DirectionEnum forward = EntityManager
                 .GetComponentData<Direction>(generatorEntity)
                 .dir;
-            BuildInputItems(anchor, generatorSize, forward);
+            int2 footprintSize = EntityManager
+                .GetComponentData<BuildingFootprint>(generatorEntity)
+                .size;
+            BuildInputItems(anchor, footprintSize, forward);
 
             for (int itemIndex = 0;
                  itemIndex < _inputItems.Count;

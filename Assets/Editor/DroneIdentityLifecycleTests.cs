@@ -328,6 +328,8 @@ public class DroneIdentityLifecycleTests
             typeof(DroneStationNetwork),
             typeof(Storage),
             typeof(GridPosition),
+            typeof(BuildingFootprint),
+            typeof(Direction),
             typeof(StoredItemElement),
             typeof(StoredDroneElement),
             typeof(BuildingOccupant));
@@ -343,6 +345,12 @@ public class DroneIdentityLifecycleTests
         _entityManager.SetComponentData(
             station,
             new GridPosition { gridPosition = gridPosition });
+        _entityManager.SetComponentData(
+            station,
+            new BuildingFootprint { size = new int2(1, 1) });
+        _entityManager.SetComponentData(
+            station,
+            new Direction { dir = DirectionEnum.Up });
         return station;
     }
 

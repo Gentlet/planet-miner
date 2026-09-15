@@ -27,13 +27,13 @@ public partial class MiningSystem : SystemBase
         _minerOutputQuery = GetEntityQuery(
             ComponentType.ReadWrite<Miner>(),
             ComponentType.ReadOnly<GridPosition>(),
+            ComponentType.ReadOnly<BuildingFootprint>(),
             ComponentType.ReadOnly<Direction>(),
             ComponentType.ReadWrite<BuildingOutputCursor>(),
             ComponentType.ReadWrite<ProducedItemElement>());
 
         RequireForUpdate<ItemPrefabElement>();
         RequireForUpdate<ItemStorageLimitElement>();
-        RequireForUpdate<BuildingPrefabElement>();
         RequireForUpdate<ResearchConfig>();
     }
 
@@ -45,13 +45,7 @@ public partial class MiningSystem : SystemBase
         _itemTracking.ApplyPendingChangesImmediate();
         using NativeArray<Entity> miners =
             _minerOutputQuery.ToEntityArray(Allocator.Temp);
-        using NativeArray<BuildingPrefabElement> buildingDefinitions =
-            DynamicBufferCopyUtility.CreateNativeCopy(
-                SystemAPI.GetSingletonBuffer<BuildingPrefabElement>(true),
-                Allocator.Temp);
-        int2 minerSize =
-            buildingDefinitions.GetFootprintSize(BuildingTypeEnum.Miner);
-        TryOutputProducedItems(miners, minerSize);
+        TryOutputProducedItems(miners);
         using NativeArray<ItemStorageLimitElement> storageLimits =
             DynamicBufferCopyUtility.CreateNativeCopy(
                 SystemAPI.GetSingletonBuffer<ItemStorageLimitElement>(true),
@@ -75,6 +69,9 @@ public partial class MiningSystem : SystemBase
             DirectionEnum direction = EntityManager
                 .GetComponentData<Direction>(minerEntity)
                 .dir;
+            int2 footprintSize = EntityManager
+                .GetComponentData<BuildingFootprint>(minerEntity)
+                .size;
             DynamicBuffer<ProducedItemElement> producedItems =
                 EntityManager.GetBuffer<ProducedItemElement>(minerEntity);
             float progressDeltaTime = PowerProductionUtility
@@ -85,12 +82,12 @@ public partial class MiningSystem : SystemBase
 
             Mine(
                 ref ecb,
-                buildingDefinitions,
                 storageLimits,
                 producedItems,
                 minerEntity,
                 ref miner,
                 anchor,
+                footprintSize,
                 direction,
                 progressDeltaTime);
 
@@ -99,8 +96,7 @@ public partial class MiningSystem : SystemBase
     }
 
     private void TryOutputProducedItems(
-        NativeArray<Entity> miners,
-        int2 minerSize)
+        NativeArray<Entity> miners)
     {
         for (int i = 0; i < miners.Length; i++)
         {
@@ -117,6 +113,9 @@ public partial class MiningSystem : SystemBase
             DirectionEnum direction = EntityManager
                 .GetComponentData<Direction>(minerEntity)
                 .dir;
+            int2 footprintSize = EntityManager
+                .GetComponentData<BuildingFootprint>(minerEntity)
+                .size;
             BuildingOutputCursor cursor = EntityManager
                 .GetComponentData<BuildingOutputCursor>(minerEntity);
             BuildingBeltConnectionUtility.TryOutputItem<ProducedItemElement>(
@@ -125,7 +124,7 @@ public partial class MiningSystem : SystemBase
                 _itemStorage,
                 minerEntity,
                 anchor,
-                minerSize,
+                footprintSize,
                 direction,
                 ref cursor,
                 _boundaryConnections,
@@ -136,12 +135,12 @@ public partial class MiningSystem : SystemBase
 
     private void Mine(
         ref EntityCommandBuffer ecb,
-        NativeArray<BuildingPrefabElement> buildingDefinitions,
         NativeArray<ItemStorageLimitElement> storageLimits,
         DynamicBuffer<ProducedItemElement> producedItems,
         Entity minerEntity,
         ref Miner miner,
         int2 anchor,
+        int2 footprintSize,
         DirectionEnum direction,
         float progressDeltaTime)
     {
@@ -156,7 +155,7 @@ public partial class MiningSystem : SystemBase
         miner.timer = miner.speed;
         CollectResourceCandidates(
             anchor,
-            buildingDefinitions.GetFootprintSize(BuildingTypeEnum.Miner),
+            footprintSize,
             direction);
 
         if (_resourceCandidates.Count == 0 ||

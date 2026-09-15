@@ -27,6 +27,10 @@ public class BeltAuthoring : MonoBehaviour
             {
                 dir = authoring.dir
             });
+            AddComponent(entity, new BuildingFootprint
+            {
+                size = new int2(1, 1)
+            });
             AddComponent(entity, new Belt
             {
                 speed = authoring.speed

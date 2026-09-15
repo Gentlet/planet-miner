@@ -30,7 +30,7 @@
 
 `DroneStationNetworkSystem`은 매 프레임 `BuildingOccupant`가 된 정거장을 동기화한다.
 
-1. `DroneStationRangeUtility`가 정거장의 회전된 footprint 최소·최대 셀을 구하고, 각 방향으로 `activityRangeInChunks * GameConstants.chunkSize`만큼 확장하여 중심 대칭인 inclusive activity bounds를 만든다. `DroneStation.footprintSize`는 생성 시 건물 정의 크기로 설정한다.
+1. `DroneStationRangeUtility`가 정거장의 `GridPosition + BuildingFootprint + Direction`으로 회전된 footprint 최소·최대 셀을 구하고, 각 방향으로 `activityRangeInChunks * GameConstants.chunkSize`만큼 확장하여 중심 대칭인 inclusive activity bounds를 만든다. 등록 쿼리는 이 세 공간 컴포넌트를 요구하며, `DroneStation`은 별도 크기를 보관하지 않는다.
 2. 범위를 `ChunkMapSystem` 셀 coverage에 등록하고 사라진/이동한 정거장의 이전 범위를 해제한다.
 3. bounds가 겹치는 정거장을 union-find로 병합한다.
 4. component 안에서 가장 작은 entity index 기반 값을 network ID로 게시한다.

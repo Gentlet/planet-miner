@@ -40,8 +40,9 @@ public class DroneConstructionTests
             BuildingTypeEnum.Crafter,
             DirectionEnum.Right,
             ItemTypeEnum.Copper,
+            new int2(2, 1),
             new int2(2, 3),
-            new int2(2, 4));
+            new int2(2, 2));
         DynamicBuffer<ConstructionMaterialRequirementElement> requirements =
             _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site);
         requirements.Add(new ConstructionMaterialRequirementElement
@@ -69,7 +70,7 @@ public class DroneConstructionTests
         Assert.That(spawn.dir, Is.EqualTo(DirectionEnum.Right));
         Assert.That(spawn.selectedItemType, Is.EqualTo(ItemTypeEnum.Copper));
         Assert.That(_chunkMap.IsBuildingReserved(new int2(2, 3)), Is.True);
-        Assert.That(_chunkMap.IsBuildingReserved(new int2(2, 4)), Is.True);
+        Assert.That(_chunkMap.IsBuildingReserved(new int2(2, 2)), Is.True);
     }
 
     [Test]
@@ -81,7 +82,9 @@ public class DroneConstructionTests
             BuildingTypeEnum.Storage,
             DirectionEnum.Up,
             ItemTypeEnum.None,
-            siteCell);
+            new int2(1, 2),
+            siteCell,
+            siteCell + new int2(0, 1));
         _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)
             .Add(new ConstructionMaterialRequirementElement
             {
@@ -101,6 +104,8 @@ public class DroneConstructionTests
         Assert.That(_entityManager.Exists(site), Is.False);
         Assert.That(Count<BuildingSpawnRequest>(), Is.EqualTo(0));
         Assert.That(_chunkMap.IsBuildingReserved(siteCell), Is.False);
+        Assert.That(_chunkMap.IsBuildingReserved(siteCell + new int2(0, 1)), Is.False);
+        Assert.That(_chunkMap.TryGetConstructionSite(siteCell + new int2(0, 1), out _), Is.False);
         Assert.That(_entityManager.HasComponent<StoredItem>(material), Is.False);
         Assert.That(_entityManager.HasComponent<Disabled>(material), Is.False);
         Assert.That(Count<DroneWorldItemRecoveryTaskData>(), Is.EqualTo(1));
@@ -136,7 +141,17 @@ public class DroneConstructionTests
         {
             cell = siteCell
         });
+        reservedCells.Add(new ConstructionSiteReservedCellElement
+        {
+            cell = siteCell + new int2(0, 1)
+        });
+        reservedCells.Add(new ConstructionSiteReservedCellElement
+        {
+            cell = siteCell + new int2(0, 2)
+        });
         Assert.That(_chunkMap.TryReserveBuilding(siteCell), Is.True);
+        Assert.That(_chunkMap.TryReserveBuilding(siteCell + new int2(0, 1)), Is.True);
+        Assert.That(_chunkMap.TryReserveBuilding(siteCell + new int2(0, 2)), Is.True);
         ConstructionSiteCreationSystem creationSystem = _world
             .GetOrCreateSystemManaged<ConstructionSiteCreationSystem>();
 
@@ -148,6 +163,34 @@ public class DroneConstructionTests
             .GetComponentData<DroneTaskCreateRequest>(taskRequest);
         Assert.That(task.type, Is.EqualTo(DroneTaskTypeEnum.Construction));
         Assert.That(task.normalPriority, Is.EqualTo(2));
+        Assert.That(
+            _entityManager.GetComponentData<BuildingFootprint>(request).size,
+            Is.EqualTo(new int2(1, 3)));
+
+        CreateStoredItem(request, ItemTypeEnum.Iron);
+        _completionSystem.Update();
+        BeginSimulationEntityCommandBufferSystem beginSimulation = _world
+            .GetOrCreateSystemManaged<BeginSimulationEntityCommandBufferSystem>();
+        EndSimulationEntityCommandBufferSystem endSimulation = _world
+            .GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>();
+        _world.GetOrCreateSystemManaged<BuildingSpawnSystem>().Update();
+        beginSimulation.Update();
+        _chunkMap.Update();
+        endSimulation.Update();
+
+        Entity building = GetSingleton<BuildingOccupant>();
+        Assert.That(_entityManager.GetComponentData<BuildingFootprint>(building).size,
+            Is.EqualTo(new int2(1, 3)));
+        Assert.That(_entityManager.GetComponentData<GridPosition>(building).gridPosition,
+            Is.EqualTo(siteCell));
+        for (int y = 0; y < 3; y++)
+        {
+            int2 cell = siteCell + new int2(0, y);
+            Assert.That(_chunkMap.TryGetBuilding(cell, out Entity occupant), Is.True);
+            Assert.That(occupant, Is.EqualTo(building));
+            Assert.That(_chunkMap.IsBuildingReserved(cell), Is.False);
+            Assert.That(_chunkMap.TryGetConstructionSite(cell, out _), Is.False);
+        }
     }
 
     private void CreateConstructionAndDroneConfig()
@@ -163,6 +206,29 @@ public class DroneConstructionTests
             itemType = ItemTypeEnum.Iron,
             quantity = 1
         });
+
+        Entity prefab = _entityManager.CreateEntity(typeof(Prefab), typeof(LocalTransform));
+        _entityManager.SetComponentData(prefab, LocalTransform.Identity);
+        Entity prefabDatabase = _entityManager.CreateEntity(
+            typeof(BuildingPrefabElement));
+        _entityManager.GetBuffer<BuildingPrefabElement>(prefabDatabase).Add(
+            new BuildingPrefabElement
+            {
+                type = BuildingTypeEnum.Storage,
+                prefab = prefab,
+                size = new int2(0, 3)
+            });
+
+        _entityManager.CreateEntity(typeof(PowerConfig),
+            typeof(PowerConsumerConfigElement), typeof(PowerGeneratorConfigElement));
+        Entity runtimeConfig = _entityManager.CreateEntity(
+            typeof(BuildingRuntimeConfig), typeof(BuildingRuntimeConfigElement));
+        _entityManager.GetBuffer<BuildingRuntimeConfigElement>(runtimeConfig).Add(
+            new BuildingRuntimeConfigElement
+            {
+                buildingType = BuildingTypeEnum.Storage,
+                storageCapacity = 10
+            });
 
         Entity droneConfig = _entityManager.CreateEntity(typeof(DroneConfig));
         _entityManager.SetComponentData(droneConfig, new DroneConfig
@@ -185,11 +251,13 @@ public class DroneConstructionTests
         BuildingTypeEnum type,
         DirectionEnum direction,
         ItemTypeEnum selectedItemType,
+        int2 size,
         params int2[] cells)
     {
         Entity site = _entityManager.CreateEntity(
             typeof(ConstructionSite),
-            typeof(GridPosition));
+            typeof(GridPosition),
+            typeof(BuildingFootprint));
         _entityManager.SetComponentData(site, new ConstructionSite
         {
             type = type,
@@ -198,6 +266,11 @@ public class DroneConstructionTests
         });
         _entityManager.SetComponentData(site,
             new GridPosition { gridPosition = anchor });
+        _entityManager.SetComponentData(site,
+            new BuildingFootprint
+            {
+                size = BuildingFootprintUtility.NormalizeSize(size)
+            });
         _entityManager.AddBuffer<StoredItemElement>(site);
         _entityManager.AddBuffer<DroneReservedStorageCapacityElement>(site);
         _entityManager.AddBuffer<ConstructionMaterialRequirementElement>(site);

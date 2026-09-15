@@ -93,6 +93,11 @@ public struct BuildingPrefabElement : IBufferElementData
     public int2 size;
 }
 
+public struct BuildingFootprint : IComponentData
+{
+    public int2 size;
+}
+
 public struct BuildingOutputCursor : IComponentData
 {
     public int2 lastOutputCell;

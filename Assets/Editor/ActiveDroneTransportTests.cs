@@ -433,10 +433,18 @@ public class ActiveDroneTransportTests : EcsWorldTestFixture
         {
             Entity target = _entityManager.CreateEntity(
                 typeof(BuildingOccupant),
-                typeof(GridPosition));
+                typeof(GridPosition),
+                typeof(BuildingFootprint),
+                typeof(Direction));
             _entityManager.SetComponentData(
                 target,
                 new GridPosition { gridPosition = new int2(1, 0) });
+            _entityManager.SetComponentData(
+                target,
+                new BuildingFootprint { size = new int2(1, 1) });
+            _entityManager.SetComponentData(
+                target,
+                new Direction { dir = DirectionEnum.Up });
             Entity task = CreateTask(1);
             _entityManager.SetComponentData(
                 task,
@@ -609,6 +617,8 @@ public class ActiveDroneTransportTests : EcsWorldTestFixture
             typeof(Storage),
             typeof(StoredItemElement),
             typeof(GridPosition),
+            typeof(BuildingFootprint),
+            typeof(Direction),
             typeof(BuildingOccupant));
         _entityManager.SetComponentData(
             storage,
@@ -616,6 +626,12 @@ public class ActiveDroneTransportTests : EcsWorldTestFixture
         _entityManager.SetComponentData(
             storage,
             new GridPosition { gridPosition = cell });
+        _entityManager.SetComponentData(
+            storage,
+            new BuildingFootprint { size = new int2(1, 1) });
+        _entityManager.SetComponentData(
+            storage,
+            new Direction { dir = DirectionEnum.Up });
         return storage;
     }
 

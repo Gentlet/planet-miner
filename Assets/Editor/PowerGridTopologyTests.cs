@@ -286,6 +286,43 @@ public class PowerGridTopologyTests : EcsWorldTestFixture
         Assert.That(state.supplyRatio, Is.EqualTo(0f));
     }
 
+    [TestCase(2, 0, false)]
+    [TestCase(3, 1, true)]
+    public void MultiCellParticipantRanksAllCoveredCellsThenStableId(
+        int secondPoleX, int secondPoleY, bool expectFirst)
+    {
+        ReplacePowerConfig(new int2(5, 5), int2.zero);
+        Entity first = CreateRegisteredPowerPole(new int2(-1, 0));
+        Entity second = CreateRegisteredPowerPole(new int2(secondPoleX, secondPoleY));
+        Entity consumer = CreatePowerConsumer(
+            int2.zero, 10f, new int2(4, 1), DirectionEnum.Up);
+
+        _powerGrid.Update();
+
+        Assert.That(
+            _entityManager.GetComponentData<PowerGridConnection>(consumer).powerPoleEntity,
+            Is.EqualTo(expectFirst ? first : second));
+    }
+
+    [Test]
+    public void RotatedFootprintConnectsWhenOnlyNonAnchorCellIsCovered()
+    {
+        ReplacePowerConfig(int2.zero, new int2(2, 2));
+        Entity powerPole = CreateRegisteredPowerPole(new int2(11, -1));
+        Entity consumer = CreatePowerConsumer(
+            new int2(10, 0),
+            10f,
+            new int2(2, 3),
+            DirectionEnum.Right);
+
+        _powerGrid.Update();
+
+        Assert.That(
+            _entityManager.GetComponentData<PowerGridConnection>(consumer)
+                .powerPoleEntity,
+            Is.EqualTo(powerPole));
+    }
+
     [Test]
     public void RemovingBridgeReconnectsConsumerAndReaggregatesSplitGrids()
     {
@@ -373,6 +410,10 @@ public class PowerGridTopologyTests : EcsWorldTestFixture
         Assert.That(
             _entityManager.HasComponent<PowerPole>(mainFacility),
             Is.True);
+        Assert.That(
+            _entityManager.GetComponentData<BuildingFootprint>(mainFacility)
+                .size,
+            Is.EqualTo(new int2(1, 1)));
         Assert.That(_chunkMap.IsBuildingReserved(int2.zero), Is.True);
         Assert.That(generator.type, Is.EqualTo(PowerGeneratorTypeEnum.MainFacility));
         Assert.That(generator.maximumGeneration, Is.EqualTo(40f));
@@ -384,10 +425,13 @@ public class PowerGridTopologyTests : EcsWorldTestFixture
         Entity powerPole = _entityManager.CreateEntity(
             typeof(PowerPole),
             typeof(GridPosition),
+            typeof(BuildingFootprint),
+            typeof(Direction),
             typeof(BuildingOccupant));
         _entityManager.SetComponentData(
             powerPole,
             new GridPosition { gridPosition = cell });
+        SetFootprint(powerPole, new int2(1, 1), DirectionEnum.Up);
         return powerPole;
     }
 
@@ -401,6 +445,8 @@ public class PowerGridTopologyTests : EcsWorldTestFixture
             typeof(PowerGenerator),
             typeof(PowerConsumer),
             typeof(GridPosition),
+            typeof(BuildingFootprint),
+            typeof(Direction),
             typeof(BuildingOccupant));
         _entityManager.SetComponentData(
             mainFacility,
@@ -416,6 +462,7 @@ public class PowerGridTopologyTests : EcsWorldTestFixture
             {
                 maximumConsumption = maximumConsumption
             });
+        SetFootprint(mainFacility, new int2(1, 1), DirectionEnum.Up);
         return mainFacility;
     }
 
@@ -424,6 +471,8 @@ public class PowerGridTopologyTests : EcsWorldTestFixture
         Entity generator = _entityManager.CreateEntity(
             typeof(PowerGenerator),
             typeof(GridPosition),
+            typeof(BuildingFootprint),
+            typeof(Direction),
             typeof(BuildingOccupant));
         _entityManager.SetComponentData(
             generator,
@@ -436,14 +485,21 @@ public class PowerGridTopologyTests : EcsWorldTestFixture
                 maximumGeneration = generation,
                 currentGeneration = generation
             });
+        SetFootprint(generator, new int2(1, 1), DirectionEnum.Up);
         return generator;
     }
 
-    private Entity CreatePowerConsumer(int2 cell, float maximumConsumption)
+    private Entity CreatePowerConsumer(
+        int2 cell,
+        float maximumConsumption,
+        int2? footprintSize = null,
+        DirectionEnum direction = DirectionEnum.Up)
     {
         Entity consumer = _entityManager.CreateEntity(
             typeof(PowerConsumer),
             typeof(GridPosition),
+            typeof(BuildingFootprint),
+            typeof(Direction),
             typeof(BuildingOccupant));
         _entityManager.SetComponentData(
             consumer,
@@ -454,6 +510,10 @@ public class PowerGridTopologyTests : EcsWorldTestFixture
             {
                 maximumConsumption = maximumConsumption
             });
+        SetFootprint(
+            consumer,
+            footprintSize ?? new int2(1, 1),
+            direction);
         return consumer;
     }
 
@@ -463,6 +523,8 @@ public class PowerGridTopologyTests : EcsWorldTestFixture
             typeof(CoalGenerator),
             typeof(PowerGenerator),
             typeof(GridPosition),
+            typeof(BuildingFootprint),
+            typeof(Direction),
             typeof(BuildingOccupant),
             typeof(StoredItemElement));
         _entityManager.SetComponentData(
@@ -481,7 +543,24 @@ public class PowerGridTopologyTests : EcsWorldTestFixture
                 type = PowerGeneratorTypeEnum.CoalGenerator,
                 maximumGeneration = 100f
             });
+        SetFootprint(generator, new int2(1, 1), DirectionEnum.Up);
         return generator;
+    }
+
+    private void SetFootprint(
+        Entity entity,
+        int2 size,
+        DirectionEnum direction)
+    {
+        _entityManager.SetComponentData(
+            entity,
+            new BuildingFootprint
+            {
+                size = BuildingFootprintUtility.NormalizeSize(size)
+            });
+        _entityManager.SetComponentData(
+            entity,
+            new Direction { dir = direction });
     }
 
     private Entity GetGrid(Entity powerPole)

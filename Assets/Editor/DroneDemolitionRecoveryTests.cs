@@ -94,9 +94,15 @@ public class DroneDemolitionRecoveryTests
     {
         Entity target = _entityManager.CreateEntity(
             typeof(BuildingOccupant),
-            typeof(GridPosition));
+            typeof(GridPosition),
+            typeof(BuildingFootprint),
+            typeof(Direction));
         _entityManager.SetComponentData(target,
             new GridPosition { gridPosition = new int2(6, 7) });
+        _entityManager.SetComponentData(target,
+            new BuildingFootprint { size = new int2(1, 1) });
+        _entityManager.SetComponentData(target,
+            new Direction { dir = DirectionEnum.Up });
         Entity drone = _entityManager.CreateEntity(
             typeof(DroneState),
             typeof(DroneAssignment),
@@ -330,6 +336,7 @@ public class DroneDemolitionRecoveryTests
             typeof(BuildingType),
             typeof(GridPosition),
             typeof(Direction),
+            typeof(BuildingFootprint),
             typeof(BuildingOccupantRequest),
             typeof(StoredItemElement));
         _entityManager.SetComponentData(building, new BuildingType { type = type });
@@ -337,6 +344,8 @@ public class DroneDemolitionRecoveryTests
             new GridPosition { gridPosition = cell });
         _entityManager.SetComponentData(building,
             new Direction { dir = DirectionEnum.Up });
+        _entityManager.SetComponentData(building,
+            new BuildingFootprint { size = new int2(1, 1) });
         Assert.That(_chunkMap.TryReserveBuilding(cell), Is.True);
         EndSimulationEntityCommandBufferSystem endSimulation = _world
             .GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>();
@@ -354,6 +363,8 @@ public class DroneDemolitionRecoveryTests
             typeof(GridPosition),
             typeof(BuildingType),
             typeof(DroneStation),
+            typeof(BuildingFootprint),
+            typeof(Direction),
             typeof(BuildingOccupant));
         _entityManager.SetComponentData(station, new Storage { capacity = capacity });
         _entityManager.SetComponentData(station,
@@ -364,6 +375,10 @@ public class DroneDemolitionRecoveryTests
         {
             activityRangeInChunks = new int2(1, 1)
         });
+        _entityManager.SetComponentData(station,
+            new BuildingFootprint { size = new int2(1, 1) });
+        _entityManager.SetComponentData(station,
+            new Direction { dir = DirectionEnum.Up });
         return station;
     }
 

@@ -23,7 +23,7 @@
 2. `BuildingPlacementController`가 pointer 셀에 후보 위치를 준비하고 `ChunkMapSystem`으로 점유/예약과 광부 자원 조건을 평가한다.
 3. 좌클릭/drag 시 모든 후보 footprint를 먼저 예약한다.
 4. 후보별 `ConstructionSiteCreateRequest`와 `ConstructionSiteReservedCellElement` 버퍼를 만든다.
-5. `ConstructionSiteCreationSystem`이 공사 설정을 조회하여 요청 엔티티 자체를 `ConstructionSite`로 전환하고, `ChunkMapSystem`에 reserved cells를 공사 현장으로 등록한다.
+5. `ConstructionSiteCreationSystem`이 공사 설정과 프리팹 정의를 확인하여 요청 엔티티 자체를 `ConstructionSite`로 전환하고, 정규화한 `BuildingFootprint`를 붙인다. 정의가 없으면 예약을 해제하고 거부한다. `ChunkMapSystem`에 reserved cells를 공사 현장으로 등록한다.
    `BuildingPlacementPreview.Construction`은 이 현장을 관찰해 기존 footprint·회전·렌더 규칙을 따르는 고스트를 표시한다.
 6. 필요한 재료별 `ConstructionMaterialRequirementElement`와 `DroneTaskCreateRequest(Construction)`를 만든다.
    요청에 기록된 normal priority는 재료별 Construction 작업에 그대로 전달되며, 값이 유효하지 않을 때만 `DroneConfig.defaultTaskPriority`를 사용한다.
@@ -36,7 +36,9 @@
 
 ## 타입별 생성 책임
 
-`BuildingSpawnSystem`은 공통 transform, `PostTransformMatrix`, `BuildingType`, `GridPosition`, `Direction`, `BuildingOccupantRequest`를 설정한 뒤 타입별 컴포넌트를 추가한다.
+`BuildingSpawnSystem`은 공통 transform, `PostTransformMatrix`, `BuildingType`, `GridPosition`, `Direction`, `BuildingFootprint`를 설정하고 `BuildingOccupantRequest`를 붙인 뒤 타입별 컴포넌트를 추가한다. 같은 ECB의 인스턴스 생성 뒤 공간 컴포넌트를 기록하므로 등록 시스템이 미완성 인스턴스를 관찰하지 않는다.
+
+주 시설 bootstrap도 점유 요청 전에 footprint를 붙인다. 수동 `BeltAuthoring.Baker`는 기존 단일 셀 벨트 크기 `(1,1)`을 붙인다. 크기·방향의 공통 계약은 [월드 공간 문서](WorldSpatialAndResources.md#크기-데이터-계약)를 따른다.
 
 - Belt: `BuildingRuntimeConfigElement.speed`를 적용한 `Belt`
 - Miner: `BuildingRuntimeConfigElement.speed`를 적용한 `Miner`, `BuildingOutputCursor`, `ProducedItemElement`
@@ -84,7 +86,7 @@ Delete 철거 선택은 배치/복사 상태를 종료한 뒤 좌클릭 drag의 
 - 공사 비용: `ConstructionConfigLoadSystem`
 - 자재 운반과 철거 실행: 드론 작업/예약/이동 시스템
 - 소유 아이템 소비·복원: `ItemStorageSystem`
-- 건물 렌더 프리팹과 footprint: `BuildingPrefabElement`
+- 생성 전 렌더 프리팹과 크기 정의: `BuildingPrefabElement`; 생성 후 크기: `BuildingFootprint`
 - 일반 건물 속도와 Storage 용량: `BuildingRuntimeConfig`, `BuildingRuntimeConfigElement`
 - 전력/정거장 타입 초기화: `PowerConfig`, `DroneConfig`
 

@@ -138,6 +138,7 @@ public partial class ChunkMapSystem
 
         if (!EntityManager.HasComponent<GridPosition>(entity) ||
             !EntityManager.HasComponent<BuildingType>(entity) ||
+            !EntityManager.HasComponent<BuildingFootprint>(entity) ||
             !EntityManager.HasComponent<Direction>(entity))
         {
             Debug.LogError($"Building registration failed because spatial components are missing. Entity: {entity}");
@@ -147,10 +148,13 @@ public partial class ChunkMapSystem
 
         int2 anchor = EntityManager.GetComponentData<GridPosition>(entity).gridPosition;
         BuildingTypeEnum type = EntityManager.GetComponentData<BuildingType>(entity).type;
+        int2 footprintSize = EntityManager
+            .GetComponentData<BuildingFootprint>(entity)
+            .size;
         DirectionEnum direction = EntityManager.GetComponentData<Direction>(entity).dir;
         BuildingFootprintUtility.GetOccupiedCells(
             anchor,
-            GetBuildingSize(type),
+            footprintSize,
             direction,
             _buildingFootprintCells);
 
@@ -261,15 +265,18 @@ public partial class ChunkMapSystem
         if (!EntityManager.Exists(entity) ||
             !EntityManager.HasComponent<GridPosition>(entity) ||
             !EntityManager.HasComponent<BuildingType>(entity) ||
+            !EntityManager.HasComponent<BuildingFootprint>(entity) ||
             !EntityManager.HasComponent<Direction>(entity))
             return false;
 
         int2 anchor = EntityManager.GetComponentData<GridPosition>(entity).gridPosition;
-        BuildingTypeEnum type = EntityManager.GetComponentData<BuildingType>(entity).type;
+        int2 footprintSize = EntityManager
+            .GetComponentData<BuildingFootprint>(entity)
+            .size;
         DirectionEnum direction = EntityManager.GetComponentData<Direction>(entity).dir;
         BuildingFootprintUtility.GetOccupiedCells(
             anchor,
-            GetBuildingSize(type),
+            footprintSize,
             direction,
             _buildingFootprintCells);
 

@@ -14,6 +14,7 @@
 - `ChunkMapSystem`은 청크와 셀, 건물 점유·예약, 공사 현장, 자원, 월드 아이템, 벨트 인덱스, 전신주·드론 정거장 범위의 중앙 공간 인덱스다. 각 partial 파일은 같은 상태 소유자를 나눈 것이며 별도 공간 소유자를 만들지 않는다.
 - `ItemStorageSystem`은 아이템을 월드와 건물 소유 버퍼 사이에서 이동시키고 저장·복원·소비하는 경계다. `StoredItem`, `Disabled`, `StoredItemElement`, `ProducedItemElement`를 다른 시스템에서 직접 조합해 소유권을 변경하지 않는다.
 - 건물 설치는 모든 footprint 셀을 원자적으로 예약한 뒤 요청을 만든다. 실패 시 전체 예약을 되돌리고, 실제 건물 등록 시 `ChunkMapSystem`이 예약을 해제한다.
+- 건물과 공사 현장의 `GridPosition.gridPosition`은 anchor다. 생성 시 정규화한 회전 전 `BuildingFootprint.size`는 런타임에 불변이며, 생성 전 후보/예약만 `BuildingPrefabElement.size`를 사용한다. 공간 계산과 현장 방향 계약은 [WorldSpatialAndResources.md](Docs/CodeMemory/WorldSpatialAndResources.md)를 따른다.
 - 배치부터 완성까지의 주 흐름은 `ConstructionSiteCreateRequest -> ConstructionSite -> DroneTask/Reservation -> 자재 전달 -> BuildingSpawnRequest -> BuildingOccupantRequest -> BuildingOccupant`이다.
 - 철거와 공사 취소는 즉시 상태를 건너뛰지 않는다. 사용자 철거는 드론 작업을 만들고, 공사 취소는 관련 작업·도착 자재·셀 예약을 함께 정리한다. 같은 프레임에는 `ConstructionCancelSystem -> ConstructionCompletionSystem -> BuildingSpawnSystem` 순서를 보존한다.
 - 월드 아이템의 셀 이동은 `LocalTransform` 변경과 enableable `ItemCellChanged`를 통해 `ItemTrackingSystem`으로 전달한다. 같은 프레임의 건물 입출력은 `ItemTrackingSystem` 및 `ItemStorageSystem`의 immediate API를 사용한다.

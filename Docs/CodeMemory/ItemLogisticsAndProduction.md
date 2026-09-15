@@ -44,6 +44,8 @@
 
 `BuildingInputCollectionUtility`는 회전 footprint 전체의 item을 중복 제거하고 실제 source cell과 거리 정보를 유지한다. `BuildingBeltConnectionUtility`는 footprint 바깥을 향하는 벨트만 출력 연결로 인정하고, `BuildingOutputCursor`로 성공한 출력 위치를 순환한다.
 
+채굴·제작·저장·석탄·연구 시스템은 인스턴스의 `BuildingFootprint`를 읽으며 크기 조회만을 위한 prefab DB 의존성을 갖지 않는다. 공통 공간 계약은 [WorldSpatialAndResources.md](WorldSpatialAndResources.md#크기-데이터-계약)를 따른다.
+
 ## 저장 용량
 
 `Storage.capacity`은 item entity 수가 아니라 stack slot 수다. `ItemStorageLimitElement`가 종류별 한 slot의 최대 개수를 정의한다. `StorageCapacityUtility`는 기존 partial stack, 새 stack 필요량, 드론 예약 용량, 정거장 stored drone 수를 함께 계산한다.

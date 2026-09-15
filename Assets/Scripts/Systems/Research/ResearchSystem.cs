@@ -27,11 +27,11 @@ public partial class ResearchSystem : SystemBase
         _researchBuildingQuery = GetEntityQuery(
             ComponentType.ReadWrite<ResearchBuilding>(),
             ComponentType.ReadOnly<GridPosition>(),
+            ComponentType.ReadOnly<BuildingFootprint>(),
             ComponentType.ReadOnly<Direction>(),
             ComponentType.ReadWrite<StoredItemElement>());
 
         RequireForUpdate<ResearchConfig>();
-        RequireForUpdate<BuildingPrefabElement>();
     }
 
     protected override void OnUpdate()
@@ -59,10 +59,6 @@ public partial class ResearchSystem : SystemBase
                 Allocator.Temp);
         DynamicBuffer<ResearchStatModifierElement> statModifiers = EntityManager
             .GetBuffer<ResearchStatModifierElement>(configEntity, true);
-        DynamicBuffer<BuildingPrefabElement> buildingDefinitions = SystemAPI
-            .GetSingletonBuffer<BuildingPrefabElement>(true);
-        int2 researchBuildingSize = buildingDefinitions.GetFootprintSize(
-            BuildingTypeEnum.ResearchBuilding);
         float researchSpeedMultiplier = statModifiers.GetStatMultiplier(
             ResearchStatModifierTypeEnum.ResearchSpeed);
         float deltaTime = SystemAPI.Time.DeltaTime;
@@ -96,8 +92,7 @@ public partial class ResearchSystem : SystemBase
             CollectInputItems(
                 buildingEntity,
                 researchState.activeResearchId,
-                ingredients,
-                researchBuildingSize);
+                ingredients);
 
             if (!researchBuilding.cycleActive)
             {
@@ -169,8 +164,7 @@ public partial class ResearchSystem : SystemBase
     private void CollectInputItems(
         Entity buildingEntity,
         FixedString64Bytes researchId,
-        NativeArray<ResearchIngredientElement> ingredients,
-        int2 buildingSize)
+        NativeArray<ResearchIngredientElement> ingredients)
     {
         int2 anchor = EntityManager
             .GetComponentData<GridPosition>(buildingEntity)
@@ -178,11 +172,14 @@ public partial class ResearchSystem : SystemBase
         DirectionEnum direction = EntityManager
             .GetComponentData<Direction>(buildingEntity)
             .dir;
+        int2 footprintSize = EntityManager
+            .GetComponentData<BuildingFootprint>(buildingEntity)
+            .size;
         BuildingInputCollectionUtility.CollectItems(
             _chunkMap,
             EntityManager,
             anchor,
-            buildingSize,
+            footprintSize,
             direction,
             _footprintCells,
             _itemsInCell,

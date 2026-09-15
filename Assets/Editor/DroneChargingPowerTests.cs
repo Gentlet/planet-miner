@@ -244,6 +244,8 @@ public class DroneChargingPowerTests
             typeof(DroneStationNetwork),
             typeof(BuildingOccupant),
             typeof(GridPosition),
+            typeof(BuildingFootprint),
+            typeof(Direction),
             typeof(Storage),
             typeof(PowerConsumer),
             typeof(StoredItemElement),
@@ -254,6 +256,7 @@ public class DroneChargingPowerTests
         _entityManager.SetComponentData(
             station,
             new GridPosition { gridPosition = int2.zero });
+        SetSingleCellFootprint(station);
         _entityManager.SetComponentData(
             station,
             new Storage { capacity = 10 });
@@ -327,10 +330,13 @@ public class DroneChargingPowerTests
         Entity pole = _entityManager.CreateEntity(
             typeof(PowerPole),
             typeof(GridPosition),
+            typeof(BuildingFootprint),
+            typeof(Direction),
             typeof(BuildingOccupant));
         _entityManager.SetComponentData(
             pole,
             new GridPosition { gridPosition = cell });
+        SetSingleCellFootprint(pole);
     }
 
     private Entity CreateStandardGenerator(float maximumGeneration)
@@ -338,6 +344,8 @@ public class DroneChargingPowerTests
         Entity generator = _entityManager.CreateEntity(
             typeof(PowerGenerator),
             typeof(GridPosition),
+            typeof(BuildingFootprint),
+            typeof(Direction),
             typeof(BuildingOccupant));
         _entityManager.SetComponentData(generator, new PowerGenerator
         {
@@ -347,6 +355,7 @@ public class DroneChargingPowerTests
         _entityManager.SetComponentData(
             generator,
             new GridPosition { gridPosition = int2.zero });
+        SetSingleCellFootprint(generator);
         return generator;
     }
 
@@ -356,6 +365,8 @@ public class DroneChargingPowerTests
             typeof(CoalGenerator),
             typeof(PowerGenerator),
             typeof(GridPosition),
+            typeof(BuildingFootprint),
+            typeof(Direction),
             typeof(BuildingOccupant),
             typeof(StoredItemElement));
         _entityManager.SetComponentData(generator, new CoalGenerator
@@ -370,7 +381,18 @@ public class DroneChargingPowerTests
         _entityManager.SetComponentData(
             generator,
             new GridPosition { gridPosition = int2.zero });
+        SetSingleCellFootprint(generator);
         return generator;
+    }
+
+    private void SetSingleCellFootprint(Entity entity)
+    {
+        _entityManager.SetComponentData(
+            entity,
+            new BuildingFootprint { size = new int2(1, 1) });
+        _entityManager.SetComponentData(
+            entity,
+            new Direction { dir = DirectionEnum.Up });
     }
 
     private void RunChargeFrame(bool consumeCoalFuel)

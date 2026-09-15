@@ -68,14 +68,15 @@ public partial class DroneStationNetworkSystem
             .GetComponentData<GridPosition>(stationEntity);
         DroneStation station = EntityManager
             .GetComponentData<DroneStation>(stationEntity);
-        DirectionEnum direction = EntityManager.HasComponent<Direction>(
-                stationEntity)
-            ? EntityManager.GetComponentData<Direction>(stationEntity).dir
-            : DirectionEnum.Up;
+        BuildingFootprint footprint = EntityManager
+            .GetComponentData<BuildingFootprint>(stationEntity);
+        DirectionEnum direction = EntityManager
+            .GetComponentData<Direction>(stationEntity)
+            .dir;
         GridBounds activityBounds = DroneStationRangeUtility
             .GetActivityBounds(
                 gridPosition.gridPosition,
-                station.footprintSize,
+                footprint.size,
                 direction,
                 station.activityRangeInChunks);
 

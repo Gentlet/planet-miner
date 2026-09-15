@@ -43,6 +43,8 @@ public partial class PowerGridSystem : SystemBase
             All = new[]
             {
                 ComponentType.ReadOnly<GridPosition>(),
+                ComponentType.ReadOnly<BuildingFootprint>(),
+                ComponentType.ReadOnly<Direction>(),
                 ComponentType.ReadOnly<BuildingOccupant>()
             },
             Any = new[]

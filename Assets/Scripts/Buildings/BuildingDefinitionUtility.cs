@@ -22,6 +22,24 @@ public static class BuildingDefinitionUtility
         return false;
     }
 
+    public static bool TryGetDefinition(
+        this NativeArray<BuildingPrefabElement> definitions,
+        BuildingTypeEnum type,
+        out BuildingPrefabElement definition)
+    {
+        for (int i = 0; i < definitions.Length; i++)
+        {
+            if (definitions[i].type != type)
+                continue;
+
+            definition = definitions[i];
+            return true;
+        }
+
+        definition = default;
+        return false;
+    }
+
     public static int2 GetFootprintSize(
         this DynamicBuffer<BuildingPrefabElement> definitions,
         BuildingTypeEnum type)

@@ -120,6 +120,9 @@ public partial class MainFacilityBootstrapSystem : SystemBase
         EntityManager.AddComponentData(
             mainFacility,
             new Direction { dir = DirectionEnum.Up });
+        EntityManager.AddComponentData(
+            mainFacility,
+            new BuildingFootprint { size = footprintSize });
         EntityManager.AddComponent<BuildingOccupantRequest>(mainFacility);
         EntityManager.AddComponent<MainFacility>(mainFacility);
         EntityManager.AddComponent<IndestructibleBuilding>(mainFacility);
@@ -137,7 +140,6 @@ public partial class MainFacilityBootstrapSystem : SystemBase
             {
                 activityRangeInChunks =
                     droneConfig.stationActivityRangeInChunks,
-                footprintSize = footprintSize,
                 isMainStation = true
             });
         EntityManager.AddComponentData(

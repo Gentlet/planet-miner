@@ -21,7 +21,6 @@ public partial class WorldTaskMarkerPresentationSystem : SystemBase
     private readonly Dictionary<Entity, Entity> _markerBySourceTask = new();
     private readonly HashSet<Entity> _activeSourceTasks = new();
 
-    private ChunkMapSystem _chunkMap;
     private EntityQuery _demolitionTaskQuery;
     private EntityQuery _worldItemRecoveryTaskQuery;
     private EntityQuery _markerQuery;
@@ -33,7 +32,6 @@ public partial class WorldTaskMarkerPresentationSystem : SystemBase
 
     protected override void OnCreate()
     {
-        _chunkMap = World.GetOrCreateSystemManaged<ChunkMapSystem>();
         _demolitionTaskQuery = GetEntityQuery(
             ComponentType.ReadOnly<DroneTask>(),
             ComponentType.ReadOnly<DroneTaskStatus>(),
@@ -177,6 +175,7 @@ public partial class WorldTaskMarkerPresentationSystem : SystemBase
         return EntityManager.HasComponent<BuildingOccupant>(buildingEntity) &&
                EntityManager.HasComponent<BuildingType>(buildingEntity) &&
                EntityManager.HasComponent<GridPosition>(buildingEntity) &&
+               EntityManager.HasComponent<BuildingFootprint>(buildingEntity) &&
                EntityManager.HasComponent<Direction>(buildingEntity);
     }
 
@@ -231,13 +230,13 @@ public partial class WorldTaskMarkerPresentationSystem : SystemBase
         Entity markerEntity,
         Entity buildingEntity)
     {
-        BuildingType buildingType = EntityManager
-            .GetComponentData<BuildingType>(buildingEntity);
         GridPosition gridPosition = EntityManager
             .GetComponentData<GridPosition>(buildingEntity);
+        BuildingFootprint footprint = EntityManager
+            .GetComponentData<BuildingFootprint>(buildingEntity);
         Direction direction = EntityManager
             .GetComponentData<Direction>(buildingEntity);
-        int2 size = _chunkMap.GetBuildingSize(buildingType.type);
+        int2 size = footprint.size;
         float2 centerOffset = BuildingFootprintUtility.GetVisualCenterOffset(
             size,
             direction.dir);

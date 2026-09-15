@@ -118,16 +118,21 @@ public class DroneStationNetworkTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void RotatedFootprintRangeUsesRotatedOccupiedBounds()
+    public void RotatedStationRegistrationUsesBuildingFootprint()
     {
-        GridBounds bounds = DroneStationRangeUtility.GetActivityBounds(
+        Entity station = CreateStation(
             new int2(10, -4),
+            1,
             new int2(2, 3),
-            DirectionEnum.Right,
-            new int2(1, 2));
+            DirectionEnum.Right);
+        _networkSystem.Update();
+        List<Entity> coveringStations = new();
 
-        Assert.That(bounds.Min, Is.EqualTo(new int2(-6, -37)));
-        Assert.That(bounds.Max, Is.EqualTo(new int2(28, 28)));
+        _chunkMap.GetDroneStationsCoveringCell(new int2(-6, -21), coveringStations);
+        Assert.That(coveringStations, Does.Contain(station));
+
+        _chunkMap.GetDroneStationsCoveringCell(new int2(-7, -21), coveringStations);
+        Assert.That(coveringStations, Is.Empty);
     }
 
     [Test]
@@ -160,8 +165,8 @@ public class DroneStationNetworkTests : EcsWorldTestFixture
             _entityManager.GetComponentData<Storage>(mainFacility).capacity,
             Is.EqualTo(13));
         Assert.That(
-            _entityManager.GetComponentData<DroneStation>(mainFacility)
-                .footprintSize,
+            _entityManager.GetComponentData<BuildingFootprint>(mainFacility)
+                .size,
             Is.EqualTo(new int2(3)));
         Assert.That(
             _entityManager.HasComponent<BuildingOutputCursor>(mainFacility),
@@ -317,9 +322,9 @@ public class DroneStationNetworkTests : EcsWorldTestFixture
             _entityManager.GetComponentData<Storage>(station).capacity,
             Is.EqualTo(10));
         Assert.That(
-            _entityManager.GetComponentData<DroneStation>(station)
-                .footprintSize,
-            Is.EqualTo(new int2(2)));
+            _entityManager.GetComponentData<BuildingFootprint>(station)
+                .size,
+            Is.EqualTo(new int2(1, 2)));
         Assert.That(
             _entityManager.HasBuffer<StoredItemElement>(station),
             Is.True);
@@ -347,13 +352,13 @@ public class DroneStationNetworkTests : EcsWorldTestFixture
             typeof(DroneStation),
             typeof(GridPosition),
             typeof(Direction),
+            typeof(BuildingFootprint),
             typeof(BuildingOccupant));
         _entityManager.SetComponentData(
             station,
             new DroneStation
             {
                 activityRangeInChunks = new int2(rangeInChunks),
-                footprintSize = footprintSize,
                 isMainStation = false
             });
         _entityManager.SetComponentData(
@@ -362,6 +367,12 @@ public class DroneStationNetworkTests : EcsWorldTestFixture
         _entityManager.SetComponentData(
             station,
             new Direction { dir = direction });
+        _entityManager.SetComponentData(
+            station,
+            new BuildingFootprint
+            {
+                size = BuildingFootprintUtility.NormalizeSize(footprintSize)
+            });
         return station;
     }
 
@@ -487,7 +498,7 @@ public class DroneStationNetworkTests : EcsWorldTestFixture
             {
                 type = BuildingTypeEnum.DroneStation,
                 prefab = stationPrefab,
-                size = new int2(2)
+                size = new int2(0, 2)
             });
     }
 
@@ -498,6 +509,7 @@ public class DroneStationNetworkTests : EcsWorldTestFixture
             typeof(BuildingType),
             typeof(GridPosition),
             typeof(Direction),
+            typeof(BuildingFootprint),
             typeof(StoredItemElement));
         _entityManager.SetComponentData(
             station,
@@ -511,6 +523,9 @@ public class DroneStationNetworkTests : EcsWorldTestFixture
         _entityManager.SetComponentData(
             station,
             new Direction { dir = DirectionEnum.Up });
+        _entityManager.SetComponentData(
+            station,
+            new BuildingFootprint { size = new int2(1, 1) });
         return station;
     }
 
