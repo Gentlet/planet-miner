@@ -8,6 +8,19 @@
 
 현재 소스 코드를 최종 기준으로 삼는다. `.agents/`의 계획 문서는 설계 배경을 확인할 때만 참고하고, 현재 동작을 판단할 때는 컴포넌트, 시스템 쿼리, 업데이트 순서, 실제 호출 관계를 다시 확인한다.
 
+## 문서 기준과 탐색·출력 규칙
+
+- 이 `AGENTS.md`를 프로젝트 공통 설계·안전 규칙, 문서 경로, 검색·출력 및 Unity CLI 검증 절차의 기준 문서(canonical source)로 둔다. 외부 `planet miner.md`는 시작 경로·Git 환경과 여기서 다루지 않는 고유 제약을 보관하고, `Docs/CodeMemory/`는 영역별 상세 계약과 실행 흐름을 보관한다. 같은 규칙의 전문을 다른 파일에 복제하지 않는다.
+- 이미 컨텍스트에 제공되거나 이번 작업에서 읽은 동일한 지침은 변경되지 않았다면 다시 전문 출력하지 않는다. 지침 변경이나 컨텍스트 소실이 있으면 필요한 부분을 다시 확인한다.
+- 대상 파일이나 심볼을 알고 있으면 저장소 전체 검색부터 시작하지 않는다. 기본 순서는 **파일명/경로 확인 → 정확한 심볼 검색 → 해당 메서드·초기화·직접 의존 구간 확인 → 필요한 경우에만 범위 확대**다. `rg --files`로 후보 경로를 좁히고, 리터럴 심볼에는 `rg -n -F`를 사용한다.
+- 일반 코드 탐색은 대상이 속한 `Assets/Scripts/`, `Assets/UI/` 하위 경로와 관련 `Assets/Editor/` 테스트로 제한한다. 범위를 넓힐 때는 누락된 호출자, 변경된 데이터 계약, 실패한 테스트 등 이유를 정한다. 파일 목록·크기는 후보 선정에 사용하며 목록 전체의 내용을 읽을 이유로 삼지 않는다.
+- `.meta`, `.unity`, `.prefab`, `.asset`, `Packages/`, `UIElementsSchema/`는 해당 형식·참조·직렬화·패키지 문제가 작업과 직접 관련 있을 때만 탐색한다. `Library/`, `Temp/`, `Logs/`, `.git/`도 일반 소스 검색에서 제외하고 진단 근거가 있을 때 필요한 경로만 연다. `Assets/Resources/Config/`는 관련 설정 의미를 확인할 때 추가한다. 파일 삭제나 Git 추적 제외를 뜻하지 않는다.
+- 검색 결과가 많거나 출력이 잘리면 출력 한도를 늘리지 말고 경로·심볼·검색어를 좁힌다. `Get-Content -Raw ... | Select-String`은 사용하지 않는다. 줄 단위 `rg -n` 또는 `Select-String -Path`로 검색한 뒤 필요한 구간만 읽는다.
+- 이미 읽은 대형 파일이 변경되지 않았다면 다시 전문 출력하지 않는다. 심볼·변경 구간과 필요한 직접 의존 부분만 확인한다. 다른 작업자의 변경이나 컨텍스트 소실이 의심되면 해당 파일의 변경 여부를 확인한다. 긴 작업의 인계 요약에는 읽은 경로·심볼, 확인한 계약과 남은 의문을 남겨 재탐색을 줄인다.
+- CodeMemory 전체를 읽지 않는다. 현재 작업 영역에 직접 대응하는 문서만 읽고, 다른 영역은 변경된 계약이나 실패 근거가 생겼을 때 관련 절만 추가한다. 문서의 "함께 확인할 영역"은 해당 변경 종류에 적용하며, 모든 의존 문서를 연쇄적으로 읽으라는 뜻이 아니다. 테스트도 관련 사례의 초기화·헬퍼·assertion부터 확인한다.
+- 대량 원본 로그는 컨텍스트에 재출력하지 않고 필요한 경우 파일로 보존한다. 성공 결과는 최종 상태·통계만, 실패는 실패명·메시지·관련 스택만 출력한다. 요약 과정에서 실패·경고·생략·미완료 상태를 숨기지 않는다.
+- 코드 구조나 계약이 바뀌면 그 변경에 해당하는 AGENTS/CodeMemory 절의 갱신 필요성을 확인한다. 국소 변경을 이유로 모든 문서와 과거 기록을 재감사하지 않는다.
+
 ## 핵심 구조 및 기존 규칙
 
 - MonoBehaviour는 입력, 카메라, UI, 미리보기, ECS 요청 생성에 집중한다. 게임플레이 상태, 공간 소유권, 아이템 소유권, 작업 진행은 ECS 시스템이 소유한다.
@@ -67,6 +80,7 @@
 | 아이템 추적, 벨트, 저장, 채굴, 제작 | [`Docs/CodeMemory/ItemLogisticsAndProduction.md`](Docs/CodeMemory/ItemLogisticsAndProduction.md) |
 | 전력 설정, 토폴로지, 배분, 연료 | [`Docs/CodeMemory/PowerGrid.md`](Docs/CodeMemory/PowerGrid.md) |
 | 드론 정거장, 작업, 예약, 이동, 충전, 회수 | [`Docs/CodeMemory/DroneLogistics.md`](Docs/CodeMemory/DroneLogistics.md) |
+| 연구 설정, 진행, 해금, 보상, 연구 UI 계약 | [`Docs/CodeMemory/ResearchSystem.md`](Docs/CodeMemory/ResearchSystem.md) |
 | 카메라, 입력, UI 모드, 건물 정보 패널 | [`Docs/CodeMemory/UIAndPresentation.md`](Docs/CodeMemory/UIAndPresentation.md) |
 
 ## 기획 불명확성 및 확인
@@ -80,12 +94,43 @@
 ## 변경 및 검증 시 주의
 
 - Unity 버전은 `ProjectSettings/ProjectVersion.txt`, 패키지 버전은 `Packages/manifest.json`을 따른다.
-- C# 코드를 변경한 경우에는 변경 범위와 무관하게 프로젝트에서 사용하는 Unity CLI 방식으로 컴파일/재컴파일을 항상 확인한다. 비동기 명령은 제출만으로 완료로 간주하지 말고 최종 상태를 확인한다.
+- C# 또는 에셋을 변경한 경우에는 변경 범위에 맞는 Unity CLI 컴파일/재컴파일 확인을 수행한다. C# 변경은 크기와 무관하게 항상 확인한다. 읽기 전용 분석이나 문서만의 변경에는 새 컴파일을 실행하지 않는다. 비동기 명령은 제출만으로 완료로 간주하지 말고 최종 상태를 확인한다.
 - 관련된 기존 EditMode 테스트가 있으면 전체 테스트보다 해당 테스트를 먼저 실행한다. 검증에서 문제가 발견되었을 때만 의존 시스템이나 더 넓은 테스트 범위로 확대한다.
 - 단순한 코드 변경은 컴파일 확인으로 충분할 수 있다. 단순하지 않은 게임 로직, 라이프사이클·소유권 규칙, 계산 로직, 회귀 가능성이 높은 동작을 변경한 경우에만 관련 테스트를 추가하거나 수정한다.
 - 실제 플레이 동작, UI·입력, 시각적 결과 등의 수동 작동 테스트는 사용자가 직접 수행한다. 명시적으로 요청받지 않은 경우 Play Mode 기반 작동 검증을 수행하지 않는다.
 - 명시적으로 요청받지 않은 경우 변경 내용과 무관한 테스트 범위나 검증 절차를 확장하지 않는다. 검증 중 문제가 발견된 경우에만 추가적인 코드 분석과 검증을 진행한다.
-- Unity 검증은 `C:\Users\cyc07\AppData\Local\Unity\bin\unity.exe`와 `--project-path "C:\Projects\unity\PlanetMiner\planet miner"`를 사용하는 현재 프로젝트 CLI 절차를 따른다.
+- Unity CLI 명령 경로와 검증 순서는 아래 "Unity CLI 검증 절차"를 재사용한다.
 - 관련 시스템을 수정하면 해당 영역 문서의 "함께 확인할 영역"과 `Assets/Editor/`의 연관 테스트를 먼저 확인한다.
-- 컴파일/EditMode 테스트 성공은 Play Mode 입력, UI, 시각 결과, WebGL/브라우저 동작을 증명하지 않는다. 검증 보고에서 각각을 구분한다.
+- 컴파일/EditMode 테스트 성공은 Play Mode 입력, UI, 시각 결과, WebGL/브라우저 동작이나 persistence를 증명하지 않는다. 검증 보고에서 관련된 미수행 항목을 구분한다.
 - 이 문서와 상세 문서는 현재 구조를 찾기 위한 지도다. 개별 필드와 분기 조건은 항상 실제 소스를 다시 확인한다.
+
+### Unity CLI 검증 절차
+
+Unity CLI 작업에는 설치된 스킬의 적용 지침을 따르되, 매 작업마다 전체 명령 목록이나 고급 참고 문서를 다시 출력하지 않는다. 아래 검증된 경로를 사용하고, 실행 파일 부재·버전/스키마 변경·명령 오류가 확인될 때만 해당 명령의 도움말이나 관련 참고 절을 조회한다.
+
+```powershell
+$unityCli = 'C:\Users\cyc07\AppData\Local\Unity\bin\unity.exe'
+$planetMinerProject = 'C:\Projects\unity\PlanetMiner\planet miner'
+```
+
+일반 검증에서는 원본 상태 JSON을 반복 출력하지 않도록 `Tools/Codex/Verify-Unity.ps1`을 우선 사용한다. `-CompileOnly`는 컴파일만, `-TestFilter '<관련 테스트>'`는 컴파일 후 지정한 EditMode 테스트만 실행한다. 전체 EditMode 테스트는 사용자가 명시적으로 요청한 경우에만 `-AllEditModeTests`로 실행한다. 래퍼가 실행되지 않거나 결과 해석에 필요한 오류가 발생한 경우에만 아래 개별 명령 절차로 진단한다.
+
+1. 코드·에셋 변경을 한 묶음으로 마친 뒤 검증한다. 대상 프로젝트가 열린 Editor에 연결되어 있으면 `command` 경로를 사용하며 standalone `unity test`를 실행하지 않는다. 연결이 없으면 그 상태를 확인하고 설치된 CLI의 해당 연결/오프라인 절차만 조회한다. Editor 설치·교체나 무조건적인 명령 재시도로 우회하지 않는다.
+2. 아래 명령으로 재컴파일을 시작한 뒤 종료 상태를 확인한다. 명령들은 순차적으로 실행하며, 다음 테스트 명령은 컴파일 확인을 마친 뒤 실행한다.
+
+   ```powershell
+   & $unityCli command recompile --focus false --project-path $planetMinerProject --format json
+   & $unityCli command recompile_status --project-path $planetMinerProject --format json
+   ```
+
+3. 상태 응답은 외부 JSON의 성공/오류부터 확인한다. `data.result`가 문자열이면 한 번 더 JSON으로 파싱하고, 객체이면 그대로 사용한다. null·파싱 실패·연결 오류는 완료로 간주하지 않는다. `completed` 또는 `up_to_date`라는 이름만으로 통과시키지 말고 `failed:false`, `errors:[]`, Editor가 준비되어 있고 컴파일/리로드 중이 아님을 확인한다. `up_to_date`이면 `Library/ScriptAssemblies/Assembly-CSharp.dll`이 최신 프로젝트 C# 소스보다 오래되지 않았는지 확인하고, 테스트 변경 시 테스트 어셈블리의 최신성도 확인한다.
+4. 비동기 작업은 polling하되 상태 변경·새 오류·최종 결과만 출력하고 동일한 전체 응답을 반복 출력하지 않는다. 짧은 연속 polling 대신 간격을 늘리며 기다리고, 한 번의 대기는 60초 이내로 제한한다. 예상 시간을 넘기면 연결/Editor 상태와 필요한 로그만 진단한다. 재연결 중 일시 오류는 상태 조회를 복구하며, 작업 상태가 불명확하다는 이유만으로 컴파일이나 테스트를 중복 제출하지 않는다.
+5. 컴파일 확인 후 관련 테스트 필터를 지정해 실행한다. `<관련 테스트 클래스 또는 필터>`는 실제 대상 이름으로 바꾼다.
+
+   ```powershell
+   & $unityCli command run_tests --mode editor --filter '<관련 테스트 클래스 또는 필터>' --async_tests true --project-path $planetMinerProject --format json
+   & $unityCli command test_status --project-path $planetMinerProject --format json
+   ```
+
+6. 테스트도 최종 완료를 확인한다. 성공 시 필터와 Total/Passed/Failed/Skipped/Inconclusive 등 제공된 통계만 보고하고 전체 통과 목록·원본 로그를 다시 넣지 않는다. 실패 시 해당 테스트의 메시지와 필요한 스택을 확인한다. 수정 전 assertion이 실행되었다면 테스트 어셈블리 반영 여부부터 확인한다.
+7. 추가 코드/에셋 변경, 검증 실패, 오래된 어셈블리 등 결과를 무효화하는 근거가 없다면 같은 컴파일·테스트를 반복하지 않는다. 새 변경이 있으면 그 변경 이후의 컴파일과 관련 테스트를 확인한다. 완료된 결과를 다시 보고하려는 목적만으로 재실행하거나 전체 테스트로 확대하지 않는다.

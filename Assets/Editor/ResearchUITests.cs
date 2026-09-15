@@ -119,9 +119,9 @@ public class ResearchUITests
             Invoke(ui, "RefreshResearchPanel");
             Assert.That(root.Q<Button>("research-start-button").enabledSelf, Is.False);
             var activeLabel = root.Q<Label>("research-active-label");
-            StringAssert.Contains("활성 연구: 소재 가공", activeLabel.text);
+            StringAssert.Contains("진행 중 연구: 소재 가공", activeLabel.text);
             StringAssert.Contains("철봉과 구리봉 제작 기술을 해금합니다.", activeLabel.text);
-            StringAssert.Contains("소모 재료 (1주기): 철 ×1 · 구리 ×1", activeLabel.text);
+            StringAssert.Contains("소모 재료: 철 ×10 · 구리 ×10", activeLabel.text);
             string activeText = activeLabel.text;
             Invoke(ui, "InspectResearch", new FixedString64Bytes("drone_logistics"));
             Invoke(ui, "RefreshResearchPanel");
@@ -150,7 +150,7 @@ public class ResearchUITests
             Invoke(ui, "RefreshResearchPanel");
             Assert.That(VisibleButtons(list), Is.EqualTo(2)); // logistics + newly unlocked coal
             Assert.That(root.Q<Button>("research-start-button").text, Is.EqualTo("연구 완료"));
-            Assert.That(activeLabel.text, Is.EqualTo("활성 연구: 없음"));
+            Assert.That(activeLabel.text, Is.EqualTo("진행 중 연구: 없음"));
             Invoke(ui, "InspectResearch", new FixedString64Bytes("drone_logistics"));
             Invoke(ui, "RefreshResearchPanel");
             StringAssert.DoesNotContain("소재 가공", root.Q<Label>("research-inspected-description").text);

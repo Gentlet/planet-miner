@@ -12,7 +12,7 @@
                     <ui:Label text="연구" class="building-title"/>
                     <ui:Button name="research-close-button" text="×" class="close-button"/>
                 </ui:VisualElement>
-                <ui:Label name="research-active-label" text="활성 연구: 없음" class="research-summary-label"/>
+                <ui:Label name="research-active-label" text="진행 중 연구: 없음" class="research-summary-label"/>
                 <ui:Label name="research-building-count-label" text="작동 가능한 연구건물: 0개" class="research-summary-label"/>
                 <ui:VisualElement class="research-body">
                     <ui:VisualElement class="research-list-panel">

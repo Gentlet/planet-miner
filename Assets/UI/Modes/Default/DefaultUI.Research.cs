@@ -438,7 +438,7 @@ public partial class DefaultUI
     {
         if (researchState.activeResearchId.Length == 0)
         {
-            _researchActiveLabel.text = "활성 연구: 없음";
+            _researchActiveLabel.text = "진행 중 연구: 없음";
         }
         else if (definitions.TryGetDefinition(
                      researchState.activeResearchId,
@@ -450,7 +450,7 @@ public partial class DefaultUI
                 ? progress[progressIndex].progress
                 : 0f;
             _researchActiveLabel.text =
-                $"활성 연구: {activeResearch.displayName}  ·  {currentProgress:0.#} / {activeResearch.requiredProgress:0.#}\n" +
+                $"진행 중 연구: {activeResearch.displayName}  ·  {currentProgress:0.#} / {activeResearch.requiredProgress:0.#}\n" +
                 $"{activeResearch.description}\n" +
                 $"소모 재료: {GetResearchMaterialText(activeResearch, ingredients)}";
         }
