@@ -25,7 +25,8 @@ public partial struct ItemLifecycleApplySystem : ISystem
             ComponentType.ReadWrite<ItemOwnership>(),
             ComponentType.ReadWrite<GridPosition>(),
             ComponentType.ReadWrite<DestroyItemRequest>(),
-            ComponentType.ReadWrite<TransferOwnershipRequest>()
+            ComponentType.ReadWrite<TransferOwnershipRequest>(),
+            ComponentType.ReadWrite<BeltMovementState>()
         );
     }
 
@@ -57,6 +58,9 @@ public partial struct ItemLifecycleApplySystem : ISystem
             // 1회성 Request 컴포넌트들을 비활성화 상태로 초기화
             ecb.SetComponentEnabled<DestroyItemRequest>(newItem, false);
             ecb.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
+            
+            // 상태 컴포넌트들을 비활성화 상태로 초기화
+            ecb.SetComponentEnabled<BeltMovementState>(newItem, false);
 
             // Consume-on-Apply: 요청 엔티티 파괴
             ecb.DestroyEntity(requestEntity);
