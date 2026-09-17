@@ -2,7 +2,9 @@
 using System;
 using System.IO;
 using System.Text;
+using Unity.Collections;
 using Unity.Entities;
+using Unity.Mathematics;
 using UnityEngine;
 
 /// <summary>
@@ -43,8 +45,159 @@ public partial class WorldInvariantValidationSystem : SystemBase
 
     private void ValidateInvariants()
     {
-        // Phase 0: 뼈대 상태
-        // 향후 Phase 1(Item/Spatial), Phase 2(Belt) 등 도메인 추가 시 각 검증 로직이 여기에 등록됩니다.
+        // Phase 1: Item & Spatial Invariant 검증
+        ValidateItemAndSpatialInvariants();
+
+        // Phase 1: 미소비(Unconsumed) 1회성 Request 잔류 검증
+        ValidateRequestLifecycleInvariants();
+    }
+
+    /// <summary>
+    /// Item 도메인 및 공간 인덱스(ItemSpatialIndex) 간의 양방향 정합성을 검증합니다.
+    /// </summary>
+    private void ValidateItemAndSpatialInvariants()
+    {
+        if (!SystemAPI.TryGetSingleton<ItemSpatialIndex>(out var spatialIndex) || !spatialIndex.Map.IsCreated)
+        {
+            return;
+        }
+
+        // 1. [정방향 검증] World Item -> ItemSpatialIndex 등록 여부 확인
+        foreach (var (pos, ownership, entity) in 
+                 SystemAPI.Query<RefRO<GridPosition>, RefRO<ItemOwnership>>()
+                          .WithAll<ItemIdentity>()
+                          .WithEntityAccess())
+        {
+            if (ownership.ValueRO.IsWorldItem)
+            {
+                int2 targetPos = pos.ValueRO.Value;
+                bool foundInIndex = false;
+
+                if (spatialIndex.TryGetFirstItem(targetPos, out Entity itemEntity, out var it))
+                {
+                    do
+                    {
+                        if (itemEntity == entity)
+                        {
+                            foundInIndex = true;
+                            break;
+                        }
+                    } while (spatialIndex.TryGetNextItem(out itemEntity, ref it));
+                }
+
+                if (!foundInIndex)
+                {
+                    ReportViolation(
+                        "ItemSpatial",
+                        $"World Item ({entity.Index}:{entity.Version}) is not registered in ItemSpatialIndex at position ({targetPos.x}, {targetPos.y}). Spatial sync may be missing.",
+                        entity
+                    );
+                }
+            }
+            else
+            {
+                // Stored Item: 보관 대상 Owner 엔티티의 실존 여부 확인 (고아 수납 아이템 방어)
+                Entity owner = ownership.ValueRO.Owner;
+                if (!SystemAPI.Exists(owner))
+                {
+                    ReportViolation(
+                        "ItemOwnership",
+                        $"Stored Item ({entity.Index}:{entity.Version}) references non-existent (destroyed) Owner Entity ({owner.Index}:{owner.Version}). Ownership cleanup may be missing.",
+                        entity
+                    );
+                }
+            }
+        }
+
+        // 2. [역방향 검증] ItemSpatialIndex -> 실제 월드 아이템 정합성 확인
+        var kvpArray = spatialIndex.Map.GetKeyValueArrays(Allocator.Temp);
+        try
+        {
+            for (int i = 0; i < kvpArray.Length; i++)
+            {
+                int2 pos = kvpArray.Keys[i];
+                Entity itemEntity = kvpArray.Values[i];
+
+                // 인덱스 내 엔티티가 월드에 실존하는지 확인
+                if (!SystemAPI.Exists(itemEntity))
+                {
+                    ReportViolation(
+                        "SpatialIndex",
+                        $"ItemSpatialIndex at ({pos.x}, {pos.y}) contains non-existent or destroyed entity ({itemEntity.Index}:{itemEntity.Version}). Dangling pointer detected.",
+                        itemEntity
+                    );
+                    continue;
+                }
+
+                // 필수 컴포넌트 보유 확인
+                if (!SystemAPI.HasComponent<ItemOwnership>(itemEntity) || !SystemAPI.HasComponent<GridPosition>(itemEntity))
+                {
+                    ReportViolation(
+                        "SpatialIndex",
+                        $"Entity ({itemEntity.Index}:{itemEntity.Version}) indexed at ({pos.x}, {pos.y}) lacks ItemOwnership or GridPosition component.",
+                        itemEntity
+                    );
+                    continue;
+                }
+
+                var ownership = SystemAPI.GetComponent<ItemOwnership>(itemEntity);
+                var gridPos = SystemAPI.GetComponent<GridPosition>(itemEntity);
+
+                // 보관(Stored) 아이템이 잘못 등록되었는지 확인
+                if (!ownership.IsWorldItem)
+                {
+                    ReportViolation(
+                        "SpatialIndex",
+                        $"Stored item ({itemEntity.Index}:{itemEntity.Version}, Owner={ownership.Owner.Index}:{ownership.Owner.Version}) is erroneously registered in ItemSpatialIndex at ({pos.x}, {pos.y}).",
+                        itemEntity
+                    );
+                }
+
+                // 좌표 일치 확인
+                if (!gridPos.Value.Equals(pos))
+                {
+                    ReportViolation(
+                        "SpatialIndex",
+                        $"Item position mismatch: Entity ({itemEntity.Index}:{itemEntity.Version}) has GridPosition ({gridPos.Value.x}, {gridPos.Value.y}), but is indexed at ({pos.x}, {pos.y}).",
+                        itemEntity
+                    );
+                }
+            }
+        }
+        finally
+        {
+            kvpArray.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// 프레임 종료 시점(SynchronizationGroup)에 소비되지 않고 잔류한 1회성 Request 컴포넌트를 감시합니다.
+    /// </summary>
+    private void ValidateRequestLifecycleInvariants()
+    {
+        // 1. TransferOwnershipRequest 잔류 감시 (StateApplyGroup에서 처리 및 비활성화되었어야 함)
+        foreach (var (_, entity) in 
+                 SystemAPI.Query<RefRO<TransferOwnershipRequest>>()
+                          .WithEntityAccess())
+        {
+            ReportViolation(
+                "RequestLifecycle",
+                $"TransferOwnershipRequest remained enabled on Entity ({entity.Index}:{entity.Version}) at the end of the frame (SynchronizationGroup). Request was not consumed in StateApplyGroup.",
+                entity
+            );
+        }
+
+        // 2. DestroyItemRequest 잔류 감시 (StateApplyGroup에서 처리 및 엔티티가 파괴되었어야 함)
+        foreach (var (_, entity) in 
+                 SystemAPI.Query<RefRO<DestroyItemRequest>>()
+                          .WithEntityAccess())
+        {
+            ReportViolation(
+                "RequestLifecycle",
+                $"DestroyItemRequest remained active on Entity ({entity.Index}:{entity.Version}) at the end of the frame (SynchronizationGroup). Entity was not destroyed in StateApplyGroup.",
+                entity
+            );
+        }
     }
 
     /// <summary>
