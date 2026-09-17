@@ -1,0 +1,91 @@
+using Unity.Burst;
+using Unity.Collections;
+using Unity.Entities;
+using Unity.Mathematics;
+
+/// <summary>
+/// 월드 아이템의 위치를 ItemSpatialIndex에 동기화하는 시스템.
+/// 
+/// [책임]
+/// - SynchronizationGroup(Phase 6)에서 실행되어 매 프레임 공간 인덱스를 Clear하고
+///   현재 월드에 살아있는 유효한 월드 아이템(ItemOwnership.IsWorldItem == true)만 일괄 재등록합니다.
+/// - ISystem 및 [BurstCompile] 기반으로 멀티스레드 병렬 Job(IJobEntity)을 통해 고속 처리합니다.
+/// </summary>
+[UpdateInGroup(typeof(SynchronizationGroup))]
+[BurstCompile]
+public partial struct ItemSpatialSyncSystem : ISystem
+{
+    // 월드 아이템 및 보관(Stored) 아이템을 모두 포함하는 아이템 쿼리
+    // 실제 월드 아이템 필터링은 Job 내부에서 ItemOwnership.IsWorldItem으로 수행됩니다.
+    private EntityQuery _itemQuery;
+
+    [BurstCompile]
+    public void OnCreate(ref SystemState state)
+    {
+        var map = new NativeParallelMultiHashMap<int2, Entity>(1024, Allocator.Persistent);
+
+        var singletonEntity = state.EntityManager.CreateEntity();
+        state.EntityManager.AddComponentData(singletonEntity, new ItemSpatialIndex
+        {
+            Map = map
+        });
+
+        _itemQuery = SystemAPI.QueryBuilder()
+            .WithAll<ItemIdentity, GridPosition, ItemOwnership>()
+            .Build();
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
+    {
+        if (SystemAPI.TryGetSingleton<ItemSpatialIndex>(out var index))
+        {
+            if (index.Map.IsCreated)
+            {
+                index.Map.Dispose();
+            }
+        }
+    }
+
+    [BurstCompile]
+    public void OnUpdate(ref SystemState state)
+    {
+        ref var index = ref SystemAPI.GetSingletonRW<ItemSpatialIndex>().ValueRW;
+
+        index.Map.Clear();
+
+        // 전체 아이템 개수를 기반으로 MultiHashMap의 용량(Capacity) 상한을 안전하게 확보
+        int count = _itemQuery.CalculateEntityCount();
+        if (count == 0) return;
+
+        if (index.Map.Capacity < count)
+        {
+            index.Map.Capacity = math.max(1024, count * 2);
+        }
+
+        var job = new PopulateItemSpatialIndexJob
+        {
+            Writer = index.Map.AsParallelWriter()
+        };
+
+        state.Dependency = job.ScheduleParallel(_itemQuery, state.Dependency);
+        state.Dependency.Complete();
+    }
+}
+
+/// <summary>
+/// 월드 아이템 엔티티들을 공간 멀티 해시맵에 병렬 등록하는 Burst Job.
+/// </summary>
+[BurstCompile]
+public partial struct PopulateItemSpatialIndexJob : IJobEntity
+{
+    public NativeParallelMultiHashMap<int2, Entity>.ParallelWriter Writer;
+
+    public void Execute(Entity entity, in GridPosition pos, in ItemOwnership ownership)
+    {
+        if (ownership.IsWorldItem)
+        {
+            Writer.Add(pos.Value, entity);
+        }
+    }
+}
