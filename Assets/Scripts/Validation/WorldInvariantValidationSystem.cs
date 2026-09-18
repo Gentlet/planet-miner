@@ -45,11 +45,23 @@ public partial class WorldInvariantValidationSystem : SystemBase
 
     private void ValidateInvariants()
     {
+        if (SystemAPI.TryGetSingletonRW<BeltSpatialIndexFence>(out var beltFenceRw))
+        {
+            beltFenceRw.ValueRW.Complete();
+        }
+        if (SystemAPI.TryGetSingletonRW<ItemSpatialIndexFence>(out var itemFenceRw))
+        {
+            itemFenceRw.ValueRW.Complete();
+        }
+
         // Phase 1: Item & Spatial Invariant 검증
         ValidateItemAndSpatialInvariants();
 
         // Phase 1: 미소비(Unconsumed) 1회성 Request 잔류 검증
         ValidateRequestLifecycleInvariants();
+
+        // Phase 2: Belt & Item Movement Invariant 검증
+        ValidateBeltInvariants();
     }
 
     /// <summary>
@@ -197,6 +209,195 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 $"DestroyItemRequest remained active on Entity ({entity.Index}:{entity.Version}) at the end of the frame (SynchronizationGroup). Entity was not destroyed in StateApplyGroup.",
                 entity
             );
+        }
+    }
+
+    /// <summary>
+    /// Phase 2 벨트 건물 및 아이템 이동 무결성(Invariant)을 검증합니다.
+    /// - 1. 미소비(Unconsumed) 이동 계획(PlannedProgress) 잔류 감시
+    /// - 2. 고아 벨트 아이템(벨트 없는 위치에서 활성화된 아이템) 감시
+    /// - 3. 동일 벨트 타일 내 최대 수용량(4개) 초과 및 최소 간격(ItemSpacing 0.25f) 침범 감시
+    /// - 4. 연속된 타일 경계 횡단 간격(Boundary Gap) 침범 감시
+    /// </summary>
+    private void ValidateBeltInvariants()
+    {
+        if (SystemAPI.TryGetSingletonRW<BeltSpatialIndexFence>(out var beltFenceRw))
+        {
+            beltFenceRw.ValueRW.Complete();
+        }
+
+        if (!SystemAPI.TryGetSingleton<BeltSpatialIndex>(out var beltIndex) || !beltIndex.Map.IsCreated)
+        {
+            return;
+        }
+
+        if (!SystemAPI.TryGetSingleton<ItemSpatialIndex>(out var itemSpatialIndex) || !itemSpatialIndex.Map.IsCreated)
+        {
+            return;
+        }
+
+        // 1. 미소비 이동 계획 잔류 감시 (ExecutionGroup에서 정상 소비되었는지 확인)
+        foreach (var (decision, entity) in 
+                 SystemAPI.Query<RefRO<BeltMovementDecision>>()
+                          .WithEntityAccess())
+        {
+            if (decision.ValueRO.PlannedProgress > 0.0f)
+            {
+                ReportViolation(
+                    "BeltInvariant",
+                    $"BeltMovementDecision.PlannedProgress ({decision.ValueRO.PlannedProgress}) was not consumed at the end of the frame on Entity ({entity.Index}:{entity.Version}). ExecutionGroup execution may be missing.",
+                    entity
+                );
+            }
+        }
+
+        // 2. 고아 벨트 아이템 감시 (벨트가 없는 위치인데 BeltMovementState가 활성화된 경우)
+        foreach (var (pos, ownership, entity) in 
+                 SystemAPI.Query<RefRO<GridPosition>, RefRO<ItemOwnership>>()
+                          .WithAll<BeltMovementState>()
+                          .WithEntityAccess())
+        {
+            if (ownership.ValueRO.IsWorldItem)
+            {
+                if (!beltIndex.HasBeltAt(pos.ValueRO.Value))
+                {
+                    ReportViolation(
+                        "BeltInvariant",
+                        $"Item ({entity.Index}:{entity.Version}) has active BeltMovementState at ({pos.ValueRO.Value.x}, {pos.ValueRO.Value.y}), but no belt building exists at this position.",
+                        entity
+                    );
+                }
+            }
+        }
+
+        // 3 & 4. 벨트 타일별 아이템 수용량 및 간격 침범 감시
+        var beltKvpArray = beltIndex.Map.GetKeyValueArrays(Allocator.Temp);
+        try
+        {
+            var beltMovementLookup = SystemAPI.GetComponentLookup<BeltMovementState>(true);
+            var itemOwnershipLookup = SystemAPI.GetComponentLookup<ItemOwnership>(true);
+
+            var progressList = new NativeList<float>(16, Allocator.Temp);
+            var entityList = new NativeList<Entity>(16, Allocator.Temp);
+
+            for (int i = 0; i < beltKvpArray.Length; i++)
+            {
+                int2 beltPos = beltKvpArray.Keys[i];
+                BeltInfo beltInfo = beltKvpArray.Values[i];
+
+                progressList.Clear();
+                entityList.Clear();
+
+                // 3-A. 현재 벨트 타일에 등록된 유효 벨트 아이템 수집
+                if (itemSpatialIndex.TryGetFirstItem(beltPos, out Entity itemEntity, out var it))
+                {
+                    do
+                    {
+                        if (SystemAPI.Exists(itemEntity) &&
+                            itemOwnershipLookup.HasComponent(itemEntity) &&
+                            itemOwnershipLookup[itemEntity].IsWorldItem &&
+                            beltMovementLookup.HasComponent(itemEntity) &&
+                            beltMovementLookup.IsComponentEnabled(itemEntity))
+                        {
+                            progressList.Add(beltMovementLookup[itemEntity].Progress);
+                            entityList.Add(itemEntity);
+                        }
+                    } while (itemSpatialIndex.TryGetNextItem(out itemEntity, ref it));
+                }
+
+                int count = progressList.Length;
+                if (count == 0) continue;
+
+                // 3-B. 타일당 최대 수용량(4개) 초과 감시
+                if (count > 4)
+                {
+                    ReportViolation(
+                        "BeltInvariant",
+                        $"Belt tile at ({beltPos.x}, {beltPos.y}) exceeds maximum capacity: {count} items found (maximum allowed is 4).",
+                        entityList[0]
+                    );
+                }
+
+                // 3-C. 동일 타일 내 간격 침범 감시 (Progress 순 단순 정렬 후 비교)
+                for (int a = 0; a < count - 1; a++)
+                {
+                    for (int b = a + 1; b < count; b++)
+                    {
+                        if (progressList[a] > progressList[b])
+                        {
+                            float tempProg = progressList[a];
+                            progressList[a] = progressList[b];
+                            progressList[b] = tempProg;
+
+                            Entity tempEnt = entityList[a];
+                            entityList[a] = entityList[b];
+                            entityList[b] = tempEnt;
+                        }
+                    }
+                }
+
+                for (int a = 0; a < count - 1; a++)
+                {
+                    float gap = progressList[a + 1] - progressList[a];
+                    if (gap < GameConstants.ItemSpacing - GameConstants.AlignmentEpsilon)
+                    {
+                        ReportViolation(
+                            "BeltInvariant",
+                            $"Belt item spacing violated on tile ({beltPos.x}, {beltPos.y}): gap between item {entityList[a].Index} (progress {progressList[a]:F4}) and item {entityList[a + 1].Index} (progress {progressList[a + 1]:F4}) is {gap:F4} < {GameConstants.ItemSpacing:F4}.",
+                            entityList[a]
+                        );
+                    }
+                }
+
+                // 4. 타일 경계(Boundary) 간격 침범 감시
+                int2 nextPos = beltPos + beltInfo.Direction.ToInt2();
+                if (beltIndex.TryGetBelt(nextPos, out BeltInfo nextBelt))
+                {
+                    float minNextProgress = float.MaxValue;
+                    Entity nextTrailEntity = Entity.Null;
+
+                    if (itemSpatialIndex.TryGetFirstItem(nextPos, out Entity nextItem, out var nextIt))
+                    {
+                        do
+                        {
+                            if (SystemAPI.Exists(nextItem) &&
+                                itemOwnershipLookup.HasComponent(nextItem) &&
+                                itemOwnershipLookup[nextItem].IsWorldItem &&
+                                beltMovementLookup.HasComponent(nextItem) &&
+                                beltMovementLookup.IsComponentEnabled(nextItem))
+                            {
+                                float prog = beltMovementLookup[nextItem].Progress;
+                                if (prog < minNextProgress)
+                                {
+                                    minNextProgress = prog;
+                                    nextTrailEntity = nextItem;
+                                }
+                            }
+                        } while (itemSpatialIndex.TryGetNextItem(out nextItem, ref nextIt));
+                    }
+
+                    if (nextTrailEntity != Entity.Null)
+                    {
+                        float leadProgress = progressList[count - 1];
+                        float boundaryGap = (1.0f - leadProgress) + minNextProgress;
+                        if (boundaryGap < GameConstants.ItemSpacing - GameConstants.AlignmentEpsilon)
+                        {
+                            ReportViolation(
+                                "BeltInvariant",
+                                $"Belt boundary spacing violated between tile ({beltPos.x}, {beltPos.y}) and next tile ({nextPos.x}, {nextPos.y}): boundary gap is {boundaryGap:F4} < {GameConstants.ItemSpacing:F4} (lead progress: {leadProgress:F4}, next trail progress: {minNextProgress:F4}).",
+                                entityList[count - 1]
+                            );
+                        }
+                    }
+                }
+            }
+
+            progressList.Dispose();
+            entityList.Dispose();
+        }
+        finally
+        {
+            beltKvpArray.Dispose();
         }
     }
 

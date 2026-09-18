@@ -1,6 +1,7 @@
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.Transforms;
 
@@ -15,6 +16,7 @@ using Unity.Transforms;
 /// - 타일 경계 횡단(newProgress >= 1.0f) 시 GridPosition을 전진시키고 Progress를 새 타일 기준으로 보정합니다.
 /// - 그리드 중심과 방향, 진행률을 결합하여 LocalTransform.Position을 정확한 2D 월드 좌표로 갱신합니다.
 /// - Consume-on-Execution 원칙에 따라 처리가 끝난 PlannedProgress를 0.0f로 소비(초기화)합니다.
+/// - BeltSpatialIndexFence에 Reader JobHandle을 등록하여 SynchronizationGroup과의 데이터 경합을 비차단 방식으로 제어합니다.
 /// - 별도의 룩업(ComponentLookup) 없이 순수 쿼리(ref/in)만으로 동작하여 컨테이너 Aliasing이 없는 100% Safe Parallel Job을 보장합니다.
 /// </summary>
 [UpdateInGroup(typeof(ExecutionGroup))]
@@ -34,19 +36,27 @@ public partial struct BeltMovementExecutionSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        if (!SystemAPI.HasSingleton<BeltSpatialIndex>())
+        if (!SystemAPI.HasSingleton<BeltSpatialIndex>() || !SystemAPI.HasSingleton<BeltSpatialIndexFence>())
         {
             return;
         }
 
         var beltIndex = SystemAPI.GetSingleton<BeltSpatialIndex>();
+        ref var beltFence = ref SystemAPI.GetSingletonRW<BeltSpatialIndexFence>().ValueRW;
 
         var job = new BeltMovementExecutionJob
         {
             BeltMap = beltIndex.Map
         };
 
-        state.Dependency = job.ScheduleParallel(state.Dependency);
+        // Reader 의존성: 마지막 Writer가 끝난 뒤 읽기 실행
+        var jobDep = JobHandle.CombineDependencies(state.Dependency, beltFence.GetReaderDependency());
+        var jobHandle = job.ScheduleParallel(jobDep);
+
+        // Fence에 Reader Handle 등록
+        beltFence.AddReader(jobHandle);
+
+        state.Dependency = jobHandle;
     }
 }
 
