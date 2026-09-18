@@ -1,6 +1,7 @@
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Jobs;
 using Unity.Mathematics;
 
 /// <summary>
@@ -37,7 +38,10 @@ public partial struct BeltMovementDecisionSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        if (!SystemAPI.HasSingleton<BeltSpatialIndex>() || !SystemAPI.HasSingleton<ItemSpatialIndex>())
+        if (!SystemAPI.HasSingleton<BeltSpatialIndex>() || 
+            !SystemAPI.HasSingleton<BeltSpatialIndexFence>() || 
+            !SystemAPI.HasSingleton<ItemSpatialIndex>() ||
+            !SystemAPI.HasSingleton<ItemSpatialIndexFence>())
         {
             return;
         }
@@ -49,7 +53,9 @@ public partial struct BeltMovementDecisionSystem : ISystem
         }
 
         var beltIndex = SystemAPI.GetSingleton<BeltSpatialIndex>();
+        ref var beltFence = ref SystemAPI.GetSingletonRW<BeltSpatialIndexFence>().ValueRW;
         var itemIndex = SystemAPI.GetSingleton<ItemSpatialIndex>();
+        ref var itemFence = ref SystemAPI.GetSingletonRW<ItemSpatialIndexFence>().ValueRW;
 
         _beltMovementStateLookup.Update(ref state);
         _itemOwnershipLookup.Update(ref state);
@@ -63,7 +69,16 @@ public partial struct BeltMovementDecisionSystem : ISystem
             ItemOwnershipLookup = _itemOwnershipLookup
         };
 
-        state.Dependency = job.ScheduleParallel(state.Dependency);
+        // Reader 의존성: Belt 및 Item의 마지막 Writer가 끝난 뒤 읽기 실행
+        var readersDep = JobHandle.CombineDependencies(beltFence.GetReaderDependency(), itemFence.GetReaderDependency());
+        var jobDep = JobHandle.CombineDependencies(state.Dependency, readersDep);
+        var jobHandle = job.ScheduleParallel(jobDep);
+
+        // Fence에 Reader Handle 등록
+        beltFence.AddReader(jobHandle);
+        itemFence.AddReader(jobHandle);
+
+        state.Dependency = jobHandle;
     }
 }
 
