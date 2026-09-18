@@ -47,18 +47,18 @@ public struct BeltMovementState : IComponentData, IEnableableComponent
 public struct BeltMovementDecision : IComponentData, IEnableableComponent
 {
     /// <summary>
-    /// 이번 프레임에 전진할 확정 거리.
+    /// 이번 프레임에 전진할 확정 진행률 (Progress 스케일 [0.0 ~ 1.0]).
     /// </summary>
-    public float PlannedMovement;
+    public float PlannedProgress;
 
     /// <summary>
     /// 앞선 아이템과의 간격 부족이나 벨트 끝 정체(Backpressure)로 인해 전진하지 못한 상태인지 여부.
     /// </summary>
     public bool IsBlocked;
 
-    public BeltMovementDecision(float plannedMovement = 0.0f, bool isBlocked = false)
+    public BeltMovementDecision(float plannedProgress = 0.0f, bool isBlocked = false)
     {
-        PlannedMovement = plannedMovement;
+        PlannedProgress = plannedProgress;
         IsBlocked = isBlocked;
     }
 }

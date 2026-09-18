@@ -97,7 +97,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
         // 1. 월드 아이템이 아니면 벨트 위에서 이동할 수 없음
         if (!ownership.IsWorldItem)
         {
-            decision.PlannedMovement = 0.0f;
+            decision.PlannedProgress = 0.0f;
             decision.IsBlocked = true;
             return;
         }
@@ -105,7 +105,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
         // 2. 현재 타일에 벨트가 존재하지 않으면 이동 불가 (바닥에 멈춤)
         if (!BeltMap.TryGetValue(gridPos.Value, out BeltInfo currentBelt))
         {
-            decision.PlannedMovement = 0.0f;
+            decision.PlannedProgress = 0.0f;
             decision.IsBlocked = true;
             return;
         }
@@ -113,7 +113,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
         float desiredMove = currentBelt.Speed * DeltaTime;
         if (desiredMove <= 0.0f)
         {
-            decision.PlannedMovement = 0.0f;
+            decision.PlannedProgress = 0.0f;
             decision.IsBlocked = false;
             return;
         }
@@ -147,7 +147,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
             float headway = minAheadProgress - state.Progress;
             float availableDistance = math.max(0.0f, headway - GameConstants.ItemSpacing);
             float planned = math.min(desiredMove, availableDistance);
-            decision.PlannedMovement = planned;
+            decision.PlannedProgress = planned;
             decision.IsBlocked = (planned < desiredMove - GameConstants.AlignmentEpsilon);
             return;
         }
@@ -159,7 +159,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
             // 다음 타일에 벨트가 없음 (벨트 종단 지점): 현재 타일 끝(1.0f)까지만 이동 허용 및 정체
             float distanceToTileEnd = math.max(0.0f, 1.0f - state.Progress);
             float planned = math.min(desiredMove, distanceToTileEnd);
-            decision.PlannedMovement = planned;
+            decision.PlannedProgress = planned;
             decision.IsBlocked = (planned < desiredMove - GameConstants.AlignmentEpsilon || distanceToTileEnd <= GameConstants.AlignmentEpsilon);
             return;
         }
@@ -188,7 +188,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
         if (!hasNextItem)
         {
             // 다음 타일이 완전히 비어 있으므로 원하는 만큼 이동 가능
-            decision.PlannedMovement = desiredMove;
+            decision.PlannedProgress = desiredMove;
             decision.IsBlocked = false;
             return;
         }
@@ -200,7 +200,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
         float distanceToNext = (1.0f - state.Progress) + minNextProgress;
         float availableDistanceNext = math.max(0.0f, distanceToNext - GameConstants.ItemSpacing);
         float plannedNext = math.min(desiredMove, availableDistanceNext);
-        decision.PlannedMovement = plannedNext;
+        decision.PlannedProgress = plannedNext;
         decision.IsBlocked = (plannedNext < desiredMove - GameConstants.AlignmentEpsilon);
     }
 }
