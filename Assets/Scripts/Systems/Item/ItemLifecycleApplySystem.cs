@@ -1,6 +1,7 @@
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Transforms;
 
 /// <summary>
 /// 아이템 엔티티의 탄생(생성) 및 죽음(파괴) 전담 시스템.
@@ -24,6 +25,7 @@ public partial struct ItemLifecycleApplySystem : ISystem
             ComponentType.ReadWrite<ItemIdentity>(),
             ComponentType.ReadWrite<ItemOwnership>(),
             ComponentType.ReadWrite<GridPosition>(),
+            ComponentType.ReadWrite<LocalTransform>(),
             ComponentType.ReadWrite<DestroyItemRequest>(),
             ComponentType.ReadWrite<TransferOwnershipRequest>(),
             ComponentType.ReadWrite<BeltMovementState>(),
@@ -46,6 +48,7 @@ public partial struct ItemLifecycleApplySystem : ISystem
             // 초기 컴포넌트 값 세팅
             ecb.SetComponent(newItem, new ItemIdentity(req.ItemType));
             ecb.SetComponent(newItem, new GridPosition(req.Position));
+            ecb.SetComponent(newItem, LocalTransform.FromPosition(new float3(req.Position.x, req.Position.y, 0f)));
 
             if (req.TargetOwner == Entity.Null)
             {

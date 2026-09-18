@@ -79,7 +79,7 @@ public class Phase2BeltDecisionTests : EcsWorldTestFixture
 
         // Assert
         var decision = _entityManager.GetComponentData<BeltMovementDecision>(item);
-        Assert.AreEqual(0.1f, decision.PlannedMovement, 0.0001f, "Free item should plan to move full distance.");
+        Assert.AreEqual(0.1f, decision.PlannedProgress, 0.0001f, "Free item should plan to move full distance.");
         Assert.IsFalse(decision.IsBlocked, "Item should not be blocked.");
     }
 
@@ -99,7 +99,7 @@ public class Phase2BeltDecisionTests : EcsWorldTestFixture
 
         // Assert: 타일 끝(1.0f)까지만 이동 계획이 잡히고 막힘 플래그가 활성화되어야 함
         var decision = _entityManager.GetComponentData<BeltMovementDecision>(item);
-        Assert.AreEqual(0.05f, decision.PlannedMovement, 0.0001f, "Item at belt end should only move up to tile boundary (1.0f).");
+        Assert.AreEqual(0.05f, decision.PlannedProgress, 0.0001f, "Item at belt end should only move up to tile boundary (1.0f).");
         Assert.IsTrue(decision.IsBlocked, "Item at belt end must be marked as blocked.");
     }
 
@@ -120,12 +120,12 @@ public class Phase2BeltDecisionTests : EcsWorldTestFixture
         // Assert:
         // A는 B와의 최소 간격(0.25f) 부족으로 인해 전진할 수 없음 (0.0f, Blocked)
         var decisionA = _entityManager.GetComponentData<BeltMovementDecision>(itemA);
-        Assert.AreEqual(0.0f, decisionA.PlannedMovement, 0.0001f, "Item A should be blocked by leading item B on the same tile.");
+        Assert.AreEqual(0.0f, decisionA.PlannedProgress, 0.0001f, "Item A should be blocked by leading item B on the same tile.");
         Assert.IsTrue(decisionA.IsBlocked, "Item A must be blocked.");
 
         // B는 전방이 비어있으므로 0.1f 온전히 이동 가능
         var decisionB = _entityManager.GetComponentData<BeltMovementDecision>(itemB);
-        Assert.AreEqual(0.1f, decisionB.PlannedMovement, 0.0001f, "Item B is clear ahead and should move normally.");
+        Assert.AreEqual(0.1f, decisionB.PlannedProgress, 0.0001f, "Item B is clear ahead and should move normally.");
         Assert.IsFalse(decisionB.IsBlocked, "Item B should not be blocked.");
     }
 
@@ -146,7 +146,7 @@ public class Phase2BeltDecisionTests : EcsWorldTestFixture
 
         // Assert: A는 다음 타일 입구에 있는 B로 인해 타일 경계를 넘어설 수 없음
         var decisionA = _entityManager.GetComponentData<BeltMovementDecision>(itemA);
-        Assert.AreEqual(0.0f, decisionA.PlannedMovement, 0.0001f, "Item A should be blocked by item B on the next tile.");
+        Assert.AreEqual(0.0f, decisionA.PlannedProgress, 0.0001f, "Item A should be blocked by item B on the next tile.");
         Assert.IsTrue(decisionA.IsBlocked, "Item A must be blocked.");
     }
 
@@ -172,6 +172,6 @@ public class Phase2BeltDecisionTests : EcsWorldTestFixture
 
         Assert.AreEqual(0.3f, state.Progress, 0.0001f, "Progress must NOT be modified in Decision phase.");
         Assert.AreEqual(new int2(0, 0), pos.Value, "GridPosition must NOT be modified in Decision phase.");
-        Assert.AreEqual(0.1f, decision.PlannedMovement, 0.0001f, "PlannedMovement must be recorded in BeltMovementDecision.");
+        Assert.AreEqual(0.1f, decision.PlannedProgress, 0.0001f, "PlannedMovement must be recorded in BeltMovementDecision.");
     }
 }
