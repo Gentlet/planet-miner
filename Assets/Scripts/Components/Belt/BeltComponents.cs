@@ -20,9 +20,9 @@ public struct BeltComponent : IComponentData
 
 /// <summary>
 /// [부착 대상: 아이템 엔티티 (Item Entity)]
-/// 벨트 위에서 이동 중인 아이템의 이동 상태를 나타내는 Persistent Enableable 컴포넌트.
+/// 벨트 위에서 이동 중인 아이템의 위치 진행 상태(State)를 나타내는 Persistent Enableable 컴포넌트.
 /// - 벨트 위에 위치할 때만 활성화(Enabled)되며, 바닥에 떨어지거나 창고에 수납되면 비활성화됩니다.
-/// - 대량 아이템 이동 시 1회성 Request Entity 폭증을 방지하기 위해 이 컴포넌트의 값을 갱신하여 통신합니다.
+/// - DecisionGroup에서는 오직 읽기([ReadOnly])만 수행되며, ExecutionGroup에서만 실제 Progress가 전진(Write)됩니다.
 /// </summary>
 public struct BeltMovementState : IComponentData, IEnableableComponent
 {
@@ -31,10 +31,23 @@ public struct BeltMovementState : IComponentData, IEnableableComponent
     /// </summary>
     public float Progress;
 
+    public BeltMovementState(float progress = 0.0f)
+    {
+        Progress = progress;
+    }
+}
+
+/// <summary>
+/// [부착 대상: 아이템 엔티티 (Item Entity)]
+/// 벨트 위 아이템의 프레임 단위 이동 의사결정 산출물(Decision)을 저장하는 Persistent Enableable 컴포넌트.
+/// - DecisionGroup(BeltMovementDecisionSystem)에서 계산하여 기록(Write)하고,
+///   ExecutionGroup(BeltMovementExecutionSystem)에서 실제 이동 반영 후 소비됩니다.
+/// - 상태 컴포넌트(BeltMovementState)와 분리하여 Job 내 컨테이너 Aliasing을 원천 차단하고 순수 Safe Burst Job을 보장합니다.
+/// </summary>
+public struct BeltMovementDecision : IComponentData, IEnableableComponent
+{
     /// <summary>
     /// 이번 프레임에 전진할 확정 거리.
-    /// DecisionGroup(BeltMovementDecisionSystem)에서 계산하여 기록하고,
-    /// ExecutionGroup(BeltMovementExecutionSystem)에서 실제 Progress를 전진시킨 후 소비됩니다.
     /// </summary>
     public float PlannedMovement;
 
@@ -43,10 +56,10 @@ public struct BeltMovementState : IComponentData, IEnableableComponent
     /// </summary>
     public bool IsBlocked;
 
-    public BeltMovementState(float progress = 0.0f)
+    public BeltMovementDecision(float plannedMovement = 0.0f, bool isBlocked = false)
     {
-        Progress = progress;
-        PlannedMovement = 0.0f;
-        IsBlocked = false;
+        PlannedMovement = plannedMovement;
+        IsBlocked = isBlocked;
     }
 }
+
