@@ -29,7 +29,8 @@ public partial struct ItemLifecycleApplySystem : ISystem
             ComponentType.ReadWrite<DestroyItemRequest>(),
             ComponentType.ReadWrite<TransferOwnershipRequest>(),
             ComponentType.ReadWrite<BeltMovementState>(),
-            ComponentType.ReadWrite<BeltMovementDecision>()
+            ComponentType.ReadWrite<BeltMovementDecision>(),
+            ComponentType.ReadWrite<BuildingItemInputDecision>()
         );
     }
 
@@ -68,6 +69,7 @@ public partial struct ItemLifecycleApplySystem : ISystem
 
             // 의사결정 컴포넌트를 비활성화 상태로 초기화
             ecb.SetComponentEnabled<BeltMovementDecision>(newItem, false);
+            ecb.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
 
             // Consume-on-Apply: 요청 엔티티 파괴
             ecb.DestroyEntity(requestEntity);
