@@ -53,6 +53,10 @@ public partial class WorldInvariantValidationSystem : SystemBase
         {
             itemFenceRw.ValueRW.Complete();
         }
+        if (SystemAPI.TryGetSingletonRW<BuildingSpatialIndexFence>(out var buildingFenceRw))
+        {
+            buildingFenceRw.ValueRW.Complete();
+        }
 
         // Phase 1: Item & Spatial Invariant 검증
         ValidateItemAndSpatialInvariants();
