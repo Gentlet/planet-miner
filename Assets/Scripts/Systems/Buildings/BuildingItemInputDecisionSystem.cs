@@ -30,19 +30,11 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
         _storageLookup = state.GetComponentLookup<Storage>(true);
         _storageFilterLookup = state.GetComponentLookup<StorageFilter>(true);
 
-        _itemQuery = state.GetEntityQuery(new EntityQueryDesc
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadWrite<BuildingItemInputDecision>(),
-                ComponentType.ReadOnly<BeltMovementState>(),
-                ComponentType.ReadOnly<GridPosition>(),
-                ComponentType.ReadOnly<Direction>(),
-                ComponentType.ReadOnly<ItemIdentity>(),
-                ComponentType.ReadOnly<ItemOwnership>()
-            },
-            Options = EntityQueryOptions.IgnoreComponentEnabledState
-        });
+        _itemQuery = SystemAPI.QueryBuilder()
+            .WithAllRW<BuildingItemInputDecision>()
+            .WithAll<BeltMovementState, GridPosition, Direction, ItemIdentity, ItemOwnership>()
+            .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
+            .Build();
     }
 
     [BurstCompile]
