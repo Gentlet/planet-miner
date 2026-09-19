@@ -29,18 +29,11 @@ public partial struct BuildingItemOutputDecisionSystem : ISystem
         _beltMovementStateLookup = state.GetComponentLookup<BeltMovementState>(true);
         _itemOwnershipLookup = state.GetComponentLookup<ItemOwnership>(true);
 
-        _buildingQuery = state.GetEntityQuery(new EntityQueryDesc
-        {
-            All = new ComponentType[]
-            {
-                ComponentType.ReadWrite<BuildingItemOutputDecision>(),
-                ComponentType.ReadOnly<StoredItemElement>(),
-                ComponentType.ReadOnly<BuildingFootprint>(),
-                ComponentType.ReadOnly<GridPosition>(),
-                ComponentType.ReadOnly<Direction>()
-            },
-            Options = EntityQueryOptions.IgnoreComponentEnabledState
-        });
+        _buildingQuery = SystemAPI.QueryBuilder()
+            .WithAllRW<BuildingItemOutputDecision>()
+            .WithAll<StoredItemElement, BuildingFootprint, GridPosition, Direction>()
+            .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
+            .Build();
     }
 
     [BurstCompile]
