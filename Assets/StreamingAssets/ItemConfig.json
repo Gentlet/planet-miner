@@ -1,0 +1,15 @@
+{
+  "DefaultMaxStack": 50,
+  "Items": [
+    { "ItemType": "None", "MaxStack": 0 },
+    { "ItemType": "Iron_Ore", "MaxStack": 50 },
+    { "ItemType": "Copper_Ore", "MaxStack": 50 },
+    { "ItemType": "Coal", "MaxStack": 50 },
+    { "ItemType": "Stone", "MaxStack": 50 },
+    { "ItemType": "Iron", "MaxStack": 100 },
+    { "ItemType": "Copper", "MaxStack": 100 },
+    { "ItemType": "Iron_Stick", "MaxStack": 100 },
+    { "ItemType": "Copper_Stick", "MaxStack": 100 },
+    { "ItemType": "Drone", "MaxStack": 1 }
+  ]
+}
