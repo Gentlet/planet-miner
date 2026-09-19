@@ -1,47 +1,82 @@
 using Unity.Burst;
+using Unity.Collections;
 using Unity.Entities;
 
 /// <summary>
 /// 아이템 소유권 상태 적용 시스템 (State Owner).
 /// 
 /// [책임]
+/// - StateApplyGroup(Phase 5)에서 실행됩니다.
 /// - TransferOwnershipRequest를 처리하여 ItemOwnership의 단일 원본(Source of Truth)을 갱신합니다.
-/// - 단순 컴포넌트 값 변경만 수행하므로 Structural Change(ECB) 없이 즉시 고속 처리됩니다.
+/// - 단일 워커 Burst Job(ItemOwnershipApplyJob)을 스케줄링하여 메인 스레드 부하 없이 고속 비동기 처리합니다.
 /// - Consume-on-Apply 원칙에 따라 처리 즉시 TransferOwnershipRequest를 비활성화합니다.
-/// - ISystem 및 [BurstCompile] 기반으로 완전히 Unmanaged/고성능으로 동작합니다.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
 [BurstCompile]
 public partial struct ItemOwnershipApplySystem : ISystem
 {
+    private EntityStorageInfoLookup _entityStorageInfoLookup;
+    private EntityQuery _requestQuery;
+
     [BurstCompile]
     public void OnCreate(ref SystemState state)
+    {
+        _entityStorageInfoLookup = state.GetEntityStorageInfoLookup();
+
+        _requestQuery = SystemAPI.QueryBuilder()
+            .WithAllRW<ItemOwnership>()
+            .WithAllRW<TransferOwnershipRequest>()
+            .Build();
+    }
+
+    [BurstCompile]
+    public void OnDestroy(ref SystemState state)
     {
     }
 
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        foreach (var (request, ownership, entity) in 
-                 SystemAPI.Query<RefRO<TransferOwnershipRequest>, RefRW<ItemOwnership>>()
-                          .WithEntityAccess())
+        _entityStorageInfoLookup.Update(ref state);
+
+        var job = new ItemOwnershipApplyJob
         {
-            Entity targetOwner = request.ValueRO.TargetOwner;
+            EntityStorageInfoLookup = _entityStorageInfoLookup
+        };
 
-            if (targetOwner == Entity.Null)
-            {
-                // 월드로 방출 (월드 아이템 전환)
-                ownership.ValueRW = ItemOwnership.WorldItem;
-            }
-            else if (SystemAPI.Exists(targetOwner))
-            {
-                // 특정 건물/창고 보관 아이템으로 전환
-                ownership.ValueRW = ItemOwnership.Stored(targetOwner);
-            }
-            // 수신자가 유효하지 않은(파괴된) 유령 엔티티인 경우 소유권 변경을 무시하고 Drop
+        state.Dependency = job.Schedule(_requestQuery, state.Dependency);
+    }
+}
 
-            // Consume-on-Apply: 처리 완료 즉시 비활성화
-            SystemAPI.SetComponentEnabled<TransferOwnershipRequest>(entity, false);
+/// <summary>
+/// TransferOwnershipRequest를 순차적으로 소비하여 ItemOwnership을 갱신하는 단일 워커 Burst Job.
+/// </summary>
+[BurstCompile]
+public partial struct ItemOwnershipApplyJob : IJobEntity
+{
+    [ReadOnly]
+    public EntityStorageInfoLookup EntityStorageInfoLookup;
+
+    public void Execute(
+        ref ItemOwnership ownership,
+        RefRW<TransferOwnershipRequest> request,
+        EnabledRefRW<TransferOwnershipRequest> requestEnabled)
+    {
+        Entity targetOwner = request.ValueRO.TargetOwner;
+
+        if (targetOwner == Entity.Null)
+        {
+            // 월드로 방출 (월드 아이템 전환)
+            ownership = ItemOwnership.WorldItem;
         }
+        else if (EntityStorageInfoLookup.Exists(targetOwner))
+        {
+            // 특정 건물/창고 보관 아이템으로 전환
+            ownership = ItemOwnership.Stored(targetOwner);
+        }
+        // 수신자가 유효하지 않은(파괴된) 유령 엔티티인 경우 소유권 변경을 무시하고 Drop
+
+        // Consume-on-Apply: 처리 완료 즉시 비활성화
+        requestEnabled.ValueRW = false;
     }
 }

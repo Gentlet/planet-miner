@@ -1,6 +1,7 @@
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.Transforms;
 
@@ -9,6 +10,8 @@ using Unity.Transforms;
 /// 
 /// [책임]
 /// - StateApplyGroup(Phase 5)에서 ItemOwnershipApplySystem 직전에 실행됩니다.
+/// - 단일 워커 스레드 Burst Job(BuildingItemInputApplyJob, BuildingItemOutputApplyJob)을 순차적으로 스케줄링하여
+///   메인 스레드 부하를 0으로 유지하면서, 버퍼 조작과 월드 컴포넌트 상태 전이를 즉각적이고 안전하게 적용합니다.
 /// - [입고]: 슬롯 예약이 완료된 아이템(CanDeposit == true && TargetSlotIndex >= 0)을 창고 버퍼(DynamicBuffer<StoredItemElement>)에 적재하고,
 ///           BeltMovementState를 비활성화한 뒤 TransferOwnershipRequest(TargetOwner = 창고)를 발행합니다.
 /// - [출고]: 출고가 확정된 건물(CanOutput == true)의 버퍼에서 대상 아이템(ItemToOutput)을 제거하고,
@@ -23,11 +26,35 @@ using Unity.Transforms;
 public partial struct BuildingItemStorageApplySystem : ISystem
 {
     private BufferLookup<StoredItemElement> _storedBufferLookup;
+    private ComponentLookup<BeltMovementState> _beltMovementStateLookup;
+    private ComponentLookup<BeltMovementDecision> _beltMovementDecisionLookup;
+    private ComponentLookup<TransferOwnershipRequest> _transferOwnershipRequestLookup;
+    private ComponentLookup<GridPosition> _gridPositionLookup;
+    private ComponentLookup<Direction> _directionLookup;
+    private ComponentLookup<LocalTransform> _transformLookup;
+
+    private EntityQuery _inputQuery;
+    private EntityQuery _outputQuery;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(false);
+        _beltMovementStateLookup = state.GetComponentLookup<BeltMovementState>(false);
+        _beltMovementDecisionLookup = state.GetComponentLookup<BeltMovementDecision>(false);
+        _transferOwnershipRequestLookup = state.GetComponentLookup<TransferOwnershipRequest>(false);
+        _gridPositionLookup = state.GetComponentLookup<GridPosition>(false);
+        _directionLookup = state.GetComponentLookup<Direction>(false);
+        _transformLookup = state.GetComponentLookup<LocalTransform>(false);
+
+        _inputQuery = SystemAPI.QueryBuilder()
+            .WithAllRW<BuildingItemInputDecision>()
+            .WithAll<ItemIdentity>()
+            .Build();
+
+        _outputQuery = SystemAPI.QueryBuilder()
+            .WithAllRW<BuildingItemOutputDecision>()
+            .Build();
     }
 
     [BurstCompile]
@@ -38,141 +65,204 @@ public partial struct BuildingItemStorageApplySystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
+        if (!SystemAPI.HasSingleton<BeltSpatialIndex>() || !SystemAPI.HasSingleton<BeltSpatialIndexFence>())
+        {
+            return;
+        }
+
+        var beltIndex = SystemAPI.GetSingleton<BeltSpatialIndex>();
+        ref var beltFence = ref SystemAPI.GetSingletonRW<BeltSpatialIndexFence>().ValueRW;
+
         _storedBufferLookup.Update(ref state);
+        _beltMovementStateLookup.Update(ref state);
+        _beltMovementDecisionLookup.Update(ref state);
+        _transferOwnershipRequestLookup.Update(ref state);
+        _gridPositionLookup.Update(ref state);
+        _directionLookup.Update(ref state);
+        _transformLookup.Update(ref state);
 
-        // 1. [입고 처리] 슬롯 확정된 아이템을 창고 버퍼에 적재
-        foreach (var (inputDecisionRw, enabledRw, itemIdentity, entity) in 
-                 SystemAPI.Query<RefRW<BuildingItemInputDecision>, EnabledRefRW<BuildingItemInputDecision>, RefRO<ItemIdentity>>()
-                          .WithEntityAccess())
+        // 1. [입고 Job 스케줄링]
+        var inputJob = new BuildingItemInputApplyJob
         {
-            if (!inputDecisionRw.ValueRO.CanDeposit || inputDecisionRw.ValueRO.TargetSlotIndex < 0)
+            StoredBufferLookup = _storedBufferLookup,
+            BeltMovementStateLookup = _beltMovementStateLookup,
+            TransferOwnershipRequestLookup = _transferOwnershipRequestLookup
+        };
+        var inputHandle = inputJob.Schedule(_inputQuery, state.Dependency);
+
+        // 2. [출고 Job 스케줄링]
+        var outputJob = new BuildingItemOutputApplyJob
+        {
+            BeltMap = beltIndex.Map,
+            StoredBufferLookup = _storedBufferLookup,
+            GridPositionLookup = _gridPositionLookup,
+            DirectionLookup = _directionLookup,
+            BeltMovementStateLookup = _beltMovementStateLookup,
+            BeltMovementDecisionLookup = _beltMovementDecisionLookup,
+            TransformLookup = _transformLookup,
+            TransferOwnershipRequestLookup = _transferOwnershipRequestLookup
+        };
+
+        var outputDep = JobHandle.CombineDependencies(inputHandle, beltFence.GetReaderDependency());
+        var outputHandle = outputJob.Schedule(_outputQuery, outputDep);
+
+        beltFence.AddReader(outputHandle);
+
+        state.Dependency = outputHandle;
+    }
+}
+
+/// <summary>
+/// 슬롯 예약이 완료된 아이템을 창고 버퍼에 수납하고 벨트 상태를 비활성화하는 단일 워커 Burst Job.
+/// </summary>
+[BurstCompile]
+public partial struct BuildingItemInputApplyJob : IJobEntity
+{
+    public BufferLookup<StoredItemElement> StoredBufferLookup;
+    public ComponentLookup<BeltMovementState> BeltMovementStateLookup;
+    public ComponentLookup<TransferOwnershipRequest> TransferOwnershipRequestLookup;
+
+    public void Execute(
+        Entity entity,
+        ref BuildingItemInputDecision inputDecision,
+        EnabledRefRW<BuildingItemInputDecision> inputDecisionEnabled,
+        in ItemIdentity itemIdentity)
+    {
+        if (!inputDecision.CanDeposit || inputDecision.TargetSlotIndex < 0)
+        {
+            return;
+        }
+
+        Entity building = inputDecision.TargetBuilding;
+        if (!StoredBufferLookup.HasBuffer(building))
+        {
+            inputDecision.CanDeposit = false;
+            inputDecision.TargetSlotIndex = -1;
+            inputDecisionEnabled.ValueRW = false;
+            return;
+        }
+
+        var buffer = StoredBufferLookup[building];
+        buffer.Add(new StoredItemElement(entity, itemIdentity.Type, inputDecision.TargetSlotIndex));
+
+        // 벨트 이동 상태 비활성화 (보관 상태로 진입)
+        if (BeltMovementStateLookup.HasComponent(entity))
+        {
+            BeltMovementStateLookup.SetComponentEnabled(entity, false);
+        }
+
+        // 입고 의사결정 컴포넌트 비활성화 (소비 완료)
+        inputDecisionEnabled.ValueRW = false;
+
+        // 소유권 이전 요청 발행 (ItemOwnershipApplySystem에서 Stored(building)으로 최종 반영)
+        if (TransferOwnershipRequestLookup.HasComponent(entity))
+        {
+            TransferOwnershipRequestLookup[entity] = new TransferOwnershipRequest(building);
+            TransferOwnershipRequestLookup.SetComponentEnabled(entity, true);
+        }
+    }
+}
+
+/// <summary>
+/// 출고가 확정된 창고의 버퍼에서 아이템을 제거하고 외향 벨트 컴포넌트를 복원하는 단일 워커 Burst Job.
+/// </summary>
+[BurstCompile]
+public partial struct BuildingItemOutputApplyJob : IJobEntity
+{
+    [ReadOnly]
+    public NativeParallelHashMap<int2, BeltInfo> BeltMap;
+
+    public BufferLookup<StoredItemElement> StoredBufferLookup;
+    public ComponentLookup<GridPosition> GridPositionLookup;
+    public ComponentLookup<Direction> DirectionLookup;
+    public ComponentLookup<BeltMovementState> BeltMovementStateLookup;
+    public ComponentLookup<BeltMovementDecision> BeltMovementDecisionLookup;
+    public ComponentLookup<LocalTransform> TransformLookup;
+    public ComponentLookup<TransferOwnershipRequest> TransferOwnershipRequestLookup;
+
+    public void Execute(
+        Entity buildingEntity,
+        ref BuildingItemOutputDecision outputDecision,
+        EnabledRefRW<BuildingItemOutputDecision> outputDecisionEnabled)
+    {
+        if (!outputDecision.CanOutput)
+        {
+            return;
+        }
+
+        Entity itemToOutput = outputDecision.ItemToOutput;
+        int2 targetBeltPos = outputDecision.TargetBeltPosition;
+
+        // 대상 외향 벨트가 여전히 존재하는지 확인
+        if (!BeltMap.TryGetValue(targetBeltPos, out BeltInfo beltInfo))
+        {
+            outputDecision.CanOutput = false;
+            outputDecision.ItemToOutput = Entity.Null;
+            outputDecisionEnabled.ValueRW = false;
+            return;
+        }
+
+        // 창고 버퍼에서 아이템 제거
+        if (StoredBufferLookup.HasBuffer(buildingEntity))
+        {
+            var buffer = StoredBufferLookup[buildingEntity];
+            int removeIndex = -1;
+            for (int i = 0; i < buffer.Length; i++)
             {
-                continue;
+                if (buffer[i].ItemEntity == itemToOutput)
+                {
+                    removeIndex = i;
+                    break;
+                }
             }
 
-            Entity building = inputDecisionRw.ValueRO.TargetBuilding;
-            if (!SystemAPI.Exists(building) || !_storedBufferLookup.HasBuffer(building))
+            if (removeIndex != -1)
             {
-                // 대상 건물이 유효하지 않으면 입고 취소
-                inputDecisionRw.ValueRW.CanDeposit = false;
-                inputDecisionRw.ValueRW.TargetSlotIndex = -1;
-                enabledRw.ValueRW = false;
-                continue;
-            }
-
-            var buffer = _storedBufferLookup[building];
-            buffer.Add(new StoredItemElement(entity, itemIdentity.ValueRO.Type, inputDecisionRw.ValueRO.TargetSlotIndex));
-
-            // 벨트 이동 상태 비활성화 (보관 상태로 진입)
-            if (SystemAPI.HasComponent<BeltMovementState>(entity))
-            {
-                SystemAPI.SetComponentEnabled<BeltMovementState>(entity, false);
-            }
-
-            // 입고 의사결정 컴포넌트 비활성화 (소비 완료)
-            enabledRw.ValueRW = false;
-
-            // 소유권 이전 요청 발행 (ItemOwnershipApplySystem에서 Stored(building)으로 최종 반영)
-            if (SystemAPI.HasComponent<TransferOwnershipRequest>(entity))
-            {
-                SystemAPI.SetComponent(entity, new TransferOwnershipRequest(building));
-                SystemAPI.SetComponentEnabled<TransferOwnershipRequest>(entity, true);
+                buffer.RemoveAt(removeIndex);
             }
         }
 
-        // 2. [출고 처리] 출고 결정된 건물의 버퍼에서 아이템을 제거하고 외향 벨트로 방출
-        if (SystemAPI.HasSingleton<BeltSpatialIndex>())
+        // 아이템 엔티티의 월드 상태 복원
+        if (GridPositionLookup.HasComponent(itemToOutput))
         {
-            var beltIndex = SystemAPI.GetSingleton<BeltSpatialIndex>();
-
-            foreach (var (outputDecisionRw, enabledRw, buildingEntity) in 
-                     SystemAPI.Query<RefRW<BuildingItemOutputDecision>, EnabledRefRW<BuildingItemOutputDecision>>()
-                              .WithEntityAccess())
-            {
-                if (!outputDecisionRw.ValueRO.CanOutput)
-                {
-                    continue;
-                }
-
-                Entity itemToOutput = outputDecisionRw.ValueRO.ItemToOutput;
-                int2 targetBeltPos = outputDecisionRw.ValueRO.TargetBeltPosition;
-
-                // 대상 외향 벨트가 여전히 존재하는지 확인
-                if (!beltIndex.Map.TryGetValue(targetBeltPos, out BeltInfo beltInfo))
-                {
-                    // 외향 벨트가 사라졌으면 출고 취소
-                    outputDecisionRw.ValueRW.CanOutput = false;
-                    outputDecisionRw.ValueRW.ItemToOutput = Entity.Null;
-                    enabledRw.ValueRW = false;
-                    continue;
-                }
-
-                // 창고 버퍼에서 아이템 제거
-                if (_storedBufferLookup.HasBuffer(buildingEntity))
-                {
-                    var buffer = _storedBufferLookup[buildingEntity];
-                    int removeIndex = -1;
-                    for (int i = 0; i < buffer.Length; i++)
-                    {
-                        if (buffer[i].ItemEntity == itemToOutput)
-                        {
-                            removeIndex = i;
-                            break;
-                        }
-                    }
-
-                    if (removeIndex != -1)
-                    {
-                        buffer.RemoveAt(removeIndex);
-                    }
-                }
-
-                // 아이템 엔티티의 월드 상태 복원
-                if (SystemAPI.Exists(itemToOutput))
-                {
-                    if (SystemAPI.HasComponent<GridPosition>(itemToOutput))
-                    {
-                        SystemAPI.SetComponent(itemToOutput, new GridPosition(targetBeltPos));
-                    }
-
-                    if (SystemAPI.HasComponent<Direction>(itemToOutput))
-                    {
-                        SystemAPI.SetComponent(itemToOutput, new Direction(beltInfo.Direction));
-                    }
-
-                    if (SystemAPI.HasComponent<BeltMovementState>(itemToOutput))
-                    {
-                        SystemAPI.SetComponent(itemToOutput, new BeltMovementState(0.0f));
-                        SystemAPI.SetComponentEnabled<BeltMovementState>(itemToOutput, true);
-                    }
-
-                    if (SystemAPI.HasComponent<BeltMovementDecision>(itemToOutput))
-                    {
-                        SystemAPI.SetComponent(itemToOutput, new BeltMovementDecision(0.0f, false));
-                        SystemAPI.SetComponentEnabled<BeltMovementDecision>(itemToOutput, true);
-                    }
-
-                    if (SystemAPI.HasComponent<LocalTransform>(itemToOutput))
-                    {
-                        float2 center = new float2(targetBeltPos.x, targetBeltPos.y);
-                        float2 dirFloat = new float2(beltInfo.Direction.ToInt2().x, beltInfo.Direction.ToInt2().y);
-                        float2 visualPos = center + dirFloat * (0.0f - 0.5f);
-                        SystemAPI.SetComponent(itemToOutput, LocalTransform.FromPosition(new float3(visualPos.x, visualPos.y, 0f)));
-                    }
-
-                    // 소유권 이전 요청 발행 (ItemOwnershipApplySystem에서 WorldItem으로 최종 반영)
-                    if (SystemAPI.HasComponent<TransferOwnershipRequest>(itemToOutput))
-                    {
-                        SystemAPI.SetComponent(itemToOutput, new TransferOwnershipRequest(Entity.Null));
-                        SystemAPI.SetComponentEnabled<TransferOwnershipRequest>(itemToOutput, true);
-                    }
-                }
-
-                // 출고 의사결정 컴포넌트 비활성화 (소비 완료)
-                outputDecisionRw.ValueRW.CanOutput = false;
-                outputDecisionRw.ValueRW.ItemToOutput = Entity.Null;
-                enabledRw.ValueRW = false;
-            }
+            GridPositionLookup[itemToOutput] = new GridPosition(targetBeltPos);
         }
+
+        if (DirectionLookup.HasComponent(itemToOutput))
+        {
+            DirectionLookup[itemToOutput] = new Direction(beltInfo.Direction);
+        }
+
+        if (BeltMovementStateLookup.HasComponent(itemToOutput))
+        {
+            BeltMovementStateLookup[itemToOutput] = new BeltMovementState(0.0f);
+            BeltMovementStateLookup.SetComponentEnabled(itemToOutput, true);
+        }
+
+        if (BeltMovementDecisionLookup.HasComponent(itemToOutput))
+        {
+            BeltMovementDecisionLookup[itemToOutput] = new BeltMovementDecision(0.0f, false);
+            BeltMovementDecisionLookup.SetComponentEnabled(itemToOutput, true);
+        }
+
+        if (TransformLookup.HasComponent(itemToOutput))
+        {
+            float2 center = new float2(targetBeltPos.x, targetBeltPos.y);
+            float2 dirFloat = new float2(beltInfo.Direction.ToInt2().x, beltInfo.Direction.ToInt2().y);
+            float2 visualPos = center + dirFloat * (0.0f - 0.5f);
+            TransformLookup[itemToOutput] = LocalTransform.FromPosition(new float3(visualPos.x, visualPos.y, 0f));
+        }
+
+        // 소유권 이전 요청 발행 (ItemOwnershipApplySystem에서 WorldItem으로 최종 반영)
+        if (TransferOwnershipRequestLookup.HasComponent(itemToOutput))
+        {
+            TransferOwnershipRequestLookup[itemToOutput] = new TransferOwnershipRequest(Entity.Null);
+            TransferOwnershipRequestLookup.SetComponentEnabled(itemToOutput, true);
+        }
+
+        // 출고 의사결정 컴포넌트 비활성화 (소비 완료)
+        outputDecision.CanOutput = false;
+        outputDecision.ItemToOutput = Entity.Null;
+        outputDecisionEnabled.ValueRW = false;
     }
 }
