@@ -32,7 +32,7 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
 
         _itemQuery = SystemAPI.QueryBuilder()
             .WithAllRW<BuildingItemInputDecision>()
-            .WithAll<BeltMovementState, GridPosition, Direction, ItemIdentity, ItemOwnership>()
+            .WithAll<BeltMovementState, GridPosition, ItemIdentity, ItemOwnership>()
             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
             .Build();
     }
@@ -46,13 +46,17 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         if (!SystemAPI.HasSingleton<BuildingSpatialIndex>() ||
-            !SystemAPI.HasSingleton<BuildingSpatialIndexFence>())
+            !SystemAPI.HasSingleton<BuildingSpatialIndexFence>() ||
+            !SystemAPI.HasSingleton<BeltSpatialIndex>() ||
+            !SystemAPI.HasSingleton<BeltSpatialIndexFence>())
         {
             return;
         }
 
         var buildingIndex = SystemAPI.GetSingleton<BuildingSpatialIndex>();
         ref var buildingFence = ref SystemAPI.GetSingletonRW<BuildingSpatialIndexFence>().ValueRW;
+        var beltIndex = SystemAPI.GetSingleton<BeltSpatialIndex>();
+        ref var beltFence = ref SystemAPI.GetSingletonRW<BeltSpatialIndexFence>().ValueRW;
 
         _storageLookup.Update(ref state);
         _storageFilterLookup.Update(ref state);
@@ -60,15 +64,18 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
         var job = new BuildingItemInputDecisionJob
         {
             BuildingMap = buildingIndex.Map,
+            BeltMap = beltIndex.Map,
             StorageLookup = _storageLookup,
             StorageFilterLookup = _storageFilterLookup
         };
 
-        // Reader 의존성: BuildingSpatialIndex의 마지막 Writer 완료 대기 및 Reader 등록
-        var jobDep = Unity.Jobs.JobHandle.CombineDependencies(state.Dependency, buildingFence.GetReaderDependency());
+        // Reader 의존성: BuildingSpatialIndex 및 BeltSpatialIndex의 마지막 Writer 완료 대기 및 Reader 등록
+        var readersDep = Unity.Jobs.JobHandle.CombineDependencies(buildingFence.GetReaderDependency(), beltFence.GetReaderDependency());
+        var jobDep = Unity.Jobs.JobHandle.CombineDependencies(state.Dependency, readersDep);
         var jobHandle = job.ScheduleParallel(_itemQuery, jobDep);
 
         buildingFence.AddReader(jobHandle);
+        beltFence.AddReader(jobHandle);
 
         state.Dependency = jobHandle;
     }
@@ -84,6 +91,9 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
     public NativeParallelHashMap<int2, BuildingInfo> BuildingMap;
 
     [ReadOnly]
+    public NativeParallelHashMap<int2, BeltInfo> BeltMap;
+
+    [ReadOnly]
     public ComponentLookup<Storage> StorageLookup;
 
     [ReadOnly]
@@ -94,7 +104,6 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
         EnabledRefRW<BuildingItemInputDecision> inputDecisionEnabled,
         in BeltMovementState beltState,
         in GridPosition gridPos,
-        in Direction dir,
         in ItemIdentity itemIdentity,
         in ItemOwnership ownership)
     {
@@ -105,15 +114,22 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
             return;
         }
 
-        // 2. 벨트 끝(Progress >= 1.0f - Epsilon)에 도달하지 않았으면 비활성화
+        // 2. 현재 타일에 벨트가 없으면 판정 제외 및 비활성화
+        if (!BeltMap.TryGetValue(gridPos.Value, out BeltInfo currentBelt))
+        {
+            inputDecisionEnabled.ValueRW = false;
+            return;
+        }
+
+        // 3. 벨트 끝(Progress >= 1.0f - Epsilon)에 도달하지 않았으면 비활성화
         if (beltState.Progress < 1.0f - GameConstants.AlignmentEpsilon)
         {
             inputDecisionEnabled.ValueRW = false;
             return;
         }
 
-        // 3. 진행 방향의 다음 타일 건물 O(1) 탐색
-        int2 nextPos = gridPos.Value + dir.dir.ToInt2();
+        // 4. 벨트 진행 방향의 다음 타일 건물 O(1) 탐색
+        int2 nextPos = gridPos.Value + currentBelt.Direction.ToInt2();
         if (!BuildingMap.TryGetValue(nextPos, out BuildingInfo buildingInfo))
         {
             // 다음 타일에 건물이 없음
@@ -124,7 +140,7 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
             return;
         }
 
-        // 4. 대상 건물이 아이템을 보관할 수 있는 건물(Storage)인지 확인
+        // 5. 대상 건물이 아이템을 보관할 수 있는 건물(Storage)인지 확인
         if (!StorageLookup.HasComponent(buildingInfo.Entity))
         {
             // 보관 기능이 없는 건물 (예: 전신주 등)
@@ -135,7 +151,7 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
             return;
         }
 
-        // 5. StorageFilter 검사 (필터가 부착된 경우)
+        // 6. StorageFilter 검사 (필터가 부착된 경우)
         if (StorageFilterLookup.HasComponent(buildingInfo.Entity))
         {
             var filter = StorageFilterLookup[buildingInfo.Entity];
@@ -150,7 +166,7 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
             }
         }
 
-        // 6. 입고 적합 판정: ReservationPhase로 의도 전달
+        // 7. 입고 적합 판정: ReservationPhase로 의도 전달
         inputDecision.TargetBuilding = buildingInfo.Entity;
         inputDecision.CanDeposit = true;
         inputDecision.TargetSlotIndex = -1; // ReservationPhase에서 최종 확정

@@ -10,6 +10,7 @@ using Unity.Mathematics;
 public class Phase3BuildingInputDecisionTests : EcsWorldTestFixture
 {
     private SystemHandle _buildingSpatialSyncHandle;
+    private SystemHandle _beltSpatialSyncHandle;
     private SystemHandle _inputDecisionHandle;
 
     [SetUp]
@@ -17,6 +18,7 @@ public class Phase3BuildingInputDecisionTests : EcsWorldTestFixture
     {
         base.SetUp();
         _buildingSpatialSyncHandle = _world.GetOrCreateSystem(typeof(BuildingSpatialSyncSystem));
+        _beltSpatialSyncHandle = _world.GetOrCreateSystem(typeof(BeltSpatialSyncSystem));
         _inputDecisionHandle = _world.GetOrCreateSystem(typeof(BuildingItemInputDecisionSystem));
     }
 
@@ -44,20 +46,33 @@ public class Phase3BuildingInputDecisionTests : EcsWorldTestFixture
         return entity;
     }
 
+    private Entity CreateBelt(int2 position, DirectionEnum direction)
+    {
+        var entity = _entityManager.CreateEntity(
+            typeof(GridPosition),
+            typeof(Direction),
+            typeof(BeltComponent));
+
+        _entityManager.SetComponentData(entity, new GridPosition(position));
+        _entityManager.SetComponentData(entity, new Direction(direction));
+        _entityManager.SetComponentData(entity, new BeltComponent(2.0f));
+        return entity;
+    }
+
     private Entity CreateBeltItem(int2 position, DirectionEnum direction, float progress, ItemTypeEnum itemType = ItemTypeEnum.Iron_Ore)
     {
+        CreateBelt(position, direction);
+
         var entity = _entityManager.CreateEntity(
             typeof(ItemIdentity),
             typeof(ItemOwnership),
             typeof(GridPosition),
-            typeof(Direction),
             typeof(BeltMovementState),
             typeof(BuildingItemInputDecision));
 
         _entityManager.SetComponentData(entity, new ItemIdentity(itemType));
         _entityManager.SetComponentData(entity, ItemOwnership.WorldItem);
         _entityManager.SetComponentData(entity, new GridPosition(position));
-        _entityManager.SetComponentData(entity, new Direction(direction));
         _entityManager.SetComponentData(entity, new BeltMovementState(progress));
         _entityManager.SetComponentData(entity, new BuildingItemInputDecision(Entity.Null, false, -1));
 
@@ -70,8 +85,12 @@ public class Phase3BuildingInputDecisionTests : EcsWorldTestFixture
     private void SyncSpatialAndRunDecision()
     {
         _buildingSpatialSyncHandle.Update(_world.Unmanaged);
-        var fence = _world.EntityManager.CreateEntityQuery(typeof(BuildingSpatialIndexFence)).GetSingletonRW<BuildingSpatialIndexFence>();
-        fence.ValueRW.Complete();
+        var buildingFence = _world.EntityManager.CreateEntityQuery(typeof(BuildingSpatialIndexFence)).GetSingletonRW<BuildingSpatialIndexFence>();
+        buildingFence.ValueRW.Complete();
+
+        _beltSpatialSyncHandle.Update(_world.Unmanaged);
+        var beltFence = _world.EntityManager.CreateEntityQuery(typeof(BeltSpatialIndexFence)).GetSingletonRW<BeltSpatialIndexFence>();
+        beltFence.ValueRW.Complete();
 
         _inputDecisionHandle.Update(_world.Unmanaged);
         ref var systemState = ref _world.Unmanaged.ResolveSystemStateRef(_inputDecisionHandle);

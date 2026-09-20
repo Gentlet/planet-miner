@@ -188,11 +188,12 @@ public partial struct BuildingItemOutputDecisionJob : IJobEntity
             return;
         }
 
-        // 벨트 시작점 여유 공간(ItemSpacing) 판정
+        // 벨트 시작점 여유 공간(ItemSpacing) 및 최대 수용량(4개) 판정
         bool spaceAvailable = true;
         if (ItemMap.TryGetFirstValue(cell, out Entity itemEntity, out var it))
         {
             float minProgress = float.MaxValue;
+            int cellItemCount = 0;
             do
             {
                 if (ItemOwnershipLookup.HasComponent(itemEntity) &&
@@ -202,10 +203,11 @@ public partial struct BuildingItemOutputDecisionJob : IJobEntity
                 {
                     float prog = BeltMovementStateLookup[itemEntity].Progress;
                     minProgress = math.min(minProgress, prog);
+                    cellItemCount++;
                 }
             } while (ItemMap.TryGetNextValue(out itemEntity, ref it));
 
-            if (minProgress < GameConstants.ItemSpacing - GameConstants.AlignmentEpsilon)
+            if (cellItemCount >= GameConstants.MaxItemsPerBeltTile || minProgress < GameConstants.ItemSpacing - GameConstants.AlignmentEpsilon)
             {
                 spaceAvailable = false;
             }

@@ -12,6 +12,11 @@ public static class GameConstants
     public const float ItemSpacing = 0.25f;
 
     /// <summary>
+    /// 벨트 1타일 당 최대 아이템 수용량 (1.0f / ItemSpacing).
+    /// </summary>
+    public const int MaxItemsPerBeltTile = (int)(1.0f / ItemSpacing);
+
+    /// <summary>
     /// 타일 정렬 및 부동소수점 오차 보정용 엡실론.
     /// </summary>
     public const float AlignmentEpsilon = 0.001f;

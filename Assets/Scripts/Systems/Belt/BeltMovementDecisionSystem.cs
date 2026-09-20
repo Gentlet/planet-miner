@@ -182,6 +182,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
         // 5. 다음 타일에 벨트가 있는 경우, 다음 타일 내 선행 아이템들 검사
         float minNextProgress = float.MaxValue;
         bool hasNextItem = false;
+        int nextItemCount = 0;
 
         if (ItemMap.TryGetFirstValue(nextPos, out Entity nextItem, out var nextIt))
         {
@@ -196,6 +197,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
                     float nextProg = BeltMovementStateLookup[nextItem].Progress;
                     minNextProgress = math.min(minNextProgress, nextProg);
                     hasNextItem = true;
+                    nextItemCount++;
                 }
             } while (ItemMap.TryGetNextValue(out nextItem, ref nextIt));
         }
@@ -214,6 +216,14 @@ public partial struct BeltMovementDecisionJob : IJobEntity
         // 총 거리 = (1.0f - state.Progress) + minNextProgress
         float distanceToNext = (1.0f - state.Progress) + minNextProgress;
         float availableDistanceNext = math.max(0.0f, distanceToNext - GameConstants.ItemSpacing);
+
+        // 다음 타일이 이미 최대 수용량(1.0f / ItemSpacing)에 도달한 경우, 타일 경계를 넘을 수 없도록 상한 제한
+        if (nextItemCount >= GameConstants.MaxItemsPerBeltTile)
+        {
+            float maxMoveBeforeBoundary = math.max(0.0f, (1.0f - GameConstants.AlignmentEpsilon) - state.Progress);
+            availableDistanceNext = math.min(availableDistanceNext, maxMoveBeforeBoundary);
+        }
+
         float plannedNext = math.min(desiredMove, availableDistanceNext);
         decision.PlannedProgress = plannedNext;
         decision.IsBlocked = (plannedNext < desiredMove - GameConstants.AlignmentEpsilon);
