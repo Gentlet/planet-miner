@@ -20,6 +20,7 @@ public partial struct ItemLifecycleApplySystem : ISystem
     private EntityArchetype _fallbackItemArchetype;
     private EntityQuery _spawnQuery;
     private EntityQuery _destroyQuery;
+    private BufferLookup<StoredItemElement> _storedBufferLookup;
 
     public void OnCreate(ref SystemState state)
     {
@@ -35,6 +36,8 @@ public partial struct ItemLifecycleApplySystem : ISystem
             ComponentType.ReadWrite<BeltMovementDecision>(),
             ComponentType.ReadWrite<BuildingItemInputDecision>()
         );
+
+        _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
 
         _spawnQuery = SystemAPI.QueryBuilder()
             .WithAll<SpawnItemRequest>()
@@ -55,11 +58,14 @@ public partial struct ItemLifecycleApplySystem : ISystem
         var ecbSystem = state.World.GetExistingSystemManaged<EndStateApplyEntityCommandBufferSystem>();
         var ecb = ecbSystem.CreateCommandBuffer();
 
+        _storedBufferLookup.Update(ref state);
+
         // 1. [생성 Job] SpawnItemRequest 처리
         var spawnJob = new SpawnItemApplyJob
         {
             ECB = ecb,
-            FallbackItemArchetype = _fallbackItemArchetype
+            FallbackItemArchetype = _fallbackItemArchetype,
+            StoredBufferLookup = _storedBufferLookup
         };
         var spawnHandle = spawnJob.Schedule(_spawnQuery, state.Dependency);
 
@@ -84,6 +90,9 @@ public partial struct SpawnItemApplyJob : IJobEntity
     public EntityCommandBuffer ECB;
     public EntityArchetype FallbackItemArchetype;
 
+    [ReadOnly]
+    public BufferLookup<StoredItemElement> StoredBufferLookup;
+
     public void Execute(Entity requestEntity, in SpawnItemRequest request)
     {
         Entity newItem = ECB.CreateEntity(FallbackItemArchetype);
@@ -99,6 +108,10 @@ public partial struct SpawnItemApplyJob : IJobEntity
         else
         {
             ECB.SetComponent(newItem, ItemOwnership.Stored(request.TargetOwner));
+            if (StoredBufferLookup.HasBuffer(request.TargetOwner))
+            {
+                ECB.AppendToBuffer(request.TargetOwner, new StoredItemElement(newItem, request.ItemType, 0));
+            }
         }
 
         // 1회성 Request 컴포넌트들을 비활성화 상태로 초기화

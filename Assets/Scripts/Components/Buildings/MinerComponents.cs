@@ -21,23 +21,21 @@ public struct MinerState : IComponentData
 }
 
 /// <summary>
-/// 채굴기(Miner)의 채굴 및 배출 의사결정 컴포넌트 (Enableable).
+/// 채굴기(Miner)의 채굴 의사결정 컴포넌트 (Enableable).
 /// 
 /// [책임]
-/// - Phase 2 Decision 단계에서 채굴 조건(하부 자원 실존, 출력 대상 벨트 준비 등)을 판정하여 상태를 설정합니다.
-/// - 채굴 조건이 만족되면 CanMine = true로 활성화되며, 대상 자원과 배출 목표 좌표를 기록합니다.
-/// - 상태와 의사결정을 물리적으로 분리하여 병렬 Job 데이터 레이스를 방지합니다.
+/// - Phase 2 Decision 단계에서 채굴 조건(하부 자원 실존, 내부 버퍼 공간 여유)을 판정하여 상태를 설정합니다.
+/// - 채굴 조건이 만족되면 CanMine = true로 활성화되며, 대상 자원 엔티티를 기록합니다.
+/// - 외부 벨트로의 배출은 채굴기에 부착된 BuildingItemOutputDecision 및 출고 시스템이 전담합니다.
 /// </summary>
 public struct MinerDecision : IComponentData, IEnableableComponent
 {
-    public bool CanMine;                 // 이번 프레임에 채굴 진행 가능 여부
-    public Entity TargetResource;        // 채굴 대상 자원 엔티티
-    public int2 TargetBeltPosition;      // 채굴 완료 시 광물이 배출될 목표 벨트 타일 좌표
+    public bool CanMine;          // 이번 프레임에 채굴 진행 가능 여부
+    public Entity TargetResource; // 채굴 대상 자원 엔티티
 
-    public MinerDecision(bool canMine, Entity targetResource, int2 targetBeltPosition)
+    public MinerDecision(bool canMine, Entity targetResource)
     {
         CanMine = canMine;
         TargetResource = targetResource;
-        TargetBeltPosition = targetBeltPosition;
     }
 }

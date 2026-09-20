@@ -41,6 +41,8 @@ public class Phase4MinerComponentTests : EcsWorldTestFixture
             typeof(BuildingFootprint),
             typeof(GridPosition),
             typeof(Direction),
+            typeof(Storage),
+            typeof(BuildingItemOutputDecision),
             typeof(MinerState),
             typeof(MinerDecision));
 
@@ -48,9 +50,14 @@ public class Phase4MinerComponentTests : EcsWorldTestFixture
         _entityManager.SetComponentData(entity, new BuildingFootprint(new int2(1, 1)));
         _entityManager.SetComponentData(entity, new GridPosition(position));
         _entityManager.SetComponentData(entity, new Direction(direction));
+        _entityManager.SetComponentData(entity, new Storage(slotCount: 1));
+        _entityManager.SetComponentData(entity, new BuildingItemOutputDecision(false, Entity.Null, int2.zero));
+        _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(entity, false);
         _entityManager.SetComponentData(entity, new MinerState(miningSpeed, 0.0f));
-        _entityManager.SetComponentData(entity, new MinerDecision(false, Entity.Null, int2.zero));
+        _entityManager.SetComponentData(entity, new MinerDecision(false, Entity.Null));
         _entityManager.SetComponentEnabled<MinerDecision>(entity, false);
+
+        _entityManager.AddBuffer<StoredItemElement>(entity);
 
         return entity;
     }
@@ -123,7 +130,7 @@ public class Phase4MinerComponentTests : EcsWorldTestFixture
 
         // Act 2: 의사결정 활성화 및 설정
         var targetResource = CreateResourceNode(new int2(10, 10), ItemTypeEnum.Iron_Ore, 100);
-        _entityManager.SetComponentData(minerEntity, new MinerDecision(true, targetResource, new int2(11, 10)));
+        _entityManager.SetComponentData(minerEntity, new MinerDecision(true, targetResource));
         _entityManager.SetComponentEnabled<MinerDecision>(minerEntity, true);
 
         // Assert 2: 의사결정 상태 확인
@@ -131,7 +138,6 @@ public class Phase4MinerComponentTests : EcsWorldTestFixture
         var decision = _entityManager.GetComponentData<MinerDecision>(minerEntity);
         Assert.IsTrue(decision.CanMine, "CanMine should be true.");
         Assert.AreEqual(targetResource, decision.TargetResource, "TargetResource should match.");
-        Assert.AreEqual(new int2(11, 10), decision.TargetBeltPosition, "TargetBeltPosition should match (11, 10).");
     }
 
     [Test]
