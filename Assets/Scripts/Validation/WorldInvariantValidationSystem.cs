@@ -70,6 +70,10 @@ public partial class WorldInvariantValidationSystem : SystemBase
         {
             buildingFenceRw.ValueRW.Complete();
         }
+        if (SystemAPI.TryGetSingletonRW<ResourceSpatialIndexFence>(out var resourceFenceRw))
+        {
+            resourceFenceRw.ValueRW.Complete();
+        }
 
         // Phase 1: Item & Spatial Invariant 검증
         ValidateItemAndSpatialInvariants();
@@ -85,6 +89,9 @@ public partial class WorldInvariantValidationSystem : SystemBase
 
         // Phase 3: 미소비 확정 입출력 Decision 잔류 검증
         ValidateStorageDecisionInvariants();
+
+        // Phase 4: Resource & Spatial Invariant 검증
+        ValidateResourceSpatialInvariants();
     }
 
     /// <summary>
@@ -723,6 +730,88 @@ public partial class WorldInvariantValidationSystem : SystemBase
                     entity
                 );
             }
+        }
+    }
+
+    /// <summary>
+    /// Phase 4 자원 노드(ResourceNode) 및 자원 공간 인덱스(ResourceSpatialIndex) 정합성을 검증합니다.
+    /// - 1. ResourceNode가 부착된 엔티티가 ResourceSpatialIndex에 올바른 GridPosition으로 등록되어 있는지 검증
+    /// - 2. ResourceSpatialIndex에 등록된 엔티티가 월드에 실존하고 ResourceNode를 가지고 있는지 검증
+    /// </summary>
+    private void ValidateResourceSpatialInvariants()
+    {
+        if (!SystemAPI.TryGetSingleton<ResourceSpatialIndex>(out var resourceIndex) || !resourceIndex.Map.IsCreated)
+        {
+            return;
+        }
+
+        // 1. [정방향 검증] ResourceNode -> ResourceSpatialIndex
+        foreach (var (pos, resource, entity) in
+                 SystemAPI.Query<RefRO<GridPosition>, RefRO<ResourceNode>>()
+                          .WithEntityAccess())
+        {
+            int2 gridPos = pos.ValueRO.Value;
+            if (!resourceIndex.TryGetResource(gridPos, out Entity indexedEntity))
+            {
+                ReportViolation(
+                    "ResourceSpatial",
+                    $"ResourceNode ({entity.Index}:{entity.Version}) at ({gridPos.x}, {gridPos.y}) is NOT registered in ResourceSpatialIndex.",
+                    entity
+                );
+            }
+            else if (indexedEntity != entity)
+            {
+                ReportViolation(
+                    "ResourceSpatial",
+                    $"ResourceSpatialIndex mismatch at ({gridPos.x}, {gridPos.y}): expected ({entity.Index}:{entity.Version}), but found ({indexedEntity.Index}:{indexedEntity.Version}).",
+                    entity
+                );
+            }
+        }
+
+        // 2. [역방향 검증] ResourceSpatialIndex -> 실존 엔티티
+        var kvpArray = resourceIndex.Map.GetKeyValueArrays(Allocator.Temp);
+        try
+        {
+            for (int i = 0; i < kvpArray.Length; i++)
+            {
+                int2 pos = kvpArray.Keys[i];
+                Entity resourceEntity = kvpArray.Values[i];
+
+                if (!SystemAPI.Exists(resourceEntity))
+                {
+                    ReportViolation(
+                        "ResourceSpatial",
+                        $"ResourceSpatialIndex contains non-existent or destroyed Entity ({resourceEntity.Index}:{resourceEntity.Version}) at ({pos.x}, {pos.y}).",
+                        resourceEntity
+                    );
+                    continue;
+                }
+
+                if (!SystemAPI.HasComponent<ResourceNode>(resourceEntity) || !SystemAPI.HasComponent<GridPosition>(resourceEntity))
+                {
+                    ReportViolation(
+                        "ResourceSpatial",
+                        $"Entity ({resourceEntity.Index}:{resourceEntity.Version}) in ResourceSpatialIndex lacks ResourceNode or GridPosition component.",
+                        resourceEntity
+                    );
+                    continue;
+                }
+
+                int2 nodePos = SystemAPI.GetComponent<GridPosition>(resourceEntity).Value;
+                if (!nodePos.Equals(pos))
+                {
+                    ReportViolation(
+                        "ResourceSpatial",
+                        $"Position mismatch: ResourceNode ({resourceEntity.Index}:{resourceEntity.Version}) has GridPosition ({nodePos.x}, {nodePos.y}), but is indexed at ({pos.x}, {pos.y}).",
+                        resourceEntity
+                    );
+                }
+            }
+        }
+        finally
+        {
+            kvpArray.Dispose();
         }
     }
 
