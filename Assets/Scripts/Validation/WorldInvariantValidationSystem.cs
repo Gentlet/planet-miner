@@ -338,12 +338,12 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 int count = progressList.Length;
                 if (count == 0) continue;
 
-                // 3-B. 타일당 최대 수용량(4개) 초과 감시
-                if (count > 4)
+                // 3-B. 타일당 최대 수용량(1.0f / ItemSpacing) 초과 감시
+                if (count > GameConstants.MaxItemsPerBeltTile)
                 {
                     ReportViolation(
                         "BeltInvariant",
-                        $"Belt tile at ({beltPos.x}, {beltPos.y}) exceeds maximum capacity: {count} items found (maximum allowed is 4).",
+                        $"Belt tile at ({beltPos.x}, {beltPos.y}) exceeds maximum capacity: {count} items found (maximum allowed is {GameConstants.MaxItemsPerBeltTile}).",
                         entityList[0]
                     );
                 }
