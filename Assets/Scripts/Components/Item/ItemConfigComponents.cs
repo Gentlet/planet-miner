@@ -1,30 +1,14 @@
 using Unity.Entities;
 
 /// <summary>
-/// 글로벌 아이템 기본 설정 싱글톤 컴포넌트.
-/// ItemConfig.json에서 로드된 DefaultMaxStack을 단일 기준(Single Source of Truth)으로 보유합니다.
+/// 단일 아이템 종류별 정적 데이터 (Unmanaged).
 /// </summary>
-public struct ItemConfig : IComponentData
-{
-    public int DefaultMaxStack;
-
-    public ItemConfig(int defaultMaxStack)
-    {
-        DefaultMaxStack = defaultMaxStack;
-    }
-}
-
-/// <summary>
-/// 아이템 종류별 최대 스택 수를 저장하는 버퍼 요소 (Unmanaged).
-/// 버퍼 인덱스가 (int)ItemTypeEnum과 1:1로 매핑되어 O(1) 직접 조회가 보장됩니다.
-/// </summary>
-[InternalBufferCapacity((int)ItemTypeEnum.Count)]
-public struct ItemConfigElement : IBufferElementData
+public struct ItemDataBlob
 {
     public ItemTypeEnum ItemType;
     public int MaxStack;
 
-    public ItemConfigElement(ItemTypeEnum itemType, int maxStack)
+    public ItemDataBlob(ItemTypeEnum itemType, int maxStack)
     {
         ItemType = itemType;
         MaxStack = maxStack;
@@ -32,50 +16,53 @@ public struct ItemConfigElement : IBufferElementData
 }
 
 /// <summary>
-/// ItemConfig 버퍼 고속 조회를 위한 확장 메서드.
-/// Burst 및 멀티스레드 Job에서 호출 가능합니다.
+/// 전역 아이템 레지스트리 불변 루트 Blob.
+/// 인덱스가 (int)ItemTypeEnum과 1:1로 대응하여 O(1) 직접 조회가 보장됩니다.
 /// </summary>
-public static class ItemConfigExtensions
+public struct ItemRegistryBlob
 {
+    public int DefaultMaxStack;
+    public BlobArray<ItemDataBlob> Items;
+
     /// <summary>
-    /// DynamicBuffer에서 ItemType에 해당하는 MaxStack을 O(1) 인덱싱으로 반환합니다.
-    /// 유효 범위를 벗어난 비정상 타입인 경우 ItemConfig.json에서 로드된 config.DefaultMaxStack을 반환합니다.
+    /// ItemType에 해당하는 MaxStack을 O(1) 인덱싱으로 반환합니다.
+    /// 범위 밖인 경우 DefaultMaxStack을 반환합니다.
     /// </summary>
-    public static int GetMaxStack(this in DynamicBuffer<ItemConfigElement> buffer, in ItemConfig config, ItemTypeEnum itemType)
+    public int GetMaxStack(ItemTypeEnum itemType)
     {
         int index = (int)itemType;
-        if (index >= 0 && index < buffer.Length)
+        if (index >= 0 && index < Items.Length)
         {
-            return buffer[index].MaxStack;
+            return Items[index].MaxStack;
         }
-        return config.DefaultMaxStack;
+        return DefaultMaxStack;
     }
 
     /// <summary>
-    /// DynamicBuffer에서 ItemType에 해당하는 MaxStack을 O(1) 인덱싱으로 반환합니다.
-    /// 범위 밖이거나 유효하지 않은 경우 명시적으로 전달된 fallbackMaxStack을 반환합니다.
+    /// ItemType에 해당하는 MaxStack을 O(1) 인덱싱으로 반환합니다.
+    /// 범위 밖인 경우 전달된 fallbackMaxStack을 반환합니다.
     /// </summary>
-    public static int GetMaxStack(this in DynamicBuffer<ItemConfigElement> buffer, ItemTypeEnum itemType, int fallbackMaxStack)
+    public int GetMaxStack(ItemTypeEnum itemType, int fallbackMaxStack)
     {
         int index = (int)itemType;
-        if (index >= 0 && index < buffer.Length)
+        if (index >= 0 && index < Items.Length)
         {
-            return buffer[index].MaxStack;
+            return Items[index].MaxStack;
         }
         return fallbackMaxStack;
     }
+}
 
-    /// <summary>
-    /// DynamicBuffer에서 ItemType에 해당하는 MaxStack을 O(1) 인덱싱으로 반환합니다.
-    /// 범위 밖인 경우 0을 반환합니다.
-    /// </summary>
-    public static int GetMaxStack(this in DynamicBuffer<ItemConfigElement> buffer, ItemTypeEnum itemType)
+/// <summary>
+/// 전역 아이템 레지스트리 싱글톤 컴포넌트.
+/// RecipeRegistry와 대칭을 이루며, BlobAssetReference를 통해 Unmanaged 포인터 접근을 제공합니다.
+/// </summary>
+public struct ItemRegistry : IComponentData
+{
+    public BlobAssetReference<ItemRegistryBlob> Value;
+
+    public ItemRegistry(BlobAssetReference<ItemRegistryBlob> value)
     {
-        int index = (int)itemType;
-        if (index >= 0 && index < buffer.Length)
-        {
-            return buffer[index].MaxStack;
-        }
-        return 0;
+        Value = value;
     }
 }

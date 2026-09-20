@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using Unity.Collections;
 using Unity.Entities;
 using UnityEngine;
 
@@ -23,104 +24,145 @@ public class ItemConfigJsonEntry
 
 /// <summary>
 /// 게임 시작 시(InitializationSystemGroup) ItemConfig.json 또는 기본값으로
-/// ItemConfig 싱글톤 및 DynamicBuffer<ItemConfigElement>를 1회 초기화하는 시스템.
+/// ItemRegistryBlob을 빌드하고 ItemRegistry 싱글톤 엔티티를 1회 초기화하는 시스템.
 /// </summary>
 [UpdateInGroup(typeof(InitializationSystemGroup))]
 public partial class ItemConfigInitSystem : SystemBase
 {
+    private BlobAssetReference<ItemRegistryBlob> _blobReference;
+
     protected override void OnUpdate()
     {
-        if (SystemAPI.HasSingleton<ItemConfig>())
+        if (SystemAPI.HasSingleton<ItemRegistry>())
         {
             Enabled = false;
             return;
         }
 
         // 싱글톤이 없을 때만 1회 생성 및 초기화
-        InitializeItemConfig(EntityManager);
+        _blobReference = InitializeItemRegistry(EntityManager);
         Enabled = false;
     }
 
+    protected override void OnDestroy()
+    {
+        if (_blobReference.IsCreated)
+        {
+            _blobReference.Dispose();
+        }
+        base.OnDestroy();
+    }
+
     /// <summary>
-    /// ItemConfig 싱글톤 및 버퍼를 초기화합니다.
+    /// ItemRegistry 싱글톤 및 BlobAsset을 초기화합니다.
     /// jsonOverride가 주어지면 해당 문자열을 파싱하고, 없으면 StreamingAssets/ItemConfig.json 또는 기본 폴백을 사용합니다.
     /// </summary>
-    public static Entity InitializeItemConfig(EntityManager entityManager, string jsonOverride = null)
+    public static BlobAssetReference<ItemRegistryBlob> InitializeItemRegistry(EntityManager entityManager, string jsonOverride = null)
     {
-        var query = entityManager.CreateEntityQuery(typeof(ItemConfig));
-        Entity singletonEntity;
-        DynamicBuffer<ItemConfigElement> buffer;
-
-        if (query.CalculateEntityCount() > 0)
-        {
-            singletonEntity = query.GetSingletonEntity();
-            buffer = entityManager.GetBuffer<ItemConfigElement>(singletonEntity);
-        }
-        else
-        {
-            singletonEntity = entityManager.CreateEntity(typeof(ItemConfig));
-            buffer = entityManager.AddBuffer<ItemConfigElement>(singletonEntity);
-        }
-
-        // 1. JSON 내용 획득
         string jsonText = jsonOverride;
         if (string.IsNullOrEmpty(jsonText))
         {
             jsonText = TryReadConfigFile();
         }
 
+        BlobAssetReference<ItemRegistryBlob> blobRef;
+        if (!string.IsNullOrEmpty(jsonText))
+        {
+            blobRef = BuildBlobAssetFromJson(jsonText);
+        }
+        else
+        {
+            blobRef = BuildDefaultFallbackBlobAsset();
+        }
+
+        var query = entityManager.CreateEntityQuery(typeof(ItemRegistry));
+        Entity singletonEntity;
+
+        if (query.CalculateEntityCount() > 0)
+        {
+            singletonEntity = query.GetSingletonEntity();
+            entityManager.SetComponentData(singletonEntity, new ItemRegistry(blobRef));
+        }
+        else
+        {
+            singletonEntity = entityManager.CreateEntity(typeof(ItemRegistry));
+            entityManager.SetComponentData(singletonEntity, new ItemRegistry(blobRef));
+        }
+
+        return blobRef;
+    }
+
+    /// <summary>
+    /// JSON 문자열로부터 ItemRegistryBlob BlobAsset을 빌드합니다.
+    /// </summary>
+    public static BlobAssetReference<ItemRegistryBlob> BuildBlobAssetFromJson(string jsonText)
+    {
         int defaultMaxStack = 50;
         var customStacks = new Dictionary<ItemTypeEnum, int>();
 
-        if (!string.IsNullOrEmpty(jsonText))
+        try
         {
-            try
+            var data = JsonUtility.FromJson<ItemConfigJsonData>(jsonText);
+            if (data != null)
             {
-                var data = JsonUtility.FromJson<ItemConfigJsonData>(jsonText);
-                if (data != null)
+                defaultMaxStack = data.DefaultMaxStack > 0 ? data.DefaultMaxStack : 50;
+                if (data.Items != null)
                 {
-                    defaultMaxStack = data.DefaultMaxStack > 0 ? data.DefaultMaxStack : 50;
-                    if (data.Items != null)
+                    foreach (var item in data.Items)
                     {
-                        foreach (var item in data.Items)
+                        if (Enum.TryParse<ItemTypeEnum>(item.ItemType, true, out var parsedType))
                         {
-                            if (Enum.TryParse<ItemTypeEnum>(item.ItemType, true, out var parsedType))
-                            {
-                                customStacks[parsedType] = item.MaxStack;
-                            }
+                            customStacks[parsedType] = item.MaxStack;
                         }
                     }
                 }
             }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[ItemConfigInitSystem] Failed to parse ItemConfig.json, falling back to defaults. Error: {ex.Message}");
-            }
         }
-
-        // 2. 싱글톤 설정 저장
-        entityManager.SetComponentData(singletonEntity, new ItemConfig(defaultMaxStack));
-
-        // 3. 버퍼를 (int)ItemTypeEnum.Count 크기에 맞춰 인덱스 1:1로 채우기
-        buffer.ResizeUninitialized((int)ItemTypeEnum.Count);
-        for (int i = 0; i < (int)ItemTypeEnum.Count; i++)
+        catch (Exception ex)
         {
-            var itemType = (ItemTypeEnum)i;
-            int maxStack;
-
-            if (customStacks.TryGetValue(itemType, out int customValue))
-            {
-                maxStack = customValue;
-            }
-            else
-            {
-                maxStack = GetDefaultMaxStackFor(itemType, defaultMaxStack);
-            }
-
-            buffer[i] = new ItemConfigElement(itemType, maxStack);
+            Debug.LogWarning($"[ItemConfigInitSystem] Failed to parse ItemConfig.json, falling back to defaults. Error: {ex.Message}");
         }
 
-        return singletonEntity;
+        return BuildBlobAsset(defaultMaxStack, customStacks);
+    }
+
+    /// <summary>
+    /// 기본 폴백 ItemRegistryBlob BlobAsset을 빌드합니다.
+    /// </summary>
+    public static BlobAssetReference<ItemRegistryBlob> BuildDefaultFallbackBlobAsset(int defaultMaxStack = 50)
+    {
+        return BuildBlobAsset(defaultMaxStack, null);
+    }
+
+    private static BlobAssetReference<ItemRegistryBlob> BuildBlobAsset(int defaultMaxStack, Dictionary<ItemTypeEnum, int> customStacks)
+    {
+        using (var builder = new BlobBuilder(Allocator.Temp))
+        {
+            ref var root = ref builder.ConstructRoot<ItemRegistryBlob>();
+            root.DefaultMaxStack = defaultMaxStack;
+
+            int count = (int)ItemTypeEnum.Count;
+            var itemsArray = builder.Allocate(ref root.Items, count);
+
+            for (int i = 0; i < count; i++)
+            {
+                var itemType = (ItemTypeEnum)i;
+                int maxStack;
+
+                if (customStacks != null && customStacks.TryGetValue(itemType, out int customValue))
+                {
+                    maxStack = customValue;
+                }
+                else
+                {
+                    maxStack = GetDefaultMaxStackFor(itemType, defaultMaxStack);
+                }
+
+                itemsArray[i] = new ItemDataBlob(itemType, maxStack);
+            }
+
+            return builder.CreateBlobAssetReference<ItemRegistryBlob>(Allocator.Persistent);
+        }
     }
 
     private static string TryReadConfigFile()
