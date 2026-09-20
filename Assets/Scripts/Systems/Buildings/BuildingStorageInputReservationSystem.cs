@@ -21,12 +21,14 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
     private ComponentLookup<Storage> _storageLookup;
     private BufferLookup<StoredItemElement> _storedBufferLookup;
     private EntityQuery _inputQuery;
+    private EntityQuery _itemRegistryQuery;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         _storageLookup = state.GetComponentLookup<Storage>(true);
         _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
+        _itemRegistryQuery = state.GetEntityQuery(ComponentType.ReadOnly<ItemRegistry>());
 
         _inputQuery = SystemAPI.QueryBuilder()
             .WithAllRW<BuildingItemInputDecision>()
@@ -45,13 +47,10 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
         _storageLookup.Update(ref state);
         _storedBufferLookup.Update(ref state);
 
-        ItemConfig itemConfig = new ItemConfig(50);
-        DynamicBuffer<ItemConfigElement> itemConfigBuffer = default;
-        if (SystemAPI.HasSingleton<ItemConfig>())
+        ItemRegistry itemRegistry = default;
+        if (!_itemRegistryQuery.IsEmptyIgnoreFilter)
         {
-            var configEntity = SystemAPI.GetSingletonEntity<ItemConfig>();
-            itemConfig = SystemAPI.GetComponent<ItemConfig>(configEntity);
-            itemConfigBuffer = SystemAPI.GetBuffer<ItemConfigElement>(configEntity);
+            itemRegistry = _itemRegistryQuery.GetSingleton<ItemRegistry>();
         }
 
         // 이번 프레임 내 동일 건물/슬롯에 추가 배정된 수량을 추적하는 맵 (단일 워커 스레드 Job 내에서 순차 갱신)
@@ -61,8 +60,7 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
         {
             StorageLookup = _storageLookup,
             StoredBufferLookup = _storedBufferLookup,
-            ItemConfigBuffer = itemConfigBuffer,
-            ItemConfig = itemConfig,
+            ItemRegistry = itemRegistry,
             PendingAdditions = pendingAdditions
         };
 
@@ -87,9 +85,7 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
     public BufferLookup<StoredItemElement> StoredBufferLookup;
 
     [ReadOnly]
-    public DynamicBuffer<ItemConfigElement> ItemConfigBuffer;
-
-    public ItemConfig ItemConfig;
+    public ItemRegistry ItemRegistry;
 
     public NativeParallelHashMap<int2, int> PendingAdditions;
 
@@ -124,10 +120,10 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
         }
 
         ItemTypeEnum itemType = itemIdentity.Type;
-        int maxStack = ItemConfig.DefaultMaxStack;
-        if (ItemConfigBuffer.IsCreated)
+        int maxStack = 50;
+        if (ItemRegistry.Value.IsCreated)
         {
-            maxStack = ItemConfigBuffer.GetMaxStack(in ItemConfig, itemType);
+            maxStack = ItemRegistry.Value.Value.GetMaxStack(itemType);
         }
 
         // FixedList512Bytes를 사용하여 unsafe 코드 없이 스택 기반 O(1) 슬롯 점유 집계

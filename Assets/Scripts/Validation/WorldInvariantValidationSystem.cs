@@ -540,14 +540,11 @@ public partial class WorldInvariantValidationSystem : SystemBase
         }
 
         // 2. [역방향 검증] Storage Buffer -> Stored Item & 슬롯/스택/필터 세부 검증
-        ItemConfig itemConfig = new ItemConfig(50);
-        DynamicBuffer<ItemConfigElement> itemConfigBuffer = default;
-        bool hasItemConfig = SystemAPI.HasSingleton<ItemConfig>();
-        if (hasItemConfig)
+        ItemRegistry itemRegistry = default;
+        bool hasItemRegistry = SystemAPI.HasSingleton<ItemRegistry>();
+        if (hasItemRegistry)
         {
-            var configEntity = SystemAPI.GetSingletonEntity<ItemConfig>();
-            itemConfig = SystemAPI.GetComponent<ItemConfig>(configEntity);
-            itemConfigBuffer = SystemAPI.GetBuffer<ItemConfigElement>(configEntity);
+            itemRegistry = SystemAPI.GetSingleton<ItemRegistry>();
         }
 
         bool hasSpatialIndex = SystemAPI.TryGetSingleton<ItemSpatialIndex>(out var itemSpatialIndex);
@@ -676,11 +673,9 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 ItemTypeEnum slotItemType = (ItemTypeEnum)data.x;
                 int count = data.y;
 
-                int maxStack = itemConfig.DefaultMaxStack;
-                if (hasItemConfig && itemConfigBuffer.IsCreated)
-                {
-                    maxStack = itemConfigBuffer.GetMaxStack(in itemConfig, slotItemType);
-                }
+                int maxStack = (hasItemRegistry && itemRegistry.Value.IsCreated)
+                    ? itemRegistry.Value.Value.GetMaxStack(slotItemType)
+                    : 50;
 
                 if (count > maxStack)
                 {

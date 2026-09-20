@@ -1,13 +1,17 @@
 using NUnit.Framework;
 using PlanetMiner.Tests;
+using Unity.Burst;
+using Unity.Collections;
 using Unity.Entities;
+using Unity.Jobs;
 
 /// <summary>
-/// Task 3.2.2: ItemConfig 및 아이템별 MaxStack 설정 인프라 단위 테스트.
+/// Task 3.2.2 & BlobAsset 리팩토링: ItemRegistry 및 아이템별 MaxStack 불변 Blob 설정 인프라 단위 테스트.
 /// </summary>
 public class Phase3ItemConfigTests : EcsWorldTestFixture
 {
     private SystemHandle _initConfigHandle;
+    private BlobAssetReference<ItemRegistryBlob> _blobRef;
 
     [SetUp]
     public override void SetUp()
@@ -16,39 +20,51 @@ public class Phase3ItemConfigTests : EcsWorldTestFixture
         _initConfigHandle = _world.GetOrCreateSystem(typeof(ItemConfigInitSystem));
     }
 
+    [TearDown]
+    public override void TearDown()
+    {
+        if (_blobRef.IsCreated)
+        {
+            _blobRef.Dispose();
+        }
+        base.TearDown();
+    }
+
     [Test]
-    public void Test01_InitializeItemConfig_CreatesSingletonAndBuffer()
+    public void Test01_InitializeItemRegistry_CreatesSingletonAndBlobArray()
     {
         // Act
-        var singleton = ItemConfigInitSystem.InitializeItemConfig(_entityManager);
+        _blobRef = ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
 
         // Assert
-        Assert.IsTrue(_entityManager.Exists(singleton));
-        Assert.IsTrue(_entityManager.HasComponent<ItemConfig>(singleton));
-        Assert.IsTrue(_entityManager.HasBuffer<ItemConfigElement>(singleton));
+        Assert.IsTrue(_blobRef.IsCreated);
+        ref var registry = ref _blobRef.Value;
+        Assert.AreEqual((int)ItemTypeEnum.Count, registry.Items.Length);
 
-        var buffer = _entityManager.GetBuffer<ItemConfigElement>(singleton);
-        Assert.AreEqual((int)ItemTypeEnum.Count, buffer.Length);
+        var query = _entityManager.CreateEntityQuery(typeof(ItemRegistry));
+        Assert.AreEqual(1, query.CalculateEntityCount());
+        var singleton = query.GetSingleton<ItemRegistry>();
+        Assert.IsTrue(singleton.Value.IsCreated);
     }
 
     [Test]
     public void Test02_DefaultConfig_MapsCorrectMaxStacks()
     {
         // Act: Initialize with null json (fallback defaults)
-        var singleton = ItemConfigInitSystem.InitializeItemConfig(_entityManager);
-        var buffer = _entityManager.GetBuffer<ItemConfigElement>(singleton);
+        _blobRef = ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
+        ref var registry = ref _blobRef.Value;
 
         // Assert
-        Assert.AreEqual(0, buffer.GetMaxStack(ItemTypeEnum.None));
-        Assert.AreEqual(50, buffer.GetMaxStack(ItemTypeEnum.Iron_Ore));
-        Assert.AreEqual(50, buffer.GetMaxStack(ItemTypeEnum.Copper_Ore));
-        Assert.AreEqual(50, buffer.GetMaxStack(ItemTypeEnum.Coal));
-        Assert.AreEqual(50, buffer.GetMaxStack(ItemTypeEnum.Stone));
-        Assert.AreEqual(100, buffer.GetMaxStack(ItemTypeEnum.Iron));
-        Assert.AreEqual(100, buffer.GetMaxStack(ItemTypeEnum.Copper));
-        Assert.AreEqual(100, buffer.GetMaxStack(ItemTypeEnum.Iron_Stick));
-        Assert.AreEqual(100, buffer.GetMaxStack(ItemTypeEnum.Copper_Stick));
-        Assert.AreEqual(1, buffer.GetMaxStack(ItemTypeEnum.Drone));
+        Assert.AreEqual(0, registry.GetMaxStack(ItemTypeEnum.None));
+        Assert.AreEqual(50, registry.GetMaxStack(ItemTypeEnum.Iron_Ore));
+        Assert.AreEqual(50, registry.GetMaxStack(ItemTypeEnum.Copper_Ore));
+        Assert.AreEqual(50, registry.GetMaxStack(ItemTypeEnum.Coal));
+        Assert.AreEqual(50, registry.GetMaxStack(ItemTypeEnum.Stone));
+        Assert.AreEqual(100, registry.GetMaxStack(ItemTypeEnum.Iron));
+        Assert.AreEqual(100, registry.GetMaxStack(ItemTypeEnum.Copper));
+        Assert.AreEqual(100, registry.GetMaxStack(ItemTypeEnum.Iron_Stick));
+        Assert.AreEqual(100, registry.GetMaxStack(ItemTypeEnum.Copper_Stick));
+        Assert.AreEqual(1, registry.GetMaxStack(ItemTypeEnum.Drone));
     }
 
     [Test]
@@ -64,60 +80,107 @@ public class Phase3ItemConfigTests : EcsWorldTestFixture
         }";
 
         // Act
-        var singleton = ItemConfigInitSystem.InitializeItemConfig(_entityManager, customJson);
-        var buffer = _entityManager.GetBuffer<ItemConfigElement>(singleton);
+        _blobRef = ItemConfigInitSystem.InitializeItemRegistry(_entityManager, customJson);
+        ref var registry = ref _blobRef.Value;
 
         // Assert: Overridden items
-        Assert.AreEqual(999, buffer.GetMaxStack(ItemTypeEnum.Iron_Ore));
-        Assert.AreEqual(5, buffer.GetMaxStack(ItemTypeEnum.Drone));
+        Assert.AreEqual(999, registry.GetMaxStack(ItemTypeEnum.Iron_Ore));
+        Assert.AreEqual(5, registry.GetMaxStack(ItemTypeEnum.Drone));
 
         // Non-overridden items keep their default/fallback values
-        Assert.AreEqual(50, buffer.GetMaxStack(ItemTypeEnum.Copper_Ore));
-        Assert.AreEqual(100, buffer.GetMaxStack(ItemTypeEnum.Iron));
+        Assert.AreEqual(50, registry.GetMaxStack(ItemTypeEnum.Copper_Ore));
+        Assert.AreEqual(100, registry.GetMaxStack(ItemTypeEnum.Iron));
 
-        // Fallback uses DefaultMaxStack (64) when querying with config
-        var config = _entityManager.GetComponentData<ItemConfig>(singleton);
-        Assert.AreEqual(64, config.DefaultMaxStack);
+        // Fallback uses DefaultMaxStack (64)
+        Assert.AreEqual(64, registry.DefaultMaxStack);
         var invalidType = (ItemTypeEnum)250;
-        Assert.AreEqual(64, buffer.GetMaxStack(config, invalidType));
+        Assert.AreEqual(64, registry.GetMaxStack(invalidType));
     }
 
     [Test]
-    public void Test04_ExtensionMethod_O1LookupAndFallback()
+    public void Test04_LookupAndFallback_Behaviors()
     {
         // Arrange
-        var singleton = ItemConfigInitSystem.InitializeItemConfig(_entityManager);
-        var buffer = _entityManager.GetBuffer<ItemConfigElement>(singleton);
-        var config = _entityManager.GetComponentData<ItemConfig>(singleton);
+        _blobRef = ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
+        ref var registry = ref _blobRef.Value;
 
-        // Direct array lookup equals extension method
-        Assert.AreEqual(buffer[(int)ItemTypeEnum.Iron_Ore].MaxStack, buffer.GetMaxStack(ItemTypeEnum.Iron_Ore));
+        // Direct array lookup equals helper method
+        Assert.AreEqual(registry.Items[(int)ItemTypeEnum.Iron_Ore].MaxStack, registry.GetMaxStack(ItemTypeEnum.Iron_Ore));
 
-        // Fallback with config: returns config.DefaultMaxStack (50)
+        // Fallback with invalid type returns DefaultMaxStack (50)
         var invalidType = (ItemTypeEnum)250;
-        Assert.AreEqual(50, buffer.GetMaxStack(config, invalidType));
+        Assert.AreEqual(50, registry.GetMaxStack(invalidType));
 
         // Fallback with explicit value
-        Assert.AreEqual(77, buffer.GetMaxStack(invalidType, fallbackMaxStack: 77));
-
-        // Fallback without config/explicit fallback returns 0
-        Assert.AreEqual(0, buffer.GetMaxStack(invalidType));
+        Assert.AreEqual(77, registry.GetMaxStack(invalidType, fallbackMaxStack: 77));
     }
 
     [Test]
     public void Test05_SystemUpdate_InitializesAutomatically()
     {
-        // Pre-condition: No ItemConfig singleton
-        Assert.IsFalse(_world.EntityManager.CreateEntityQuery(typeof(ItemConfig)).CalculateEntityCount() > 0);
+        // Pre-condition: No ItemRegistry singleton
+        Assert.IsFalse(_world.EntityManager.CreateEntityQuery(typeof(ItemRegistry)).CalculateEntityCount() > 0);
 
         // Act: Update system
         _initConfigHandle.Update(_world.Unmanaged);
 
-        // Assert: Singleton created and buffer populated
-        var query = _world.EntityManager.CreateEntityQuery(typeof(ItemConfig), typeof(ItemConfigElement));
+        // Assert: Singleton created and BlobAsset populated
+        var query = _world.EntityManager.CreateEntityQuery(typeof(ItemRegistry));
         Assert.AreEqual(1, query.CalculateEntityCount());
-        var buffer = query.GetSingletonBuffer<ItemConfigElement>();
-        Assert.AreEqual((int)ItemTypeEnum.Count, buffer.Length);
-        Assert.Greater(buffer.GetMaxStack(ItemTypeEnum.Iron), 0);
+        var singleton = query.GetSingleton<ItemRegistry>();
+        Assert.IsTrue(singleton.Value.IsCreated);
+        Assert.AreEqual((int)ItemTypeEnum.Count, singleton.Value.Value.Items.Length);
+        Assert.Greater(singleton.Value.Value.GetMaxStack(ItemTypeEnum.Iron), 0);
+    }
+
+    [Test]
+    public void Test06_BurstJob_CanReadItemRegistryBlob_WithoutSafetyErrors()
+    {
+        // 1. 전역 싱글톤 초기화
+        _blobRef = ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
+        var registry = _entityManager.CreateEntityQuery(typeof(ItemRegistry)).GetSingleton<ItemRegistry>();
+
+        var resultStack = new NativeReference<int>(Allocator.TempJob);
+
+        try
+        {
+            // 2. Burst Job 실행 (Iron_Stick -> MaxStack 100)
+            var job = new BurstItemReadTestJob
+            {
+                Registry = registry,
+                TargetItemType = ItemTypeEnum.Iron_Stick,
+                ResultMaxStack = resultStack
+            };
+
+            var handle = IJobExtensions.Schedule(job);
+            handle.Complete();
+
+            // 3. Job 실행 결과 확인
+            Assert.AreEqual(100, resultStack.Value, "Burst job should read Iron_Stick MaxStack (100) successfully.");
+        }
+        finally
+        {
+            resultStack.Dispose();
+        }
+    }
+}
+
+/// <summary>
+/// Burst Job 내부에서 ItemRegistryBlob 포인터 안전 접근성을 검증하는 테스트용 Job.
+/// </summary>
+[BurstCompile]
+public struct BurstItemReadTestJob : IJob
+{
+    [ReadOnly]
+    public ItemRegistry Registry;
+
+    public ItemTypeEnum TargetItemType;
+
+    public NativeReference<int> ResultMaxStack;
+
+    public void Execute()
+    {
+        ref var registryBlob = ref Registry.Value.Value;
+        ResultMaxStack.Value = registryBlob.GetMaxStack(TargetItemType);
     }
 }
