@@ -46,7 +46,7 @@ public partial struct BeltMovementDecisionSystem : ISystem
             return;
         }
 
-        float dt = SystemAPI.Time.DeltaTime;
+        float dt = GameConstants.MaxSimulationDeltaTime;
         if (dt <= 0.0f)
         {
             return;
@@ -204,9 +204,10 @@ public partial struct BeltMovementDecisionJob : IJobEntity
 
         if (!hasNextItem)
         {
-            // 다음 타일이 완전히 비어 있으므로 원하는 만큼 이동 가능
-            decision.PlannedProgress = desiredMove;
-            decision.IsBlocked = false;
+            // 다음 타일이 완전히 비어 있으므로 원하는 만큼 이동 가능하되, 미검사 영역(2타일 이후) 침범 방지를 위해 최대 1.0f로 클램핑
+            float planned = math.min(desiredMove, 1.0f);
+            decision.PlannedProgress = planned;
+            decision.IsBlocked = (planned < desiredMove - GameConstants.AlignmentEpsilon);
             return;
         }
 
@@ -225,6 +226,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
         }
 
         float plannedNext = math.min(desiredMove, availableDistanceNext);
+        plannedNext = math.min(plannedNext, 1.0f);
         decision.PlannedProgress = plannedNext;
         decision.IsBlocked = (plannedNext < desiredMove - GameConstants.AlignmentEpsilon);
     }

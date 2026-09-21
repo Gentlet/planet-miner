@@ -97,31 +97,34 @@ public partial struct BeltMovementExecutionJob : IJobEntity
 
         int2 currentDir = currentBelt.Direction.ToInt2();
 
-        // 3. 이동 계획이 있는 경우 Progress 전진 및 타일 횡단 처리
+        // 3. 이동 계획이 있는 경우 Progress 전진 및 타일 횡단 처리 (큰 DeltaTime 대응 다중 홉 방어 루프)
         if (planned > 0.0f)
         {
             float newProgress = state.Progress + planned;
+            int hopCount = 0;
 
-            if (newProgress >= 1.0f)
+            while (newProgress >= 1.0f && hopCount < GameConstants.MaxTileHopsPerFrame)
             {
                 int2 nextPos = gridPos.Value + currentDir;
                 if (BeltMap.TryGetValue(nextPos, out BeltInfo nextBelt))
                 {
-                    // 다음 타일에 벨트가 있으므로 다음 타일로 인계
+                    // 다음 타일에 벨트가 있으므로 다음 타일로 인계 및 잔여 진행도 이월
                     gridPos.Value = nextPos;
-                    state.Progress = newProgress - 1.0f;
+                    newProgress -= 1.0f;
+                    currentBelt = nextBelt;
                     currentDir = nextBelt.Direction.ToInt2();
+                    hopCount++;
                 }
                 else
                 {
                     // 다음 타일에 벨트가 없는 종단: 현재 타일 출구(1.0f)에 정지
-                    state.Progress = 1.0f;
+                    newProgress = 1.0f;
+                    break;
                 }
             }
-            else
-            {
-                state.Progress = newProgress;
-            }
+
+            // 최종 진행도 확정 (최대 홉 수 도달 시 또는 종단 처리 시 Invariant 위반 방지를 위해 1.0f 상한 클램핑)
+            state.Progress = math.min(newProgress, 1.0f);
         }
 
         // 4. LocalTransform.Position 갱신
