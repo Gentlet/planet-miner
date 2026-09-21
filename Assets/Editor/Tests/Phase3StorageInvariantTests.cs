@@ -37,7 +37,7 @@ public class Phase3StorageInvariantTests : EcsWorldTestFixture
         _buildingSpatialSyncHandle = _world.GetOrCreateSystem(typeof(BuildingSpatialSyncSystem));
 
         _buildingInputDecisionHandle = _world.GetOrCreateSystem(typeof(BuildingItemInputDecisionSystem));
-        _buildingOutputDecisionHandle = _world.GetOrCreateSystem(typeof(BuildingItemOutputDecisionSystem));
+        _buildingOutputDecisionHandle = _world.GetOrCreateSystem(typeof(StorageItemOutputDecisionSystem));
         _storageReservationHandle = _world.GetOrCreateSystem(typeof(BuildingStorageInputReservationSystem));
         _storageApplyHandle = _world.GetOrCreateSystem(typeof(BuildingItemStorageApplySystem));
         _ownershipApplyHandle = _world.GetOrCreateSystem(typeof(ItemOwnershipApplySystem));

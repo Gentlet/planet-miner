@@ -44,7 +44,8 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
 
         // 2. Phase 2: DecisionGroup 시스템 등록
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerDecisionSystem>());
-        decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemOutputDecisionSystem>());
+        decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<StorageItemOutputDecisionSystem>());
+        decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<ProductItemOutputDecisionSystem>());
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BeltMovementDecisionSystem>());
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemInputDecisionSystem>());
 
@@ -100,14 +101,13 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
         return entity;
     }
 
-    private Entity CreateMiner(int2 position, int2 size, DirectionEnum direction, float miningSpeed = 1.0f, int slotCount = 1)
+    private Entity CreateMiner(int2 position, int2 size, DirectionEnum direction, float miningSpeed = 1.0f)
     {
         var entity = _entityManager.CreateEntity(
             typeof(BuildingType),
             typeof(BuildingFootprint),
             typeof(GridPosition),
             typeof(Direction),
-            typeof(Storage),
             typeof(BuildingItemOutputDecision),
             typeof(MinerState),
             typeof(MinerDecision));
@@ -116,14 +116,13 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
         _entityManager.SetComponentData(entity, new BuildingFootprint(size));
         _entityManager.SetComponentData(entity, new GridPosition(position));
         _entityManager.SetComponentData(entity, new Direction(direction));
-        _entityManager.SetComponentData(entity, new Storage(slotCount));
         _entityManager.SetComponentData(entity, new BuildingItemOutputDecision(false, Entity.Null, int2.zero));
         _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(entity, false);
         _entityManager.SetComponentData(entity, new MinerState(miningSpeed, 0.0f));
         _entityManager.SetComponentData(entity, new MinerDecision(false, Entity.Null));
         _entityManager.SetComponentEnabled<MinerDecision>(entity, false);
 
-        _entityManager.AddBuffer<StoredItemElement>(entity);
+        _entityManager.AddBuffer<ProductItemElement>(entity);
 
         return entity;
     }
@@ -193,7 +192,7 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
         RunSimulationTicks(60, 0.05f);
 
         // 3. 검증: 자원 채굴 -> 벨트 이동 -> 창고 보관 완료 루프 검증
-        var minerBuffer = _entityManager.GetBuffer<StoredItemElement>(minerEntity);
+        var minerBuffer = _entityManager.GetBuffer<ProductItemElement>(minerEntity);
         var storageBuffer = _entityManager.GetBuffer<StoredItemElement>(storageEntity);
 
         // ① 자원 노드에서 1개 채굴되어 완전 고갈(Depleted)로 인해 엔티티가 파괴되었는지 확인
@@ -259,9 +258,9 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
     [Test]
     public void Test03_StorageFull_TriggersBackpressure_StallsBeltAndMiner()
     {
-        // 1. 배치: 슬롯 1칸짜리 작은 창고, 벨트 2칸, 고속 채굴기(속도 4.0f, 0.25초마다 생산)
-        var resEntity = CreateResourceNode(new int2(10, 10), ItemTypeEnum.Iron_Ore, 50);
-        var minerEntity = CreateMiner(new int2(10, 10), new int2(1, 1), DirectionEnum.Up, miningSpeed: 4.0f, slotCount: 1);
+        // 1. 배치: 슬롯 1칸짜리 작은 창고, 벨트 2칸, 채굴기(속도 5.0f, 0.2초마다 생산)
+        var resEntity = CreateResourceNode(new int2(10, 10), ItemTypeEnum.Iron_Ore, 100);
+        var minerEntity = CreateMiner(new int2(10, 10), new int2(1, 1), DirectionEnum.Up, miningSpeed: 5.0f);
         CreateBelt(new int2(10, 11), DirectionEnum.Up, speed: 2.0f);
         CreateBelt(new int2(10, 12), DirectionEnum.Up, speed: 2.0f);
         var storageEntity = CreateStorage(new int2(10, 13), new int2(1, 1), DirectionEnum.Up, slotCount: 1);
@@ -276,12 +275,12 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
         // 최초 1틱: 공간 색인 구축
         RunSimulationTicks(1, 0.05f);
 
-        // 2. 실행: 70틱 (3.5초) 시뮬레이션
-        // 1번째 광물: (10, 12) 벨트 끝 도착 -> 창고 슬롯 만석으로 입고 불가 -> 벨트 끝 정체 (IsBlocked = true)
-        // 2번째 광물: (10, 11) 벨트 시작점 도착 -> 앞 아이템 간격(ItemSpacing)으로 정체
-        // 3번째 광물: 채굴기 내부 버퍼에 적재됨 (1/1)
-        // 이후 채굴기: 버퍼가 찼으므로 CanMine = false로 채굴 중단(Stall)
-        RunSimulationTicks(70, 0.05f);
+        // 2. 실행: 260틱 (13.0초) 시뮬레이션
+        // - 1~35틱: 벨트 2칸에 광물 정체 (외향 벨트 출고 차단)
+        // - 36~235틱: 채굴기 내부 출력 버퍼(ProductItemElement)에 50개(1스택)까지 적재
+        // - 버퍼 50개 도달 시 CanMine = false로 채굴 중단(Stall)
+        // - 236~260틱: 백프레셔 정체 유지
+        RunSimulationTicks(260, 0.05f);
 
         // 3. 검증: 공장 전체 백프레셔(Backpressure) 상태 확인
         // ① 창고 만석 상태 유지 확인 (시뮬레이션 후 버퍼 재취득)
@@ -294,13 +293,17 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
         Assert.IsTrue(spatialIndex.HasItemAt(new int2(10, 12)), "Belt tile (10, 12) must have a stalled item waiting for storage.");
         Assert.IsTrue(spatialIndex.HasItemAt(new int2(10, 11)), "Belt tile (10, 11) must have a stalled item waiting for front belt tile.");
 
-        // ③ 채굴기 내부 버퍼 적재 확인
-        var minerBuffer = _entityManager.GetBuffer<StoredItemElement>(minerEntity);
-        Assert.AreEqual(1, minerBuffer.Length, "Miner internal buffer must hold 1 item waiting for belt clearance.");
+        // ③ 채굴기 내부 버퍼 적재 확인 (50개 1스택 만석)
+        var minerBuffer = _entityManager.GetBuffer<ProductItemElement>(minerEntity);
+        var resNode = _entityManager.GetComponentData<ResourceNode>(resEntity);
+        var decision = _entityManager.GetComponentData<MinerDecision>(minerEntity);
+        bool isDecisionEnabled = _entityManager.IsComponentEnabled<MinerDecision>(minerEntity);
+
+        Assert.AreEqual(50, minerBuffer.Length, 
+            $"MinerBuffer Length={minerBuffer.Length}, ResAmountLeft={resNode.Amount}, CanMine={decision.CanMine}, DecisionEnabled={isDecisionEnabled}");
 
         // ④ 채굴기 의사결정 비활성화 확인 (버퍼 만석으로 인한 채굴 중단)
-        Assert.IsFalse(_entityManager.IsComponentEnabled<MinerDecision>(minerEntity), "MinerDecision must be disabled when buffer is full.");
-        var decision = _entityManager.GetComponentData<MinerDecision>(minerEntity);
+        Assert.IsFalse(isDecisionEnabled, "MinerDecision must be disabled when buffer is full.");
         Assert.IsFalse(decision.CanMine, "CanMine must be false under backpressure stall.");
 
         // ⑤ 역류 정체 중에도 아이템 겹침이나 불변식 위반이 0건이어야 함

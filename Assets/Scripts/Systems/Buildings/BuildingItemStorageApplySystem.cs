@@ -26,6 +26,7 @@ using Unity.Transforms;
 public partial struct BuildingItemStorageApplySystem : ISystem
 {
     private BufferLookup<StoredItemElement> _storedBufferLookup;
+    private BufferLookup<ProductItemElement> _productBufferLookup;
     private ComponentLookup<BeltMovementState> _beltMovementStateLookup;
     private ComponentLookup<BeltMovementDecision> _beltMovementDecisionLookup;
     private ComponentLookup<TransferOwnershipRequest> _transferOwnershipRequestLookup;
@@ -40,6 +41,7 @@ public partial struct BuildingItemStorageApplySystem : ISystem
     public void OnCreate(ref SystemState state)
     {
         _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(false);
+        _productBufferLookup = state.GetBufferLookup<ProductItemElement>(false);
         _beltMovementStateLookup = state.GetComponentLookup<BeltMovementState>(false);
         _beltMovementDecisionLookup = state.GetComponentLookup<BeltMovementDecision>(false);
         _transferOwnershipRequestLookup = state.GetComponentLookup<TransferOwnershipRequest>(false);
@@ -74,6 +76,7 @@ public partial struct BuildingItemStorageApplySystem : ISystem
         ref var beltFence = ref SystemAPI.GetSingletonRW<BeltSpatialIndexFence>().ValueRW;
 
         _storedBufferLookup.Update(ref state);
+        _productBufferLookup.Update(ref state);
         _beltMovementStateLookup.Update(ref state);
         _beltMovementDecisionLookup.Update(ref state);
         _transferOwnershipRequestLookup.Update(ref state);
@@ -95,6 +98,7 @@ public partial struct BuildingItemStorageApplySystem : ISystem
         {
             BeltMap = beltIndex.Map,
             StoredBufferLookup = _storedBufferLookup,
+            ProductBufferLookup = _productBufferLookup,
             GridPositionLookup = _gridPositionLookup,
             DirectionLookup = _directionLookup,
             BeltMovementStateLookup = _beltMovementStateLookup,
@@ -173,6 +177,7 @@ public partial struct BuildingItemOutputApplyJob : IJobEntity
     public NativeParallelHashMap<int2, BeltInfo> BeltMap;
 
     public BufferLookup<StoredItemElement> StoredBufferLookup;
+    public BufferLookup<ProductItemElement> ProductBufferLookup;
     public ComponentLookup<GridPosition> GridPositionLookup;
     public ComponentLookup<Direction> DirectionLookup;
     public ComponentLookup<BeltMovementState> BeltMovementStateLookup;
@@ -202,8 +207,26 @@ public partial struct BuildingItemOutputApplyJob : IJobEntity
             return;
         }
 
-        // 창고 버퍼에서 아이템 제거
-        if (StoredBufferLookup.HasBuffer(buildingEntity))
+        // 생산물 버퍼 또는 창고 버퍼에서 아이템 제거
+        if (ProductBufferLookup.HasBuffer(buildingEntity))
+        {
+            var buffer = ProductBufferLookup[buildingEntity];
+            int removeIndex = -1;
+            for (int i = 0; i < buffer.Length; i++)
+            {
+                if (buffer[i].ItemEntity == itemToOutput)
+                {
+                    removeIndex = i;
+                    break;
+                }
+            }
+
+            if (removeIndex != -1)
+            {
+                buffer.RemoveAt(removeIndex);
+            }
+        }
+        else if (StoredBufferLookup.HasBuffer(buildingEntity))
         {
             var buffer = StoredBufferLookup[buildingEntity];
             int removeIndex = -1;

@@ -32,7 +32,7 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         _itemSpatialSyncHandle = _world.GetOrCreateSystem(typeof(ItemSpatialSyncSystem));
         _minerDecisionHandle = _world.GetOrCreateSystem(typeof(MinerDecisionSystem));
         _minerExecutionHandle = _world.GetOrCreateSystem(typeof(MinerExecutionSystem));
-        _outputDecisionHandle = _world.GetOrCreateSystem(typeof(BuildingItemOutputDecisionSystem));
+        _outputDecisionHandle = _world.GetOrCreateSystem(typeof(ProductItemOutputDecisionSystem));
         _storageApplyHandle = _world.GetOrCreateSystem(typeof(BuildingItemStorageApplySystem));
         _lifecycleHandle = _world.GetOrCreateSystem(typeof(ItemLifecycleApplySystem));
         _ownershipHandle = _world.GetOrCreateSystem(typeof(ItemOwnershipApplySystem));
@@ -50,14 +50,13 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         return entity;
     }
 
-    private Entity CreateMiner(int2 position, int2 size, DirectionEnum direction, float miningSpeed = 1.0f, float progress = 0.0f, int slotCount = 1)
+    private Entity CreateMiner(int2 position, int2 size, DirectionEnum direction, float miningSpeed = 1.0f, float progress = 0.0f)
     {
         var entity = _entityManager.CreateEntity(
             typeof(BuildingType),
             typeof(BuildingFootprint),
             typeof(GridPosition),
             typeof(Direction),
-            typeof(Storage),
             typeof(BuildingItemOutputDecision),
             typeof(MinerState),
             typeof(MinerDecision));
@@ -66,14 +65,13 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         _entityManager.SetComponentData(entity, new BuildingFootprint(size));
         _entityManager.SetComponentData(entity, new GridPosition(position));
         _entityManager.SetComponentData(entity, new Direction(direction));
-        _entityManager.SetComponentData(entity, new Storage(slotCount));
         _entityManager.SetComponentData(entity, new BuildingItemOutputDecision(false, Entity.Null, int2.zero));
         _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(entity, false);
         _entityManager.SetComponentData(entity, new MinerState(miningSpeed, progress));
         _entityManager.SetComponentData(entity, new MinerDecision(false, Entity.Null));
         _entityManager.SetComponentEnabled<MinerDecision>(entity, false);
 
-        _entityManager.AddBuffer<StoredItemElement>(entity);
+        _entityManager.AddBuffer<ProductItemElement>(entity);
 
         return entity;
     }
@@ -153,11 +151,15 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         var decisionNoRes = _entityManager.GetComponentData<MinerDecision>(minerNoRes);
         Assert.IsFalse(decisionNoRes.CanMine);
 
-        // Case B: 자원은 있으나 내부 버퍼가 이미 꽉 참 (slotCount = 1, buffer.Length = 1)
+        // Case B: 자원은 있으나 내부 버퍼가 이미 꽉 참 (1스택 한도 = 50개)
         var resEntity = CreateResourceNode(new int2(20, 20), ItemTypeEnum.Iron_Ore, 50);
-        var minerFull = CreateMiner(new int2(20, 20), new int2(1, 1), DirectionEnum.Up, 1.0f, slotCount: 1);
-        var dummyItem = _entityManager.CreateEntity(typeof(ItemIdentity), typeof(ItemOwnership));
-        _entityManager.GetBuffer<StoredItemElement>(minerFull).Add(new StoredItemElement(dummyItem, ItemTypeEnum.Iron_Ore, 0));
+        var minerFull = CreateMiner(new int2(20, 20), new int2(1, 1), DirectionEnum.Up, 1.0f);
+        var prodBuffer = _entityManager.GetBuffer<ProductItemElement>(minerFull);
+        for (int i = 0; i < 50; i++)
+        {
+            var dummyItem = _entityManager.CreateEntity(typeof(ItemIdentity), typeof(ItemOwnership));
+            prodBuffer.Add(new ProductItemElement(dummyItem, ItemTypeEnum.Iron_Ore, 0));
+        }
 
         SyncAllSpatialIndices();
         _minerDecisionHandle.Update(_world.Unmanaged);
@@ -189,11 +191,11 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         var resNode = _entityManager.GetComponentData<ResourceNode>(resEntity);
         Assert.AreEqual(9, resNode.Amount, "Resource amount should be decremented by 1.");
 
-        // 3. Phase 5 StateApply 단계 연계: 채굴기 버퍼에 StoredItemElement가 실제로 적재되는지 검증
+        // 3. Phase 5 StateApply 단계 연계: 채굴기 버퍼에 ProductItemElement가 실제로 적재되는지 검증
         RunStateApplyPhase();
 
-        var buffer = _entityManager.GetBuffer<StoredItemElement>(minerEntity);
-        Assert.AreEqual(1, buffer.Length, "Miner buffer should contain 1 stored item.");
+        var buffer = _entityManager.GetBuffer<ProductItemElement>(minerEntity);
+        Assert.AreEqual(1, buffer.Length, "Miner buffer should contain 1 product item.");
         Assert.AreEqual(ItemTypeEnum.Iron_Ore, buffer[0].ItemType);
 
         var storedItem = buffer[0].ItemEntity;
@@ -220,7 +222,7 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
 
         RunStateApplyPhase();
 
-        var buffer = _entityManager.GetBuffer<StoredItemElement>(minerEntity);
+        var buffer = _entityManager.GetBuffer<ProductItemElement>(minerEntity);
         Assert.AreEqual(1, buffer.Length, "Item should be loaded in miner buffer.");
         Entity minedItem = buffer[0].ItemEntity;
 

@@ -4,11 +4,11 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 건물 내부에 보관된 아이템의 외부 벨트 방출 적합성을 판정하는 시스템.
+/// 일반 창고(Storage) 내부에 보관된 아이템(StoredItemElement)의 외부 벨트 방출 적합성을 판정하는 시스템.
 /// 
 /// [책임]
 /// - DecisionGroup(Phase 2)에서 실행됩니다.
-/// - 보관 버퍼(StoredItemElement)에 아이템이 존재하는 건물을 탐색합니다.
+/// - 일반 보관 버퍼(StoredItemElement)를 가지고 있으면서 생산물 버퍼(ProductItemElement)가 없는 일반 창고 건물을 탐색합니다.
 /// - 건물 둘레 타일(Perimeter)을 순회하여 건물 외부로 향하는 외향 벨트(Outward Belt)를 감지합니다.
 /// - 외향 벨트 시작점(Progress = 0.0f)에 ItemSpacing 이상의 여유 공간이 확보되었는지 확인합니다.
 /// - 방출 조건 충족 시 FIFO 0번 아이템을 대상으로 CanOutput = true, ItemToOutput, TargetBeltPosition을 기록하고 활성화합니다.
@@ -17,7 +17,7 @@ using Unity.Mathematics;
 /// </summary>
 [UpdateInGroup(typeof(DecisionGroup))]
 [BurstCompile]
-public partial struct BuildingItemOutputDecisionSystem : ISystem
+public partial struct StorageItemOutputDecisionSystem : ISystem
 {
     private ComponentLookup<BeltMovementState> _beltMovementStateLookup;
     private ComponentLookup<ItemOwnership> _itemOwnershipLookup;
@@ -32,6 +32,7 @@ public partial struct BuildingItemOutputDecisionSystem : ISystem
         _buildingQuery = SystemAPI.QueryBuilder()
             .WithAllRW<BuildingItemOutputDecision>()
             .WithAll<StoredItemElement, BuildingFootprint, GridPosition, Direction>()
+            .WithNone<ProductItemElement>()
             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
             .Build();
     }
@@ -54,13 +55,14 @@ public partial struct BuildingItemOutputDecisionSystem : ISystem
 
         var beltIndex = SystemAPI.GetSingleton<BeltSpatialIndex>();
         ref var beltFence = ref SystemAPI.GetSingletonRW<BeltSpatialIndexFence>().ValueRW;
+
         var itemIndex = SystemAPI.GetSingleton<ItemSpatialIndex>();
         ref var itemFence = ref SystemAPI.GetSingletonRW<ItemSpatialIndexFence>().ValueRW;
 
         _beltMovementStateLookup.Update(ref state);
         _itemOwnershipLookup.Update(ref state);
 
-        var job = new BuildingItemOutputDecisionJob
+        var job = new StorageItemOutputDecisionJob
         {
             BeltMap = beltIndex.Map,
             ItemMap = itemIndex.Map,
@@ -68,8 +70,9 @@ public partial struct BuildingItemOutputDecisionSystem : ISystem
             ItemOwnershipLookup = _itemOwnershipLookup
         };
 
-        var readersDep = Unity.Jobs.JobHandle.CombineDependencies(beltFence.GetReaderDependency(), itemFence.GetReaderDependency());
-        var jobDep = Unity.Jobs.JobHandle.CombineDependencies(state.Dependency, readersDep);
+        var readDep = Unity.Jobs.JobHandle.CombineDependencies(beltFence.GetReaderDependency(), itemFence.GetReaderDependency());
+        var jobDep = Unity.Jobs.JobHandle.CombineDependencies(state.Dependency, readDep);
+
         var jobHandle = job.ScheduleParallel(_buildingQuery, jobDep);
 
         beltFence.AddReader(jobHandle);
@@ -80,10 +83,10 @@ public partial struct BuildingItemOutputDecisionSystem : ISystem
 }
 
 /// <summary>
-/// 각 건물의 외부 벨트 방출 의사결정을 병렬로 계산하는 Burst Job.
+/// 일반 창고의 외부 벨트 방출 의사결정을 병렬로 계산하는 Burst Job.
 /// </summary>
 [BurstCompile]
-public partial struct BuildingItemOutputDecisionJob : IJobEntity
+public partial struct StorageItemOutputDecisionJob : IJobEntity
 {
     [ReadOnly]
     public NativeParallelHashMap<int2, BeltInfo> BeltMap;

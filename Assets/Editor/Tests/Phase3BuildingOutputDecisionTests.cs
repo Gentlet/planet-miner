@@ -19,7 +19,7 @@ public class Phase3BuildingOutputDecisionTests : EcsWorldTestFixture
         base.SetUp();
         _beltSpatialSyncHandle = _world.GetOrCreateSystem(typeof(BeltSpatialSyncSystem));
         _itemSpatialSyncHandle = _world.GetOrCreateSystem(typeof(ItemSpatialSyncSystem));
-        _outputDecisionHandle = _world.GetOrCreateSystem(typeof(BuildingItemOutputDecisionSystem));
+        _outputDecisionHandle = _world.GetOrCreateSystem(typeof(StorageItemOutputDecisionSystem));
     }
 
     private Entity CreateStorage(int2 position, int2 size, DirectionEnum direction = DirectionEnum.Up)
