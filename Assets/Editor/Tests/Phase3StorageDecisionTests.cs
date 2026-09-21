@@ -27,7 +27,7 @@ public class Phase3StorageDecisionTests : EcsWorldTestFixture
 
         _beltMovementDecisionHandle = _world.GetOrCreateSystem(typeof(BeltMovementDecisionSystem));
         _buildingInputDecisionHandle = _world.GetOrCreateSystem(typeof(BuildingItemInputDecisionSystem));
-        _buildingOutputDecisionHandle = _world.GetOrCreateSystem(typeof(BuildingItemOutputDecisionSystem));
+        _buildingOutputDecisionHandle = _world.GetOrCreateSystem(typeof(StorageItemOutputDecisionSystem));
     }
 
     private Entity CreateStorage(int2 position, int2 size, DirectionEnum direction = DirectionEnum.Up, StorageFilter? filter = null)

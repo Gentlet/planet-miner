@@ -21,6 +21,7 @@ public partial struct ItemLifecycleApplySystem : ISystem
     private EntityQuery _spawnQuery;
     private EntityQuery _destroyQuery;
     private BufferLookup<StoredItemElement> _storedBufferLookup;
+    private BufferLookup<ProductItemElement> _productBufferLookup;
 
     public void OnCreate(ref SystemState state)
     {
@@ -38,6 +39,7 @@ public partial struct ItemLifecycleApplySystem : ISystem
         );
 
         _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
+        _productBufferLookup = state.GetBufferLookup<ProductItemElement>(true);
 
         _spawnQuery = SystemAPI.QueryBuilder()
             .WithAll<SpawnItemRequest>()
@@ -59,13 +61,15 @@ public partial struct ItemLifecycleApplySystem : ISystem
         var ecb = ecbSystem.CreateCommandBuffer();
 
         _storedBufferLookup.Update(ref state);
+        _productBufferLookup.Update(ref state);
 
         // 1. [생성 Job] SpawnItemRequest 처리
         var spawnJob = new SpawnItemApplyJob
         {
             ECB = ecb,
             FallbackItemArchetype = _fallbackItemArchetype,
-            StoredBufferLookup = _storedBufferLookup
+            StoredBufferLookup = _storedBufferLookup,
+            ProductBufferLookup = _productBufferLookup
         };
         var spawnHandle = spawnJob.Schedule(_spawnQuery, state.Dependency);
 
@@ -93,6 +97,9 @@ public partial struct SpawnItemApplyJob : IJobEntity
     [ReadOnly]
     public BufferLookup<StoredItemElement> StoredBufferLookup;
 
+    [ReadOnly]
+    public BufferLookup<ProductItemElement> ProductBufferLookup;
+
     public void Execute(Entity requestEntity, in SpawnItemRequest request)
     {
         Entity newItem = ECB.CreateEntity(FallbackItemArchetype);
@@ -108,7 +115,11 @@ public partial struct SpawnItemApplyJob : IJobEntity
         else
         {
             ECB.SetComponent(newItem, ItemOwnership.Stored(request.TargetOwner));
-            if (StoredBufferLookup.HasBuffer(request.TargetOwner))
+            if (ProductBufferLookup.HasBuffer(request.TargetOwner))
+            {
+                ECB.AppendToBuffer(request.TargetOwner, new ProductItemElement(newItem, request.ItemType, 0));
+            }
+            else if (StoredBufferLookup.HasBuffer(request.TargetOwner))
             {
                 ECB.AppendToBuffer(request.TargetOwner, new StoredItemElement(newItem, request.ItemType, 0));
             }

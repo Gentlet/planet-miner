@@ -41,7 +41,6 @@ public class Phase4MinerComponentTests : EcsWorldTestFixture
             typeof(BuildingFootprint),
             typeof(GridPosition),
             typeof(Direction),
-            typeof(Storage),
             typeof(BuildingItemOutputDecision),
             typeof(MinerState),
             typeof(MinerDecision));
@@ -50,14 +49,13 @@ public class Phase4MinerComponentTests : EcsWorldTestFixture
         _entityManager.SetComponentData(entity, new BuildingFootprint(new int2(1, 1)));
         _entityManager.SetComponentData(entity, new GridPosition(position));
         _entityManager.SetComponentData(entity, new Direction(direction));
-        _entityManager.SetComponentData(entity, new Storage(slotCount: 1));
         _entityManager.SetComponentData(entity, new BuildingItemOutputDecision(false, Entity.Null, int2.zero));
         _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(entity, false);
         _entityManager.SetComponentData(entity, new MinerState(miningSpeed, 0.0f));
         _entityManager.SetComponentData(entity, new MinerDecision(false, Entity.Null));
         _entityManager.SetComponentEnabled<MinerDecision>(entity, false);
 
-        _entityManager.AddBuffer<StoredItemElement>(entity);
+        _entityManager.AddBuffer<ProductItemElement>(entity);
 
         return entity;
     }
