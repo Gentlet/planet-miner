@@ -53,8 +53,11 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
             itemRegistry = _itemRegistryQuery.GetSingleton<ItemRegistry>();
         }
 
+        int requestCount = _inputQuery.CalculateEntityCount();
+        int initialCapacity = math.max(64, requestCount);
+
         // 이번 프레임 내 동일 건물/슬롯에 추가 배정된 수량을 추적하는 맵 (단일 워커 스레드 Job 내에서 순차 갱신)
-        var pendingAdditions = new NativeParallelHashMap<int2, int>(64, Allocator.TempJob);
+        var pendingAdditions = new NativeParallelHashMap<int2, int>(initialCapacity, Allocator.TempJob);
 
         var job = new BuildingStorageInputReservationJob
         {
@@ -126,8 +129,8 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
             maxStack = ItemRegistry.Value.Value.GetMaxStack(itemType);
         }
 
-        // FixedList512Bytes를 사용하여 unsafe 코드 없이 스택 기반 O(1) 슬롯 점유 집계
-        int safeSlotCount = math.min(slotCount, 120);
+        // FixedList512Bytes를 사용하여 unsafe 코드 없이 스택 기반 O(1) 슬롯 점유 집계 (GameConstants.MaxStorageSlots 상한 준수)
+        int safeSlotCount = math.min(slotCount, GameConstants.MaxStorageSlots);
         var slotOccupancy = new FixedList512Bytes<int>();
         var slotTypes = new FixedList512Bytes<ItemTypeEnum>();
 
