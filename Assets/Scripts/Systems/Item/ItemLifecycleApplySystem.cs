@@ -117,11 +117,11 @@ public partial struct SpawnItemApplyJob : IJobEntity
             ECB.SetComponent(newItem, ItemOwnership.Stored(request.TargetOwner));
             if (ProductBufferLookup.HasBuffer(request.TargetOwner))
             {
-                ECB.AppendToBuffer(request.TargetOwner, new ProductItemElement(newItem, request.ItemType, 0));
+                ECB.AppendToBuffer(request.TargetOwner, new ProductItemElement(newItem, request.ItemType, request.TargetSlotIndex));
             }
             else if (StoredBufferLookup.HasBuffer(request.TargetOwner))
             {
-                ECB.AppendToBuffer(request.TargetOwner, new StoredItemElement(newItem, request.ItemType, 0));
+                ECB.AppendToBuffer(request.TargetOwner, new StoredItemElement(newItem, request.ItemType, request.TargetSlotIndex));
             }
         }
 
