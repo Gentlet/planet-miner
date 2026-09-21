@@ -46,7 +46,7 @@ public partial struct BeltMovementDecisionSystem : ISystem
             return;
         }
 
-        float dt = GameConstants.MaxSimulationDeltaTime;
+        float dt = math.min(SystemAPI.Time.DeltaTime, GameConstants.MaxSimulationDeltaTime);
         if (dt <= 0.0f)
         {
             return;
