@@ -16,26 +16,30 @@ public struct SpawnItemRequest : IRequestComponent
     public ItemTypeEnum ItemType;
     public int2 Position;       // 월드 스폰 위치 (월드 아이템 기준)
     public Entity TargetOwner;  // Entity.Null이면 월드 스폰, 특정 건물이면 보관 아이템으로 스폰
+    public int TargetSlotIndex; // 건물 적재 시 대상 슬롯 번호 (기본: 0)
 
     public SpawnItemRequest(ItemTypeEnum itemType, int2 position)
     {
         ItemType = itemType;
         Position = position;
         TargetOwner = Entity.Null;
+        TargetSlotIndex = 0;
     }
 
-    public SpawnItemRequest(ItemTypeEnum itemType, Entity targetOwner)
+    public SpawnItemRequest(ItemTypeEnum itemType, Entity targetOwner, int targetSlotIndex = 0)
     {
         ItemType = itemType;
         Position = int2.zero;
         TargetOwner = targetOwner;
+        TargetSlotIndex = targetSlotIndex;
     }
 
-    public SpawnItemRequest(ItemTypeEnum itemType, int2 position, Entity targetOwner)
+    public SpawnItemRequest(ItemTypeEnum itemType, int2 position, Entity targetOwner, int targetSlotIndex = 0)
     {
         ItemType = itemType;
         Position = position;
         TargetOwner = targetOwner;
+        TargetSlotIndex = targetSlotIndex;
     }
 }
 
