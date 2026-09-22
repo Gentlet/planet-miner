@@ -141,7 +141,7 @@ public partial class ItemConfigInitSystem : SystemBase
             ref var root = ref builder.ConstructRoot<ItemRegistryBlob>();
             root.DefaultMaxStack = defaultMaxStack;
 
-            int count = (int)ItemTypeEnum.Count;
+            int count = System.Enum.GetValues(typeof(ItemTypeEnum)).Length;
             var itemsArray = builder.Allocate(ref root.Items, count);
 
             for (int i = 0; i < count; i++)

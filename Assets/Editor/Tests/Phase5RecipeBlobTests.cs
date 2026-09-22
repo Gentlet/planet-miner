@@ -162,20 +162,18 @@ public class Phase5RecipeBlobTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test06_CrafterComponents_StateDecisionSlotConfig_Lifecycle()
+    public void Test06_CrafterComponents_StateAndDecision_Lifecycle()
     {
         // 1. Crafter 엔티티 생성
         var crafterEntity = _entityManager.CreateEntity(
             typeof(CrafterState),
             typeof(CrafterDecision),
-            typeof(CrafterSlotConfig),
             typeof(Storage));
 
         _entityManager.SetComponentData(crafterEntity, new CrafterState(selectedRecipeId: 1, speed: 1.5f));
         _entityManager.SetComponentData(crafterEntity, new CrafterDecision(canCraft: false, recipeId: 1));
         _entityManager.SetComponentEnabled<CrafterDecision>(crafterEntity, false);
-        _entityManager.SetComponentData(crafterEntity, CrafterSlotConfig.Default);
-        _entityManager.SetComponentData(crafterEntity, new Storage(slotCount: 6));
+        _entityManager.SetComponentData(crafterEntity, new Storage(slotCount: 4));
 
         // 2. 컴포넌트 값 및 상태 검증
         var state = _entityManager.GetComponentData<CrafterState>(crafterEntity);
@@ -184,21 +182,6 @@ public class Phase5RecipeBlobTests : EcsWorldTestFixture
         Assert.AreEqual(CrafterStatusEnum.Idle, state.Status);
 
         Assert.IsFalse(_entityManager.IsComponentEnabled<CrafterDecision>(crafterEntity));
-
-        // 3. CrafterSlotConfig 슬롯 분할 검증 (슬롯 0~3: 입력, 슬롯 4, 5: 출력)
-        var slotConfig = _entityManager.GetComponentData<CrafterSlotConfig>(crafterEntity);
-        Assert.AreEqual(0, slotConfig.InputSlotStart);
-        Assert.AreEqual(4, slotConfig.InputSlotCount);
-        Assert.AreEqual(4, slotConfig.OutputSlotStart);
-        Assert.AreEqual(2, slotConfig.OutputSlotCount);
-
-        Assert.IsTrue(slotConfig.IsInputSlot(0));
-        Assert.IsTrue(slotConfig.IsInputSlot(3));
-        Assert.IsFalse(slotConfig.IsInputSlot(4));
-
-        Assert.IsTrue(slotConfig.IsOutputSlot(4)); // 완성품
-        Assert.IsTrue(slotConfig.IsOutputSlot(5)); // 부산품
-        Assert.IsFalse(slotConfig.IsOutputSlot(3));
     }
 
     [Test]

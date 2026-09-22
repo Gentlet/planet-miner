@@ -14,6 +14,7 @@ using Unity.Mathematics;
 public class Phase5CrafterExecutionTests : EcsWorldTestFixture
 {
     private BlobAssetReference<RecipeRegistryBlob> _recipeBlob;
+    private SystemHandle _crafterCommandHandle;
     private SystemHandle _crafterDecisionHandle;
     private SystemHandle _crafterExecutionHandle;
     private SystemHandle _lifecycleHandle;
@@ -28,6 +29,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         _recipeBlob = RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
 
         // 2. 시스템 핸들 획득
+        _crafterCommandHandle = _world.GetOrCreateSystem(typeof(CrafterRecipeCommandSystem));
         _crafterDecisionHandle = _world.GetOrCreateSystem(typeof(CrafterDecisionSystem));
         _crafterExecutionHandle = _world.GetOrCreateSystem(typeof(CrafterExecutionSystem));
         _lifecycleHandle = _world.GetOrCreateSystem(typeof(ItemLifecycleApplySystem));
@@ -316,13 +318,16 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         Assert.AreEqual(3, storedBuffer.Length);
         Assert.AreEqual(0, productBuffer.Length);
 
-        // Act: 레시피를 1에서 2(Copper)로 변경
-        var state = _entityManager.GetComponentData<CrafterState>(crafter);
-        state.SelectedRecipeId = 2; // Copper_Ore -> Copper
-        _entityManager.SetComponentData(crafter, state);
+        // Act: ChangeCrafterRecipeRequest를 통해 레시피를 1에서 2(Copper)로 변경 요청
+        var reqEntity = _entityManager.CreateEntity(typeof(ChangeCrafterRecipeRequest));
+        _entityManager.SetComponentData(reqEntity, new ChangeCrafterRecipeRequest(crafter, newRecipeId: 2));
 
-        // ExecutionGroup 실행 -> 레시피 변경 감지 및 배출 이관 동작
-        RunExecutionPhase(deltaTime: 0.05f);
+        // CommandGroup 실행 -> CrafterRecipeCommandSystem이 레시피 변경 및 배출 처리
+        _crafterCommandHandle.Update(_world.Unmanaged);
+        _endStateApplyEcb.Update(); // Request Entity 파괴 Playback
+
+        storedBuffer = _entityManager.GetBuffer<StoredItemElement>(crafter);
+        productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
 
         // Assert 1: StoredItemElement가 완전히 비워졌는지 확인
         Assert.AreEqual(0, storedBuffer.Length, "StoredItemElement must be purged clean on recipe change.");
@@ -348,8 +353,13 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         Assert.IsTrue(filter.IsItemAllowed(ItemTypeEnum.Copper_Ore), "Copper_Ore must be allowed by whitelist.");
         Assert.IsFalse(filter.IsItemAllowed(ItemTypeEnum.Iron_Ore), "Iron_Ore must be blocked by whitelist.");
 
-        // Assert 4: ActiveRecipeId가 2로 동기화되었는지 확인
+        // Assert 4: ActiveRecipeId와 SelectedRecipeId가 2로 동기화되고, 상태가 WaitingForPurgeOutput인지 확인
         var stateEnd = _entityManager.GetComponentData<CrafterState>(crafter);
         Assert.AreEqual(2, stateEnd.ActiveRecipeId);
+        Assert.AreEqual(2, stateEnd.SelectedRecipeId);
+        Assert.AreEqual(CrafterStatusEnum.WaitingForPurgeOutput, stateEnd.Status, "Crafter must enter WaitingForPurgeOutput since productBuffer has items.");
+
+        // Assert 5: ChangeCrafterRecipeRequest 엔티티가 소비(파괴)되었는지 확인
+        Assert.IsFalse(_entityManager.Exists(reqEntity), "Request entity must be consumed and destroyed.");
     }
 }
