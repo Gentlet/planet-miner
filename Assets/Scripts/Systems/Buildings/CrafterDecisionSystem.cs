@@ -27,7 +27,7 @@ public partial struct CrafterDecisionSystem : ISystem
     {
         _crafterQuery = SystemAPI.QueryBuilder()
             .WithAllRW<CrafterDecision, CrafterState>()
-            .WithAll<StoredItemElement, ProductItemElement>()
+            .WithAll<StoredItemElement, ProductItemElement, ProductResult>()
             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
             .Build();
     }
@@ -84,7 +84,8 @@ public partial struct CrafterDecisionJob : IJobEntity
         EnabledRefRW<CrafterDecision> decisionEnabled,
         ref CrafterState state,
         in DynamicBuffer<StoredItemElement> storedItems,
-        in DynamicBuffer<ProductItemElement> productItems)
+        in DynamicBuffer<ProductItemElement> productItems,
+        in DynamicBuffer<ProductResult> productResults)
     {
         // 0. 잔여 배출물 대기 상태 처리 (WaitingForPurgeOutput)
         if (state.Status == CrafterStatusEnum.WaitingForPurgeOutput)
@@ -139,6 +140,19 @@ public partial struct CrafterDecisionJob : IJobEntity
         decision.RecipeId = state.SelectedRecipeId;
         decision.RecipeIndex = recipeIdx;
         ref var recipe = ref registry.Recipes[recipeIdx];
+
+        // StateApply에서 아직 소비되지 않은 생산 결과가 있으면 새 제작/출력을 시작하지 않습니다.
+        // 정상 프레임에서는 같은 프레임 StateApply에서 비워지지만, Phase 누락/지연 시 중복 생산을 방지하는 안전장치입니다.
+        if (productResults.Length > 0)
+        {
+            decision.CanCraft = false;
+            decision.CanStartCraft = false;
+            decision.CanAdvance = false;
+            decision.CanProduceOutput = false;
+            state.Status = CrafterStatusEnum.WaitingForOutput;
+            decisionEnabled.ValueRW = false;
+            return;
+        }
 
         // 2. 출력 버퍼 여유 공간 검사 (Slot 0: 주완성품, Slot 1: 부산품)
         int countSlot0 = 0;

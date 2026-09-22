@@ -9,15 +9,17 @@ using Unity.Transforms;
 /// 
 /// [책임]
 /// - StateApplyGroup(Phase 5)에서 실행됩니다.
+/// - ProductResult를 처리하여 생산 완료 결과를 실제 아이템 엔티티와 ProductItemElement로 반영합니다.
 /// - SpawnItemRequest를 처리하여 아이템 엔티티를 생성하고 기본 컴포넌트를 초기화합니다.
 /// - DestroyItemRequest가 활성화된 아이템 엔티티를 파괴합니다.
-/// - 단일 워커 Burst Job(SpawnItemApplyJob, DestroyItemApplyJob)을 스케줄링하여
-///   구조적 변경(Structural Change) 명령을 EndStateApplyEntityCommandBufferSystem에 비동기 기록합니다.
+/// - 단일 워커 Burst Job들을 순차 스케줄링하여 구조적 변경(Structural Change) 명령을
+///   EndStateApplyEntityCommandBufferSystem에 비동기 기록합니다.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
 public partial struct ItemLifecycleApplySystem : ISystem
 {
     private EntityArchetype _fallbackItemArchetype;
+    private EntityQuery _productResultQuery;
     private EntityQuery _spawnQuery;
     private EntityQuery _destroyQuery;
     private BufferLookup<StoredItemElement> _storedBufferLookup;
@@ -41,6 +43,11 @@ public partial struct ItemLifecycleApplySystem : ISystem
         _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
         _productBufferLookup = state.GetBufferLookup<ProductItemElement>(true);
 
+        _productResultQuery = SystemAPI.QueryBuilder()
+            .WithAllRW<ProductResult>()
+            .WithAll<ProductItemElement>()
+            .Build();
+
         _spawnQuery = SystemAPI.QueryBuilder()
             .WithAll<SpawnItemRequest>()
             .Build();
@@ -63,7 +70,15 @@ public partial struct ItemLifecycleApplySystem : ISystem
         _storedBufferLookup.Update(ref state);
         _productBufferLookup.Update(ref state);
 
-        // 1. [생성 Job] SpawnItemRequest 처리
+        // 1. [생산 결과 적용 Job] ProductResult -> 실제 Item + ProductItemElement
+        var productResultJob = new ProductResultApplyJob
+        {
+            ECB = ecb,
+            FallbackItemArchetype = _fallbackItemArchetype
+        };
+        var productResultHandle = productResultJob.Schedule(_productResultQuery, state.Dependency);
+
+        // 2. [생성 Job] SpawnItemRequest 처리
         var spawnJob = new SpawnItemApplyJob
         {
             ECB = ecb,
@@ -71,9 +86,9 @@ public partial struct ItemLifecycleApplySystem : ISystem
             StoredBufferLookup = _storedBufferLookup,
             ProductBufferLookup = _productBufferLookup
         };
-        var spawnHandle = spawnJob.Schedule(_spawnQuery, state.Dependency);
+        var spawnHandle = spawnJob.Schedule(_spawnQuery, productResultHandle);
 
-        // 2. [파괴 Job] DestroyItemRequest 처리
+        // 3. [파괴 Job] DestroyItemRequest 처리
         var destroyJob = new DestroyItemApplyJob
         {
             ECB = ecb
@@ -82,6 +97,59 @@ public partial struct ItemLifecycleApplySystem : ISystem
 
         ecbSystem.AddJobHandleForProducer(destroyHandle);
         state.Dependency = destroyHandle;
+    }
+}
+
+/// <summary>
+/// 생산 건물의 ProductResult를 소비하여 실제 아이템 엔티티를 생성하고 ProductItemElement에 반영하는 단일 워커 Burst Job.
+/// </summary>
+[BurstCompile]
+public partial struct ProductResultApplyJob : IJobEntity
+{
+    public EntityCommandBuffer ECB;
+    public EntityArchetype FallbackItemArchetype;
+
+    public void Execute(
+        Entity producerEntity,
+        ref DynamicBuffer<ProductResult> productResults)
+    {
+        if (productResults.Length == 0)
+        {
+            return;
+        }
+
+        for (int resultIndex = 0; resultIndex < productResults.Length; resultIndex++)
+        {
+            ProductResult result = productResults[resultIndex];
+            if (result.ItemType == ItemTypeEnum.None || result.Count <= 0)
+            {
+                continue;
+            }
+
+            for (int countIndex = 0; countIndex < result.Count; countIndex++)
+            {
+                Entity newItem = ECB.CreateEntity(FallbackItemArchetype);
+
+                ECB.SetComponent(newItem, new ItemIdentity(result.ItemType));
+                ECB.SetComponent(newItem, new GridPosition(int2.zero));
+                ECB.SetComponent(newItem, LocalTransform.FromPosition(float3.zero));
+                ECB.SetComponent(newItem, ItemOwnership.Stored(producerEntity));
+
+                ECB.AppendToBuffer(
+                    producerEntity,
+                    new ProductItemElement(newItem, result.ItemType, result.SlotIndex));
+
+                // 생산 건물 내부에 보관된 상태로 생성되므로 1회성 Request / 이동 관련 상태는 비활성화합니다.
+                ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
+                ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
+                ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
+                ECB.SetComponentEnabled<BeltMovementDecision>(newItem, false);
+                ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
+            }
+        }
+
+        // Consume-on-Apply: 논리적 생산 결과는 같은 StateApply 프레임에서 모두 소비합니다.
+        productResults.Clear();
     }
 }
 

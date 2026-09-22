@@ -8,7 +8,7 @@ using Unity.Mathematics;
 /// <summary>
 /// Task 5.2: Crafter Decision & Execution System 통합 단위/파이프라인 검증 테스트.
 /// - CrafterDecisionSystem: 레시피 유효성, 입력 재료 보유량, 출력 버퍼 수용 공간 판정
-/// - CrafterExecutionSystem: 제작 착수 시 선소비(피드백 3번 완전 충족), 진행도 누적, 스폰(정책 B)
+/// - CrafterExecutionSystem: 제작 착수 시 선소비(피드백 3번 완전 충족), 진행도 누적, ProductResult 기록(정책 B)
 /// - 레시피 변경 시 재료 배출(Purge to Output) 및 StorageFilter 자동 동기화
 /// </summary>
 public class Phase5CrafterExecutionTests : EcsWorldTestFixture
@@ -62,9 +62,10 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         _entityManager.SetComponentData(entity, new Storage(slotCount: 4));
         _entityManager.SetComponentData(entity, new StorageFilter(StorageFilterMode.Whitelist));
 
-        // 재료 버퍼와 출력 버퍼 물리 분리 부착
+        // 재료 버퍼, 실제 출력 버퍼, StateApply 전 생산 결과 버퍼를 분리 부착
         _entityManager.AddBuffer<StoredItemElement>(entity);
         _entityManager.AddBuffer<ProductItemElement>(entity);
+        _entityManager.AddBuffer<ProductResult>(entity);
 
         return entity;
     }
@@ -226,9 +227,21 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         Assert.IsTrue(decisionComp.CanProduceOutput, "CanProduceOutput must be true when progress reaches 1.0f.");
 
         RunExecutionPhase(deltaTime: 0.05f);
+
+        // Execution 단계에서는 실제 Item을 만들지 않고 ProductResult만 기록합니다.
+        var productResults = _entityManager.GetBuffer<ProductResult>(crafter);
+        Assert.AreEqual(1, productResults.Length, "Crafter should record one primary ProductResult before StateApply.");
+        Assert.AreEqual(ItemTypeEnum.Iron, productResults[0].ItemType);
+        Assert.AreEqual(1, productResults[0].Count);
+        Assert.AreEqual(0, productResults[0].SlotIndex);
+        Assert.AreEqual(0, _entityManager.GetBuffer<ProductItemElement>(crafter).Length, "Product buffer must remain unchanged before StateApply.");
+
         RunLifecyclePhase();
 
-        // 3. ProductItemElement 버퍼에 완성품이 스폰되었는지 확인
+        // 3. StateApply 이후 ProductResult가 소비되고 ProductItemElement에 완성품이 반영되는지 확인
+        productResults = _entityManager.GetBuffer<ProductResult>(crafter);
+        Assert.AreEqual(0, productResults.Length, "ProductResult must be consumed by ItemLifecycleApplySystem.");
+
         var productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
         Assert.AreEqual(1, productBuffer.Length, "Product buffer must contain 1 finished product.");
         Assert.AreEqual(ItemTypeEnum.Iron, productBuffer[0].ItemType);

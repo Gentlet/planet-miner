@@ -10,7 +10,9 @@ using Unity.Mathematics;
 /// - DecisionGroup(Phase 2)에서 실행됩니다.
 /// - 채굴기의 Footprint 하부 타일을 순회하여 ResourceSpatialIndex에서 유효 자원(Amount > 0)을 탐색합니다.
 ///   (다중 타일 채굴기의 경우 좌하단 Anchor 기준 첫 번째 자원을 우선 선택합니다.)
-/// - 채굴기 내부 생산물 버퍼(DynamicBuffer<ProductItemElement>)의 적재 수량과 해당 자원의 1스택 한도(ItemRegistry.MaxStack)를 비교하여 여유 공간을 검사합니다.
+/// - 채굴기 내부 생산물 버퍼(DynamicBuffer<ProductItemElement>)를 단일 ResourceType 1스택으로 취급합니다.
+/// - 기존 생산물이 있다면 현재 자원과 같은 ItemType인지 확인하고, 해당 자원의 1스택 한도(ItemRegistry.MaxStack)와 비교하여 여유 공간을 검사합니다.
+/// - 미소비 ProductResult가 남아 있으면 추가 생산을 차단합니다.
 /// - 하부 자원이 존재하고 내부 버퍼에 공간이 확보되어 있으면 CanMine = true를 기록하고 활성화합니다.
 /// - 자원이 없거나 내부 버퍼가 가득 찬 경우 CanMine = false로 설정하고 비활성화합니다.
 /// - [상태-의사결정 분리]: 채굴 진행도를 누적하거나 아이템을 생성하지 않으며, 순수 의사결정 컴포넌트(MinerDecision)만 갱신합니다.
@@ -30,7 +32,7 @@ public partial struct MinerDecisionSystem : ISystem
 
         _minerQuery = SystemAPI.QueryBuilder()
             .WithAllRW<MinerDecision>()
-            .WithAll<MinerState, BuildingFootprint, GridPosition, Direction, ProductItemElement>()
+            .WithAll<MinerState, BuildingFootprint, GridPosition, Direction, ProductItemElement, ProductResult>()
             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
             .Build();
     }
@@ -95,6 +97,7 @@ public partial struct MinerDecisionJob : IJobEntity
         ref MinerDecision decision,
         EnabledRefRW<MinerDecision> decisionEnabled,
         in DynamicBuffer<ProductItemElement> productItems,
+        in DynamicBuffer<ProductResult> productResults,
         in MinerState state,
         in BuildingFootprint footprint,
         in GridPosition gridPos,
@@ -132,9 +135,20 @@ public partial struct MinerDecisionJob : IJobEntity
             maxStack = ItemRegistry.Value.Value.GetMaxStack(resourceType);
         }
 
-        bool hasSpace = productItems.Length < maxStack;
+        bool sameItemType = true;
+        for (int i = 0; i < productItems.Length; i++)
+        {
+            if (productItems[i].ItemType != resourceType)
+            {
+                sameItemType = false;
+                break;
+            }
+        }
 
-        // 3. 의사결정 기록 (자원이 있고 버퍼에 여유가 있을 때만 채굴 가능 및 활성화)
+        bool hasPendingProduction = productResults.Length > 0;
+        bool hasSpace = !hasPendingProduction && sameItemType && productItems.Length < maxStack;
+
+        // 3. 의사결정 기록 (자원이 있고, 동일 타입 1스택에 여유가 있으며, 미소비 생산 결과가 없을 때만 채굴 가능)
         if (foundResource && hasSpace)
         {
             decision.CanMine = true;

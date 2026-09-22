@@ -5,7 +5,7 @@ using Unity.Mathematics;
 
 /// <summary>
 /// Task 4.1: Resource 및 Miner 컴포넌트 정의 및 공간 색인 인프라 검증 테스트.
-/// ResourceNode, ResourceConfig, ResourceSpatialIndex, MinerState, MinerDecision의
+/// ResourceNode, ResourceConfig, ResourceSpatialIndex, MinerState, MinerDecision, ProductResult의
 /// 데이터 구조와 공간 색인 수명주기를 검증합니다.
 /// </summary>
 public class Phase4MinerComponentTests : EcsWorldTestFixture
@@ -56,6 +56,7 @@ public class Phase4MinerComponentTests : EcsWorldTestFixture
         _entityManager.SetComponentEnabled<MinerDecision>(entity, false);
 
         _entityManager.AddBuffer<ProductItemElement>(entity);
+        _entityManager.AddBuffer<ProductResult>(entity);
 
         return entity;
     }
@@ -125,6 +126,9 @@ public class Phase4MinerComponentTests : EcsWorldTestFixture
 
         bool isDecisionEnabled = _entityManager.IsComponentEnabled<MinerDecision>(minerEntity);
         Assert.IsFalse(isDecisionEnabled, "MinerDecision should initially be disabled.");
+
+        var productResults = _entityManager.GetBuffer<ProductResult>(minerEntity);
+        Assert.AreEqual(0, productResults.Length, "ProductResult buffer should initially be empty.");
 
         // Act 2: 의사결정 활성화 및 설정
         var targetResource = CreateResourceNode(new int2(10, 10), ItemTypeEnum.Iron_Ore, 100);
