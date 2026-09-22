@@ -123,6 +123,7 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
         _entityManager.SetComponentEnabled<MinerDecision>(entity, false);
 
         _entityManager.AddBuffer<ProductItemElement>(entity);
+        _entityManager.AddBuffer<ProductResult>(entity);
 
         return entity;
     }

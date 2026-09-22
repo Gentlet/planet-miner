@@ -76,6 +76,7 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
 
         _entityManager.AddBuffer<StoredItemElement>(entity);
         _entityManager.AddBuffer<ProductItemElement>(entity);
+        _entityManager.AddBuffer<ProductResult>(entity);
 
         return entity;
     }

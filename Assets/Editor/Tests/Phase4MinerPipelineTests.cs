@@ -6,7 +6,7 @@ using Unity.Mathematics;
 /// <summary>
 /// Task 4.2: Miner Decision & Execution System 통합 파이프라인 검증 테스트 (내부 버퍼 모델).
 /// - MinerDecisionSystem: 하부 자원 감지, 내부 버퍼 여유 검사, 다중 자원 우선순위
-/// - MinerExecutionSystem: 진행도 누적, 채굴 완료 시 채굴기 버퍼로 SpawnItemRequest 발행, 자원 차감 및 고갈 파괴
+/// - MinerExecutionSystem: 진행도 누적, 채굴 완료 시 ProductResult 기록, 자원 차감 및 고갈 파괴
 /// - BuildingItemOutput 파이프라인 연계: 채굴기 버퍼의 아이템이 외향 벨트로 정상 방출되는 전체 2단계 파이프라인 검증
 /// </summary>
 public class Phase4MinerPipelineTests : EcsWorldTestFixture
@@ -72,6 +72,7 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         _entityManager.SetComponentEnabled<MinerDecision>(entity, false);
 
         _entityManager.AddBuffer<ProductItemElement>(entity);
+        _entityManager.AddBuffer<ProductResult>(entity);
 
         return entity;
     }
@@ -106,13 +107,13 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
 
     private void RunStateApplyPhase()
     {
-        // 1. 직전 Phase 4에서 발행된 SpawnItemRequest 엔티티 실체화
+        // 1. 직전 Phase에서 기록된 구조적 변경 반영
         _endStateApplyEcb.Update();
 
         // 2. 창고/건물 출고 및 입고 적용
         _storageApplyHandle.Update(_world.Unmanaged);
 
-        // 3. 아이템 생성 요청 소비 및 소유권 적용
+        // 3. ProductResult / SpawnItemRequest 소비 및 소유권 적용
         _lifecycleHandle.Update(_world.Unmanaged);
         _ownershipHandle.Update(_world.Unmanaged);
 
@@ -191,8 +192,18 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         var resNode = _entityManager.GetComponentData<ResourceNode>(resEntity);
         Assert.AreEqual(9, resNode.Amount, "Resource amount should be decremented by 1.");
 
-        // 3. Phase 5 StateApply 단계 연계: 채굴기 버퍼에 ProductItemElement가 실제로 적재되는지 검증
+        // 3. Execution 결과는 SpawnItemRequest Entity가 아니라 ProductResult Buffer에 즉시 기록되어야 함
+        var productResults = _entityManager.GetBuffer<ProductResult>(minerEntity);
+        Assert.AreEqual(1, productResults.Length, "Miner should record exactly one production result before StateApply.");
+        Assert.AreEqual(ItemTypeEnum.Iron_Ore, productResults[0].ItemType);
+        Assert.AreEqual(1, productResults[0].Count);
+        Assert.AreEqual(0, productResults[0].SlotIndex);
+
+        // 4. Phase 5 StateApply 단계 연계: ProductResult가 실제 Item + ProductItemElement로 변환되는지 검증
         RunStateApplyPhase();
+
+        productResults = _entityManager.GetBuffer<ProductResult>(minerEntity);
+        Assert.AreEqual(0, productResults.Length, "ProductResult should be consumed in the same StateApply phase.");
 
         var buffer = _entityManager.GetBuffer<ProductItemElement>(minerEntity);
         Assert.AreEqual(1, buffer.Length, "Miner buffer should contain 1 product item.");
@@ -302,5 +313,79 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         var decision = _entityManager.GetComponentData<MinerDecision>(minerEntity);
         Assert.IsTrue(decision.CanMine);
         Assert.AreEqual(copperEntity, decision.TargetResource, "Multi-tile miner should pick the first resource (anchor corner).");
+    }
+
+    [Test]
+    public void Test08_MinerDecision_DifferentProductType_BlocksUntilBufferIsEmpty()
+    {
+        CreateResourceNode(new int2(10, 10), ItemTypeEnum.Copper_Ore, 50);
+        var minerEntity = CreateMiner(new int2(10, 10), new int2(1, 1), DirectionEnum.Up, 1.0f);
+
+        var productBuffer = _entityManager.GetBuffer<ProductItemElement>(minerEntity);
+        var dummyIron = _entityManager.CreateEntity(typeof(ItemIdentity), typeof(ItemOwnership));
+        productBuffer.Add(new ProductItemElement(dummyIron, ItemTypeEnum.Iron_Ore, 0));
+
+        SyncAllSpatialIndices();
+        _minerDecisionHandle.Update(_world.Unmanaged);
+
+        Assert.IsFalse(
+            _entityManager.IsComponentEnabled<MinerDecision>(minerEntity),
+            "Miner should not mine Copper while Iron remains in its single-stack ProductBuffer.");
+
+        productBuffer.Clear();
+        _minerDecisionHandle.Update(_world.Unmanaged);
+
+        Assert.IsTrue(
+            _entityManager.IsComponentEnabled<MinerDecision>(minerEntity),
+            "Miner should resume mining after the previous product type is fully drained.");
+    }
+
+    [Test]
+    public void Test09_ProductResult_StateApplyFillsLastStackSlotWithoutOverflowOrDuplicateConsumption()
+    {
+        CreateResourceNode(new int2(10, 10), ItemTypeEnum.Iron_Ore, 10);
+        var minerEntity = CreateMiner(
+            new int2(10, 10),
+            new int2(1, 1),
+            DirectionEnum.Up,
+            miningSpeed: 1.0f,
+            progress: 0.95f);
+
+        var productBuffer = _entityManager.GetBuffer<ProductItemElement>(minerEntity);
+        for (int i = 0; i < 49; i++)
+        {
+            var dummyItem = _entityManager.CreateEntity(typeof(ItemIdentity), typeof(ItemOwnership));
+            productBuffer.Add(new ProductItemElement(dummyItem, ItemTypeEnum.Iron_Ore, 0));
+        }
+
+        SyncAllSpatialIndices();
+        _minerDecisionHandle.Update(_world.Unmanaged);
+        Assert.IsTrue(_entityManager.IsComponentEnabled<MinerDecision>(minerEntity));
+
+        _world.SetTime(new Unity.Core.TimeData(0.1, 0.1f));
+        _minerExecutionHandle.Update(_world.Unmanaged);
+
+        var productResults = _entityManager.GetBuffer<ProductResult>(minerEntity);
+        Assert.AreEqual(1, productResults.Length, "Exactly one production result should be pending before StateApply.");
+        Assert.AreEqual(49, productBuffer.Length, "ProductBuffer must not change before StateApply.");
+
+        RunStateApplyPhase();
+
+        productResults = _entityManager.GetBuffer<ProductResult>(minerEntity);
+        productBuffer = _entityManager.GetBuffer<ProductItemElement>(minerEntity);
+        Assert.AreEqual(0, productResults.Length, "ProductResult must be consumed during StateApply.");
+        Assert.AreEqual(50, productBuffer.Length, "StateApply should fill exactly the final stack slot.");
+
+        // 소비된 ProductResult를 다시 처리해 중복 아이템을 생성하면 안 됩니다.
+        RunStateApplyPhase();
+        productBuffer = _entityManager.GetBuffer<ProductItemElement>(minerEntity);
+        Assert.AreEqual(50, productBuffer.Length, "A consumed ProductResult must never create a duplicate item.");
+
+        SyncAllSpatialIndices();
+        _minerDecisionHandle.Update(_world.Unmanaged);
+
+        Assert.IsFalse(
+            _entityManager.IsComponentEnabled<MinerDecision>(minerEntity),
+            "Miner must stop after the single ProductBuffer stack reaches MaxStack.");
     }
 }

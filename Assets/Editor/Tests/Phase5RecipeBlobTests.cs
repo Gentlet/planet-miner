@@ -174,6 +174,7 @@ public class Phase5RecipeBlobTests : EcsWorldTestFixture
         _entityManager.SetComponentData(crafterEntity, new CrafterDecision(canCraft: false, recipeId: 1));
         _entityManager.SetComponentEnabled<CrafterDecision>(crafterEntity, false);
         _entityManager.SetComponentData(crafterEntity, new Storage(slotCount: 4));
+        _entityManager.AddBuffer<ProductResult>(crafterEntity);
 
         // 2. 컴포넌트 값 및 상태 검증
         var state = _entityManager.GetComponentData<CrafterState>(crafterEntity);
@@ -182,6 +183,7 @@ public class Phase5RecipeBlobTests : EcsWorldTestFixture
         Assert.AreEqual(CrafterStatusEnum.Idle, state.Status);
 
         Assert.IsFalse(_entityManager.IsComponentEnabled<CrafterDecision>(crafterEntity));
+        Assert.AreEqual(0, _entityManager.GetBuffer<ProductResult>(crafterEntity).Length);
     }
 
     [Test]

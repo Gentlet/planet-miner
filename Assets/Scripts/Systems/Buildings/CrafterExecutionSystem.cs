@@ -4,7 +4,7 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 제작기(Crafter)의 재료 소모, 제작 진행도 누적, 완성품/부산품 스폰,
+/// 제작기(Crafter)의 재료 소모, 제작 진행도 누적, 완성품/부산품 생산 결과 기록,
 /// 레시피 변경 시 잔여 재료 배출(Purge to Output) 및 입력 필터 자동 동기화를 수행하는 실행 시스템.
 /// 
 /// [책임]
@@ -20,7 +20,8 @@ using Unity.Mathematics;
 ///   - (DeltaTime * Speed) / CraftTime 비율로 Progress를 누적합니다.
 /// - [정책 B 만석 대기 및 배출]:
 ///   - Progress >= 1.0f 도달 후 출력 버퍼에 공간이 확보되면(CanProduceOutput == true),
-///     SpawnItemRequest(Slot 0 주생산품, Slot 1 부산품)를 발행하고 IsCraftingActive = false 및 Progress = 0.0f로 리셋합니다.
+///     ProductResult(Slot 0 주생산품, Slot 1 부산품)를 기록하고 IsCraftingActive = false 및 Progress = 0.0f로 리셋합니다.
+///   - ProductResult는 같은 프레임 StateApply의 ItemLifecycleApplySystem이 실제 Item Entity와 ProductItemElement로 변환합니다.
 /// </summary>
 [UpdateInGroup(typeof(ExecutionGroup))]
 [BurstCompile]
@@ -33,8 +34,8 @@ public partial struct CrafterExecutionSystem : ISystem
     {
         _crafterQuery = SystemAPI.QueryBuilder()
             .WithAllRW<CrafterState>()
-            .WithAllRW<StoredItemElement, ProductItemElement>()
-            .WithAll<CrafterDecision>()
+            .WithAllRW<StoredItemElement, ProductResult>()
+            .WithAll<ProductItemElement, CrafterDecision>()
             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
             .Build();
     }
@@ -80,7 +81,7 @@ public partial struct CrafterExecutionSystem : ISystem
 }
 
 /// <summary>
-/// 각 제작기의 재료 소모, 진행도 누적, 스폰 및 레시피 롤백을 처리하는 단일 워커 Burst Job.
+/// 각 제작기의 재료 소모, 진행도 누적, 생산 결과 기록 및 레시피 롤백을 처리하는 단일 워커 Burst Job.
 /// </summary>
 [BurstCompile]
 public partial struct CrafterExecutionJob : IJobEntity
@@ -93,10 +94,9 @@ public partial struct CrafterExecutionJob : IJobEntity
     public EntityCommandBuffer ECB;
 
     public void Execute(
-        Entity crafterEntity,
         ref CrafterState state,
         ref DynamicBuffer<StoredItemElement> storedItems,
-        ref DynamicBuffer<ProductItemElement> productItems,
+        ref DynamicBuffer<ProductResult> productResults,
         in CrafterDecision decision)
     {
         ref var registry = ref RecipeRegistry.Value.Value;
@@ -147,28 +147,30 @@ public partial struct CrafterExecutionJob : IJobEntity
         }
 
         // =========================================================================
-        // 4. [제작 완료 & 완성품 스폰 (정책 B)]
+        // 4. [제작 완료 & ProductResult 기록 (정책 B)]
         // =========================================================================
         if (state.IsCraftingActive && state.Progress >= 1.0f && decision.CanProduceOutput)
         {
-            // 주생산품 스폰 (Slot 0)
-            if (recipe.TryGetPrimaryOutput(out var primary))
+            // 정상적으로는 StateApply에서 매 프레임 소비되므로 비어 있어야 합니다.
+            // 미소비 결과가 남아 있다면 중복 결과를 기록하지 않습니다.
+            if (productResults.Length > 0)
             {
-                for (int a = 0; a < primary.Amount; a++)
-                {
-                    Entity req = ECB.CreateEntity();
-                    ECB.AddComponent(req, new SpawnItemRequest(primary.ItemType, crafterEntity, targetSlotIndex: 0));
-                }
+                return;
             }
 
-            // 부산품 스폰 (Slot 1)
+            // 주생산품 결과 (Slot 0)
+            if (recipe.TryGetPrimaryOutput(out var primary) && primary.Amount > 0)
+            {
+                productResults.Add(new ProductResult(primary.ItemType, primary.Amount, slotIndex: 0));
+            }
+
+            // 현재 정책상 첫 번째 부산품 결과만 지원 (Slot 1)
             if (recipe.Outputs.Length > 1 && recipe.Outputs[1].IsByproduct)
             {
                 var byproduct = recipe.Outputs[1];
-                for (int a = 0; a < byproduct.Amount; a++)
+                if (byproduct.Amount > 0)
                 {
-                    Entity req = ECB.CreateEntity();
-                    ECB.AddComponent(req, new SpawnItemRequest(byproduct.ItemType, crafterEntity, targetSlotIndex: 1));
+                    productResults.Add(new ProductResult(byproduct.ItemType, byproduct.Amount, slotIndex: 1));
                 }
             }
 
