@@ -34,7 +34,6 @@ public partial struct CrafterExecutionSystem : ISystem
         _crafterQuery = SystemAPI.QueryBuilder()
             .WithAllRW<CrafterState>()
             .WithAllRW<StoredItemElement, ProductItemElement>()
-            .WithPresentRW<StorageFilter>()
             .WithAll<CrafterDecision>()
             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
             .Build();
@@ -98,77 +97,9 @@ public partial struct CrafterExecutionJob : IJobEntity
         ref CrafterState state,
         ref DynamicBuffer<StoredItemElement> storedItems,
         ref DynamicBuffer<ProductItemElement> productItems,
-        ref StorageFilter filter,
         in CrafterDecision decision)
     {
         ref var registry = ref RecipeRegistry.Value.Value;
-
-        // =========================================================================
-        // 1. [레시피 변경 감지 & 롤백/배출 & StorageFilter 자동 동기화]
-        // =========================================================================
-        if (state.SelectedRecipeId != state.ActiveRecipeId)
-        {
-            // A. 진행 중이던 제작 리셋
-            state.Progress = 0.0f;
-            state.IsCraftingActive = false;
-
-            // B. StoredItemElement에 남아있던 잔여 재료들을 ProductItemElement(출력 버퍼)로 이관 (Purge to Output)
-            // 슬롯 오염(Slot Pollution) 방지: 고유 ItemType별로 Slot 2 이후의 고유 슬롯 번호를 부여하여 이관
-            if (storedItems.Length > 0)
-            {
-                // 고유 아이템 타입 추적용 로컬 배열 (최대 16종)
-                var uniqueTypes = new FixedList32Bytes<byte>();
-
-                for (int i = 0; i < storedItems.Length; i++)
-                {
-                    var item = storedItems[i];
-                    byte typeByte = (byte)item.ItemType;
-
-                    int typeIndex = -1;
-                    for (int u = 0; u < uniqueTypes.Length; u++)
-                    {
-                        if (uniqueTypes[u] == typeByte)
-                        {
-                            typeIndex = u;
-                            break;
-                        }
-                    }
-
-                    if (typeIndex < 0 && uniqueTypes.Length < uniqueTypes.Capacity)
-                    {
-                        typeIndex = uniqueTypes.Length;
-                        uniqueTypes.Add(typeByte);
-                    }
-
-                    // 배출 슬롯 번호: 주생산품(0), 부산품(1)과 겹치지 않도록 Slot 2부터 순차 배정
-                    int purgeSlot = 2 + math.max(0, typeIndex);
-                    productItems.Add(new ProductItemElement(item.ItemEntity, item.ItemType, purgeSlot));
-                }
-
-                storedItems.Clear();
-            }
-
-            // C. StorageFilter 자동 갱신
-            if (state.SelectedRecipeId > 0 && registry.TryGetRecipeIndex(state.SelectedRecipeId, out int newRecipeIdx))
-            {
-                filter.Mode = StorageFilterMode.Whitelist;
-                filter.Mask.Clear();
-                ref var newRecipe = ref registry.Recipes[newRecipeIdx];
-                for (int i = 0; i < newRecipe.Ingredients.Length; i++)
-                {
-                    filter.Mask.Set((byte)newRecipe.Ingredients[i].ItemType, true);
-                }
-            }
-            else
-            {
-                // 레시피 해제(0) 시 모든 자재 입고 차단
-                filter.Mask.Clear();
-                filter.Mode = StorageFilterMode.Blacklist;
-            }
-
-            state.ActiveRecipeId = state.SelectedRecipeId;
-            return;
-        }
 
         // 유효 레시피 확인
         if (state.SelectedRecipeId <= 0 || !registry.TryGetRecipeIndex(state.SelectedRecipeId, out int recipeIdx))

@@ -14,8 +14,7 @@ public enum ItemTypeEnum : byte
     Copper,
     Iron_Stick,
     Copper_Stick,
-    Drone,
-    Count
+    Drone
 }
 
 /// <summary>

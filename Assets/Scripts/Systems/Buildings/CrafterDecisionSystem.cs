@@ -86,6 +86,28 @@ public partial struct CrafterDecisionJob : IJobEntity
         in DynamicBuffer<StoredItemElement> storedItems,
         in DynamicBuffer<ProductItemElement> productItems)
     {
+        // 0. 잔여 배출물 대기 상태 처리 (WaitingForPurgeOutput)
+        if (state.Status == CrafterStatusEnum.WaitingForPurgeOutput)
+        {
+            if (productItems.Length > 0)
+            {
+                // 출력 버퍼에 잔여물이 남아있으므로 대기 유지 및 제작 차단
+                decision.CanCraft = false;
+                decision.CanStartCraft = false;
+                decision.CanAdvance = false;
+                decision.CanProduceOutput = false;
+                decision.RecipeId = state.SelectedRecipeId;
+                decision.RecipeIndex = -1;
+                decisionEnabled.ValueRW = false;
+                return;
+            }
+            else
+            {
+                // 출력 버퍼가 완전히 비워졌으므로 대기 해제 및 정상 상태로 복귀
+                state.Status = state.SelectedRecipeId > 0 ? CrafterStatusEnum.Idle : CrafterStatusEnum.NoRecipe;
+            }
+        }
+
         // 1. 레시피 유효성 검사
         if (state.SelectedRecipeId <= 0)
         {

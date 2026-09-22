@@ -22,6 +22,7 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
 {
     private ComponentLookup<Storage> _storageLookup;
     private ComponentLookup<StorageFilter> _storageFilterLookup;
+    private ComponentLookup<CrafterState> _crafterStateLookup;
     private EntityQuery _itemQuery;
 
     [BurstCompile]
@@ -29,6 +30,7 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
     {
         _storageLookup = state.GetComponentLookup<Storage>(true);
         _storageFilterLookup = state.GetComponentLookup<StorageFilter>(true);
+        _crafterStateLookup = state.GetComponentLookup<CrafterState>(true);
 
         _itemQuery = SystemAPI.QueryBuilder()
             .WithAllRW<BuildingItemInputDecision>()
@@ -60,13 +62,15 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
 
         _storageLookup.Update(ref state);
         _storageFilterLookup.Update(ref state);
+        _crafterStateLookup.Update(ref state);
 
         var job = new BuildingItemInputDecisionJob
         {
             BuildingMap = buildingIndex.Map,
             BeltMap = beltIndex.Map,
             StorageLookup = _storageLookup,
-            StorageFilterLookup = _storageFilterLookup
+            StorageFilterLookup = _storageFilterLookup,
+            CrafterStateLookup = _crafterStateLookup
         };
 
         // Reader 의존성: BuildingSpatialIndex 및 BeltSpatialIndex의 마지막 Writer 완료 대기 및 Reader 등록
@@ -98,6 +102,9 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
 
     [ReadOnly]
     public ComponentLookup<StorageFilter> StorageFilterLookup;
+
+    [ReadOnly]
+    public ComponentLookup<CrafterState> CrafterStateLookup;
 
     public void Execute(
         ref BuildingItemInputDecision inputDecision,
@@ -149,6 +156,20 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
             inputDecision.TargetSlotIndex = -1;
             inputDecisionEnabled.ValueRW = true;
             return;
+        }
+
+        // 5.5 제작기(Crafter) 상태 검사: WaitingForPurgeOutput 상태인 경우 재료 입고 완전 차단
+        if (CrafterStateLookup.HasComponent(buildingInfo.Entity))
+        {
+            var crafterState = CrafterStateLookup[buildingInfo.Entity];
+            if (crafterState.Status == CrafterStatusEnum.WaitingForPurgeOutput)
+            {
+                inputDecision.TargetBuilding = buildingInfo.Entity;
+                inputDecision.CanDeposit = false;
+                inputDecision.TargetSlotIndex = -1;
+                inputDecisionEnabled.ValueRW = true;
+                return;
+            }
         }
 
         // 6. StorageFilter 검사 (필터가 부착된 경우)

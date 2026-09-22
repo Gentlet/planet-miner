@@ -39,7 +39,7 @@ public class Phase3ItemConfigTests : EcsWorldTestFixture
         // Assert
         Assert.IsTrue(_blobRef.IsCreated);
         ref var registry = ref _blobRef.Value;
-        Assert.AreEqual((int)ItemTypeEnum.Count, registry.Items.Length);
+        Assert.AreEqual(System.Enum.GetValues(typeof(ItemTypeEnum)).Length, registry.Items.Length);
 
         var query = _entityManager.CreateEntityQuery(typeof(ItemRegistry));
         Assert.AreEqual(1, query.CalculateEntityCount());
@@ -129,7 +129,7 @@ public class Phase3ItemConfigTests : EcsWorldTestFixture
         Assert.AreEqual(1, query.CalculateEntityCount());
         var singleton = query.GetSingleton<ItemRegistry>();
         Assert.IsTrue(singleton.Value.IsCreated);
-        Assert.AreEqual((int)ItemTypeEnum.Count, singleton.Value.Value.Items.Length);
+        Assert.AreEqual(System.Enum.GetValues(typeof(ItemTypeEnum)).Length, singleton.Value.Value.Items.Length);
         Assert.Greater(singleton.Value.Value.GetMaxStack(ItemTypeEnum.Iron), 0);
     }
 
