@@ -5,9 +5,9 @@ using Unity.Mathematics;
 using Unity.Transforms;
 
 /// <summary>
-/// Task 2.3: Belt Execution System 통합 및 단위 테스트.
+/// Belt Execution System 통합 및 단위 테스트.
 /// BeltMovementExecutionSystem에 의한 아이템 진행도(Progress), 타일 횡단(GridPosition),
-/// 실제 렌더링 위치(LocalTransform), 의사결정 소비(Consume)를 검증합니다.
+/// 실제 렌더링 위치(LocalTransform), 의사결정 소비(Consume)를 검증.
 /// </summary>
 public class Phase2BeltExecutionTests : EcsWorldTestFixture
 {

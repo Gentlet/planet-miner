@@ -7,16 +7,16 @@ using Unity.Mathematics;
 /// 월드 아이템의 공간 좌표(GridPosition -> Item Entity) 고속 조회를 위한 Unmanaged 싱글톤 인덱스.
 /// 
 /// [책임]
-/// - 그리드 좌표(int2)를 키로 하여 해당 위치에 존재하는 월드 아이템들을 O(1)에 조회합니다.
-/// - 한 셀에 여러 아이템이 존재할 수 있도록 NativeParallelMultiHashMap 기반으로 구성됩니다.
-/// - 순수 Resource(Map)만을 관리하며, 의존성 제어는 ItemSpatialIndexFence에 위임합니다.
+/// - 그리드 좌표(int2)를 키로 하여 해당 위치에 존재하는 월드 아이템들을 O(1)에 조회.
+/// - 한 셀에 여러 아이템이 존재할 수 있도록 NativeParallelMultiHashMap 기반으로 구성.
+/// - 순수 Resource(Map)만을 관리하며, 의존성 제어는 ItemSpatialIndexFence에 위임.
 /// </summary>
 public struct ItemSpatialIndex : IComponentData
 {
     public NativeParallelMultiHashMap<int2, Entity> Map;
 
     /// <summary>
-    /// Job/Burst 내부에서 안전하게 읽기 전용으로 전달할 수 있는 뷰를 반환합니다.
+    /// Job/Burst 내부에서 안전하게 읽기 전용으로 전달할 수 있는 뷰를 반환.
     /// </summary>
     public NativeParallelMultiHashMap<int2, Entity>.ReadOnly AsReadOnly() => Map.AsReadOnly();
 
@@ -37,7 +37,7 @@ public struct ItemSpatialIndex : IComponentData
     }
 
     /// <summary>
-    /// 해당 좌표에 존재하는 아이템의 총 개수를 반환합니다.
+    /// 해당 좌표에 존재하는 아이템의 총 개수를 반환.
     /// </summary>
     public int CountItemsAt(int2 position)
     {
@@ -45,7 +45,7 @@ public struct ItemSpatialIndex : IComponentData
     }
 
     /// <summary>
-    /// 해당 좌표에 아이템이 하나라도 존재하는지 여부를 반환합니다.
+    /// 해당 좌표에 아이템이 하나라도 존재하는지 여부를 반환.
     /// </summary>
     public bool HasItemAt(int2 position)
     {
@@ -57,10 +57,10 @@ public struct ItemSpatialIndex : IComponentData
 /// ItemSpatialIndex에 대한 동시성 Job 의존성을 제어하는 싱글톤 컴포넌트.
 /// 
 /// [책임]
-/// - Reader-Writer Lock 모델을 기반으로 JobHandle 의존성을 관리합니다.
-/// - Reader: 마지막 Writer JobHandle(_lastWriter)을 선행 의존성으로 취하고, 자신의 JobHandle을 _readers에 결합합니다.
-/// - Writer: 이전 Writer 및 모든 Readers의 완료(_lastWriter + _readers)를 선행 의존성으로 취하고, 새 Writer JobHandle로 갱신하며 이전 _readers를 초기화합니다.
-/// - Complete(): Capacity 재할당 등 메인 스레드의 즉시 접근이 필요한 경우에 한해 제한적으로 호출합니다.
+/// - Reader-Writer Lock 모델을 기반으로 JobHandle 의존성을 관리.
+/// - Reader: 마지막 Writer JobHandle(_lastWriter)을 선행 의존성으로 취하고, 자신의 JobHandle을 _readers에 결합.
+/// - Writer: 이전 Writer 및 모든 Readers의 완료(_lastWriter + _readers)를 선행 의존성으로 취하고, 새 Writer JobHandle로 갱신하며 이전 _readers를 초기화.
+/// - Complete(): Capacity 재할당 등 메인 스레드의 즉시 접근이 필요한 경우에 한해 제한적으로 호출.
 /// </summary>
 public struct ItemSpatialIndexFence : IComponentData
 {
@@ -68,12 +68,12 @@ public struct ItemSpatialIndexFence : IComponentData
     private JobHandle _readers;
 
     /// <summary>
-    /// Reader Job이 대기해야 하는 마지막 Writer JobHandle을 반환합니다.
+    /// Reader Job이 대기해야 하는 마지막 Writer JobHandle을 반환.
     /// </summary>
     public JobHandle GetReaderDependency() => _lastWriter;
 
     /// <summary>
-    /// Reader JobHandle을 Fence의 Reader 목록에 결합합니다.
+    /// Reader JobHandle을 Fence의 Reader 목록에 결합.
     /// </summary>
     public void AddReader(JobHandle readerHandle)
     {
@@ -81,7 +81,7 @@ public struct ItemSpatialIndexFence : IComponentData
     }
 
     /// <summary>
-    /// Writer Job이 대기해야 하는 선행 의존성(마지막 Writer + 모든 Readers)을 반환합니다.
+    /// Writer Job이 대기해야 하는 선행 의존성(마지막 Writer + 모든 Readers)을 반환.
     /// </summary>
     public JobHandle GetWriterDependency()
     {
@@ -89,7 +89,7 @@ public struct ItemSpatialIndexFence : IComponentData
     }
 
     /// <summary>
-    /// 새 Writer JobHandle을 등록하고 이전 Readers 목록을 초기화합니다.
+    /// 새 Writer JobHandle을 등록하고 이전 Readers 목록을 초기화.
     /// </summary>
     public void SetWriter(JobHandle writerHandle)
     {
@@ -98,7 +98,7 @@ public struct ItemSpatialIndexFence : IComponentData
     }
 
     /// <summary>
-    /// Capacity 재할당 등 메인 스레드의 직접 조작이 필요한 경우 모든 작업을 동기 완료합니다.
+    /// Capacity 재할당 등 메인 스레드의 직접 조작이 필요한 경우 모든 작업을 동기 완료.
     /// </summary>
     public void Complete()
     {

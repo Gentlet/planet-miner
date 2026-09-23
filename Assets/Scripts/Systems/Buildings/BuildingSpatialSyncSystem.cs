@@ -10,10 +10,10 @@ using Unity.Mathematics;
 /// [책임]
 /// - SynchronizationGroup(Phase 6)에서 실행되어 비동기 잡 체인으로 공간 인덱스를 Clear하고
 ///   현재 월드에 배치된 유효한 건물([BuildingType, BuildingFootprint, GridPosition, Direction])을
-///   회전 스왑이 적용된 다중 타일 단위로 일괄 등록합니다.
+///   회전 스왑이 적용된 다중 타일 단위로 일괄 등록.
 /// - BuildingSpatialIndexFence를 통해 이전 Phase의 Reader 잡들이 모두 완료된 후 쓰기를 시작하며,
-///   Map.Capacity 확장과 같은 메인 스레드 재할당 시에만 제한적으로 Complete()를 호출합니다.
-/// - ISystem 및 [BurstCompile] 기반으로 멀티스레드 병렬 Job(IJob, IJobEntity)을 통해 비차단(Non-blocking) 고속 처리합니다.
+///   Map.Capacity 확장과 같은 메인 스레드 재할당 시에만 제한적으로 Complete()를 호출.
+/// - ISystem/Burst 기반 병렬 Job으로 Spatial Index 갱신.
 /// </summary>
 [UpdateInGroup(typeof(SynchronizationGroup))]
 [BurstCompile]

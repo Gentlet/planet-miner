@@ -52,8 +52,8 @@ public struct BuildingFootprint : IComponentData
     }
 
     /// <summary>
-    /// 건물 회전 방향에 따른 유효 점유 크기를 반환합니다.
-    /// Left / Right (90도 회전)인 경우 가로와 세로가 스왑됩니다.
+    /// 건물 회전 방향에 따른 유효 점유 크기를 반환.
+    /// Left / Right (90도 회전)인 경우 가로와 세로가 스왑.
     /// </summary>
     public int2 GetEffectiveSize(DirectionEnum direction)
     {
@@ -66,7 +66,7 @@ public struct BuildingFootprint : IComponentData
 
 /// <summary>
 /// 벨트 위의 월드 아이템 엔티티에 부착되는 입고 의사결정 컴포넌트 (상태-의사결정 분리).
-/// 벨트 끝(Progress >= 1.0f - Epsilon)에 도달하여 건물 입고를 시도할 때 활성화(Enable)됩니다.
+/// 벨트 끝(Progress >= 1.0f - Epsilon)에 도달하여 건물 입고를 시도할 때 활성화(Enable).
 /// </summary>
 public struct BuildingItemInputDecision : IComponentData, IEnableableComponent
 {
@@ -82,7 +82,7 @@ public struct BuildingItemInputDecision : IComponentData, IEnableableComponent
 
     /// <summary>
     /// 배정된 창고/건물 슬롯 번호 (0 ~ SlotCount - 1).
-    /// Decision 단계에서는 기본값 -1(미배정)이며, ReservationPhase에서 경합 해결 후 최종 확정됩니다.
+    /// Decision 단계에서는 기본값 -1(미배정)이며, ReservationPhase에서 경합 해결 후 최종 확정.
     /// </summary>
     public int TargetSlotIndex;
 
@@ -96,7 +96,7 @@ public struct BuildingItemInputDecision : IComponentData, IEnableableComponent
 
 /// <summary>
 /// 보관/생산 건물 엔티티에 부착되는 출고 의사결정 컴포넌트 (상태-의사결정 분리).
-/// 건물 내부에 아이템이 있고 외부 벨트로 방출할 조건이 만족되었을 때 활성화(Enable)됩니다.
+/// 건물 내부에 아이템이 있고 외부 벨트로 방출할 조건이 만족되었을 때 활성화(Enable).
 /// (건물당 프레임당 1개 아이템 순차 방출)
 /// </summary>
 public struct BuildingItemOutputDecision : IComponentData, IEnableableComponent

@@ -4,8 +4,8 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Task 4.3: 자원 채굴 → 스폰 → 벨트 이송 → 창고 적재 End-to-End 전체 파이프라인 통합 검증 테스트.
-/// 시스템 간 직접 호출 없이 오직 GameSimulationGroup(Phase 1~6)의 데이터 파이프라인만으로 전체 게임 루프를 완주합니다.
+/// 자원 채굴 → 스폰 → 벨트 이송 → 창고 적재 End-to-End 전체 파이프라인 통합 검증 테스트.
+/// 시스템 간 직접 호출 없이 오직 GameSimulationGroup(Phase 1~6)의 데이터 파이프라인만으로 전체 게임 루프를 완주.
 /// 
 /// [검증 시나리오]
 /// 1. 단일 광물 완주: 채굴(1.0s) -> 채굴기 버퍼 -> 외향 벨트 방출 -> 벨트 3칸 이동 -> 창고 입고 및 슬롯 보관 완료.

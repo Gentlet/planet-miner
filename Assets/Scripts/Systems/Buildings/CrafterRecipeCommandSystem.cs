@@ -6,7 +6,7 @@ using Unity.Mathematics;
 /// Phase 1 CommandGroup에서 실행되는 제작기(Crafter) 레시피 변경 요청 처리 시스템.
 /// 
 /// [책임]
-/// - ChangeCrafterRecipeRequest 요청 엔티티를 감지하여 레시피 변경을 원자적으로 수행합니다.
+/// - ChangeCrafterRecipeRequest 요청 엔티티를 감지하여 레시피 변경을 원자적으로 수행.
 /// - 1. 기존 진행도 리셋 (Progress = 0, IsCraftingActive = false)
 /// - 2. 잔여 StoredItemElement 재료를 ProductItemElement(출력 버퍼)로 부산물 배출(Byproduct, Slot 1+)
 /// - 3. StorageFilter를 새 레시피의 재료 Whitelist로 즉시 갱신 (0 이하면 Blacklist)

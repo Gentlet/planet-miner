@@ -1,7 +1,7 @@
 using Unity.Entities;
 
 /// <summary>
-/// 아이템 종류 정의 열거형 (기존 레거시와 100% 호환).
+/// 아이템 종류 정의 열거형.
 /// </summary>
 public enum ItemTypeEnum : byte
 {

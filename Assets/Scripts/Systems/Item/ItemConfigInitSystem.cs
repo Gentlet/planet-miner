@@ -54,8 +54,8 @@ public partial class ItemConfigInitSystem : SystemBase
     }
 
     /// <summary>
-    /// ItemRegistry 싱글톤 및 BlobAsset을 초기화합니다.
-    /// jsonOverride가 주어지면 해당 문자열을 파싱하고, 없으면 StreamingAssets/ItemConfig.json 또는 기본 폴백을 사용합니다.
+    /// ItemRegistry 싱글톤 및 BlobAsset을 초기화.
+    /// jsonOverride가 주어지면 해당 문자열을 파싱하고, 없으면 StreamingAssets/ItemConfig.json 또는 기본 폴백을 사용.
     /// </summary>
     public static BlobAssetReference<ItemRegistryBlob> InitializeItemRegistry(EntityManager entityManager, string jsonOverride = null)
     {
@@ -93,7 +93,7 @@ public partial class ItemConfigInitSystem : SystemBase
     }
 
     /// <summary>
-    /// JSON 문자열로부터 ItemRegistryBlob BlobAsset을 빌드합니다.
+    /// JSON 문자열로부터 ItemRegistryBlob BlobAsset을 빌드.
     /// </summary>
     public static BlobAssetReference<ItemRegistryBlob> BuildBlobAssetFromJson(string jsonText)
     {
@@ -127,7 +127,7 @@ public partial class ItemConfigInitSystem : SystemBase
     }
 
     /// <summary>
-    /// 기본 폴백 ItemRegistryBlob BlobAsset을 빌드합니다.
+    /// 기본 폴백 ItemRegistryBlob BlobAsset을 빌드.
     /// </summary>
     public static BlobAssetReference<ItemRegistryBlob> BuildDefaultFallbackBlobAsset(int defaultMaxStack = 50)
     {
@@ -190,8 +190,8 @@ public partial class ItemConfigInitSystem : SystemBase
     }
 
     /// <summary>
-    /// 파일이 없거나 정의되지 않은 아이템에 대한 기본 MaxStack을 반환합니다.
-    /// fallback으로 전달된 defaultMaxStack(ItemConfig.json에서 로드됨)을 사용합니다.
+    /// 파일이 없거나 정의되지 않은 아이템에 대한 기본 MaxStack을 반환.
+    /// fallback으로 전달된 defaultMaxStack(ItemConfig.json에서 로드됨)을 사용.
     /// </summary>
     public static int GetDefaultMaxStackFor(ItemTypeEnum type, int defaultMaxStack)
     {

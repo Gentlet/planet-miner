@@ -4,10 +4,10 @@ namespace PlanetMiner.Tests
 {
     /// <summary>
     /// 테스트에서 반복되는 시간 설정, 시스템 실행, Dependency 완료 및 ECB Playback을
-    /// 한 곳에서 표현하기 위한 경량 Driver입니다.
+    /// 한 곳에서 표현하기 위한 경량 Driver.
     ///
     /// 각 테스트는 도메인별 Phase 순서를 그대로 명시하고,
-    /// 저수준 World/SystemHandle 호출만 이 Driver에 위임합니다.
+    /// 저수준 World/SystemHandle 호출만 이 Driver에 위임.
     /// </summary>
     public sealed class TestSimulationDriver
     {

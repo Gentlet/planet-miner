@@ -7,14 +7,14 @@ using Unity.Mathematics;
 /// 채굴기의 진행도를 누적하고 채굴 완료 시 ProductResult를 기록하는 시스템.
 /// 
 /// [책임]
-/// - ExecutionGroup(Phase 4)에서 실행됩니다.
-/// - MinerDecision이 활성화된 채굴기를 대상으로 채굴 진행도(Progress)를 시간(DeltaTime * MiningSpeed)에 따라 누적합니다.
+/// - ExecutionGroup(Phase 4)에서 실행.
+/// - MinerDecision이 활성화된 채굴기를 대상으로 채굴 진행도(Progress)를 시간(DeltaTime * MiningSpeed)에 따라 누적.
 /// - [내부 버퍼 모델]:
-///   - 진행도가 1.0f에 도달하면, Progress를 1.0f 차감(초과분 보존)하고 채굴기의 DynamicBuffer<ProductResult>에 생산 결과를 기록합니다.
-///   - ProductResult는 같은 프레임의 StateApply 단계에서 ItemLifecycleApplySystem이 소비하여 실제 Item Entity와 ProductItemElement로 변환합니다.
-///   - 버퍼에 들어간 아이템은 이후 Phase 2/5의 기존 출고 시스템(ProductItemOutputDecisionSystem / BuildingItemStorageApplySystem)에 의해 외부 벨트로 방출됩니다.
-///   - ResourceConfig의 IsResourceInfinite가 false인 경우 ResourceNode의 Amount를 1 차감하며, 고갈 시 자원 엔티티를 파괴합니다.
-/// - 자원 엔티티 파괴만 기존 EndStateApplyEntityCommandBufferSystem을 통해 처리합니다.
+///   - 진행도가 1.0f에 도달하면, Progress를 1.0f 차감(초과분 보존)하고 채굴기의 DynamicBuffer<ProductResult>에 생산 결과를 기록.
+///   - ProductResult는 같은 프레임의 StateApply 단계에서 ItemLifecycleApplySystem이 소비하여 실제 Item Entity와 ProductItemElement로 변환.
+///   - 버퍼에 들어간 아이템은 이후 Phase 2/5의 기존 출고 시스템(ProductItemOutputDecisionSystem / BuildingItemStorageApplySystem)에 의해 외부 벨트로 방출.
+///   - ResourceConfig의 IsResourceInfinite가 false인 경우 ResourceNode의 Amount를 1 차감하며, 고갈 시 자원 엔티티를 파괴.
+/// - 자원 엔티티 파괴만 기존 EndStateApplyEntityCommandBufferSystem을 통해 처리.
 /// </summary>
 [UpdateInGroup(typeof(ExecutionGroup))]
 [BurstCompile]

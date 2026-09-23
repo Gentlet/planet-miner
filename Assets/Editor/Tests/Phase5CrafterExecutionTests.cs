@@ -6,9 +6,9 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Task 5.2: Crafter Decision & Execution System 통합 단위/파이프라인 검증 테스트.
+/// Crafter Decision & Execution System 통합 단위/파이프라인 검증 테스트.
 /// - CrafterDecisionSystem: 레시피 유효성, 입력 재료 보유량, 출력 버퍼 수용 공간 판정
-/// - CrafterExecutionSystem: 제작 착수 시 선소비(피드백 3번 완전 충족), 진행도 누적, ProductResult 기록(정책 B)
+/// - CrafterExecutionSystem: 제작 착수 시 재료 선소비, 진행도 누적, ProductResult 기록
 /// </summary>
 public class Phase5CrafterExecutionTests : EcsWorldTestFixture
 {
@@ -111,7 +111,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         var crafter = CreateCrafter(recipeId: 1);
         RunDecisionPhase();
 
-        // Decision 단계에서는 Persistent State를 직접 변경하지 않아야 합니다.
+        // Decision 단계에서는 Persistent State를 직접 변경직접 변경 금지.
         var stateBeforeApply = _entityManager.GetComponentData<CrafterState>(crafter);
         var decision = _entityManager.GetComponentData<CrafterDecision>(crafter);
         var stateDecision = _entityManager.GetComponentData<CrafterStateDecision>(crafter);
@@ -205,7 +205,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
 
         RunExecutionPhase(deltaTime: 0.05f);
 
-        // Execution 단계에서는 실제 Item을 만들지 않고 ProductResult만 기록합니다.
+        // Execution 단계에서는 실제 Item을 만들지 않고 ProductResult만 기록.
         var productResults = _entityManager.GetBuffer<ProductResult>(crafter);
         Assert.AreEqual(1, productResults.Length, "Crafter should record one primary ProductResult before StateApply.");
         Assert.AreEqual(ItemTypeEnum.Iron, productResults[0].ItemType);
@@ -266,7 +266,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         var decisionWaiting = _entityManager.GetComponentData<CrafterDecision>(crafter);
         var stateDecisionWaiting = _entityManager.GetComponentData<CrafterStateDecision>(crafter);
 
-        // Decision은 Status를 직접 바꾸지 않고 별도 StateDecision만 산출합니다.
+        // Decision은 Status를 직접 바꾸지 않고 별도 StateDecision만 산출.
         Assert.AreEqual(CrafterStatusEnum.WaitingForOutput, stateDecisionWaiting.NextStatus);
         Assert.IsTrue(_entityManager.IsComponentEnabled<CrafterStateDecision>(crafter));
         Assert.IsFalse(decisionWaiting.CanProduceOutput, "CanProduceOutput must be false when output is full.");

@@ -4,7 +4,7 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Task 3.2.3: BuildingItemInputDecision 및 BuildingItemOutputDecision 단위 테스트.
+/// BuildingItemInputDecision 및 BuildingItemOutputDecision 단위 테스트.
 /// </summary>
 public class Phase3BuildingDecisionComponentTests : EcsWorldTestFixture
 {

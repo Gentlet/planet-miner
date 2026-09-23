@@ -4,8 +4,8 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Task 3.2.5: BuildingItemOutputDecisionSystem 단위 테스트.
-/// 건물 내 보관 아이템의 외향 벨트 방출 의사결정(CanOutput, TargetBeltPosition, FIFO 0번)을 검증합니다.
+/// BuildingItemOutputDecisionSystem 단위 테스트.
+/// 건물 내 보관 아이템의 외향 벨트 방출 의사결정(CanOutput, TargetBeltPosition, FIFO 0번)을 검증.
 /// </summary>
 public class Phase3BuildingOutputDecisionTests : EcsWorldTestFixture
 {

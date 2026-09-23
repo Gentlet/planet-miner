@@ -11,13 +11,13 @@ using Unity.Transforms;
 /// 실제 렌더링 위치(LocalTransform)를 전진 및 갱신하는 실행 시스템.
 /// 
 /// [책임]
-/// - ExecutionGroup(Phase 4)에서 실행됩니다.
-/// - DecisionGroup에서 산출된 BeltMovementDecision.PlannedProgress를 실제 Progress에 가산합니다.
-/// - 타일 경계 횡단(newProgress >= 1.0f) 시 GridPosition을 전진시키고 Progress를 새 타일 기준으로 보정합니다.
-/// - 그리드 중심과 방향, 진행률을 결합하여 LocalTransform.Position을 정확한 2D 월드 좌표로 갱신합니다.
-/// - Consume-on-Execution 원칙에 따라 처리가 끝난 PlannedProgress를 0.0f로 소비(초기화)합니다.
-/// - BeltSpatialIndexFence에 Reader JobHandle을 등록하여 SynchronizationGroup과의 데이터 경합을 비차단 방식으로 제어합니다.
-/// - 별도의 룩업(ComponentLookup) 없이 순수 쿼리(ref/in)만으로 동작하여 컨테이너 Aliasing이 없는 100% Safe Parallel Job을 보장합니다.
+/// - ExecutionGroup(Phase 4)에서 실행.
+/// - DecisionGroup에서 산출된 BeltMovementDecision.PlannedProgress를 실제 Progress에 가산.
+/// - 타일 경계 횡단(newProgress >= 1.0f) 시 GridPosition을 전진시키고 Progress를 새 타일 기준으로 보정.
+/// - 그리드 중심과 방향, 진행률을 결합하여 LocalTransform.Position을 정확한 2D 월드 좌표로 갱신.
+/// - Consume-on-Execution 원칙에 따라 처리가 끝난 PlannedProgress를 0.0f로 소비(초기화).
+/// - BeltSpatialIndexFence에 Reader JobHandle을 등록하여 SynchronizationGroup과의 데이터 경합을 비차단 방식으로 제어.
+/// - ComponentLookup 없이 쿼리(ref/in) 기반 병렬 Job으로 이동 상태 반영.
 /// </summary>
 [UpdateInGroup(typeof(ExecutionGroup))]
 [BurstCompile]

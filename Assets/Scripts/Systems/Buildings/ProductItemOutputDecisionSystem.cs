@@ -7,12 +7,12 @@ using Unity.Mathematics;
 /// 채굴기, 제작기 등 생산 건물 내부에 완성된 생산물(ProductItemElement)의 외부 벨트 방출 적합성을 판정하는 시스템.
 /// 
 /// [책임]
-/// - DecisionGroup(Phase 2)에서 실행됩니다.
-/// - 생산물 버퍼(ProductItemElement)에 아이템이 존재하는 생산 건물을 탐색합니다.
-/// - 건물 둘레 타일(Perimeter)을 순회하여 건물 외부로 향하는 외향 벨트(Outward Belt)를 감지합니다.
-/// - 외향 벨트 시작점(Progress = 0.0f)에 ItemSpacing 이상의 여유 공간이 확보되었는지 확인합니다.
-/// - 방출 조건 충족 시 주완성품(Slot 0) 우선 또는 FIFO 순서로 방출 아이템을 결정하고 BuildingItemOutputDecision을 활성화합니다.
-/// - [상태-의사결정 분리]: 버퍼에서 아이템을 제거하지 않으며, 순수 의사결정 컴포넌트만 갱신합니다.
+/// - DecisionGroup(Phase 2)에서 실행.
+/// - 생산물 버퍼(ProductItemElement)에 아이템이 존재하는 생산 건물을 탐색.
+/// - 건물 둘레 타일(Perimeter)을 순회하여 건물 외부로 향하는 외향 벨트(Outward Belt)를 감지.
+/// - 외향 벨트 시작점(Progress = 0.0f)에 ItemSpacing 이상의 여유 공간이 확보되었는지 확인.
+/// - 방출 조건 충족 시 주완성품(Slot 0) 우선 또는 FIFO 순서로 방출 아이템을 결정하고 BuildingItemOutputDecision을 활성화.
+/// - [상태-의사결정 분리]: 버퍼에서 아이템을 제거하지 않으며, 순수 의사결정 컴포넌트만 갱신.
 /// </summary>
 [UpdateInGroup(typeof(DecisionGroup))]
 [BurstCompile]

@@ -9,8 +9,8 @@ using UnityEngine;
 
 /// <summary>
 /// Architecture V2 전용 데이터 무결성(Invariant) 검증 시스템.
-/// 모든 6대 Phase의 상태 반영 및 동기화가 완전히 끝난 프레임 맨 마지막(SynchronizationGroup, OrderLast = true)에 실행됩니다.
-/// 위반 감지 시 콘솔 에러 출력 없이 파일로 진단 로그를 저장하고 Debug.Break()로 에디터를 일시정지합니다.
+/// 모든 6대 Phase의 상태 반영 및 동기화가 완전히 끝난 프레임 맨 마지막(SynchronizationGroup, OrderLast = true)에 실행.
+/// 위반 감지 시 콘솔 에러 출력 없이 파일로 진단 로그를 저장하고 Debug.Break()로 에디터를 일시정지.
 /// </summary>
 [UpdateInGroup(typeof(SynchronizationGroup), OrderLast = true)]
 public partial class WorldInvariantValidationSystem : SystemBase
@@ -29,7 +29,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
     public int TotalViolationCount { get; private set; }
 
     /// <summary>
-    /// 무결성 위반 누적 횟수를 0으로 초기화합니다.
+    /// 무결성 위반 누적 횟수를 0으로 초기화.
     /// </summary>
     public void ResetViolationCount()
     {
@@ -95,7 +95,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
     }
 
     /// <summary>
-    /// Item 도메인 및 공간 인덱스(ItemSpatialIndex) 간의 양방향 정합성을 검증합니다.
+    /// Item 도메인 및 공간 인덱스(ItemSpatialIndex) 간의 양방향 정합성을 검증.
     /// </summary>
     private void ValidateItemAndSpatialInvariants()
     {
@@ -213,7 +213,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
     }
 
     /// <summary>
-    /// 프레임 종료 시점(SynchronizationGroup)에 소비되지 않고 잔류한 1회성 Request 컴포넌트를 감시합니다.
+    /// 프레임 종료 시점(SynchronizationGroup)에 소비되지 않고 잔류한 1회성 Request 컴포넌트를 감시.
     /// </summary>
     private void ValidateRequestLifecycleInvariants()
     {
@@ -243,7 +243,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
     }
 
     /// <summary>
-    /// Phase 2 벨트 건물 및 아이템 이동 무결성(Invariant)을 검증합니다.
+    /// Phase 2 벨트 건물 및 아이템 이동 무결성(Invariant)을 검증.
     /// - 1. 미소비(Unconsumed) 이동 계획(PlannedProgress) 잔류 감시
     /// - 2. 고아 벨트 아이템(벨트 없는 위치에서 활성화된 아이템) 감시
     /// - 3. 동일 벨트 타일 내 최대 수용량(4개) 초과 및 최소 간격(ItemSpacing 0.25f) 침범 감시
@@ -432,7 +432,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
     }
 
     /// <summary>
-    /// Phase 3 창고(Storage) 버퍼 및 아이템 소유권(ItemOwnership) 양방향 무결성을 검증합니다.
+    /// Phase 3 창고(Storage) 버퍼 및 아이템 소유권(ItemOwnership) 양방향 무결성을 검증.
     /// - 1. Stored Item -> Storage Buffer 정방향 검증 (소유자 실존, 버퍼 보유, 버퍼 내 아이템 엔티티 등록 및 타입 일치, 월드 컴포넌트 비활성화)
     /// - 2. Storage Buffer -> Stored Item 역방향 검증 (버퍼 내 아이템 엔티티 실존, Owner 일치, 공간 인덱스 미등록)
     /// - 3. 슬롯 범위(0 <= SlotIndex < SlotCount), 단일 품목 규칙, MaxStack 한도, StorageFilter 준수 검증
@@ -839,8 +839,8 @@ public partial class WorldInvariantValidationSystem : SystemBase
     }
 
     /// <summary>
-    /// 프레임 종료 시점(SynchronizationGroup)에 소비되지 않고 잔류한 확정 입출력 Decision을 감시합니다.
-    /// StateApplyGroup에서 정상적으로 처리되었어야 할 확정 결정이 남아있으면 상태 전이 누락 버그입니다.
+    /// 프레임 종료 시점(SynchronizationGroup)에 소비되지 않고 잔류한 확정 입출력 Decision을 감시.
+    /// StateApplyGroup에서 정상적으로 처리되었어야 할 확정 결정이 남아있으면 상태 전이 누락 버그.
     /// </summary>
     private void ValidateStorageDecisionInvariants()
     {
@@ -876,7 +876,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
     }
 
     /// <summary>
-    /// Phase 4 자원 노드(ResourceNode) 및 자원 공간 인덱스(ResourceSpatialIndex) 정합성을 검증합니다.
+    /// Phase 4 자원 노드(ResourceNode) 및 자원 공간 인덱스(ResourceSpatialIndex) 정합성을 검증.
     /// - 1. ResourceNode가 부착된 엔티티가 ResourceSpatialIndex에 올바른 GridPosition으로 등록되어 있는지 검증
     /// - 2. ResourceSpatialIndex에 등록된 엔티티가 월드에 실존하고 ResourceNode를 가지고 있는지 검증
     /// </summary>
@@ -959,7 +959,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
 
     /// <summary>
     /// 무결성 위반 발생 시 호출하는 리포팅 메서드.
-    /// 콘솔 에러 출력 없이 진단 로그 파일을 생성하고 에디터를 일시정지(Debug.Break)합니다.
+    /// 콘솔 에러 출력 없이 진단 로그 파일을 생성하고 에디터를 일시정지(Debug.Break).
     /// </summary>
     /// <param name="category">위반 항목 카테고리 (예: Item, Drone, Spatial, Building)</param>
     /// <param name="message">위반 상세 내용 (기대값 vs 실제값 등)</param>

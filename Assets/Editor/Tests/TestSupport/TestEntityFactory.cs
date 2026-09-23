@@ -5,10 +5,10 @@ using Unity.Transforms;
 namespace PlanetMiner.Tests
 {
     /// <summary>
-    /// 테스트에서 사용하는 대표 ECS Entity 구성을 한 곳에서 관리합니다.
+    /// 테스트에서 사용하는 대표 ECS Entity 구성을 한 곳에서 관리.
     ///
     /// 기능 컴포넌트가 추가/삭제될 때 각 테스트 파일의 Create* 헬퍼를 반복 수정하지 않고
-    /// 이 Factory만 갱신하는 것이 목적입니다.
+    /// 이 Factory만 갱신하는 것이 목적.
     /// </summary>
     public sealed class TestEntityFactory
     {
@@ -50,9 +50,9 @@ namespace PlanetMiner.Tests
         }
 
         /// <summary>
-        /// 벨트 위 WorldItem의 공통 테스트 구성을 생성합니다.
+        /// 벨트 위 WorldItem의 공통 테스트 구성을 생성.
         /// 실제 Item lifecycle에 가까운 이동/입고/소유권 관련 컴포넌트를 함께 보유하며,
-        /// 이동 상태만 활성화하고 일회성 요청/입고 Decision은 비활성 상태로 시작합니다.
+        /// 이동 상태만 활성화하고 일회성 요청/입고 Decision은 비활성 상태로 시작.
         /// </summary>
         public Entity CreateBeltItem(
             int2 position,
@@ -208,8 +208,8 @@ namespace PlanetMiner.Tests
         }
 
         /// <summary>
-        /// Storage/Crafter 등에 이미 보관된 Item을 만들고 StoredItemElement에도 함께 등록합니다.
-        /// ItemLifecycleApplySystem의 보관 Item 상태와 동일하게 이동/입고/요청 컴포넌트는 비활성화합니다.
+        /// Storage/Crafter 등에 이미 보관된 Item을 만들고 StoredItemElement에도 함께 등록.
+        /// ItemLifecycleApplySystem의 보관 Item 상태와 동일하게 이동/입고/요청 컴포넌트는 비활성화.
         /// </summary>
         public Entity CreateStoredItem(
             Entity owner,

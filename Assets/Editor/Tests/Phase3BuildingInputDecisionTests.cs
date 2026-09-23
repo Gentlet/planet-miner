@@ -4,8 +4,8 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Task 3.2.4: BuildingItemInputDecisionSystem 단위 테스트.
-/// 벨트 끝에 도달한 아이템의 건물 입고 의사결정(CanDeposit, TargetBuilding)을 순수하게 검증합니다.
+/// BuildingItemInputDecisionSystem 단위 테스트.
+/// 벨트 끝에 도달한 아이템의 건물 입고 의사결정(CanDeposit, TargetBuilding)을 검증.
 /// </summary>
 public class Phase3BuildingInputDecisionTests : EcsWorldTestFixture
 {

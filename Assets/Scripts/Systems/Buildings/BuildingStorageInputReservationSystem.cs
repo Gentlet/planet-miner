@@ -8,11 +8,11 @@ using Unity.Mathematics;
 /// 창고 입고 판정을 받은 아이템들의 슬롯 예약 및 경합을 해결하는 시스템.
 /// 
 /// [책임]
-/// - ReservationGroup(Phase 3)에서 실행됩니다.
-/// - BuildingItemInputDecisionSystem(Phase 2)에서 입고 가능 판정(CanDeposit == true, TargetSlotIndex == -1)을 받은 아이템을 수집합니다.
+/// - ReservationGroup(Phase 3)에서 실행.
+/// - BuildingItemInputDecisionSystem(Phase 2)에서 입고 가능 판정(CanDeposit == true, TargetSlotIndex == -1)을 받은 아이템을 수집.
 /// - 단일 워커 스레드 Job(BuildingStorageInputReservationJob)을 스케줄링하여 메인 스레드 부하를 0으로 유지하면서,
-///   순차 실행을 통해 동일 창고로의 슬롯 중복 배정 경합(Race Condition)을 안전하게 해결합니다.
-/// - ItemConfig.MaxStack 기반 스택 병합 및 신규 슬롯 배정을 확정하여 BuildingItemStorageApplySystem에 전달합니다.
+///   순차 실행으로 동일 창고의 슬롯 중복 배정 경합 방지.
+/// - ItemConfig.MaxStack 기반 스택 병합 및 신규 슬롯 배정을 확정하여 BuildingItemStorageApplySystem에 전달.
 /// </summary>
 [UpdateInGroup(typeof(ReservationGroup))]
 [BurstCompile]
@@ -76,7 +76,7 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
 }
 
 /// <summary>
-/// 각 아이템의 창고 슬롯 배정 및 경합을 순차적으로 안전하게 해결하는 단일 워커 Burst Job.
+/// 각 아이템의 창고 슬롯 배정과 경합을 순차 처리하는 단일 워커 Burst Job.
 /// </summary>
 [BurstCompile]
 public partial struct BuildingStorageInputReservationJob : IJobEntity

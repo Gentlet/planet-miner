@@ -7,8 +7,8 @@ using Unity.Entities;
 using Unity.Jobs;
 
 /// <summary>
-/// Task 5.1: Recipe 데이터 구조 (BlobAsset / Unmanaged Struct) 단위 테스트 슈트.
-/// BlobAsset 기반 불변 레시피 레지스트리와 Crafter 컴포넌트들의 정합성을 검증합니다.
+/// Recipe 데이터 구조 (BlobAsset / Unmanaged Struct) 단위 테스트 슈트.
+/// BlobAsset 기반 불변 레시피 레지스트리와 Crafter 컴포넌트들의 정합성을 검증.
 /// </summary>
 public class Phase5RecipeBlobTests : EcsWorldTestFixture
 {

@@ -38,8 +38,8 @@ public partial class RecipeInitSystem : SystemBase
     }
 
     /// <summary>
-    /// RecipeRegistry 싱글톤을 초기화합니다.
-    /// jsonOverride가 주어지면 해당 JSON을 파싱하고, 없으면 Resources/Config/CrafterRecipeConfig를 사용합니다.
+    /// RecipeRegistry 싱글톤을 초기화.
+    /// jsonOverride가 주어지면 해당 JSON을 파싱하고, 없으면 Resources/Config/CrafterRecipeConfig를 사용.
     /// </summary>
     public static BlobAssetReference<RecipeRegistryBlob> InitializeRecipeRegistry(EntityManager entityManager, string jsonOverride = null)
     {

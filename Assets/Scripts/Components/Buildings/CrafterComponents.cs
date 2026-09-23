@@ -54,7 +54,7 @@ public struct CrafterState : IComponentData
 
 /// <summary>
 /// 제작기의 실행 의사결정 컴포넌트 (Decision Component, Phase 2 산출물).
-/// CrafterExecutionSystem이 소비할 제작/진행/출력 실행 정보만 보관합니다.
+/// CrafterExecutionSystem이 소비할 제작/진행/출력 실행 정보만 보관.
 /// </summary>
 public struct CrafterDecision : IComponentData, IEnableableComponent
 {
@@ -78,7 +78,7 @@ public struct CrafterDecision : IComponentData, IEnableableComponent
 
 /// <summary>
 /// 제작기의 Persistent State(Status) 전이 의사결정 컴포넌트.
-/// DecisionGroup에서 활성화되고 StateApplyGroup의 CrafterStateApplySystem에서 소비 후 비활성화됩니다.
+/// DecisionGroup에서 활성화되고 StateApplyGroup의 CrafterStateApplySystem에서 소비 후 비활성화.
 /// </summary>
 public struct CrafterStateDecision : IComponentData, IEnableableComponent
 {

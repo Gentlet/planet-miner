@@ -12,7 +12,7 @@ public enum StorageFilterMode : byte
 
 /// <summary>
 /// 128종 이상의 아이템을 지원하는 고정 크기 unmanaged 비트셋.
-/// 향후 비트 크기 확장 시 내부 구현만 확장하여 호환성을 유지합니다.
+/// 향후 비트 크기 확장 시 내부 구현만 확장하여 호환성을 유지.
 /// </summary>
 public struct FixedBitSet
 {
@@ -22,7 +22,7 @@ public struct FixedBitSet
     public const int Capacity = 128;
 
     /// <summary>
-    /// 해당 인덱스의 비트가 켜져 있는지 확인합니다.
+    /// 해당 인덱스의 비트가 켜져 있는지 확인.
     /// </summary>
     public bool IsSet(byte index)
     {
@@ -34,7 +34,7 @@ public struct FixedBitSet
     }
 
     /// <summary>
-    /// 해당 인덱스의 비트를 설정하거나 해제합니다.
+    /// 해당 인덱스의 비트를 설정하거나 해제.
     /// </summary>
     public void Set(byte index, bool value)
     {
@@ -51,7 +51,7 @@ public struct FixedBitSet
     }
 
     /// <summary>
-    /// 모든 비트를 0으로 초기화합니다.
+    /// 모든 비트를 0으로 초기화.
     /// </summary>
     public void Clear()
     {
@@ -76,7 +76,7 @@ public struct StorageFilter : IComponentData
     }
 
     /// <summary>
-    /// 지정된 아이템이 현재 필터 규칙에 의해 허용되는지 판정합니다.
+    /// 지정된 아이템이 현재 필터 규칙에 의해 허용되는지 판정.
     /// </summary>
     public bool IsItemAllowed(ItemTypeEnum itemType)
     {
@@ -94,8 +94,8 @@ public struct StorageFilter : IComponentData
 /// 창고의 보관 슬롯 용량을 정의하는 핵심 컴포넌트.
 /// 
 /// [책임]
-/// - 창고가 보유한 총 슬롯 칸수(SlotCount)를 정의합니다.
-/// - 슬롯당 최대 스택 수는 아이템별 고유 설정에 따라 결정됩니다.
+/// - 창고가 보유한 총 슬롯 칸수(SlotCount)를 정의.
+/// - 슬롯당 최대 스택 수는 아이템별 고유 설정에 따라 결정.
 /// </summary>
 public struct Storage : IComponentData
 {
@@ -127,7 +127,7 @@ public struct StoredItemElement : IBufferElementData
 
 /// <summary>
 /// 채굴기, 제작기 등 생산 건물의 출력 대기 버퍼 요소 (Unmanaged).
-/// 완성품과 부산물을 일반 보관/재료 버퍼(StoredItemElement)와 물리적으로 분리합니다.
+/// 완성품과 부산물을 일반 보관/재료 버퍼(StoredItemElement)와 물리적으로 분리.
 /// </summary>
 [InternalBufferCapacity(8)]
 public struct ProductItemElement : IBufferElementData
