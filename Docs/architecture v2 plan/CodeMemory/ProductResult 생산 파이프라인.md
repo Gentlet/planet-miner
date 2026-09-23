@@ -144,11 +144,10 @@ Slot 0 = 채굴 생산물
 
 Crafter
 Slot 0 = Primary Output
-Slot 1 = Byproduct
-Slot 2+ = Recipe Change Purge 영역
+Slot 1+ = Byproduct (레시피 부산물 및 레시피 변경 잔여 배출) 영역
 ```
 
-Recipe Change Purge는 현재 `ProductResult`를 사용하지 않고 기존 Item Entity를
+레시피 변경으로 인한 Byproduct 배출은 현재 `ProductResult`를 사용하지 않고 기존 Item Entity를
 `StoredItemElement → ProductItemElement`로 직접 이동시킨다.
 
 ---

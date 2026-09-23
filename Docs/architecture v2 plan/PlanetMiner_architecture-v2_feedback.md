@@ -151,7 +151,7 @@ ReservationGroup
 
 ExecutionGroup
     CrafterExecutionSystem이 Copper용 Filter로 변경
-    기존 Iron 재료 Purge
+    기존 Iron 재료 Byproduct 배출
 
 StateApplyGroup
     앞서 승인된 Iron이 다시 Crafter에 입고
@@ -698,8 +698,7 @@ Output Slot = 4 ~ 5
 
 ```text
 Product Slot 0 = Primary
-Product Slot 1 = Byproduct
-Product Slot 2+ = Recipe Change Purge
+Product Slot 1+ = Byproduct (레시피 부산물 및 레시피 변경 잔여 배출)
 ```
 
 형태다.
@@ -1006,7 +1005,7 @@ Phase 6 작업을 시작하기 전에 다음 항목을 닫는 것을 권장한�
 
 ## 기능 정합성
 
-- [x] Recipe 변경 프레임에서 이전 Recipe 재료가 입고되지 않는다. (완료: CommandGroup 원자적 동기화, WaitingForPurgeOutput 입고 차단)
+- [x] Recipe 변경 프레임에서 이전 Recipe 재료가 입고되지 않는다. (완료: CommandGroup 원자적 동기화, WaitingForByproductOutput 입고 차단)
 - [ ] Miner Pending Spawn을 포함해 Product Capacity가 MaxStack을 초과하지 않는다.
 - [ ] Crafter 부산물 지원 범위가 데이터 모델과 실제 구현에서 일치한다.
 - [ ] Crafter Decision이 Persistent `CrafterState`를 직접 수정하지 않는다.

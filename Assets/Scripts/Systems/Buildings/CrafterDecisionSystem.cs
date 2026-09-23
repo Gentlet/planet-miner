@@ -87,8 +87,8 @@ public partial struct CrafterDecisionJob : IJobEntity
         in DynamicBuffer<ProductItemElement> productItems,
         in DynamicBuffer<ProductResult> productResults)
     {
-        // 0. 잔여 배출물 대기 상태 처리 (WaitingForPurgeOutput)
-        if (state.Status == CrafterStatusEnum.WaitingForPurgeOutput)
+        // 0. 부산물/잔여 배출물 대기 상태 처리 (WaitingForByproductOutput)
+        if (state.Status == CrafterStatusEnum.WaitingForByproductOutput)
         {
             if (productItems.Length > 0)
             {

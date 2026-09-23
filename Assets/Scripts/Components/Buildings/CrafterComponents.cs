@@ -10,7 +10,7 @@ public enum CrafterStatusEnum : byte
     Crafting,               // 제작 진행 중 (Progress 누적 중)
     WaitingForInput,        // 재료 부족으로 대기
     WaitingForOutput,       // 완성품/부산품 출력 슬롯 만석으로 정체 (Backpressure)
-    WaitingForPurgeOutput   // 이전 레시피 잔여물/생산물 배출 대기 중 (입고 및 제작 차단)
+    WaitingForByproductOutput // 이전 레시피 잔여물/부산품 배출 대기 중 (입고 및 제작 차단)
 }
 
 /// <summary>
