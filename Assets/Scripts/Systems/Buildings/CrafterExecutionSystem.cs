@@ -9,6 +9,7 @@ using Unity.Mathematics;
 /// 
 /// [책임]
 /// - ExecutionGroup(Phase 4)에서 실행.
+/// - 활성화된 CrafterDecision만 실행 대상으로 처리.
 /// - 레시피 변경 감지:
 ///   - SelectedRecipeId != ActiveRecipeId 감지 시 진행 중이던 제작을 취소하고,
 ///     StoredItemElement에 있던 잔여 재료들을 ProductItemElement(출력 버퍼)로 이관하여 외부 벨트로 자동 배출되도록 .
@@ -28,15 +29,17 @@ using Unity.Mathematics;
 public partial struct CrafterExecutionSystem : ISystem
 {
     private EntityQuery _crafterQuery;
+    private ComponentLookup<DestroyItemRequest> _destroyItemRequestLookup;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
+        _destroyItemRequestLookup = state.GetComponentLookup<DestroyItemRequest>(false);
+
         _crafterQuery = SystemAPI.QueryBuilder()
             .WithAllRW<CrafterState>()
             .WithAllRW<StoredItemElement, ProductResult>()
             .WithAll<ProductItemElement, CrafterDecision>()
-            .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
             .Build();
     }
 
@@ -64,19 +67,16 @@ public partial struct CrafterExecutionSystem : ISystem
             return;
         }
 
-        var ecbSystem = state.World.GetExistingSystemManaged<EndStateApplyEntityCommandBufferSystem>();
-        var ecb = ecbSystem.CreateCommandBuffer();
+        _destroyItemRequestLookup.Update(ref state);
 
         var job = new CrafterExecutionJob
         {
             DeltaTime = dt,
             RecipeRegistry = recipeRegistry,
-            ECB = ecb
+            DestroyItemRequestLookup = _destroyItemRequestLookup
         };
 
-        var jobHandle = job.Schedule(_crafterQuery, state.Dependency);
-        ecbSystem.AddJobHandleForProducer(jobHandle);
-        state.Dependency = jobHandle;
+        state.Dependency = job.Schedule(_crafterQuery, state.Dependency);
     }
 }
 
@@ -91,7 +91,7 @@ public partial struct CrafterExecutionJob : IJobEntity
     [ReadOnly]
     public RecipeRegistry RecipeRegistry;
 
-    public EntityCommandBuffer ECB;
+    public ComponentLookup<DestroyItemRequest> DestroyItemRequestLookup;
 
     public void Execute(
         ref CrafterState state,
@@ -126,7 +126,12 @@ public partial struct CrafterExecutionJob : IJobEntity
                     {
                         Entity itemEntity = storedItems[s].ItemEntity;
                         storedItems.RemoveAt(s);
-                        ECB.SetComponentEnabled<DestroyItemRequest>(itemEntity, true);
+
+                        if (DestroyItemRequestLookup.HasComponent(itemEntity))
+                        {
+                            DestroyItemRequestLookup.SetComponentEnabled(itemEntity, true);
+                        }
+
                         remainingToConsume--;
                     }
                 }

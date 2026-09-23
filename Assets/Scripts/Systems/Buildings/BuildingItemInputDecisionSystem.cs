@@ -12,7 +12,7 @@ using Unity.Mathematics;
 /// - BuildingSpatialIndex를 통해 진행 방향 다음 타일의 건물 존재 및 수납 기능(Storage) 여부를 O(1)로 조회.
 /// - StorageFilter가 부착된 경우 아이템 허용 여부를 검사.
 /// - 적합 시 CanDeposit = true, TargetBuilding 지정, TargetSlotIndex = -1(Reservation 단계 확정용)을 기록하고 활성화.
-/// - 필터 차단 또는 부적합 시 CanDeposit = false를 기록하여 입고 불가 상태를 전달.
+/// - 필터 차단 또는 부적합 시 CanDeposit = false로 설정하고 비활성화.
 /// - [엄격한 단일 책임 원칙 (SRP)]: 벨트 이동 컴포넌트(BeltMovementDecision)를 수정하지 않으며, 
 ///   BuildingItemInputDecision만 갱신하여 다른 도메인 상태와의 쓰기 경합 방지.
 /// </summary>
@@ -154,7 +154,7 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
             inputDecision.TargetBuilding = buildingInfo.Entity;
             inputDecision.CanDeposit = false;
             inputDecision.TargetSlotIndex = -1;
-            inputDecisionEnabled.ValueRW = true;
+            inputDecisionEnabled.ValueRW = false;
             return;
         }
 
@@ -167,7 +167,7 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
                 inputDecision.TargetBuilding = buildingInfo.Entity;
                 inputDecision.CanDeposit = false;
                 inputDecision.TargetSlotIndex = -1;
-                inputDecisionEnabled.ValueRW = true;
+                inputDecisionEnabled.ValueRW = false;
                 return;
             }
         }
@@ -182,7 +182,7 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
                 inputDecision.TargetBuilding = buildingInfo.Entity;
                 inputDecision.CanDeposit = false;
                 inputDecision.TargetSlotIndex = -1;
-                inputDecisionEnabled.ValueRW = true;
+                inputDecisionEnabled.ValueRW = false;
                 return;
             }
         }

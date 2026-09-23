@@ -89,7 +89,6 @@ namespace PlanetMiner.Tests
                 new TransferOwnershipRequest(Entity.Null));
 
             _entityManager.SetComponentEnabled<BeltMovementState>(entity, true);
-            _entityManager.SetComponentEnabled<BeltMovementDecision>(entity, true);
             _entityManager.SetComponentEnabled<BuildingItemInputDecision>(entity, false);
             _entityManager.SetComponentEnabled<TransferOwnershipRequest>(entity, false);
 
@@ -233,7 +232,6 @@ namespace PlanetMiner.Tests
             _entityManager.SetComponentData(itemEntity, LocalTransform.FromPosition(float3.zero));
 
             _entityManager.SetComponentEnabled<BeltMovementState>(itemEntity, false);
-            _entityManager.SetComponentEnabled<BeltMovementDecision>(itemEntity, false);
             _entityManager.SetComponentEnabled<BuildingItemInputDecision>(itemEntity, false);
             _entityManager.SetComponentEnabled<DestroyItemRequest>(itemEntity, false);
             _entityManager.SetComponentEnabled<TransferOwnershipRequest>(itemEntity, false);

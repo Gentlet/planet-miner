@@ -269,6 +269,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
         // 1. 미소비 이동 계획 잔류 감시 (ExecutionGroup에서 정상 소비되었는지 확인)
         foreach (var (decision, entity) in 
                  SystemAPI.Query<RefRO<BeltMovementDecision>>()
+                          .WithAll<BeltMovementState>()
                           .WithEntityAccess())
         {
             if (decision.ValueRO.PlannedProgress > 0.0f)

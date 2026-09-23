@@ -28,7 +28,6 @@ public partial struct BuildingItemStorageApplySystem : ISystem
     private BufferLookup<StoredItemElement> _storedBufferLookup;
     private BufferLookup<ProductItemElement> _productBufferLookup;
     private ComponentLookup<BeltMovementState> _beltMovementStateLookup;
-    private ComponentLookup<BeltMovementDecision> _beltMovementDecisionLookup;
     private ComponentLookup<TransferOwnershipRequest> _transferOwnershipRequestLookup;
     private ComponentLookup<GridPosition> _gridPositionLookup;
     private ComponentLookup<Direction> _directionLookup;
@@ -43,7 +42,6 @@ public partial struct BuildingItemStorageApplySystem : ISystem
         _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(false);
         _productBufferLookup = state.GetBufferLookup<ProductItemElement>(false);
         _beltMovementStateLookup = state.GetComponentLookup<BeltMovementState>(false);
-        _beltMovementDecisionLookup = state.GetComponentLookup<BeltMovementDecision>(false);
         _transferOwnershipRequestLookup = state.GetComponentLookup<TransferOwnershipRequest>(false);
         _gridPositionLookup = state.GetComponentLookup<GridPosition>(false);
         _directionLookup = state.GetComponentLookup<Direction>(false);
@@ -78,7 +76,6 @@ public partial struct BuildingItemStorageApplySystem : ISystem
         _storedBufferLookup.Update(ref state);
         _productBufferLookup.Update(ref state);
         _beltMovementStateLookup.Update(ref state);
-        _beltMovementDecisionLookup.Update(ref state);
         _transferOwnershipRequestLookup.Update(ref state);
         _gridPositionLookup.Update(ref state);
         _directionLookup.Update(ref state);
@@ -102,7 +99,6 @@ public partial struct BuildingItemStorageApplySystem : ISystem
             GridPositionLookup = _gridPositionLookup,
             DirectionLookup = _directionLookup,
             BeltMovementStateLookup = _beltMovementStateLookup,
-            BeltMovementDecisionLookup = _beltMovementDecisionLookup,
             TransformLookup = _transformLookup,
             TransferOwnershipRequestLookup = _transferOwnershipRequestLookup
         };
@@ -181,7 +177,6 @@ public partial struct BuildingItemOutputApplyJob : IJobEntity
     public ComponentLookup<GridPosition> GridPositionLookup;
     public ComponentLookup<Direction> DirectionLookup;
     public ComponentLookup<BeltMovementState> BeltMovementStateLookup;
-    public ComponentLookup<BeltMovementDecision> BeltMovementDecisionLookup;
     public ComponentLookup<LocalTransform> TransformLookup;
     public ComponentLookup<TransferOwnershipRequest> TransferOwnershipRequestLookup;
 
@@ -260,12 +255,6 @@ public partial struct BuildingItemOutputApplyJob : IJobEntity
         {
             BeltMovementStateLookup[itemToOutput] = new BeltMovementState(0.0f);
             BeltMovementStateLookup.SetComponentEnabled(itemToOutput, true);
-        }
-
-        if (BeltMovementDecisionLookup.HasComponent(itemToOutput))
-        {
-            BeltMovementDecisionLookup[itemToOutput] = new BeltMovementDecision(0.0f, false);
-            BeltMovementDecisionLookup.SetComponentEnabled(itemToOutput, true);
         }
 
         if (TransformLookup.HasComponent(itemToOutput))
