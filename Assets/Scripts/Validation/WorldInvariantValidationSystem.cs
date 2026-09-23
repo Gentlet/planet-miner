@@ -578,6 +578,15 @@ public partial class WorldInvariantValidationSystem : SystemBase
                           .WithEntityAccess())
         {
             int slotCount = storage.ValueRO.SlotCount;
+            if (slotCount <= 0 || slotCount > GameConstants.MaxStorageSlots)
+            {
+                ReportViolation(
+                    "StorageInvariant",
+                    $"Storage ({storageEntity.Index}:{storageEntity.Version}) has invalid SlotCount {slotCount} (allowed range: 1 ~ {GameConstants.MaxStorageSlots}).",
+                    storageEntity
+                );
+            }
+
             bool hasFilter = storageFilterLookup.HasComponent(storageEntity);
             StorageFilter filter = hasFilter ? storageFilterLookup[storageEntity] : default;
 

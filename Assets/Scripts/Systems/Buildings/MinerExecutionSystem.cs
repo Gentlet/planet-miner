@@ -52,9 +52,11 @@ public partial struct MinerExecutionSystem : ISystem
         var ecbSystem = state.World.GetExistingSystemManaged<EndStateApplyEntityCommandBufferSystem>();
         var ecb = ecbSystem.CreateCommandBuffer();
 
+        float dt = math.min(SystemAPI.Time.DeltaTime, GameConstants.MaxSimulationDeltaTime);
+
         var job = new MinerExecutionJob
         {
-            DeltaTime = SystemAPI.Time.DeltaTime,
+            DeltaTime = dt,
             IsResourceInfinite = isResourceInfinite,
             ResourceNodeLookup = _resourceNodeLookup,
             ECB = ecb

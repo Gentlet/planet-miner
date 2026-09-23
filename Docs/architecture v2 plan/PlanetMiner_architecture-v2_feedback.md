@@ -46,7 +46,7 @@
 
 ### A-3. 기반 안정화
 
-10. `BuildingSpatialIndex` Capacity 계산 개선
+10. `BuildingSpatialIndex` Capacity 계산 개선 ✅ 완료
 
 ---
 
@@ -616,7 +616,7 @@ SpawnProductItemRequest
 
 ---
 
-# 피드백 6. `DestroyItemRequest`의 Storage/Product Buffer 정합성 계약 명확화
+# 피드백 6. `DestroyItemRequest`의 Storage/Product Buffer 정합성 계약 명확화 ( 적용 완료 )
 
 **적용 시점: 지금 계약 확정 / 후속 Task에서 준수**  
 **우선순위: 중간~높음**
@@ -663,7 +663,7 @@ Phase 10 Research 소비
 
 프로젝트 전체 계약을 지금 확정한다.
 
-### 방법 A — Producer 책임
+### 방법 A — Producer 책임 (채택 및 완료)
 
 ```text
 DestroyItemRequest 발행 전
@@ -672,23 +672,14 @@ Owner Buffer에서 반드시 제거
 
 Invariant / 테스트로 규칙을 강제한다.
 
-### 방법 B — Lifecycle 책임
-
-`ItemLifecycleApplySystem`이 Owner 정보를 확인하고:
-
-```text
-Owner Buffer에서 제거
-    ↓
-Entity Destroy
-```
-
-까지 수행한다.
-
-현재 구현은 방법 A에 가깝기 때문에, 유지한다면 **DestroyItemRequest API 계약을 코드/문서/테스트로 명시한다.**
+### 확정된 계약 및 적용 내역 (완료)
+- **방법 A (Producer 책임) 채택**: 아이템 파괴를 유발하는 시스템(Crafter, 철거, 연구 등)이 `DestroyItemRequest`를 활성화하기 전에 소유 버퍼(`StoredItemElement`/`ProductItemElement`)에서 해당 아이템을 반드시 먼저 제거(`RemoveAt`)한다.
+- **Fail-Fast Invariant 강제**: 버퍼에서 제거되지 않은 채 엔티티가 파괴되면 `WorldInvariantValidationSystem`이 `StorageInvariant` 위반으로 즉시 검출한다.
+- **API 주석 및 테스트 검증**: `DestroyItemRequest` 구조체 주석에 선제 조건을 명시하고, `Phase1ItemIntegrationTests`에 정상 선제거 및 미제거 위반 감지 테스트 2종(`Test11`, `Test12`)을 추가하여 회귀 방지를 완료했다.
 
 ---
 
-# 피드백 7. Simulation DeltaTime 정책 통일
+# 피드백 7. Simulation DeltaTime 정책 통일 ( 적용 완료 )
 
 **적용 시점: 지금**  
 **우선순위: 중간**
@@ -717,8 +708,6 @@ Phase 4/5가 완료된 상태에서 시뮬레이션 시간 정책은 공통 기�
 
 모든 게임 시뮬레이션 시스템에서 동일한 dt 정책을 적용한다.
 
-최소:
-
 ```csharp
 float dt = math.min(
     SystemAPI.Time.DeltaTime,
@@ -726,11 +715,13 @@ float dt = math.min(
 );
 ```
 
-장기적으로는 시스템마다 clamp하지 않고 **공통 Simulation Time 데이터**를 제공하는 방식도 고려할 수 있다.
+### 확정된 계약 및 적용 내역 (완료)
+- **방안 A (개별 시스템 클램프 일원화) 채택**: `MinerExecutionSystem`에서도 `math.min(SystemAPI.Time.DeltaTime, GameConstants.MaxSimulationDeltaTime)`(0.1f) 클램핑을 적용하여 Belt/Crafter와 동일한 상한선 정책으로 일원화 완료.
+- **테스트 검증**: `Phase4MinerPipelineTests`에 대형 DeltaTime 입력 시 진행도가 0.1f로 제한되는 `Test10_MinerExecution_LargeDeltaTime_ClampsToMaxSimulationDeltaTime` 테스트를 추가하여 회귀 방지 완료.
 
 ---
 
-# 피드백 8. `MaxStorageSlots` 제한의 실제 검증/강제
+# 피드백 8. `MaxStorageSlots` 제한의 실제 검증/강제 ( 적용 완료 )
 
 **적용 시점: 지금**  
 **우선순위: 중간**
@@ -776,9 +767,14 @@ Storage.SlotCount <= MaxStorageSlots
 
 숨은 clamp보다는 명시적인 실패/검증이 낫다.
 
+### 확정된 계약 및 적용 내역 (완료)
+- **방안 A (`WorldInvariantValidationSystem` 불변식 검증) 채택**: `ValidateStorageInvariants`에서 `Storage.SlotCount <= 0 || Storage.SlotCount > GameConstants.MaxStorageSlots`를 직접 검사하여 조기 감출하도록 구현 완료.
+- **안전망 유지**: `BuildingStorageInputReservationSystem`의 `safeSlotCount = math.min(...)` 클램핑은 Burst 메모리 오버플로우 방지용 안전망으로 유지.
+- **테스트 검증**: `Phase3StorageComponentTests`에 상한 초과(200), 하한 위반(0), 경계값 정상(120)에 대한 검증 테스트 3종(`Test04`, `Test05`, `Test06`) 추가 완료.
+
 ---
 
-# 피드백 9. `CrafterSlotConfig`의 현재 구조와 의미 정리
+# 피드백 9. `CrafterSlotConfig`의 현재 구조와 의미 정리 ( 적용 완료 )
 
 **적용 시점: 지금**  
 **우선순위: 낮음~중간**
@@ -811,7 +807,7 @@ Phase 5를 완료한 지금이 과거 설계 흔적을 정리하기 가장 좋�
 
 ---
 
-# 피드백 10. `BuildingSpatialIndex` Capacity 계산 개선
+# 피드백 10. `BuildingSpatialIndex` Capacity 계산 개선 ( 적용 완료 )
 
 **적용 시점: Phase 6 진입 전 기반 안정화**  
 **우선순위: 중간**
@@ -849,6 +845,12 @@ Phase 7 Construction에서는 다양한 크기의 건물이 실제 생성/철거
 기준으로 Capacity를 계산한다.
 
 또는 프로젝트의 최대 Footprint 규칙이 명확하다면 그 기준으로 충분한 여유 Capacity를 확보한다.
+
+### 확정된 계약 및 적용 내역 (완료)
+- **방안 A (점유 타일 수 직접 합산) 채택**: `BuildingSpatialSyncSystem.OnUpdate`에서 활성 건물의 `BuildingFootprint`를 순회하며 `size.x * size.y`의 총합(`requiredCapacity`)을 Burst 네이티브 루프로 직접 계산.
+- **안전 용량 확장 정책**: `index.Map.Capacity < requiredCapacity` 시 `math.max(1024, requiredCapacity * 2)`로 2배 여유 버퍼를 확보하여 잦은 재할당 방지.
+- **테스트 검증**: `Phase3BuildingSpatialIndexTests`에 기본 용량(1024)을 초과하는 3x3 건물 150개(총 1350타일) 생성 시 동적 용량 확장 및 전수 인덱싱 검증 테스트(`Test05_BuildingSpatialIndex_LargeMultiTileBuildings_ExpandsCapacitySafely`) 추가 완료.
+
 
 ---
 
@@ -1104,21 +1106,21 @@ Phase 6 작업을 시작하기 전에 다음 항목을 닫는 것을 권장한�
 - [x] Recipe 변경 프레임에서 이전 Recipe 재료가 입고되지 않는다. (완료: CommandGroup 원자적 동기화, WaitingForByproductOutput 입고 차단)
 - [x] Miner Pending Spawn을 포함해 Product Capacity가 MaxStack을 초과하지 않는다.
 - [x] Crafter 부산물 지원 범위가 데이터 모델과 실제 구현에서 일치한다. (완료: 방법 A 채택, Outputs 전체 순회 및 All-or-Nothing 판정/생산)
-- [ ] Crafter Decision이 Persistent `CrafterState`를 직접 수정하지 않는다.
+- [x] Crafter Decision이 Persistent `CrafterState`를 직접 수정하지 않는다. (완료: CrafterState in RO 조회, CrafterStateDecision 분리 및 CrafterStateApplySystem 반영)
 
 ## 데이터 계약
 
 - [x] `SpawnItemRequest`가 World / Storage / Product 목적지를 명확히 표현한다. (완료: ItemSpawnDestination 도입, 목적지별 버퍼 적재 및 부재 시 Drop)
-- [ ] `DestroyItemRequest` 발행 전 Owner Buffer 처리 책임이 명확하다.
-- [ ] 모든 Core Simulation 시스템이 같은 DeltaTime 정책을 사용한다.
-- [ ] `Storage.SlotCount`가 `MaxStorageSlots` 범위를 벗어나면 명확히 검출된다.
+- [x] `DestroyItemRequest` 발행 전 Owner Buffer 처리 책임이 명확하다. (완료: 방법 A Producer 선제거 책임 확정, Invariant Fail-Fast 검출 및 테스트 2종 추가)
+- [x] 모든 Core Simulation 시스템이 같은 DeltaTime 정책을 사용한다. (완료: Belt/Crafter/Miner 전원 MaxSimulationDeltaTime 0.1f 클램핑 일원화)
+- [x] `Storage.SlotCount`가 `MaxStorageSlots` 범위를 벗어나면 명확히 검출된다. (완료: WorldInvariantValidationSystem 불변식 감출 및 Phase3 단위 테스트 3종 추가)
 - [x] `CrafterSlotConfig`가 현재 Buffer 구조와 일치한다. (완료: 과거 설계 흔적 제거 및 CrafterComponents / RecipeConfigComponents 분리 정리)
 
 ## 기반
 
-- [ ] `BuildingSpatialIndex` Capacity가 실제 점유 타일 규모를 안전하게 처리한다.
-- [ ] 관련 신규/변경 테스트가 모두 통과한다.
-- [ ] 기존 EditMode 테스트가 회귀 없이 통과한다.
+- [x] `BuildingSpatialIndex` Capacity가 실제 점유 타일 규모를 안전하게 처리한다. (완료: BuildingFootprint 점유 타일 면적 총합 기반 필요 용량 산출 및 동적 확장)
+- [x] 관련 신규/변경 테스트가 모두 통과한다. (완료: Test05 대규모 다중 타일 건물 수용 및 전수 조회 통과)
+- [x] 기존 EditMode 테스트가 회귀 없이 통과한다. (완료: 전체 110개 Phase 테스트 100% 통과)
 
 ---
 
