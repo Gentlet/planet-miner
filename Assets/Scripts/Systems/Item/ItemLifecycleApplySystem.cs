@@ -169,36 +169,63 @@ public partial struct SpawnItemApplyJob : IJobEntity
 
     public void Execute(Entity requestEntity, in SpawnItemRequest request)
     {
-        Entity newItem = ECB.CreateEntity(FallbackItemArchetype);
+        bool canSpawn = false;
+        ItemOwnership ownership = default;
+        bool isWorld = false;
 
-        ECB.SetComponent(newItem, new ItemIdentity(request.ItemType));
-        ECB.SetComponent(newItem, new GridPosition(request.Position));
-        ECB.SetComponent(newItem, LocalTransform.FromPosition(new float3(request.Position.x, request.Position.y, 0f)));
-
-        if (request.TargetOwner == Entity.Null)
+        switch (request.Destination)
         {
-            ECB.SetComponent(newItem, ItemOwnership.WorldItem);
+            case ItemSpawnDestination.World:
+                canSpawn = true;
+                ownership = ItemOwnership.WorldItem;
+                isWorld = true;
+                break;
+
+            case ItemSpawnDestination.Storage:
+                if (request.TargetOwner != Entity.Null && StoredBufferLookup.HasBuffer(request.TargetOwner))
+                {
+                    canSpawn = true;
+                    ownership = ItemOwnership.Stored(request.TargetOwner);
+                }
+                break;
+
+            case ItemSpawnDestination.Product:
+                if (request.TargetOwner != Entity.Null && ProductBufferLookup.HasBuffer(request.TargetOwner))
+                {
+                    canSpawn = true;
+                    ownership = ItemOwnership.Stored(request.TargetOwner);
+                }
+                break;
         }
-        else
+
+        if (canSpawn)
         {
-            ECB.SetComponent(newItem, ItemOwnership.Stored(request.TargetOwner));
-            if (ProductBufferLookup.HasBuffer(request.TargetOwner))
+            Entity newItem = ECB.CreateEntity(FallbackItemArchetype);
+
+            ECB.SetComponent(newItem, new ItemIdentity(request.ItemType));
+            ECB.SetComponent(newItem, new GridPosition(request.Position));
+            ECB.SetComponent(newItem, LocalTransform.FromPosition(isWorld
+                ? new float3(request.Position.x, request.Position.y, 0f)
+                : float3.zero));
+            ECB.SetComponent(newItem, ownership);
+
+            if (request.Destination == ItemSpawnDestination.Product)
             {
                 ECB.AppendToBuffer(request.TargetOwner, new ProductItemElement(newItem, request.ItemType, request.TargetSlotIndex));
             }
-            else if (StoredBufferLookup.HasBuffer(request.TargetOwner))
+            else if (request.Destination == ItemSpawnDestination.Storage)
             {
                 ECB.AppendToBuffer(request.TargetOwner, new StoredItemElement(newItem, request.ItemType, request.TargetSlotIndex));
             }
+
+            // 1회성 Request 컴포넌트들을 비활성화 상태로 초기화
+            ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
+            ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
+
+            // 상태 및 의사결정 컴포넌트 비활성화 초기화
+            ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
+            ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
         }
-
-        // 1회성 Request 컴포넌트들을 비활성화 상태로 초기화
-        ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
-        ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
-
-        // 상태 및 의사결정 컴포넌트 비활성화 초기화
-        ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
-        ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
 
         // Consume-on-Apply: 요청 엔티티 파괴
         ECB.DestroyEntity(requestEntity);

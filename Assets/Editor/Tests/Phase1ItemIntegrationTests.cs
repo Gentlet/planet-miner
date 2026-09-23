@@ -159,13 +159,14 @@ public class Phase1ItemIntegrationTests : EcsWorldTestFixture
     {
         // Arrange: 창고에 보관된 아이템 생성
         var mockStorage = _entityManager.CreateEntity();
+        _entityManager.AddBuffer<StoredItemElement>(mockStorage);
         var reqEntity = _entityManager.CreateEntity(typeof(SpawnItemRequest));
-        _entityManager.SetComponentData(reqEntity, new SpawnItemRequest
-        {
-            ItemType = ItemTypeEnum.Iron,
-            Position = new int2(15, 25),
-            TargetOwner = mockStorage
-        });
+        _entityManager.SetComponentData(reqEntity, new SpawnItemRequest(
+            ItemTypeEnum.Iron,
+            new int2(15, 25),
+            mockStorage,
+            ItemSpawnDestination.Storage
+        ));
         UpdateStateApplyPhase();
         UpdateSynchronizationPhase();
 
@@ -241,5 +242,90 @@ public class Phase1ItemIntegrationTests : EcsWorldTestFixture
         var ownership = _entityManager.GetComponentData<ItemOwnership>(item);
         Assert.IsTrue(ownership.IsWorldItem, "Ghost owner must be rejected; item remains WorldItem.");
         Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item), "Request must be consumed (disabled).");
+    }
+
+    [Test]
+    public void Test08_SpawnItem_ToStorage_AppendsToStoredBuffer()
+    {
+        // Arrange: StoredItemElement와 ProductItemElement를 둘 다 가진 모의 건물 생성 (Crafter 모델)
+        var building = _entityManager.CreateEntity();
+        _entityManager.AddBuffer<StoredItemElement>(building);
+        _entityManager.AddBuffer<ProductItemElement>(building);
+
+        // Act: Storage 목적지로 스폰 요청
+        var reqEntity = _entityManager.CreateEntity(typeof(SpawnItemRequest));
+        _entityManager.SetComponentData(reqEntity, new SpawnItemRequest(
+            ItemTypeEnum.Iron_Ore,
+            building,
+            ItemSpawnDestination.Storage,
+            targetSlotIndex: 2
+        ));
+
+        UpdateStateApplyPhase();
+
+        // Assert: 요청 소멸 및 StoredItemElement에만 적재되었는지 확인 (Product에는 안 들어감)
+        Assert.IsFalse(_entityManager.Exists(reqEntity));
+
+        var storedBuffer = _entityManager.GetBuffer<StoredItemElement>(building);
+        var productBuffer = _entityManager.GetBuffer<ProductItemElement>(building);
+
+        Assert.AreEqual(1, storedBuffer.Length, "Item must be appended to StoredItemElement.");
+        Assert.AreEqual(ItemTypeEnum.Iron_Ore, storedBuffer[0].ItemType);
+        Assert.AreEqual(2, storedBuffer[0].SlotIndex);
+        Assert.AreEqual(0, productBuffer.Length, "ProductItemElement must remain empty.");
+    }
+
+    [Test]
+    public void Test09_SpawnItem_ToProduct_AppendsToProductBuffer()
+    {
+        // Arrange: StoredItemElement와 ProductItemElement를 둘 다 가진 모의 건물 생성
+        var building = _entityManager.CreateEntity();
+        _entityManager.AddBuffer<StoredItemElement>(building);
+        _entityManager.AddBuffer<ProductItemElement>(building);
+
+        // Act: Product 목적지로 스폰 요청
+        var reqEntity = _entityManager.CreateEntity(typeof(SpawnItemRequest));
+        _entityManager.SetComponentData(reqEntity, new SpawnItemRequest(
+            ItemTypeEnum.Iron,
+            building,
+            ItemSpawnDestination.Product,
+            targetSlotIndex: 0
+        ));
+
+        UpdateStateApplyPhase();
+
+        // Assert: 요청 소멸 및 ProductItemElement에만 적재되었는지 확인
+        Assert.IsFalse(_entityManager.Exists(reqEntity));
+
+        var storedBuffer = _entityManager.GetBuffer<StoredItemElement>(building);
+        var productBuffer = _entityManager.GetBuffer<ProductItemElement>(building);
+
+        Assert.AreEqual(1, productBuffer.Length, "Item must be appended to ProductItemElement.");
+        Assert.AreEqual(ItemTypeEnum.Iron, productBuffer[0].ItemType);
+        Assert.AreEqual(0, productBuffer[0].SlotIndex);
+        Assert.AreEqual(0, storedBuffer.Length, "StoredItemElement must remain empty.");
+    }
+
+    [Test]
+    public void Test10_SpawnItem_InvalidDestinationBuffer_DropsWithoutLeaking()
+    {
+        // Arrange: 버퍼가 전혀 없는 빈 엔티티 생성
+        var emptyBuilding = _entityManager.CreateEntity();
+
+        // Act: Storage 버퍼가 없는 엔티티에 Storage 스폰 요청
+        var reqEntity = _entityManager.CreateEntity(typeof(SpawnItemRequest));
+        _entityManager.SetComponentData(reqEntity, new SpawnItemRequest(
+            ItemTypeEnum.Copper_Ore,
+            emptyBuilding,
+            ItemSpawnDestination.Storage,
+            targetSlotIndex: 0
+        ));
+
+        UpdateStateApplyPhase();
+
+        // Assert: 요청 엔티티는 파괴되었고, 아이템 엔티티는 생성되지 않고 Drop되었는지 확인
+        Assert.IsFalse(_entityManager.Exists(reqEntity), "Request entity must be consumed.");
+        var itemQuery = _entityManager.CreateEntityQuery(typeof(ItemIdentity));
+        Assert.AreEqual(0, itemQuery.CalculateEntityCount(), "Item must be dropped when target buffer does not exist.");
     }
 }
