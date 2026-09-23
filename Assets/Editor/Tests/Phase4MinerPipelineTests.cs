@@ -346,4 +346,30 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
             _entityManager.IsComponentEnabled<MinerDecision>(minerEntity),
             "Miner must stop after the single ProductBuffer stack reaches MaxStack.");
     }
+
+    [Test]
+    public void Test10_MinerExecution_LargeDeltaTime_ClampsToMaxSimulationDeltaTime()
+    {
+        // Arrange: 채굴 속도 1.0f, 초기 진행도 0.0f
+        CreateResourceNode(new int2(5, 5), ItemTypeEnum.Iron_Ore, 100);
+        var minerEntity = CreateMiner(
+            new int2(5, 5),
+            new int2(1, 1),
+            DirectionEnum.Up,
+            miningSpeed: 1.0f,
+            progress: 0.0f);
+
+        SyncAllSpatialIndices();
+        _minerDecisionHandle.Update(_world.Unmanaged);
+        Assert.IsTrue(_entityManager.IsComponentEnabled<MinerDecision>(minerEntity));
+
+        // Act: 1.0초 대형 DeltaTime 입력 (MaxSimulationDeltaTime = 0.1f 클램핑 동작)
+        _world.SetTime(new Unity.Core.TimeData(1.0, 1.0f));
+        _minerExecutionHandle.Update(_world.Unmanaged);
+
+        // Assert: 진행도가 MaxSimulationDeltaTime(0.1f) * MiningSpeed(1.0f) = 0.1f로 제한 검증
+        var state = _entityManager.GetComponentData<MinerState>(minerEntity);
+        Assert.AreEqual(GameConstants.MaxSimulationDeltaTime * 1.0f, state.Progress, 0.0001f,
+            "MinerExecutionSystem must clamp DeltaTime to MaxSimulationDeltaTime.");
+    }
 }

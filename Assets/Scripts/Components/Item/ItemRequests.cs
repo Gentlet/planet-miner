@@ -58,14 +58,14 @@ public struct SpawnItemRequest : IRequestComponent
 }
 
 /// <summary>
-/// [1. 역할]            : 아이템 엔티티 파괴 및 소모 마킹 요청 (대상 부착형 방식 - 모델 B)
-/// [2. Producer (생성자)] : 제작기(Crafter 재료 소모), 폐기 시스템 등
-/// [3. Consumer (소비자)] : ItemLifecycleApplySystem (StateApplyGroup)
-/// [4. Create Phase]    : ExecutionGroup
-/// [5. Consume Phase]   : StateApplyGroup
-/// [6. 수명주기 원칙]    : Consume-on-Apply (처리 즉시 ecb.DestroyEntity(itemEntity))
-/// [7. 실패 정책]        : 이미 유효하지 않은 엔티티인 경우 SetComponentEnabled(false)로 비활성화
-/// [8. 안전망 정책]      : 파괴되지 않고 잔존하는 활성 컴포넌트는 WorldInvariantValidationSystem에서 감지
+/// 아이템 엔티티 파괴 요청 컴포넌트 (IEnableableRequest).
+///
+/// [소유 버퍼 계약]:
+/// 보관/출력 아이템 파괴 시 Producer가 소유 버퍼(StoredItemElement/ProductItemElement)에서 먼저 제거(RemoveAt)한 뒤 활성화.
+/// 버퍼 미제거 잔류 파괴 시 WorldInvariantValidationSystem에서 불변식 위반으로 감지.
+///
+/// [소비 및 수명주기]:
+/// StateApplyGroup의 ItemLifecycleApplySystem에서 엔티티 파괴 후 소멸(Consume-on-Apply).
 /// </summary>
 public struct DestroyItemRequest : IEnableableRequest
 {

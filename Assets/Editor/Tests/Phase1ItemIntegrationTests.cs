@@ -328,4 +328,81 @@ public class Phase1ItemIntegrationTests : EcsWorldTestFixture
         var itemQuery = _entityManager.CreateEntityQuery(typeof(ItemIdentity));
         Assert.AreEqual(0, itemQuery.CalculateEntityCount(), "Item must be dropped when target buffer does not exist.");
     }
+
+    [Test]
+    public void Test11_DestroyStoredItem_PreRemovedFromBuffer_MaintainsInvariants()
+    {
+        // Arrange: 창고 건물 및 보관 아이템 생성
+        var storage = _entityManager.CreateEntity(typeof(Storage));
+        _entityManager.SetComponentData(storage, new Storage(4));
+        _entityManager.AddBuffer<StoredItemElement>(storage);
+
+        var reqEntity = _entityManager.CreateEntity(typeof(SpawnItemRequest));
+        _entityManager.SetComponentData(reqEntity, new SpawnItemRequest(
+            ItemTypeEnum.Iron,
+            storage,
+            ItemSpawnDestination.Storage,
+            targetSlotIndex: 0
+        ));
+
+        UpdateStateApplyPhase();
+        UpdateSynchronizationPhase();
+
+        var storedBuffer = _entityManager.GetBuffer<StoredItemElement>(storage);
+        Assert.AreEqual(1, storedBuffer.Length);
+        Entity item = storedBuffer[0].ItemEntity;
+
+        // Act: Producer 책임 원칙 - 버퍼 선제거 후 DestroyItemRequest 활성화
+        storedBuffer.RemoveAt(0);
+        _entityManager.SetComponentEnabled<DestroyItemRequest>(item, true);
+
+        UpdateStateApplyPhase();
+
+        // Assert: 아이템 엔티티 파괴 및 불변식 위반 0건 유지 검증
+        Assert.IsFalse(_entityManager.Exists(item), "Item entity must be destroyed.");
+        var bufferAfterDestroy = _entityManager.GetBuffer<StoredItemElement>(storage);
+        Assert.AreEqual(0, bufferAfterDestroy.Length, "Storage buffer must be empty.");
+
+        _invariantValidationSystem.ResetViolationCount();
+        UpdateSynchronizationPhase();
+        Assert.AreEqual(0, _invariantValidationSystem.TotalViolationCount, "No invariant violations should occur when pre-removed.");
+    }
+
+    [Test]
+    public void Test12_DestroyStoredItem_WithoutBufferRemoval_ViolatesStorageInvariant()
+    {
+        // Arrange: 창고 건물 및 보관 아이템 생성
+        var storage = _entityManager.CreateEntity(typeof(Storage));
+        _entityManager.SetComponentData(storage, new Storage(4));
+        _entityManager.AddBuffer<StoredItemElement>(storage);
+
+        var reqEntity = _entityManager.CreateEntity(typeof(SpawnItemRequest));
+        _entityManager.SetComponentData(reqEntity, new SpawnItemRequest(
+            ItemTypeEnum.Iron,
+            storage,
+            ItemSpawnDestination.Storage,
+            targetSlotIndex: 0
+        ));
+
+        UpdateStateApplyPhase();
+        UpdateSynchronizationPhase();
+
+        var storedBuffer = _entityManager.GetBuffer<StoredItemElement>(storage);
+        Assert.AreEqual(1, storedBuffer.Length);
+        Entity item = storedBuffer[0].ItemEntity;
+
+        // Act: 계약 위반 시나리오 - 버퍼에서 제거하지 않고 DestroyItemRequest만 활성화
+        _entityManager.SetComponentEnabled<DestroyItemRequest>(item, true);
+
+        UpdateStateApplyPhase();
+
+        // Assert: 엔티티는 파괴되었으나 버퍼에 잔류하여 WorldInvariantValidationSystem에서 위반 검출
+        Assert.IsFalse(_entityManager.Exists(item), "Item entity was destroyed.");
+        var bufferAfterDestroy = _entityManager.GetBuffer<StoredItemElement>(storage);
+        Assert.AreEqual(1, bufferAfterDestroy.Length, "Buffer still retains dangling entity reference.");
+
+        _invariantValidationSystem.ResetViolationCount();
+        UpdateSynchronizationPhase();
+        Assert.Greater(_invariantValidationSystem.TotalViolationCount, 0, "Dangling pointer in storage buffer must trigger StorageInvariant violation.");
+    }
 }

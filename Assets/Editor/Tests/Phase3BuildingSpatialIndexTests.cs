@@ -119,4 +119,43 @@ public class Phase3BuildingSpatialIndexTests : EcsWorldTestFixture
         Assert.IsFalse(spatialIndex.HasBuildingAt(new int2(20, 20)));
         Assert.IsFalse(spatialIndex.TryGetBuilding(new int2(20, 20), out _));
     }
+
+    [Test]
+    public void Test05_BuildingSpatialIndex_LargeMultiTileBuildings_ExpandsCapacitySafely()
+    {
+        // Arrange: 기본 용량(1024)을 초과하는 3x3 건물 150개 생성 (총 점유 타일 수 = 150 * 9 = 1350)
+        const int buildingCount = 150;
+        var buildingEntities = new Entity[buildingCount];
+        for (int i = 0; i < buildingCount; i++)
+        {
+            // 각 건물이 겹치지 않도록 4타일 간격으로 배치
+            int2 pos = new int2((i % 20) * 4, (i / 20) * 4);
+            buildingEntities[i] = CreateBuilding(BuildingTypeEnum.Crafter, pos, new int2(3, 3), DirectionEnum.Up);
+        }
+
+        // Act: 공간 인덱스 동기화 수행
+        var spatialIndex = SyncBuildingSpatialIndex();
+
+        // Assert: 총 점유 타일 수(1350) 이상으로 맵 용량이 확장되었는지 확인
+        Assert.GreaterOrEqual(spatialIndex.Map.Capacity, 1350, "맵 용량이 총 점유 타일 수(1350) 이상으로 확장되어야 합니다.");
+
+        // 모든 건물의 3x3 점유 타일이 누락 없이 인덱스에 등록되었는지 전수 확인
+        for (int i = 0; i < buildingCount; i++)
+        {
+            int2 origin = new int2((i % 20) * 4, (i / 20) * 4);
+            Entity expectedEntity = buildingEntities[i];
+
+            for (int dy = 0; dy < 3; dy++)
+            {
+                for (int dx = 0; dx < 3; dx++)
+                {
+                    int2 tile = origin + new int2(dx, dy);
+                    Assert.IsTrue(spatialIndex.HasBuildingAt(tile), $"타일 {tile}에 건물이 존재해야 합니다.");
+                    Assert.IsTrue(spatialIndex.TryGetBuilding(tile, out BuildingInfo info), $"타일 {tile}의 건물 정보를 가져올 수 있어야 합니다.");
+                    Assert.AreEqual(expectedEntity, info.Entity, $"타일 {tile}의 엔티티가 일치해야 합니다.");
+                    Assert.AreEqual(BuildingTypeEnum.Crafter, info.Type);
+                }
+            }
+        }
+    }
 }

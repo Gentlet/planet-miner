@@ -81,12 +81,18 @@ public partial struct BuildingSpatialSyncSystem : ISystem
             return;
         }
 
-        // 다중 타일 점유(평균 4타일 이상)를 고려하여 용량 확인
-        int requiredCapacity = count * 4;
+        // 건물 점유 타일 수(Footprint 면적) 총합 기준 필요 용량 산출 및 안전 확장
+        int requiredCapacity = 0;
+        foreach (var footprint in SystemAPI.Query<RefRO<BuildingFootprint>>().WithAll<BuildingType, GridPosition, Direction>())
+        {
+            int2 size = math.max(footprint.ValueRO.Size, new int2(1, 1));
+            requiredCapacity += size.x * size.y;
+        }
+
         if (index.Map.Capacity < requiredCapacity)
         {
             fence.Complete();
-            index.Map.Capacity = math.max(1024, count * 8);
+            index.Map.Capacity = math.max(1024, requiredCapacity * 2);
         }
 
         // Writer 의존성: 마지막 Writer와 이전 모든 Readers 완료 대기

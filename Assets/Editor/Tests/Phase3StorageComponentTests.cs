@@ -113,4 +113,58 @@ public class Phase3StorageComponentTests : EcsWorldTestFixture
         Assert.AreEqual(ItemTypeEnum.Iron_Ore, retrievedBuffer[0].ItemType);
         Assert.AreEqual(0, retrievedBuffer[0].SlotIndex);
     }
+
+    [Test]
+    public void Test04_StorageSlotCount_ExceedingMaxStorageSlots_ViolatesStorageInvariant()
+    {
+        // Arrange: MaxStorageSlots(120) 초과 SlotCount = 200 창고 생성
+        var validationSystem = _world.GetOrCreateSystemManaged<WorldInvariantValidationSystem>();
+        var storageEntity = _entityManager.CreateEntity();
+        _entityManager.AddComponentData(storageEntity, new Storage(slotCount: 200));
+        _entityManager.AddBuffer<StoredItemElement>(storageEntity);
+
+        // Act
+        validationSystem.ResetViolationCount();
+        validationSystem.Update();
+
+        // Assert: SlotCount 초과에 대한 StorageInvariant 위반 검출 확인
+        Assert.Greater(validationSystem.TotalViolationCount, 0,
+            "SlotCount exceeding MaxStorageSlots must trigger StorageInvariant violation.");
+    }
+
+    [Test]
+    public void Test05_StorageSlotCount_ZeroOrNegative_ViolatesStorageInvariant()
+    {
+        // Arrange: 비정상 SlotCount = 0 창고 생성
+        var validationSystem = _world.GetOrCreateSystemManaged<WorldInvariantValidationSystem>();
+        var storageEntity = _entityManager.CreateEntity();
+        _entityManager.AddComponentData(storageEntity, new Storage(slotCount: 0));
+        _entityManager.AddBuffer<StoredItemElement>(storageEntity);
+
+        // Act
+        validationSystem.ResetViolationCount();
+        validationSystem.Update();
+
+        // Assert: 0 이하 SlotCount에 대한 StorageInvariant 위반 검출 확인
+        Assert.Greater(validationSystem.TotalViolationCount, 0,
+            "SlotCount <= 0 must trigger StorageInvariant violation.");
+    }
+
+    [Test]
+    public void Test06_StorageSlotCount_MaxStorageSlotsBoundary_MaintainsInvariants()
+    {
+        // Arrange: 상한 경계값 SlotCount = 120 정상 창고 생성
+        var validationSystem = _world.GetOrCreateSystemManaged<WorldInvariantValidationSystem>();
+        var storageEntity = _entityManager.CreateEntity();
+        _entityManager.AddComponentData(storageEntity, new Storage(slotCount: GameConstants.MaxStorageSlots));
+        _entityManager.AddBuffer<StoredItemElement>(storageEntity);
+
+        // Act
+        validationSystem.ResetViolationCount();
+        validationSystem.Update();
+
+        // Assert: 상한 경계값 정상 통과 및 위반 0건 확인
+        Assert.AreEqual(0, validationSystem.TotalViolationCount,
+            "SlotCount == MaxStorageSlots must maintain valid invariants with zero violations.");
+    }
 }
