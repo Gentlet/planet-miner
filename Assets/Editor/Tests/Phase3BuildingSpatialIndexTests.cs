@@ -18,20 +18,7 @@ public class Phase3BuildingSpatialIndexTests : EcsWorldTestFixture
     }
 
     private Entity CreateBuilding(BuildingTypeEnum type, int2 position, int2 size, DirectionEnum direction = DirectionEnum.Up)
-    {
-        var entity = _entityManager.CreateEntity(
-            typeof(BuildingType),
-            typeof(BuildingFootprint),
-            typeof(GridPosition),
-            typeof(Direction));
-
-        _entityManager.SetComponentData(entity, new BuildingType(type));
-        _entityManager.SetComponentData(entity, new BuildingFootprint(size));
-        _entityManager.SetComponentData(entity, new GridPosition(position));
-        _entityManager.SetComponentData(entity, new Direction(direction));
-
-        return entity;
-    }
+        => Entities.CreateBuilding(type, position, size, direction);
 
     private BuildingSpatialIndex SyncBuildingSpatialIndex()
     {

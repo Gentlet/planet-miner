@@ -11,12 +11,16 @@ namespace PlanetMiner.Tests
     {
         protected World _world;
         protected EntityManager _entityManager;
+        protected TestEntityFactory Entities;
+        protected TestSimulationDriver Simulation;
 
         [SetUp]
         public virtual void SetUp()
         {
             _world = new World(GetType().Name);
             _entityManager = _world.EntityManager;
+            Entities = new TestEntityFactory(_entityManager);
+            Simulation = new TestSimulationDriver(_world);
         }
 
         [TearDown]
@@ -27,6 +31,8 @@ namespace PlanetMiner.Tests
                 _world.Dispose();
                 _world = null;
                 _entityManager = default;
+                Entities = null;
+                Simulation = null;
             }
         }
     }

@@ -50,69 +50,18 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
 
     private Entity CreateCrafter(int2 position, int recipeId = 1)
     {
-        var entity = _entityManager.CreateEntity(
-            typeof(BuildingType),
-            typeof(BuildingFootprint),
-            typeof(GridPosition),
-            typeof(Direction),
-            typeof(CrafterState),
-            typeof(CrafterDecision),
-            typeof(Storage),
-            typeof(StorageFilter));
-
-        _entityManager.SetComponentData(entity, new BuildingType(BuildingTypeEnum.Crafter));
-        _entityManager.SetComponentData(entity, new BuildingFootprint(new int2(1, 1)));
-        _entityManager.SetComponentData(entity, new GridPosition(position));
-        _entityManager.SetComponentData(entity, new Direction(DirectionEnum.Up));
-        _entityManager.SetComponentData(entity, new CrafterState(recipeId));
-        _entityManager.SetComponentData(entity, new CrafterDecision(false, recipeId));
-        _entityManager.SetComponentEnabled<CrafterDecision>(entity, false);
-        _entityManager.SetComponentData(entity, new Storage(slotCount: 4));
-
-        // 초기 필터 설정 (Recipe 1: Iron_Ore -> Iron)
         var filter = new StorageFilter(StorageFilterMode.Whitelist);
         filter.Mask.Set((byte)ItemTypeEnum.Iron_Ore, true);
-        _entityManager.SetComponentData(entity, filter);
-
-        _entityManager.AddBuffer<StoredItemElement>(entity);
-        _entityManager.AddBuffer<ProductItemElement>(entity);
-        _entityManager.AddBuffer<ProductResult>(entity);
-
-        return entity;
+        return Entities.CreateCrafter(position, recipeId, filter: filter);
     }
 
     private Entity CreateBelt(int2 position, DirectionEnum direction)
-    {
-        var entity = _entityManager.CreateEntity(
-            typeof(GridPosition),
-            typeof(Direction),
-            typeof(BeltComponent));
-
-        _entityManager.SetComponentData(entity, new GridPosition(position));
-        _entityManager.SetComponentData(entity, new Direction(direction));
-        _entityManager.SetComponentData(entity, new BeltComponent(2.0f));
-        return entity;
-    }
+        => Entities.CreateBelt(position, direction);
 
     private Entity CreateBeltItem(int2 position, DirectionEnum direction, float progress, ItemTypeEnum itemType)
     {
-        CreateBelt(position, direction);
-
-        var entity = _entityManager.CreateEntity(
-            typeof(ItemIdentity),
-            typeof(ItemOwnership),
-            typeof(GridPosition),
-            typeof(BeltMovementState),
-            typeof(BuildingItemInputDecision));
-
-        _entityManager.SetComponentData(entity, new ItemIdentity(itemType));
-        _entityManager.SetComponentData(entity, ItemOwnership.WorldItem);
-        _entityManager.SetComponentData(entity, new GridPosition(position));
-        _entityManager.SetComponentData(entity, new BeltMovementState(progress));
-        _entityManager.SetComponentData(entity, new BuildingItemInputDecision(Entity.Null, false, -1));
-        _entityManager.SetComponentEnabled<BuildingItemInputDecision>(entity, false);
-
-        return entity;
+        Entities.CreateBelt(position, direction);
+        return Entities.CreateBeltItem(position, direction, progress, 0.0f, itemType);
     }
 
     private void SyncSpatialIndices()
@@ -129,10 +78,15 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
     [Test]
     public void Test01_RecipeChange_PurgesAndEntersWaitingForPurgeOutput_BlocksBeltDeposit()
     {
-        // Arrange: (1, 0)에 Recipe 1(Iron) Crafter 배치, StoredItemElement에 Iron_Ore 1개 보관
+        // Arrange: (1, 0)에 Recipe 1(Iron) Crafter 배치.
+        // 기존 CrafterExecution 레시피 변경 테스트의 검증도 이 파이프라인 테스트로 통합합니다.
         var crafter = CreateCrafter(new int2(1, 0), recipeId: 1);
+        Entities.CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore, 0);
+        Entities.CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore, 0);
+        Entities.CreateStoredItem(crafter, ItemTypeEnum.Copper_Ore, 1);
+
         var storedBuffer = _entityManager.GetBuffer<StoredItemElement>(crafter);
-        storedBuffer.Add(new StoredItemElement(Entity.Null, ItemTypeEnum.Iron_Ore, 0));
+        Assert.AreEqual(3, storedBuffer.Length);
 
         // (0, 0) 벨트에서 (1, 0) Crafter로 향하는 아이템(새 레시피 재료인 Copper_Ore) 배치 (Progress = 1.0f)
         var beltItem = CreateBeltItem(new int2(0, 0), DirectionEnum.Right, 1.0f, ItemTypeEnum.Copper_Ore);
@@ -151,13 +105,31 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
         var storedBufferAfter = _entityManager.GetBuffer<StoredItemElement>(crafter);
         var productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
         Assert.AreEqual(0, storedBufferAfter.Length, "Stored items must be purged clean.");
-        Assert.AreEqual(1, productBuffer.Length, "Item must be in product buffer.");
+        Assert.AreEqual(3, productBuffer.Length, "All purged items must move to ProductItemElement.");
+
+        int ironCount = 0;
+        int copperCount = 0;
+        for (int i = 0; i < productBuffer.Length; i++)
+        {
+            Assert.GreaterOrEqual(productBuffer[i].SlotIndex, 2, "Purged items must use purge slots (>= 2).");
+            if (productBuffer[i].ItemType == ItemTypeEnum.Iron_Ore) ironCount++;
+            if (productBuffer[i].ItemType == ItemTypeEnum.Copper_Ore) copperCount++;
+        }
+
+        Assert.AreEqual(2, ironCount);
+        Assert.AreEqual(1, copperCount);
+
         var state = _entityManager.GetComponentData<CrafterState>(crafter);
+        Assert.AreEqual(2, state.ActiveRecipeId);
+        Assert.AreEqual(2, state.SelectedRecipeId);
         Assert.AreEqual(CrafterStatusEnum.WaitingForPurgeOutput, state.Status);
 
         // Assert 2: StorageFilter는 Copper_Ore 허용으로 즉시 갱신되었는지 확인
         var filter = _entityManager.GetComponentData<StorageFilter>(crafter);
+        Assert.AreEqual(StorageFilterMode.Whitelist, filter.Mode);
         Assert.IsTrue(filter.IsItemAllowed(ItemTypeEnum.Copper_Ore));
+        Assert.IsFalse(filter.IsItemAllowed(ItemTypeEnum.Iron_Ore));
+        Assert.IsFalse(_entityManager.Exists(reqEntity), "Recipe change request must be consumed.");
 
         // Act 2: Phase 2 DecisionGroup 실행 (BuildingItemInputDecisionSystem)
         _inputDecisionHandle.Update(_world.Unmanaged);

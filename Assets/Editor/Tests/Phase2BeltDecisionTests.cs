@@ -24,32 +24,10 @@ public class Phase2BeltDecisionTests : EcsWorldTestFixture
     }
 
     private Entity CreateBelt(int2 position, DirectionEnum direction, float speed = 2.0f)
-    {
-        var entity = _entityManager.CreateEntity(typeof(GridPosition), typeof(Direction), typeof(BeltComponent));
-        _entityManager.SetComponentData(entity, new GridPosition(position));
-        _entityManager.SetComponentData(entity, new Direction(direction));
-        _entityManager.SetComponentData(entity, new BeltComponent(speed));
-        return entity;
-    }
+        => Entities.CreateBelt(position, direction, speed);
 
     private Entity CreateBeltItem(int2 position, float progress, ItemTypeEnum itemType = ItemTypeEnum.Iron_Ore)
-    {
-        var entity = _entityManager.CreateEntity(
-            typeof(ItemIdentity),
-            typeof(GridPosition),
-            typeof(ItemOwnership),
-            typeof(BeltMovementState),
-            typeof(BeltMovementDecision));
-
-        _entityManager.SetComponentData(entity, new ItemIdentity(itemType));
-        _entityManager.SetComponentData(entity, new GridPosition(position));
-        _entityManager.SetComponentData(entity, ItemOwnership.WorldItem);
-        _entityManager.SetComponentData(entity, new BeltMovementState(progress));
-        _entityManager.SetComponentData(entity, new BeltMovementDecision());
-        _entityManager.SetComponentEnabled<BeltMovementState>(entity, true);
-        _entityManager.SetComponentEnabled<BeltMovementDecision>(entity, true);
-        return entity;
-    }
+        => Entities.CreateBeltItem(position, DirectionEnum.Right, progress, 0.0f, itemType);
 
     private void SyncSpatialIndices()
     {
@@ -58,10 +36,7 @@ public class Phase2BeltDecisionTests : EcsWorldTestFixture
     }
 
     private void RunDecisionPhase(float deltaTime)
-    {
-        _world.SetTime(new Unity.Core.TimeData(0.1, deltaTime));
-        _beltDecisionHandle.Update(_world.Unmanaged);
-    }
+        => Simulation.Update(_beltDecisionHandle, deltaTime);
 
     [Test]
     public void Test01_FreeMovement_CalculatesFullSpeedDistance()

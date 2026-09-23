@@ -91,78 +91,16 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
     }
 
     private Entity CreateResourceNode(int2 position, ItemTypeEnum resourceType, int amount)
-    {
-        var entity = _entityManager.CreateEntity(
-            typeof(ResourceNode),
-            typeof(GridPosition));
-
-        _entityManager.SetComponentData(entity, new ResourceNode(resourceType, amount));
-        _entityManager.SetComponentData(entity, new GridPosition(position));
-        return entity;
-    }
+        => Entities.CreateResourceNode(position, resourceType, amount);
 
     private Entity CreateMiner(int2 position, int2 size, DirectionEnum direction, float miningSpeed = 1.0f)
-    {
-        var entity = _entityManager.CreateEntity(
-            typeof(BuildingType),
-            typeof(BuildingFootprint),
-            typeof(GridPosition),
-            typeof(Direction),
-            typeof(BuildingItemOutputDecision),
-            typeof(MinerState),
-            typeof(MinerDecision));
-
-        _entityManager.SetComponentData(entity, new BuildingType(BuildingTypeEnum.Miner));
-        _entityManager.SetComponentData(entity, new BuildingFootprint(size));
-        _entityManager.SetComponentData(entity, new GridPosition(position));
-        _entityManager.SetComponentData(entity, new Direction(direction));
-        _entityManager.SetComponentData(entity, new BuildingItemOutputDecision(false, Entity.Null, int2.zero));
-        _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(entity, false);
-        _entityManager.SetComponentData(entity, new MinerState(miningSpeed, 0.0f));
-        _entityManager.SetComponentData(entity, new MinerDecision(false, Entity.Null));
-        _entityManager.SetComponentEnabled<MinerDecision>(entity, false);
-
-        _entityManager.AddBuffer<ProductItemElement>(entity);
-        _entityManager.AddBuffer<ProductResult>(entity);
-
-        return entity;
-    }
+        => Entities.CreateMiner(position, size, direction, miningSpeed);
 
     private Entity CreateBelt(int2 position, DirectionEnum direction, float speed = 2.0f)
-    {
-        var entity = _entityManager.CreateEntity(
-            typeof(GridPosition),
-            typeof(Direction),
-            typeof(BeltComponent));
-
-        _entityManager.SetComponentData(entity, new GridPosition(position));
-        _entityManager.SetComponentData(entity, new Direction(direction));
-        _entityManager.SetComponentData(entity, new BeltComponent(speed));
-        return entity;
-    }
+        => Entities.CreateBelt(position, direction, speed);
 
     private Entity CreateStorage(int2 position, int2 size, DirectionEnum direction = DirectionEnum.Up, int slotCount = 4)
-    {
-        var entity = _entityManager.CreateEntity(
-            typeof(BuildingType),
-            typeof(BuildingFootprint),
-            typeof(GridPosition),
-            typeof(Direction),
-            typeof(Storage),
-            typeof(BuildingItemOutputDecision));
-
-        _entityManager.SetComponentData(entity, new BuildingType(BuildingTypeEnum.Storage));
-        _entityManager.SetComponentData(entity, new BuildingFootprint(size));
-        _entityManager.SetComponentData(entity, new GridPosition(position));
-        _entityManager.SetComponentData(entity, new Direction(direction));
-        _entityManager.SetComponentData(entity, new Storage(slotCount));
-        _entityManager.SetComponentData(entity, new BuildingItemOutputDecision(false, Entity.Null, int2.zero));
-        _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(entity, false);
-
-        _entityManager.AddBuffer<StoredItemElement>(entity);
-
-        return entity;
-    }
+        => Entities.CreateStorage(position, size, direction, slotCount);
 
     private void RunSimulationTicks(int tickCount, float deltaTime = 0.05f)
     {

@@ -63,34 +63,10 @@ public class Phase2BeltIntegrationTests : EcsWorldTestFixture
     }
 
     private Entity CreateBelt(int2 position, DirectionEnum direction, float speed = 2.0f)
-    {
-        var entity = _entityManager.CreateEntity(typeof(GridPosition), typeof(Direction), typeof(BeltComponent));
-        _entityManager.SetComponentData(entity, new GridPosition(position));
-        _entityManager.SetComponentData(entity, new Direction(direction));
-        _entityManager.SetComponentData(entity, new BeltComponent(speed));
-        return entity;
-    }
+        => Entities.CreateBelt(position, direction, speed);
 
     private Entity CreateBeltItem(int2 position, float progress, float plannedProgress = 0.0f, ItemTypeEnum itemType = ItemTypeEnum.Iron_Ore)
-    {
-        var entity = _entityManager.CreateEntity(
-            typeof(ItemIdentity),
-            typeof(GridPosition),
-            typeof(LocalTransform),
-            typeof(ItemOwnership),
-            typeof(BeltMovementState),
-            typeof(BeltMovementDecision));
-
-        _entityManager.SetComponentData(entity, new ItemIdentity(itemType));
-        _entityManager.SetComponentData(entity, new GridPosition(position));
-        _entityManager.SetComponentData(entity, LocalTransform.FromPosition(new float3(position.x, position.y, 0f)));
-        _entityManager.SetComponentData(entity, ItemOwnership.WorldItem);
-        _entityManager.SetComponentData(entity, new BeltMovementState(progress));
-        _entityManager.SetComponentData(entity, new BeltMovementDecision(plannedProgress));
-        _entityManager.SetComponentEnabled<BeltMovementState>(entity, true);
-        _entityManager.SetComponentEnabled<BeltMovementDecision>(entity, true);
-        return entity;
-    }
+        => Entities.CreateBeltItem(position, DirectionEnum.Right, progress, plannedProgress, itemType);
 
     /// <summary>
     /// Phase 2 ~ Phase 6 전체 시뮬레이션 프레임을 실행합니다:
