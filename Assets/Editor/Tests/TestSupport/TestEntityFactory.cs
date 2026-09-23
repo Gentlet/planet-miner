@@ -179,6 +179,7 @@ namespace PlanetMiner.Tests
                 typeof(Direction),
                 typeof(CrafterState),
                 typeof(CrafterDecision),
+                typeof(CrafterStateDecision),
                 typeof(Storage),
                 typeof(StorageFilter));
 
@@ -189,6 +190,11 @@ namespace PlanetMiner.Tests
             _entityManager.SetComponentData(entity, new CrafterState(recipeId, speed));
             _entityManager.SetComponentData(entity, new CrafterDecision(false, recipeId));
             _entityManager.SetComponentEnabled<CrafterDecision>(entity, false);
+            _entityManager.SetComponentData(
+                entity,
+                new CrafterStateDecision(
+                    recipeId > 0 ? CrafterStatusEnum.Idle : CrafterStatusEnum.NoRecipe));
+            _entityManager.SetComponentEnabled<CrafterStateDecision>(entity, false);
             _entityManager.SetComponentData(entity, new Storage(slotCount));
             _entityManager.SetComponentData(
                 entity,

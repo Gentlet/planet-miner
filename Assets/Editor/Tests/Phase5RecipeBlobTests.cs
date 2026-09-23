@@ -168,11 +168,14 @@ public class Phase5RecipeBlobTests : EcsWorldTestFixture
         var crafterEntity = _entityManager.CreateEntity(
             typeof(CrafterState),
             typeof(CrafterDecision),
+            typeof(CrafterStateDecision),
             typeof(Storage));
 
         _entityManager.SetComponentData(crafterEntity, new CrafterState(selectedRecipeId: 1, speed: 1.5f));
         _entityManager.SetComponentData(crafterEntity, new CrafterDecision(canCraft: false, recipeId: 1));
         _entityManager.SetComponentEnabled<CrafterDecision>(crafterEntity, false);
+        _entityManager.SetComponentData(crafterEntity, new CrafterStateDecision(CrafterStatusEnum.Idle));
+        _entityManager.SetComponentEnabled<CrafterStateDecision>(crafterEntity, false);
         _entityManager.SetComponentData(crafterEntity, new Storage(slotCount: 4));
         _entityManager.AddBuffer<ProductResult>(crafterEntity);
 
@@ -183,6 +186,7 @@ public class Phase5RecipeBlobTests : EcsWorldTestFixture
         Assert.AreEqual(CrafterStatusEnum.Idle, state.Status);
 
         Assert.IsFalse(_entityManager.IsComponentEnabled<CrafterDecision>(crafterEntity));
+        Assert.IsFalse(_entityManager.IsComponentEnabled<CrafterStateDecision>(crafterEntity));
         Assert.AreEqual(0, _entityManager.GetBuffer<ProductResult>(crafterEntity).Length);
     }
 

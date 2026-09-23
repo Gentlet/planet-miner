@@ -16,6 +16,7 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
     private BlobAssetReference<RecipeRegistryBlob> _recipeBlob;
     private SystemHandle _crafterCommandHandle;
     private SystemHandle _crafterDecisionHandle;
+    private SystemHandle _crafterStateApplyHandle;
     private SystemHandle _inputDecisionHandle;
     private SystemHandle _buildingSpatialSyncHandle;
     private SystemHandle _beltSpatialSyncHandle;
@@ -32,6 +33,7 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
         // 2. 시스템 핸들 획득
         _crafterCommandHandle = _world.GetOrCreateSystem(typeof(CrafterRecipeCommandSystem));
         _crafterDecisionHandle = _world.GetOrCreateSystem(typeof(CrafterDecisionSystem));
+        _crafterStateApplyHandle = _world.GetOrCreateSystem(typeof(CrafterStateApplySystem));
         _inputDecisionHandle = _world.GetOrCreateSystem(typeof(BuildingItemInputDecisionSystem));
         _buildingSpatialSyncHandle = _world.GetOrCreateSystem(typeof(BuildingSpatialSyncSystem));
         _beltSpatialSyncHandle = _world.GetOrCreateSystem(typeof(BeltSpatialSyncSystem));
@@ -162,23 +164,51 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
         var beltItem = CreateBeltItem(new int2(0, 0), DirectionEnum.Right, 1.0f, ItemTypeEnum.Copper_Ore);
         SyncSpatialIndices();
 
-        // 1. 출력 버퍼가 차 있는 동안 CrafterDecisionSystem 실행 -> 상태 유지
+        // 1. 출력 버퍼가 차 있는 동안 Decision은 WaitingForByproductOutput 유지를 결정
         _crafterDecisionHandle.Update(_world.Unmanaged);
+        var stateDecision = _entityManager.GetComponentData<CrafterStateDecision>(crafter);
+        Assert.AreEqual(CrafterStatusEnum.WaitingForByproductOutput, stateDecision.NextStatus);
+        Assert.IsTrue(_entityManager.IsComponentEnabled<CrafterStateDecision>(crafter));
+
+        _crafterStateApplyHandle.Update(_world.Unmanaged);
+        _endStateApplyEcb.Update();
         state = _entityManager.GetComponentData<CrafterState>(crafter);
         Assert.AreEqual(CrafterStatusEnum.WaitingForByproductOutput, state.Status);
 
-        // 2. 출력 버퍼가 완전히 비워짐 (방안 A: productItems.Length == 0)
+        // EndStateApply playback 이후 DynamicBuffer handle을 다시 획득합니다.
+        productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
+
+        // 2. 출력 버퍼가 완전히 비워짐
         productBuffer.Clear();
 
-        // 3. CrafterDecisionSystem 실행 -> Idle 복귀
+        // 3. Decision은 다음 상태를 WaitingForInput으로 계산하지만 Persistent State는 아직 변경하지 않음
         _crafterDecisionHandle.Update(_world.Unmanaged);
+        stateDecision = _entityManager.GetComponentData<CrafterStateDecision>(crafter);
         state = _entityManager.GetComponentData<CrafterState>(crafter);
-        Assert.AreEqual(CrafterStatusEnum.WaitingForInput, state.Status, "Crafter should transition out of WaitingForByproductOutput to WaitingForInput (ingredients not yet deposited).");
 
-        // 4. BuildingItemInputDecisionSystem 실행 -> 입고 허용!
+        Assert.AreEqual(CrafterStatusEnum.WaitingForInput, stateDecision.NextStatus);
+        Assert.IsTrue(_entityManager.IsComponentEnabled<CrafterStateDecision>(crafter));
+        Assert.AreEqual(
+            CrafterStatusEnum.WaitingForByproductOutput,
+            state.Status,
+            "Decision phase must not mutate persistent CrafterState.Status.");
+
+        // 4. 같은 프레임의 BuildingItemInputDecision은 기존 State를 읽으므로 입고가 한 프레임 더 차단됨
         _inputDecisionHandle.Update(_world.Unmanaged);
         var inputDecision = _entityManager.GetComponentData<BuildingItemInputDecision>(beltItem);
-        Assert.IsTrue(inputDecision.CanDeposit, "Belt item should now be accepted into Crafter!");
+        Assert.IsFalse(inputDecision.CanDeposit, "Input remains blocked until StateApply commits the new Crafter status.");
+
+        // 5. StateApply에서 WaitingForInput 반영
+        _crafterStateApplyHandle.Update(_world.Unmanaged);
+        _endStateApplyEcb.Update();
+        state = _entityManager.GetComponentData<CrafterState>(crafter);
+        Assert.AreEqual(CrafterStatusEnum.WaitingForInput, state.Status);
+        Assert.IsFalse(_entityManager.IsComponentEnabled<CrafterStateDecision>(crafter));
+
+        // 6. 다음 Decision 프레임부터 새 레시피 재료 입고 허용
+        _inputDecisionHandle.Update(_world.Unmanaged);
+        inputDecision = _entityManager.GetComponentData<BuildingItemInputDecision>(beltItem);
+        Assert.IsTrue(inputDecision.CanDeposit, "Belt item should be accepted after the StateApply status transition.");
         Assert.AreEqual(crafter, inputDecision.TargetBuilding);
     }
 }
