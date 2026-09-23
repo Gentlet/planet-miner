@@ -2,6 +2,16 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
+/// 아이템 스폰 요청 목적지 구분.
+/// </summary>
+public enum ItemSpawnDestination : byte
+{
+    World,      // 필드/바닥/그리드에 월드 아이템으로 스폰 (TargetOwner = Entity.Null)
+    Storage,    // TargetOwner의 StoredItemElement(보관함/재료함)에 적재
+    Product     // TargetOwner의 ProductItemElement(생산물 출력 대기 버퍼)에 적재
+}
+
+/// <summary>
 /// [1. 역할]            : 새로운 아이템 엔티티 생성 요청 (독립 엔티티 방식 - 모델 A)
 /// [2. Producer (생성자)] : 채굴기(Miner), 제작기(Crafter), 월드 스포너, 초기화 시스템 등
 /// [3. Consumer (소비자)] : ItemLifecycleApplySystem (StateApplyGroup)
@@ -14,31 +24,35 @@ using Unity.Mathematics;
 public struct SpawnItemRequest : IRequestComponent
 {
     public ItemTypeEnum ItemType;
-    public int2 Position;       // 월드 스폰 위치 (월드 아이템 기준)
-    public Entity TargetOwner;  // Entity.Null이면 월드 스폰, 특정 건물이면 보관 아이템으로 스폰
-    public int TargetSlotIndex; // 건물 적재 시 대상 슬롯 번호 (기본: 0)
+    public int2 Position;                     // 월드 스폰 위치 (월드 아이템 기준)
+    public Entity TargetOwner;                // 스폰 대상 소유 건물 (Storage/Product 기준)
+    public ItemSpawnDestination Destination;  // 스폰 목적지 (World, Storage, Product)
+    public int TargetSlotIndex;               // 건물 적재 시 대상 슬롯 번호 (기본: 0)
 
     public SpawnItemRequest(ItemTypeEnum itemType, int2 position)
     {
         ItemType = itemType;
         Position = position;
         TargetOwner = Entity.Null;
+        Destination = ItemSpawnDestination.World;
         TargetSlotIndex = 0;
     }
 
-    public SpawnItemRequest(ItemTypeEnum itemType, Entity targetOwner, int targetSlotIndex = 0)
+    public SpawnItemRequest(ItemTypeEnum itemType, Entity targetOwner, ItemSpawnDestination destination, int targetSlotIndex = 0)
     {
         ItemType = itemType;
         Position = int2.zero;
         TargetOwner = targetOwner;
+        Destination = destination;
         TargetSlotIndex = targetSlotIndex;
     }
 
-    public SpawnItemRequest(ItemTypeEnum itemType, int2 position, Entity targetOwner, int targetSlotIndex = 0)
+    public SpawnItemRequest(ItemTypeEnum itemType, int2 position, Entity targetOwner, ItemSpawnDestination destination, int targetSlotIndex = 0)
     {
         ItemType = itemType;
         Position = position;
         TargetOwner = targetOwner;
+        Destination = destination;
         TargetSlotIndex = targetSlotIndex;
     }
 }

@@ -539,7 +539,7 @@ CrafterState.Status
 
 ---
 
-# 피드백 5. `SpawnItemRequest`의 목적지(Storage/Product/World) 명시
+# 피드백 5. `SpawnItemRequest`의 목적지(Storage/Product/World) 명시 ( 적용 완료 )
 
 **적용 시점: 지금 계약 확정 / 후속 Task에서 확장**  
 **우선순위: 중간~높음**
@@ -1108,7 +1108,7 @@ Phase 6 작업을 시작하기 전에 다음 항목을 닫는 것을 권장한�
 
 ## 데이터 계약
 
-- [ ] `SpawnItemRequest`가 World / Storage / Product 목적지를 명확히 표현한다.
+- [x] `SpawnItemRequest`가 World / Storage / Product 목적지를 명확히 표현한다. (완료: ItemSpawnDestination 도입, 목적지별 버퍼 적재 및 부재 시 Drop)
 - [ ] `DestroyItemRequest` 발행 전 Owner Buffer 처리 책임이 명확하다.
 - [ ] 모든 Core Simulation 시스템이 같은 DeltaTime 정책을 사용한다.
 - [ ] `Storage.SlotCount`가 `MaxStorageSlots` 범위를 벗어나면 명확히 검출된다.
