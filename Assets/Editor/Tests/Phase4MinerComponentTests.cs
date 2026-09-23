@@ -24,42 +24,10 @@ public class Phase4MinerComponentTests : EcsWorldTestFixture
     }
 
     private Entity CreateResourceNode(int2 position, ItemTypeEnum resourceType, int amount)
-    {
-        var entity = _entityManager.CreateEntity(
-            typeof(ResourceNode),
-            typeof(GridPosition));
-
-        _entityManager.SetComponentData(entity, new ResourceNode(resourceType, amount));
-        _entityManager.SetComponentData(entity, new GridPosition(position));
-        return entity;
-    }
+        => Entities.CreateResourceNode(position, resourceType, amount);
 
     private Entity CreateMiner(int2 position, DirectionEnum direction, float miningSpeed = 1.0f)
-    {
-        var entity = _entityManager.CreateEntity(
-            typeof(BuildingType),
-            typeof(BuildingFootprint),
-            typeof(GridPosition),
-            typeof(Direction),
-            typeof(BuildingItemOutputDecision),
-            typeof(MinerState),
-            typeof(MinerDecision));
-
-        _entityManager.SetComponentData(entity, new BuildingType(BuildingTypeEnum.Miner));
-        _entityManager.SetComponentData(entity, new BuildingFootprint(new int2(1, 1)));
-        _entityManager.SetComponentData(entity, new GridPosition(position));
-        _entityManager.SetComponentData(entity, new Direction(direction));
-        _entityManager.SetComponentData(entity, new BuildingItemOutputDecision(false, Entity.Null, int2.zero));
-        _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(entity, false);
-        _entityManager.SetComponentData(entity, new MinerState(miningSpeed, 0.0f));
-        _entityManager.SetComponentData(entity, new MinerDecision(false, Entity.Null));
-        _entityManager.SetComponentEnabled<MinerDecision>(entity, false);
-
-        _entityManager.AddBuffer<ProductItemElement>(entity);
-        _entityManager.AddBuffer<ProductResult>(entity);
-
-        return entity;
-    }
+        => Entities.CreateMiner(position, new int2(1, 1), direction, miningSpeed);
 
     private void SyncResourceSpatialIndex()
     {

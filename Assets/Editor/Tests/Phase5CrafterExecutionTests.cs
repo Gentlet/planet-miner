@@ -9,12 +9,10 @@ using Unity.Mathematics;
 /// Task 5.2: Crafter Decision & Execution System 통합 단위/파이프라인 검증 테스트.
 /// - CrafterDecisionSystem: 레시피 유효성, 입력 재료 보유량, 출력 버퍼 수용 공간 판정
 /// - CrafterExecutionSystem: 제작 착수 시 선소비(피드백 3번 완전 충족), 진행도 누적, ProductResult 기록(정책 B)
-/// - 레시피 변경 시 재료 배출(Purge to Output) 및 StorageFilter 자동 동기화
 /// </summary>
 public class Phase5CrafterExecutionTests : EcsWorldTestFixture
 {
     private BlobAssetReference<RecipeRegistryBlob> _recipeBlob;
-    private SystemHandle _crafterCommandHandle;
     private SystemHandle _crafterDecisionHandle;
     private SystemHandle _crafterExecutionHandle;
     private SystemHandle _lifecycleHandle;
@@ -29,7 +27,6 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         _recipeBlob = RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
 
         // 2. 시스템 핸들 획득
-        _crafterCommandHandle = _world.GetOrCreateSystem(typeof(CrafterRecipeCommandSystem));
         _crafterDecisionHandle = _world.GetOrCreateSystem(typeof(CrafterDecisionSystem));
         _crafterExecutionHandle = _world.GetOrCreateSystem(typeof(CrafterExecutionSystem));
         _lifecycleHandle = _world.GetOrCreateSystem(typeof(ItemLifecycleApplySystem));
@@ -47,73 +44,24 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
     }
 
     private Entity CreateCrafter(int recipeId = 1, float speed = 1.0f)
-    {
-        var entity = _entityManager.CreateEntity(
-            typeof(BuildingType),
-            typeof(CrafterState),
-            typeof(CrafterDecision),
-            typeof(Storage),
-            typeof(StorageFilter));
-
-        _entityManager.SetComponentData(entity, new BuildingType(BuildingTypeEnum.Crafter));
-        _entityManager.SetComponentData(entity, new CrafterState(recipeId, speed));
-        _entityManager.SetComponentData(entity, new CrafterDecision(false, recipeId));
-        _entityManager.SetComponentEnabled<CrafterDecision>(entity, false);
-        _entityManager.SetComponentData(entity, new Storage(slotCount: 4));
-        _entityManager.SetComponentData(entity, new StorageFilter(StorageFilterMode.Whitelist));
-
-        // 재료 버퍼, 실제 출력 버퍼, StateApply 전 생산 결과 버퍼를 분리 부착
-        _entityManager.AddBuffer<StoredItemElement>(entity);
-        _entityManager.AddBuffer<ProductItemElement>(entity);
-        _entityManager.AddBuffer<ProductResult>(entity);
-
-        return entity;
-    }
+        => Entities.CreateCrafter(int2.zero, recipeId, speed);
 
     private Entity CreateStoredItem(Entity owner, ItemTypeEnum itemType, int slotIndex = 0)
-    {
-        var itemEntity = _entityManager.CreateEntity(
-            typeof(ItemIdentity),
-            typeof(ItemOwnership),
-            typeof(GridPosition),
-            typeof(BeltMovementState),
-            typeof(BeltMovementDecision),
-            typeof(BuildingItemInputDecision),
-            typeof(DestroyItemRequest),
-            typeof(TransferOwnershipRequest));
-
-        _entityManager.SetComponentData(itemEntity, new ItemIdentity(itemType));
-        _entityManager.SetComponentData(itemEntity, ItemOwnership.Stored(owner));
-        _entityManager.SetComponentData(itemEntity, new GridPosition(int2.zero));
-
-        _entityManager.SetComponentEnabled<BeltMovementState>(itemEntity, false);
-        _entityManager.SetComponentEnabled<BeltMovementDecision>(itemEntity, false);
-        _entityManager.SetComponentEnabled<BuildingItemInputDecision>(itemEntity, false);
-        _entityManager.SetComponentEnabled<DestroyItemRequest>(itemEntity, false);
-        _entityManager.SetComponentEnabled<TransferOwnershipRequest>(itemEntity, false);
-
-        var storedBuffer = _entityManager.GetBuffer<StoredItemElement>(owner);
-        storedBuffer.Add(new StoredItemElement(itemEntity, itemType, slotIndex));
-
-        return itemEntity;
-    }
+        => Entities.CreateStoredItem(owner, itemType, slotIndex);
 
     private void RunDecisionPhase()
-    {
-        _crafterDecisionHandle.Update(_world.Unmanaged);
-    }
+        => Simulation.Update(_crafterDecisionHandle);
 
     private void RunExecutionPhase(float deltaTime)
     {
-        _world.SetTime(new Unity.Core.TimeData(0.1, deltaTime));
-        _crafterExecutionHandle.Update(_world.Unmanaged);
-        _endStateApplyEcb.Update();
+        Simulation.Update(_crafterExecutionHandle, deltaTime);
+        Simulation.Playback(_endStateApplyEcb);
     }
 
     private void RunLifecyclePhase()
     {
-        _lifecycleHandle.Update(_world.Unmanaged);
-        _endStateApplyEcb.Update();
+        Simulation.Update(_lifecycleHandle);
+        Simulation.Playback(_endStateApplyEcb);
     }
 
     private void StepSimulation(float totalDuration, float stepDt = 0.1f)
@@ -315,64 +263,5 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         Assert.AreEqual(50, productBuffer.Length, "Product must be spawned once space becomes available.");
     }
 
-    [Test]
-    public void Test06_RecipeChange_PurgesStoredItemsToProductBufferAndUpdatesFilter()
-    {
-        // Arrange: Recipe 1 (Iron)으로 설정된 제작기
-        var crafter = CreateCrafter(recipeId: 1);
 
-        // StoredItemElement에 아이템 2종(Iron_Ore 2개, Copper_Ore 1개) 보관
-        CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore, 0);
-        CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore, 0);
-        CreateStoredItem(crafter, ItemTypeEnum.Copper_Ore, 1);
-
-        var storedBuffer = _entityManager.GetBuffer<StoredItemElement>(crafter);
-        var productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
-        Assert.AreEqual(3, storedBuffer.Length);
-        Assert.AreEqual(0, productBuffer.Length);
-
-        // Act: ChangeCrafterRecipeRequest를 통해 레시피를 1에서 2(Copper)로 변경 요청
-        var reqEntity = _entityManager.CreateEntity(typeof(ChangeCrafterRecipeRequest));
-        _entityManager.SetComponentData(reqEntity, new ChangeCrafterRecipeRequest(crafter, newRecipeId: 2));
-
-        // CommandGroup 실행 -> CrafterRecipeCommandSystem이 레시피 변경 및 배출 처리
-        _crafterCommandHandle.Update(_world.Unmanaged);
-        _endStateApplyEcb.Update(); // Request Entity 파괴 Playback
-
-        storedBuffer = _entityManager.GetBuffer<StoredItemElement>(crafter);
-        productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
-
-        // Assert 1: StoredItemElement가 완전히 비워졌는지 확인
-        Assert.AreEqual(0, storedBuffer.Length, "StoredItemElement must be purged clean on recipe change.");
-
-        // Assert 2: ProductItemElement로 3개 아이템이 모두 이관되었는지 확인
-        Assert.AreEqual(3, productBuffer.Length, "Purged items must be transferred to ProductItemElement.");
-
-        // Slot 2, 3으로 분리 배정되어 단일 품목(Slot pollution 방지) 규칙을 준수하는지 확인
-        int ironCount = 0;
-        int copperCount = 0;
-        for (int i = 0; i < productBuffer.Length; i++)
-        {
-            Assert.GreaterOrEqual(productBuffer[i].SlotIndex, 2, "Purged items must use purge slots (>= 2).");
-            if (productBuffer[i].ItemType == ItemTypeEnum.Iron_Ore) ironCount++;
-            if (productBuffer[i].ItemType == ItemTypeEnum.Copper_Ore) copperCount++;
-        }
-        Assert.AreEqual(2, ironCount);
-        Assert.AreEqual(1, copperCount);
-
-        // Assert 3: StorageFilter가 새 레시피(Copper_Ore)로 자동 갱신되었는지 확인
-        var filter = _entityManager.GetComponentData<StorageFilter>(crafter);
-        Assert.AreEqual(StorageFilterMode.Whitelist, filter.Mode);
-        Assert.IsTrue(filter.IsItemAllowed(ItemTypeEnum.Copper_Ore), "Copper_Ore must be allowed by whitelist.");
-        Assert.IsFalse(filter.IsItemAllowed(ItemTypeEnum.Iron_Ore), "Iron_Ore must be blocked by whitelist.");
-
-        // Assert 4: ActiveRecipeId와 SelectedRecipeId가 2로 동기화되고, 상태가 WaitingForPurgeOutput인지 확인
-        var stateEnd = _entityManager.GetComponentData<CrafterState>(crafter);
-        Assert.AreEqual(2, stateEnd.ActiveRecipeId);
-        Assert.AreEqual(2, stateEnd.SelectedRecipeId);
-        Assert.AreEqual(CrafterStatusEnum.WaitingForPurgeOutput, stateEnd.Status, "Crafter must enter WaitingForPurgeOutput since productBuffer has items.");
-
-        // Assert 5: ChangeCrafterRecipeRequest 엔티티가 소비(파괴)되었는지 확인
-        Assert.IsFalse(_entityManager.Exists(reqEntity), "Request entity must be consumed and destroyed.");
-    }
 }

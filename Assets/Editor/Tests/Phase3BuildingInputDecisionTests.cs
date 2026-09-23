@@ -23,63 +23,15 @@ public class Phase3BuildingInputDecisionTests : EcsWorldTestFixture
     }
 
     private Entity CreateStorage(int2 position, int2 size, DirectionEnum direction = DirectionEnum.Up, StorageFilter? filter = null)
-    {
-        var entity = _entityManager.CreateEntity(
-            typeof(BuildingType),
-            typeof(BuildingFootprint),
-            typeof(GridPosition),
-            typeof(Direction),
-            typeof(Storage));
-
-        _entityManager.SetComponentData(entity, new BuildingType(BuildingTypeEnum.Storage));
-        _entityManager.SetComponentData(entity, new BuildingFootprint(size));
-        _entityManager.SetComponentData(entity, new GridPosition(position));
-        _entityManager.SetComponentData(entity, new Direction(direction));
-        _entityManager.SetComponentData(entity, new Storage(slotCount: 4));
-        _entityManager.AddBuffer<StoredItemElement>(entity);
-
-        if (filter.HasValue)
-        {
-            _entityManager.AddComponentData(entity, filter.Value);
-        }
-
-        return entity;
-    }
+        => Entities.CreateStorage(position, size, direction, slotCount: 4, filter: filter);
 
     private Entity CreateBelt(int2 position, DirectionEnum direction)
-    {
-        var entity = _entityManager.CreateEntity(
-            typeof(GridPosition),
-            typeof(Direction),
-            typeof(BeltComponent));
-
-        _entityManager.SetComponentData(entity, new GridPosition(position));
-        _entityManager.SetComponentData(entity, new Direction(direction));
-        _entityManager.SetComponentData(entity, new BeltComponent(2.0f));
-        return entity;
-    }
+        => Entities.CreateBelt(position, direction);
 
     private Entity CreateBeltItem(int2 position, DirectionEnum direction, float progress, ItemTypeEnum itemType = ItemTypeEnum.Iron_Ore)
     {
-        CreateBelt(position, direction);
-
-        var entity = _entityManager.CreateEntity(
-            typeof(ItemIdentity),
-            typeof(ItemOwnership),
-            typeof(GridPosition),
-            typeof(BeltMovementState),
-            typeof(BuildingItemInputDecision));
-
-        _entityManager.SetComponentData(entity, new ItemIdentity(itemType));
-        _entityManager.SetComponentData(entity, ItemOwnership.WorldItem);
-        _entityManager.SetComponentData(entity, new GridPosition(position));
-        _entityManager.SetComponentData(entity, new BeltMovementState(progress));
-        _entityManager.SetComponentData(entity, new BuildingItemInputDecision(Entity.Null, false, -1));
-
-        // 초기 상태: 비활성화
-        _entityManager.SetComponentEnabled<BuildingItemInputDecision>(entity, false);
-
-        return entity;
+        Entities.CreateBelt(position, direction);
+        return Entities.CreateBeltItem(position, direction, progress, 0.0f, itemType);
     }
 
     private void SyncSpatialAndRunDecision()

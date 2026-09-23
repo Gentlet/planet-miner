@@ -206,7 +206,7 @@ Iron 입고가 승인되지 않아야 함
 
 ---
 
-# 피드백 2. Miner 생산물의 Pending Capacity 예약 문제
+# 피드백 2. Miner 생산물의 Pending Capacity 예약 문제 ( 적용 )
 
 **적용 시점: 지금**  
 **우선순위: 높음**

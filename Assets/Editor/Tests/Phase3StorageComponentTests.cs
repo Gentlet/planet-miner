@@ -48,54 +48,38 @@ public class Phase3StorageComponentTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test02_StorageFilter_AllowAll_AcceptsAnyItem()
+    public void Test02_StorageFilter_Modes_RespectMaskRules()
     {
-        // Arrange
-        var filter = new StorageFilter(StorageFilterMode.AllowAll);
+        // AllowAll
+        var allowAll = new StorageFilter(StorageFilterMode.AllowAll);
+        Assert.IsTrue(allowAll.IsItemAllowed(ItemTypeEnum.Iron_Ore));
+        Assert.IsTrue(allowAll.IsItemAllowed(ItemTypeEnum.Copper_Ore));
+        Assert.IsTrue(allowAll.IsItemAllowed(ItemTypeEnum.Coal));
+        Assert.IsTrue(allowAll.IsItemAllowed(ItemTypeEnum.Stone));
 
-        // Assert
-        Assert.IsTrue(filter.IsItemAllowed(ItemTypeEnum.Iron_Ore));
-        Assert.IsTrue(filter.IsItemAllowed(ItemTypeEnum.Copper_Ore));
-        Assert.IsTrue(filter.IsItemAllowed(ItemTypeEnum.Coal));
-        Assert.IsTrue(filter.IsItemAllowed(ItemTypeEnum.Stone));
+        // Whitelist
+        var whitelist = new StorageFilter(StorageFilterMode.Whitelist);
+        whitelist.Mask.Set((byte)ItemTypeEnum.Iron_Ore, true);
+        whitelist.Mask.Set((byte)ItemTypeEnum.Coal, true);
+
+        Assert.IsTrue(whitelist.IsItemAllowed(ItemTypeEnum.Iron_Ore));
+        Assert.IsTrue(whitelist.IsItemAllowed(ItemTypeEnum.Coal));
+        Assert.IsFalse(whitelist.IsItemAllowed(ItemTypeEnum.Copper_Ore));
+        Assert.IsFalse(whitelist.IsItemAllowed(ItemTypeEnum.Stone));
+        Assert.IsFalse(whitelist.IsItemAllowed(ItemTypeEnum.Iron));
+
+        // Blacklist
+        var blacklist = new StorageFilter(StorageFilterMode.Blacklist);
+        blacklist.Mask.Set((byte)ItemTypeEnum.Stone, true);
+
+        Assert.IsFalse(blacklist.IsItemAllowed(ItemTypeEnum.Stone));
+        Assert.IsTrue(blacklist.IsItemAllowed(ItemTypeEnum.Iron_Ore));
+        Assert.IsTrue(blacklist.IsItemAllowed(ItemTypeEnum.Copper_Ore));
+        Assert.IsTrue(blacklist.IsItemAllowed(ItemTypeEnum.Coal));
     }
 
     [Test]
-    public void Test03_StorageFilter_Whitelist_AllowsOnlySpecifiedItems()
-    {
-        // Arrange
-        var filter = new StorageFilter(StorageFilterMode.Whitelist);
-        filter.Mask.Set((byte)ItemTypeEnum.Iron_Ore, true);
-        filter.Mask.Set((byte)ItemTypeEnum.Coal, true);
-
-        // Assert: Iron_Ore and Coal allowed
-        Assert.IsTrue(filter.IsItemAllowed(ItemTypeEnum.Iron_Ore));
-        Assert.IsTrue(filter.IsItemAllowed(ItemTypeEnum.Coal));
-
-        // Assert: Others blocked
-        Assert.IsFalse(filter.IsItemAllowed(ItemTypeEnum.Copper_Ore));
-        Assert.IsFalse(filter.IsItemAllowed(ItemTypeEnum.Stone));
-        Assert.IsFalse(filter.IsItemAllowed(ItemTypeEnum.Iron));
-    }
-
-    [Test]
-    public void Test04_StorageFilter_Blacklist_BlocksOnlySpecifiedItems()
-    {
-        // Arrange
-        var filter = new StorageFilter(StorageFilterMode.Blacklist);
-        filter.Mask.Set((byte)ItemTypeEnum.Stone, true);
-
-        // Assert: Stone is blocked
-        Assert.IsFalse(filter.IsItemAllowed(ItemTypeEnum.Stone));
-
-        // Assert: Others are allowed
-        Assert.IsTrue(filter.IsItemAllowed(ItemTypeEnum.Iron_Ore));
-        Assert.IsTrue(filter.IsItemAllowed(ItemTypeEnum.Copper_Ore));
-        Assert.IsTrue(filter.IsItemAllowed(ItemTypeEnum.Coal));
-    }
-
-    [Test]
-    public void Test05_StorageEntity_ComponentAndBufferInitialization()
+    public void Test03_StorageEntity_ComponentAndBufferInitialization()
     {
         // Arrange & Act
         var storageEntity = _entityManager.CreateEntity();
