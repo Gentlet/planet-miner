@@ -263,5 +263,157 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         Assert.AreEqual(50, productBuffer.Length, "Product must be spawned once space becomes available.");
     }
 
+    [Test]
+    public void Test06_MultipleByproducts_SpawnsAllOutputsToRespectiveSlots()
+    {
+        // Arrange: 레시피 10 (주완성품 Iron 1 + 부산품1 Stone 1 + 부산품2 Copper 1)
+        string customJson = @"
+        {
+          ""recipes"": [
+            {
+              ""id"": 10,
+              ""outputItemType"": ""Iron"",
+              ""outputAmount"": 1,
+              ""craftTime"": 1.0,
+              ""ingredients"": [
+                { ""itemType"": ""Iron_Ore"", ""amount"": 2 }
+              ],
+              ""byproducts"": [
+                { ""itemType"": ""Stone"", ""amount"": 1 },
+                { ""itemType"": ""Copper"", ""amount"": 1 }
+              ]
+            }
+          ]
+        }";
 
+        if (_recipeBlob.IsCreated)
+        {
+            _recipeBlob.Dispose();
+        }
+        _recipeBlob = RecipeInitSystem.InitializeRecipeRegistry(_entityManager, customJson);
+
+        var crafter = CreateCrafter(recipeId: 10);
+        CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore);
+        CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore);
+
+        // 1. 제작 착수 및 1.0s 경과 (진행도 1.0f 도달)
+        StepSimulation(1.0f, stepDt: 0.1f);
+
+        // 2. 완료 감지 및 배출 (Decision -> Execution -> Lifecycle)
+        RunDecisionPhase();
+        var decisionComp = _entityManager.GetComponentData<CrafterDecision>(crafter);
+        Assert.IsTrue(decisionComp.CanProduceOutput, "CanProduceOutput must be true when progress reaches 1.0f.");
+
+        RunExecutionPhase(deltaTime: 0.05f);
+        RunLifecyclePhase();
+
+        // 2. 검증: ProductBuffer에 주생산품 1개 + 부산품 2개 = 총 3개 생성
+        var productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
+        Assert.AreEqual(3, productBuffer.Length, "ProductBuffer must contain 3 outputs (1 primary + 2 byproducts).");
+
+        // Slot 0: Iron (Primary)
+        Assert.AreEqual(ItemTypeEnum.Iron, productBuffer[0].ItemType);
+        Assert.AreEqual(0, productBuffer[0].SlotIndex);
+
+        // Slot 1: Stone (Byproduct 1)
+        Assert.AreEqual(ItemTypeEnum.Stone, productBuffer[1].ItemType);
+        Assert.AreEqual(1, productBuffer[1].SlotIndex);
+
+        // Slot 2: Copper (Byproduct 2)
+        Assert.AreEqual(ItemTypeEnum.Copper, productBuffer[2].ItemType);
+        Assert.AreEqual(2, productBuffer[2].SlotIndex);
+
+        // 상태 리셋 확인
+        var state = _entityManager.GetComponentData<CrafterState>(crafter);
+        Assert.IsFalse(state.IsCraftingActive);
+        Assert.AreEqual(0.0f, state.Progress, 0.0001f);
+    }
+
+    [Test]
+    public void Test07_MultipleByproducts_Backpressure_AllOrNothing_WaitsIfAnySlotFull()
+    {
+        // Arrange: 레시피 10 (주완성품 Iron 1 + 부산품1 Stone 1 + 부산품2 Copper 1)
+        string customJson = @"
+        {
+          ""recipes"": [
+            {
+              ""id"": 10,
+              ""outputItemType"": ""Iron"",
+              ""outputAmount"": 1,
+              ""craftTime"": 1.0,
+              ""ingredients"": [
+                { ""itemType"": ""Iron_Ore"", ""amount"": 2 }
+              ],
+              ""byproducts"": [
+                { ""itemType"": ""Stone"", ""amount"": 1 },
+                { ""itemType"": ""Copper"", ""amount"": 1 }
+              ]
+            }
+          ]
+        }";
+
+        if (_recipeBlob.IsCreated)
+        {
+            _recipeBlob.Dispose();
+        }
+        _recipeBlob = RecipeInitSystem.InitializeRecipeRegistry(_entityManager, customJson);
+
+        var crafter = CreateCrafter(recipeId: 10);
+        CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore);
+        CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore);
+
+        // 1. 착수 및 1.0s까지 진행 완료
+        StepSimulation(1.0f, stepDt: 0.1f);
+
+        var stateMid = _entityManager.GetComponentData<CrafterState>(crafter);
+        Assert.AreEqual(1.0f, stateMid.Progress, 0.0001f);
+
+        // 2. 부산품2(Slot 2: Copper)만 50개(MaxStack) 채움 (Slot 0, 1은 여유 공간 있음)
+        NativeArray<Entity> dummyItems = new NativeArray<Entity>(50, Allocator.Temp);
+        for (int i = 0; i < 50; i++)
+        {
+            var dummyItem = _entityManager.CreateEntity(typeof(ItemIdentity), typeof(ItemOwnership));
+            _entityManager.SetComponentData(dummyItem, new ItemIdentity(ItemTypeEnum.Copper));
+            _entityManager.SetComponentData(dummyItem, ItemOwnership.Stored(crafter));
+            dummyItems[i] = dummyItem;
+        }
+
+        var productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
+        for (int i = 0; i < 50; i++)
+        {
+            productBuffer.Add(new ProductItemElement(dummyItems[i], ItemTypeEnum.Copper, slotIndex: 2));
+        }
+        dummyItems.Dispose();
+
+        // 3. Decision Phase 실행: All-or-Nothing 정책에 의해 Slot 2 만석으로 인해 배출 거부 확인
+        RunDecisionPhase();
+
+        var stateWaiting = _entityManager.GetComponentData<CrafterState>(crafter);
+        var decisionWaiting = _entityManager.GetComponentData<CrafterDecision>(crafter);
+
+        Assert.AreEqual(CrafterStatusEnum.WaitingForOutput, stateWaiting.Status, "Status must be WaitingForOutput when any byproduct slot is full.");
+        Assert.IsFalse(decisionWaiting.CanProduceOutput, "CanProduceOutput must be false when any byproduct slot is full (All-or-Nothing).");
+
+        // Execution 실행해도 추가 생산 없어야 함
+        RunExecutionPhase(deltaTime: 0.1f);
+        var stateAfterExec = _entityManager.GetComponentData<CrafterState>(crafter);
+        Assert.AreEqual(1.0f, stateAfterExec.Progress, 0.0001f);
+        productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
+        Assert.AreEqual(50, productBuffer.Length);
+
+        // 4. Slot 2에서 1개 제거하여 공간 확보 후 재검사
+        productBuffer.RemoveAt(0);
+        Assert.AreEqual(49, productBuffer.Length);
+
+        RunDecisionPhase();
+        var decisionResume = _entityManager.GetComponentData<CrafterDecision>(crafter);
+        Assert.IsTrue(decisionResume.CanProduceOutput, "CanProduceOutput must become true once all output slots have space.");
+
+        RunExecutionPhase(deltaTime: 0.05f);
+        RunLifecyclePhase();
+
+        // 5. 제작 완료되어 Iron(Slot 0), Stone(Slot 1), Copper(Slot 2)가 각각 추가됨 (총 49 + 3 = 52개)
+        productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
+        Assert.AreEqual(52, productBuffer.Length, "All 3 outputs must be produced once space is available.");
+    }
 }

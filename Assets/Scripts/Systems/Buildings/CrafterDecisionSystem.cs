@@ -154,35 +154,38 @@ public partial struct CrafterDecisionJob : IJobEntity
             return;
         }
 
-        // 2. 출력 버퍼 여유 공간 검사 (Slot 0: 주완성품, Slot 1: 부산품)
-        int countSlot0 = 0;
-        int countSlot1 = 0;
-        for (int i = 0; i < productItems.Length; i++)
-        {
-            if (productItems[i].SlotIndex == 0) countSlot0++;
-            else if (productItems[i].SlotIndex == 1) countSlot1++;
-        }
+        // 2. 출력 버퍼 여유 공간 검사 (다중 부산물 지원 및 All-or-Nothing 정책)
+        // Slot 0: 주완성품, Slot 1..N: 각 부산물
+        bool canProduceOutput = true;
+        bool hasItemRegistry = ItemRegistry.Value.IsCreated;
 
-        bool hasPrimarySpace = false;
-        if (recipe.TryGetPrimaryOutput(out var primary))
+        for (int outIdx = 0; outIdx < recipe.Outputs.Length; outIdx++)
         {
-            int maxStack0 = (ItemRegistry.Value.IsCreated && primary.ItemType != ItemTypeEnum.None)
-                ? ItemRegistry.Value.Value.GetMaxStack(primary.ItemType)
+            ref var output = ref recipe.Outputs[outIdx];
+            if (output.ItemType == ItemTypeEnum.None || output.Amount <= 0)
+            {
+                continue;
+            }
+
+            int countInSlot = 0;
+            for (int p = 0; p < productItems.Length; p++)
+            {
+                if (productItems[p].SlotIndex == outIdx)
+                {
+                    countInSlot++;
+                }
+            }
+
+            int maxStack = (hasItemRegistry && output.ItemType != ItemTypeEnum.None)
+                ? ItemRegistry.Value.Value.GetMaxStack(output.ItemType)
                 : 50;
-            hasPrimarySpace = (countSlot0 + primary.Amount <= maxStack0);
-        }
 
-        bool hasByproductSpace = true;
-        if (recipe.Outputs.Length > 1 && recipe.Outputs[1].IsByproduct)
-        {
-            var byproduct = recipe.Outputs[1];
-            int maxStack1 = (ItemRegistry.Value.IsCreated && byproduct.ItemType != ItemTypeEnum.None)
-                ? ItemRegistry.Value.Value.GetMaxStack(byproduct.ItemType)
-                : 50;
-            hasByproductSpace = (countSlot1 + byproduct.Amount <= maxStack1);
+            if (countInSlot + output.Amount > maxStack)
+            {
+                canProduceOutput = false;
+                break;
+            }
         }
-
-        bool canProduceOutput = hasPrimarySpace && hasByproductSpace;
 
         // 3. 제작 진행 상태에 따른 의사결정 분기
         if (state.IsCraftingActive)

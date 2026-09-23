@@ -216,6 +216,63 @@ public class Phase5RecipeBlobTests : EcsWorldTestFixture
             resultCraftTime.Dispose();
         }
     }
+
+    [Test]
+    public void Test08_CustomJsonWithMultipleByproducts_BuildsAllOutputsCorrectly()
+    {
+        // Arrange: 주 완성품(Iron 2) + 부산품 1(Stone 1) + 부산품 2(Copper 1)
+        string customJson = @"
+        {
+          ""recipes"": [
+            {
+              ""id"": 20,
+              ""outputItemType"": ""Iron"",
+              ""outputAmount"": 2,
+              ""craftTime"": 3.0,
+              ""ingredients"": [
+                { ""itemType"": ""Iron_Ore"", ""amount"": 4 }
+              ],
+              ""byproducts"": [
+                { ""itemType"": ""Stone"", ""amount"": 1 },
+                { ""itemType"": ""Copper"", ""amount"": 1 }
+              ]
+            }
+          ]
+        }";
+
+        // Act
+        _blobRef = RecipeConfigLoader.BuildBlobAssetFromJson(customJson);
+        ref var registry = ref _blobRef.Value;
+
+        // Assert
+        Assert.AreEqual(1, registry.Recipes.Length);
+        ref var recipe = ref registry.Recipes[0];
+        Assert.AreEqual(20, recipe.Id);
+        Assert.AreEqual(3.0f, recipe.CraftTime);
+
+        // 총 출력물: 3개 (주생산품 1 + 부산품 2)
+        Assert.AreEqual(3, recipe.Outputs.Length);
+
+        // Output 0: 주생산품
+        Assert.AreEqual(ItemTypeEnum.Iron, recipe.Outputs[0].ItemType);
+        Assert.AreEqual(2, recipe.Outputs[0].Amount);
+        Assert.IsFalse(recipe.Outputs[0].IsByproduct);
+
+        // Output 1: 부산품 1
+        Assert.AreEqual(ItemTypeEnum.Stone, recipe.Outputs[1].ItemType);
+        Assert.AreEqual(1, recipe.Outputs[1].Amount);
+        Assert.IsTrue(recipe.Outputs[1].IsByproduct);
+
+        // Output 2: 부산품 2
+        Assert.AreEqual(ItemTypeEnum.Copper, recipe.Outputs[2].ItemType);
+        Assert.AreEqual(1, recipe.Outputs[2].Amount);
+        Assert.IsTrue(recipe.Outputs[2].IsByproduct);
+
+        // TryGetPrimaryOutput 검증
+        Assert.IsTrue(recipe.TryGetPrimaryOutput(out var primary));
+        Assert.AreEqual(ItemTypeEnum.Iron, primary.ItemType);
+        Assert.AreEqual(2, primary.Amount);
+    }
 }
 
 /// <summary>
