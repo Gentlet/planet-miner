@@ -11,10 +11,13 @@ using Unity.Mathematics;
 /// - RecipeRegistry Blob에서 선택된 레시피(SelectedRecipeId)를 조회합니다.
 /// - [옵션 A 선소비 & 정책 B 만석 대기]:
 ///   1. 미착수 상태(!IsCraftingActive): StoredItemElement에 레시피 필요 재료가 모두 구비되어 있는지 확인하여 CanStartCraft 결정.
-///   2. 진행 중 상태(IsCraftingActive && Progress < 1.0f): CanAdvance = true 및 Status = Crafting 설정.
+///   2. 진행 중 상태(IsCraftingActive && Progress < 1.0f): CanAdvance = true 및 NextStatus = Crafting 결정.
 ///   3. 완료 상태(IsCraftingActive && Progress >= 1.0f): ProductItemElement에 주생산품/부산품 수용 공간(1스택 한도)이 있는지 검사하여
-///      공간이 있으면 CanProduceOutput = true, 만석이면 Status = WaitingForOutput 설정 및 대기.
-/// - 컴포넌트 활성화(EnabledRefRW)를 통해 유효 작업이 있는 제작기만 Phase 4 Execution의 대상으로 전달합니다.
+///      공간이 있으면 CanProduceOutput = true, 만석이면 NextStatus = WaitingForOutput 결정.
+/// - CrafterState는 Read Only로 취급하며 Persistent State(Status)를 직접 수정하지 않습니다.
+/// - 실행 결정은 CrafterDecision, 상태 전이 결정은 CrafterStateDecision으로 분리해 기록합니다.
+/// - CrafterStateDecision은 StateApplyGroup의 CrafterStateApplySystem에서 실제 CrafterState.Status로 반영 후 비활성화됩니다.
+/// - CrafterDecision 활성 상태는 Phase 4 Execution 처리 여부만 의미합니다.
 /// </summary>
 [UpdateInGroup(typeof(DecisionGroup))]
 [BurstCompile]
@@ -26,8 +29,8 @@ public partial struct CrafterDecisionSystem : ISystem
     public void OnCreate(ref SystemState state)
     {
         _crafterQuery = SystemAPI.QueryBuilder()
-            .WithAllRW<CrafterDecision, CrafterState>()
-            .WithAll<StoredItemElement, ProductItemElement, ProductResult>()
+            .WithAllRW<CrafterDecision, CrafterStateDecision>()
+            .WithAll<CrafterState, StoredItemElement, ProductItemElement, ProductResult>()
             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
             .Build();
     }
@@ -82,7 +85,9 @@ public partial struct CrafterDecisionJob : IJobEntity
     public void Execute(
         ref CrafterDecision decision,
         EnabledRefRW<CrafterDecision> decisionEnabled,
-        ref CrafterState state,
+        ref CrafterStateDecision stateDecision,
+        EnabledRefRW<CrafterStateDecision> stateDecisionEnabled,
+        in CrafterState state,
         in DynamicBuffer<StoredItemElement> storedItems,
         in DynamicBuffer<ProductItemElement> productItems,
         in DynamicBuffer<ProductResult> productResults)
@@ -99,14 +104,14 @@ public partial struct CrafterDecisionJob : IJobEntity
                 decision.CanProduceOutput = false;
                 decision.RecipeId = state.SelectedRecipeId;
                 decision.RecipeIndex = -1;
+                stateDecision.NextStatus = CrafterStatusEnum.WaitingForByproductOutput;
+                stateDecisionEnabled.ValueRW = true;
                 decisionEnabled.ValueRW = false;
                 return;
             }
-            else
-            {
-                // 출력 버퍼가 완전히 비워졌으므로 대기 해제 및 정상 상태로 복귀
-                state.Status = state.SelectedRecipeId > 0 ? CrafterStatusEnum.Idle : CrafterStatusEnum.NoRecipe;
-            }
+            // 출력 버퍼가 완전히 비워졌으면 아래 정상 판정 흐름으로 계속 진행합니다.
+            // 실제 Status 해제는 이번 Decision의 NextStatus가 StateApply에서 반영되며,
+            // 같은 프레임 BuildingItemInputDecision은 기존 WaitingForByproductOutput을 읽을 수 있습니다.
         }
 
         // 1. 레시피 유효성 검사
@@ -118,8 +123,9 @@ public partial struct CrafterDecisionJob : IJobEntity
             decision.CanProduceOutput = false;
             decision.RecipeId = 0;
             decision.RecipeIndex = -1;
+            stateDecision.NextStatus = CrafterStatusEnum.NoRecipe;
+            stateDecisionEnabled.ValueRW = true;
             decisionEnabled.ValueRW = false;
-            state.Status = CrafterStatusEnum.NoRecipe;
             return;
         }
 
@@ -132,8 +138,9 @@ public partial struct CrafterDecisionJob : IJobEntity
             decision.CanProduceOutput = false;
             decision.RecipeId = state.SelectedRecipeId;
             decision.RecipeIndex = -1;
+            stateDecision.NextStatus = CrafterStatusEnum.NoRecipe;
+            stateDecisionEnabled.ValueRW = true;
             decisionEnabled.ValueRW = false;
-            state.Status = CrafterStatusEnum.NoRecipe;
             return;
         }
 
@@ -149,7 +156,8 @@ public partial struct CrafterDecisionJob : IJobEntity
             decision.CanStartCraft = false;
             decision.CanAdvance = false;
             decision.CanProduceOutput = false;
-            state.Status = CrafterStatusEnum.WaitingForOutput;
+            stateDecision.NextStatus = CrafterStatusEnum.WaitingForOutput;
+            stateDecisionEnabled.ValueRW = true;
             decisionEnabled.ValueRW = false;
             return;
         }
@@ -198,7 +206,8 @@ public partial struct CrafterDecisionJob : IJobEntity
                 decision.CanStartCraft = false;
                 decision.CanAdvance = true;
                 decision.CanProduceOutput = false;
-                state.Status = CrafterStatusEnum.Crafting;
+                stateDecision.NextStatus = CrafterStatusEnum.Crafting;
+                stateDecisionEnabled.ValueRW = true;
                 decisionEnabled.ValueRW = true;
             }
             else
@@ -212,7 +221,8 @@ public partial struct CrafterDecisionJob : IJobEntity
                     // 출력 버퍼에 여유가 있으므로 배출 승인
                     decision.CanCraft = true;
                     decision.CanProduceOutput = true;
-                    state.Status = CrafterStatusEnum.Idle;
+                    stateDecision.NextStatus = CrafterStatusEnum.Idle;
+                    stateDecisionEnabled.ValueRW = true;
                     decisionEnabled.ValueRW = true;
                 }
                 else
@@ -220,7 +230,8 @@ public partial struct CrafterDecisionJob : IJobEntity
                     // 출력 버퍼 만석: 배출 대기
                     decision.CanCraft = false;
                     decision.CanProduceOutput = false;
-                    state.Status = CrafterStatusEnum.WaitingForOutput;
+                    stateDecision.NextStatus = CrafterStatusEnum.WaitingForOutput;
+                    stateDecisionEnabled.ValueRW = true;
                     decisionEnabled.ValueRW = true; // 대기 상태 감시 유지
                 }
             }
@@ -257,7 +268,8 @@ public partial struct CrafterDecisionJob : IJobEntity
                 decision.CanStartCraft = true;
                 decision.CanAdvance = true;
                 decision.CanProduceOutput = false;
-                state.Status = CrafterStatusEnum.Idle;
+                stateDecision.NextStatus = CrafterStatusEnum.Idle;
+                stateDecisionEnabled.ValueRW = true;
                 decisionEnabled.ValueRW = true;
             }
             else
@@ -267,7 +279,8 @@ public partial struct CrafterDecisionJob : IJobEntity
                 decision.CanStartCraft = false;
                 decision.CanAdvance = false;
                 decision.CanProduceOutput = false;
-                state.Status = CrafterStatusEnum.WaitingForInput;
+                stateDecision.NextStatus = CrafterStatusEnum.WaitingForInput;
+                stateDecisionEnabled.ValueRW = true;
                 decisionEnabled.ValueRW = false;
             }
         }

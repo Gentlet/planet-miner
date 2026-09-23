@@ -15,6 +15,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
     private BlobAssetReference<RecipeRegistryBlob> _recipeBlob;
     private SystemHandle _crafterDecisionHandle;
     private SystemHandle _crafterExecutionHandle;
+    private SystemHandle _crafterStateApplyHandle;
     private SystemHandle _lifecycleHandle;
     private EndStateApplyEntityCommandBufferSystem _endStateApplyEcb;
 
@@ -29,6 +30,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         // 2. 시스템 핸들 획득
         _crafterDecisionHandle = _world.GetOrCreateSystem(typeof(CrafterDecisionSystem));
         _crafterExecutionHandle = _world.GetOrCreateSystem(typeof(CrafterExecutionSystem));
+        _crafterStateApplyHandle = _world.GetOrCreateSystem(typeof(CrafterStateApplySystem));
         _lifecycleHandle = _world.GetOrCreateSystem(typeof(ItemLifecycleApplySystem));
         _endStateApplyEcb = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
     }
@@ -58,8 +60,15 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         Simulation.Playback(_endStateApplyEcb);
     }
 
-    private void RunLifecyclePhase()
+    private void RunStatusApplyPhase()
     {
+        Simulation.Update(_crafterStateApplyHandle);
+        Simulation.Playback(_endStateApplyEcb);
+    }
+
+    private void RunStateApplyPhase()
+    {
+        Simulation.Update(_crafterStateApplyHandle);
         Simulation.Update(_lifecycleHandle);
         Simulation.Playback(_endStateApplyEcb);
     }
@@ -72,6 +81,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
             float currentDt = math.min(stepDt, totalDuration - elapsed);
             RunDecisionPhase();
             RunExecutionPhase(currentDt);
+            RunStatusApplyPhase();
             elapsed += currentDt;
         }
     }
@@ -83,20 +93,39 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         var noRecipeCrafter = CreateCrafter(recipeId: 0);
         RunDecisionPhase();
 
-        var stateNo = _entityManager.GetComponentData<CrafterState>(noRecipeCrafter);
         var decisionNo = _entityManager.GetComponentData<CrafterDecision>(noRecipeCrafter);
-        Assert.AreEqual(CrafterStatusEnum.NoRecipe, stateNo.Status);
+        var stateDecisionNo = _entityManager.GetComponentData<CrafterStateDecision>(noRecipeCrafter);
+        Assert.AreEqual(CrafterStatusEnum.NoRecipe, stateDecisionNo.NextStatus);
+        Assert.IsTrue(_entityManager.IsComponentEnabled<CrafterStateDecision>(noRecipeCrafter));
         Assert.IsFalse(decisionNo.CanCraft);
+
+        RunStatusApplyPhase();
+
+        var stateNo = _entityManager.GetComponentData<CrafterState>(noRecipeCrafter);
+        Assert.AreEqual(CrafterStatusEnum.NoRecipe, stateNo.Status);
+        Assert.IsFalse(
+            _entityManager.IsComponentEnabled<CrafterStateDecision>(noRecipeCrafter),
+            "State decision must be consumed in StateApply.");
 
         // 2. Recipe 1(Iron_Ore 1 -> Iron 1), 하지만 재료 없음
         var crafter = CreateCrafter(recipeId: 1);
         RunDecisionPhase();
 
-        var state = _entityManager.GetComponentData<CrafterState>(crafter);
+        // Decision 단계에서는 Persistent State를 직접 변경하지 않아야 합니다.
+        var stateBeforeApply = _entityManager.GetComponentData<CrafterState>(crafter);
         var decision = _entityManager.GetComponentData<CrafterDecision>(crafter);
-        Assert.AreEqual(CrafterStatusEnum.WaitingForInput, state.Status);
+        var stateDecision = _entityManager.GetComponentData<CrafterStateDecision>(crafter);
+        Assert.AreEqual(CrafterStatusEnum.Idle, stateBeforeApply.Status);
+        Assert.AreEqual(CrafterStatusEnum.WaitingForInput, stateDecision.NextStatus);
+        Assert.IsTrue(_entityManager.IsComponentEnabled<CrafterStateDecision>(crafter));
         Assert.IsFalse(decision.CanCraft);
         Assert.IsFalse(decision.CanStartCraft);
+
+        RunStatusApplyPhase();
+
+        var state = _entityManager.GetComponentData<CrafterState>(crafter);
+        Assert.AreEqual(CrafterStatusEnum.WaitingForInput, state.Status);
+        Assert.IsFalse(_entityManager.IsComponentEnabled<CrafterStateDecision>(crafter));
     }
 
     [Test]
@@ -126,8 +155,8 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         Assert.IsTrue(state.IsCraftingActive, "IsCraftingActive must be true after consuming ingredients.");
         Assert.AreEqual(0.1f, state.Progress, 0.0001f);
 
-        // Lifecycle Phase 실행 시 파괴 요청 소비 확인
-        RunLifecyclePhase();
+        // StateApply Phase 실행 시 Status 결정 반영 및 파괴 요청 소비 확인
+        RunStateApplyPhase();
         Assert.IsFalse(_entityManager.Exists(oreItem), "Consumed ingredient entity must be destroyed.");
     }
 
@@ -169,7 +198,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         var stateMid = _entityManager.GetComponentData<CrafterState>(crafter);
         Assert.AreEqual(1.0f, stateMid.Progress, 0.0001f);
 
-        // 2. 완료 감지 및 배출 (Decision -> Execution -> Lifecycle)
+        // 2. 완료 감지 및 배출 (Decision -> Execution -> StateApply)
         RunDecisionPhase();
         var decisionComp = _entityManager.GetComponentData<CrafterDecision>(crafter);
         Assert.IsTrue(decisionComp.CanProduceOutput, "CanProduceOutput must be true when progress reaches 1.0f.");
@@ -184,7 +213,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         Assert.AreEqual(0, productResults[0].SlotIndex);
         Assert.AreEqual(0, _entityManager.GetBuffer<ProductItemElement>(crafter).Length, "Product buffer must remain unchanged before StateApply.");
 
-        RunLifecyclePhase();
+        RunStateApplyPhase();
 
         // 3. StateApply 이후 ProductResult가 소비되고 ProductItemElement에 완성품이 반영되는지 확인
         productResults = _entityManager.GetBuffer<ProductResult>(crafter);
@@ -234,12 +263,18 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         // 3. 만석 상태에서 Decision Phase 실행
         RunDecisionPhase();
 
-        var stateWaiting = _entityManager.GetComponentData<CrafterState>(crafter);
         var decisionWaiting = _entityManager.GetComponentData<CrafterDecision>(crafter);
+        var stateDecisionWaiting = _entityManager.GetComponentData<CrafterStateDecision>(crafter);
 
-        // 정책 B: 1.0f 유지 및 WaitingForOutput 상태로 대기 확인
-        Assert.AreEqual(CrafterStatusEnum.WaitingForOutput, stateWaiting.Status);
+        // Decision은 Status를 직접 바꾸지 않고 별도 StateDecision만 산출합니다.
+        Assert.AreEqual(CrafterStatusEnum.WaitingForOutput, stateDecisionWaiting.NextStatus);
+        Assert.IsTrue(_entityManager.IsComponentEnabled<CrafterStateDecision>(crafter));
         Assert.IsFalse(decisionWaiting.CanProduceOutput, "CanProduceOutput must be false when output is full.");
+
+        RunStatusApplyPhase();
+
+        var stateWaiting = _entityManager.GetComponentData<CrafterState>(crafter);
+        Assert.AreEqual(CrafterStatusEnum.WaitingForOutput, stateWaiting.Status);
 
         RunExecutionPhase(deltaTime: 0.1f);
         var stateAfterExec = _entityManager.GetComponentData<CrafterState>(crafter);
@@ -257,7 +292,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         Assert.IsTrue(decisionResume.CanProduceOutput, "CanProduceOutput must become true once space is freed.");
 
         RunExecutionPhase(deltaTime: 0.05f);
-        RunLifecyclePhase();
+        RunStateApplyPhase();
 
         productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
         Assert.AreEqual(50, productBuffer.Length, "Product must be spawned once space becomes available.");
@@ -299,13 +334,13 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         // 1. 제작 착수 및 1.0s 경과 (진행도 1.0f 도달)
         StepSimulation(1.0f, stepDt: 0.1f);
 
-        // 2. 완료 감지 및 배출 (Decision -> Execution -> Lifecycle)
+        // 2. 완료 감지 및 배출 (Decision -> Execution -> StateApply)
         RunDecisionPhase();
         var decisionComp = _entityManager.GetComponentData<CrafterDecision>(crafter);
         Assert.IsTrue(decisionComp.CanProduceOutput, "CanProduceOutput must be true when progress reaches 1.0f.");
 
         RunExecutionPhase(deltaTime: 0.05f);
-        RunLifecyclePhase();
+        RunStateApplyPhase();
 
         // 2. 검증: ProductBuffer에 주생산품 1개 + 부산품 2개 = 총 3개 생성
         var productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
@@ -388,11 +423,17 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         // 3. Decision Phase 실행: All-or-Nothing 정책에 의해 Slot 2 만석으로 인해 배출 거부 확인
         RunDecisionPhase();
 
-        var stateWaiting = _entityManager.GetComponentData<CrafterState>(crafter);
         var decisionWaiting = _entityManager.GetComponentData<CrafterDecision>(crafter);
+        var stateDecisionWaiting = _entityManager.GetComponentData<CrafterStateDecision>(crafter);
 
-        Assert.AreEqual(CrafterStatusEnum.WaitingForOutput, stateWaiting.Status, "Status must be WaitingForOutput when any byproduct slot is full.");
+        Assert.AreEqual(CrafterStatusEnum.WaitingForOutput, stateDecisionWaiting.NextStatus);
+        Assert.IsTrue(_entityManager.IsComponentEnabled<CrafterStateDecision>(crafter));
         Assert.IsFalse(decisionWaiting.CanProduceOutput, "CanProduceOutput must be false when any byproduct slot is full (All-or-Nothing).");
+
+        RunStatusApplyPhase();
+
+        var stateWaiting = _entityManager.GetComponentData<CrafterState>(crafter);
+        Assert.AreEqual(CrafterStatusEnum.WaitingForOutput, stateWaiting.Status, "Status must be applied during StateApply when any byproduct slot is full.");
 
         // Execution 실행해도 추가 생산 없어야 함
         RunExecutionPhase(deltaTime: 0.1f);
@@ -410,7 +451,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         Assert.IsTrue(decisionResume.CanProduceOutput, "CanProduceOutput must become true once all output slots have space.");
 
         RunExecutionPhase(deltaTime: 0.05f);
-        RunLifecyclePhase();
+        RunStateApplyPhase();
 
         // 5. 제작 완료되어 Iron(Slot 0), Stone(Slot 1), Copper(Slot 2)가 각각 추가됨 (총 49 + 3 = 52개)
         productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
