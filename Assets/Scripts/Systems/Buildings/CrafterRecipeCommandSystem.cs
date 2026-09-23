@@ -103,6 +103,16 @@ public partial struct CrafterRecipeCommandSystem : ISystem
 
                     if (storedItems.Length > 0)
                     {
+                        int maxExistingSlot = 0;
+                        for (int p = 0; p < productItems.Length; p++)
+                        {
+                            if (productItems[p].SlotIndex > maxExistingSlot)
+                            {
+                                maxExistingSlot = productItems[p].SlotIndex;
+                            }
+                        }
+                        int baseSlot = math.max(1, maxExistingSlot + 1);
+
                         var uniqueTypes = new FixedList32Bytes<byte>();
                         for (int s = 0; s < storedItems.Length; s++)
                         {
@@ -124,7 +134,7 @@ public partial struct CrafterRecipeCommandSystem : ISystem
                                 uniqueTypes.Add(typeByte);
                             }
 
-                            int byproductSlot = 1 + math.max(0, typeIndex);
+                            int byproductSlot = baseSlot + math.max(0, typeIndex);
                             productItems.Add(new ProductItemElement(item.ItemEntity, item.ItemType, byproductSlot));
                         }
 

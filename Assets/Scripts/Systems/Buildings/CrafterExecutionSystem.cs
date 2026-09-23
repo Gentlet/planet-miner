@@ -147,7 +147,7 @@ public partial struct CrafterExecutionJob : IJobEntity
         }
 
         // =========================================================================
-        // 4. [제작 완료 & ProductResult 기록 (정책 B)]
+        // 4. [제작 완료 & ProductResult 기록 (다중 부산물 지원 및 정책 B)]
         // =========================================================================
         if (state.IsCraftingActive && state.Progress >= 1.0f && decision.CanProduceOutput)
         {
@@ -158,19 +158,13 @@ public partial struct CrafterExecutionJob : IJobEntity
                 return;
             }
 
-            // 주생산품 결과 (Slot 0)
-            if (recipe.TryGetPrimaryOutput(out var primary) && primary.Amount > 0)
+            // Outputs 전체 순회: Slot 0 (주생산품) 및 Slot 1..N (다중 부산물) 결과 기록
+            for (int outIdx = 0; outIdx < recipe.Outputs.Length; outIdx++)
             {
-                productResults.Add(new ProductResult(primary.ItemType, primary.Amount, slotIndex: 0));
-            }
-
-            // 현재 정책상 첫 번째 부산품 결과만 지원 (Slot 1)
-            if (recipe.Outputs.Length > 1 && recipe.Outputs[1].IsByproduct)
-            {
-                var byproduct = recipe.Outputs[1];
-                if (byproduct.Amount > 0)
+                ref var output = ref recipe.Outputs[outIdx];
+                if (output.ItemType != ItemTypeEnum.None && output.Amount > 0)
                 {
-                    productResults.Add(new ProductResult(byproduct.ItemType, byproduct.Amount, slotIndex: 1));
+                    productResults.Add(new ProductResult(output.ItemType, output.Amount, slotIndex: outIdx));
                 }
             }
 

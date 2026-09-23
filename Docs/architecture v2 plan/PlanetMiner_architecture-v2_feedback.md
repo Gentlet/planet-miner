@@ -300,7 +300,7 @@ Expected:
 
 ---
 
-# 피드백 3. Crafter 다중 부산물 처리 규칙 통일
+# 피드백 3. Crafter 다중 부산물 처리 규칙 통일 ( 적용 완료 )
 
 **적용 시점: 지금**  
 **우선순위: 높음**
@@ -1006,8 +1006,8 @@ Phase 6 작업을 시작하기 전에 다음 항목을 닫는 것을 권장한�
 ## 기능 정합성
 
 - [x] Recipe 변경 프레임에서 이전 Recipe 재료가 입고되지 않는다. (완료: CommandGroup 원자적 동기화, WaitingForByproductOutput 입고 차단)
-- [ ] Miner Pending Spawn을 포함해 Product Capacity가 MaxStack을 초과하지 않는다.
-- [ ] Crafter 부산물 지원 범위가 데이터 모델과 실제 구현에서 일치한다.
+- [x] Miner Pending Spawn을 포함해 Product Capacity가 MaxStack을 초과하지 않는다.
+- [x] Crafter 부산물 지원 범위가 데이터 모델과 실제 구현에서 일치한다. (완료: 방법 A 채택, Outputs 전체 순회 및 All-or-Nothing 판정/생산)
 - [ ] Crafter Decision이 Persistent `CrafterState`를 직접 수정하지 않는다.
 
 ## 데이터 계약
