@@ -45,7 +45,7 @@ public struct RecipeBlob
     public BlobArray<RecipeOutputBlob> Outputs;
 
     /// <summary>
-    /// 해당 레시피의 주 생산품(Primary Output)을 반환합니다.
+    /// 해당 레시피의 주 생산품(Primary Output)을 반환.
     /// </summary>
     public bool TryGetPrimaryOutput(out RecipeOutputBlob primaryOutput)
     {
@@ -69,7 +69,7 @@ public struct RecipeBlob
     }
 
     /// <summary>
-    /// 특정 아이템 타입이 해당 레시피의 재료인지 검사하고 필요 수량을 반환합니다.
+    /// 특정 아이템 타입이 해당 레시피의 재료인지 검사하고 필요 수량을 반환.
     /// </summary>
     public bool TryFindIngredient(ItemTypeEnum itemType, out int requiredAmount)
     {
@@ -95,7 +95,7 @@ public struct RecipeRegistryBlob
     public BlobArray<RecipeBlob> Recipes;
 
     /// <summary>
-    /// Recipe ID로 레시피 인덱스를 검색합니다.
+    /// Recipe ID로 레시피 인덱스를 검색.
     /// </summary>
     public bool TryGetRecipeIndex(int recipeId, out int recipeIndex)
     {
@@ -113,7 +113,7 @@ public struct RecipeRegistryBlob
     }
 
     /// <summary>
-    /// 주 생산품(Primary Output) 아이템 타입으로 레시피 인덱스를 검색합니다.
+    /// 주 생산품(Primary Output) 아이템 타입으로 레시피 인덱스를 검색.
     /// </summary>
     public bool TryFindRecipeIndexByPrimaryOutput(ItemTypeEnum outputType, out int recipeIndex)
     {

@@ -1,9 +1,9 @@
 # PlanetMiner `architecture-v2` 통합 개선 피드백
 
 기준 브랜치: `architecture-v2`  
-기준 HEAD: `8b4c83c114ff9371d25fac650a0cb59a1a756b13`  
+기준 HEAD: `a1855a0fc3a18777771616890db93f095650fc81`  
 현재 Task 진행 상태: **Phase 5 Crafter 완료 → Phase 6 Splitter / Merger 진입 전**  
-현재 EditMode 테스트: **97 / 97 Pass**
+현재 EditMode 테스트: **99 / 99 Pass**
 
 이 문서는 기존 Architecture V2 피드백과 최신 코드 리뷰 결과를 통합한 문서다.
 
@@ -34,7 +34,7 @@
 1. 레시피 변경 시 `StorageFilter` 갱신 Phase 순서 수정
 2. Miner 생산물의 Pending Capacity 예약 문제 해결
 3. Crafter 다중 부산물 처리 규칙 통일
-4. `CrafterDecisionSystem`의 Persistent State 직접 수정 제거
+4. `CrafterDecisionSystem`의 Persistent State 직접 수정 제거 ✅ 완료
 
 ### A-2. 구조 계약 정리
 
@@ -363,41 +363,30 @@ Outputs 전체 순회
 
 ---
 
-# 피드백 4. `CrafterDecisionSystem`의 State 직접 수정 제거
+# 피드백 4. `CrafterDecisionSystem`의 State 직접 수정 제거 ( 적용 완료 )
 
-**적용 시점: 지금**  
+**적용 시점: 완료**  
 **우선순위: 높음**
 
-Architecture V2의 핵심 원칙:
+Architecture V2의 핵심 원칙인 다음 구조를 Crafter에도 적용했다.
 
 ```text
 State
     ↓ Read
 
 DecisionSystem
-
     ↓ Write
 
 Decision Component
-```
-
-Belt는 이 규칙을 지키고 있다.
-
-```text
-BeltMovementState
     ↓
-BeltMovementDecisionSystem
-    ↓
-BeltMovementDecision
+
+StateApply
+    ↓ Write
+
+Persistent State
 ```
 
-하지만 Crafter는 Decision 단계에서:
-
-```csharp
-ref CrafterState state
-```
-
-를 받고 Persistent State를 직접 변경한다.
+기존에는 `CrafterDecisionSystem`이 `CrafterState.Status`를 직접 수정했다.
 
 ```csharp
 state.Status = CrafterStatusEnum.Crafting;
@@ -405,41 +394,148 @@ state.Status = CrafterStatusEnum.WaitingForInput;
 state.Status = CrafterStatusEnum.WaitingForOutput;
 ```
 
-## 문제점
-
-- Decision과 State 변경 책임이 다시 결합된다.
-- V2의 State/Decision 분리 원칙이 Crafter에서 깨진다.
-- Recipe 변경 같은 Execution 상태 변화와 한 프레임 내 의미 충돌 가능성이 생긴다.
-
-현재 Architecture V2의 구조 자체를 검증하는 단계이므로 이 예외를 남긴 채 다음 도메인으로 확장하지 않는다.
-
-## 개선 방향
-
-`CrafterDecision`이 다음 상태를 표현하도록 한다.
-
-예:
-
-```csharp
-public CrafterStatusEnum NextStatus;
-```
-
-흐름:
+현재는 실행 결정과 상태 전이 결정을 분리했다.
 
 ```text
-CrafterState
-    ↓ Read
+CrafterDecision
+→ CrafterExecutionSystem이 소비
+
+CrafterStateDecision
+→ CrafterStateApplySystem이 소비
+```
+
+`CrafterStateDecision`은 `IEnableableComponent`이며 현재 구조는 다음과 같다.
+
+```csharp
+public struct CrafterStateDecision : IComponentData, IEnableableComponent
+{
+    public CrafterStatusEnum NextStatus;
+
+    public CrafterStateDecision(CrafterStatusEnum nextStatus)
+    {
+        NextStatus = nextStatus;
+    }
+}
+```
+
+## 최종 흐름
+
+```text
+DecisionGroup
 
 CrafterDecisionSystem
-    ↓
+    ├─ CrafterState Read Only
+    ├─ CrafterDecision 갱신
+    └─ CrafterStateDecision.NextStatus 기록
+       + CrafterStateDecision Enabled
 
-CrafterDecision.NextStatus
-    ↓
+        ↓
 
-Execution / StateApply
-    ↓
+ExecutionGroup
+
+CrafterExecutionSystem
+    ├─ Progress
+    ├─ IsCraftingActive
+    └─ ProductResult
+
+        ↓
+
+StateApplyGroup
+
+CrafterStateApplySystem
+    ├─ CrafterState.Status = CrafterStateDecision.NextStatus
+    └─ CrafterStateDecision Disabled
+```
+
+`CrafterStateApplyJob`은 다음처럼 처리한다.
+
+```csharp
+public void Execute(
+    ref CrafterState state,
+    ref CrafterStateDecision decision,
+    EnabledRefRW<CrafterStateDecision> decisionEnabled)
+{
+    state.Status = decision.NextStatus;
+    decisionEnabled.ValueRW = false;
+}
+```
+
+현재 프로젝트의 Entities 6.4 Source Generator에서는
+`in CrafterStateDecision + EnabledRefRW<CrafterStateDecision>` 조합이
+RO/RW `ComponentTypeHandle` aliasing을 발생시켰다.
+
+따라서 실제 검증이 통과한 다음 조합을 사용한다.
+
+```text
+ref CrafterStateDecision
++
+EnabledRefRW<CrafterStateDecision>
+```
+
+`CrafterStateApplySystem`은 별도 수동 `EntityQuery`나 ECB를 사용하지 않고,
+`IJobEntity.Execute` 시그니처 기반 자동 Query와 `ScheduleParallel`을 사용한다.
+
+## WaitingForByproductOutput 정책
+
+`WaitingForByproductOutput` 해제 시 같은 프레임의 다른 Decision 시스템은
+아직 기존 `CrafterState.Status`를 읽을 수 있다.
+
+따라서 새 재료 입고 재개가 최대 1프레임 늦어질 수 있으며,
+이 지연은 허용하는 것으로 확정했다.
+
+```text
+Frame N Decision
+    NextStatus = WaitingForInput
+
+Frame N StateApply
+    Status = WaitingForInput
+
+Frame N+1 Decision
+    새 재료 입고 허용
+```
+
+## Fence 정책
+
+`CrafterStateApplySystem`에는 별도 Fence를 추가하지 않는다.
+
+이유:
+
+- `CrafterState`, `CrafterStateDecision`은 일반 ECS Component다.
+- Job은 `state.Dependency` 체인에 정상 연결된다.
+- ECS가 Component Read/Write dependency를 자동 추적한다.
+- `BuildingSpatialIndexFence`, `BeltSpatialIndexFence`처럼 내부 `NativeParallelHashMap`을 여러 시스템이 직접 공유하는 구조와 성격이 다르다.
+
+따라서 현재 계약은 다음과 같다.
+
+```text
+일반 ECS Component
+→ ECS Dependency Tracking 사용
+→ 별도 Fence 없음
+
+공유 NativeContainer / Spatial Index
+→ 필요 시 Reader/Writer Fence 사용
+```
+
+## 최종 책임
+
+```text
+SelectedRecipeId / ActiveRecipeId
+→ Command
+
+CrafterDecision
+→ Decision → Execution
+
+CrafterStateDecision
+→ Decision → StateApply
+
+Progress / IsCraftingActive
+→ Execution
 
 CrafterState.Status
+→ StateApply
 ```
+
+현재 EditMode 전체 회귀 검증은 **99 / 99 Pass**다.
 
 ---
 

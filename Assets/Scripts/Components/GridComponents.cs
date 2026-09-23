@@ -15,7 +15,7 @@ public enum DirectionEnum : int
 
 /// <summary>
 /// 엔티티의 그리드 상 2D 좌표 컴포넌트 (Unmanaged / Blittable).
-/// 건물, 자원 노드, 월드 아이템 등의 기준 좌표로 사용됩니다.
+/// 건물, 자원 노드, 월드 아이템 등의 기준 좌표로 사용.
 /// </summary>
 public struct GridPosition : IComponentData
 {

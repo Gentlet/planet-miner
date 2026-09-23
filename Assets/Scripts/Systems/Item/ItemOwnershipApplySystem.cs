@@ -6,10 +6,10 @@ using Unity.Entities;
 /// 아이템 소유권 상태 적용 시스템 (State Owner).
 /// 
 /// [책임]
-/// - StateApplyGroup(Phase 5)에서 실행됩니다.
-/// - TransferOwnershipRequest를 처리하여 ItemOwnership의 단일 원본(Source of Truth)을 갱신합니다.
-/// - 단일 워커 Burst Job(ItemOwnershipApplyJob)을 스케줄링하여 메인 스레드 부하 없이 고속 비동기 처리합니다.
-/// - Consume-on-Apply 원칙에 따라 처리 즉시 TransferOwnershipRequest를 비활성화합니다.
+/// - StateApplyGroup(Phase 5)에서 실행.
+/// - TransferOwnershipRequest를 처리하여 ItemOwnership의 단일 원본(Source of Truth)을 갱신.
+/// - 단일 워커 Burst Job(ItemOwnershipApplyJob)으로 소유권 변경 순차 적용.
+/// - Consume-on-Apply 원칙에 따라 처리 즉시 TransferOwnershipRequest를 비활성화.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
 [BurstCompile]

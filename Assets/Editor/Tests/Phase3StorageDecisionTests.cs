@@ -4,8 +4,8 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Task 3.2.6: Task 3.2 Storage/Building 입출력 의사결정 파이프라인 통합 테스트.
-/// 벨트 이동 -> 건물 입고 연계, 다중 외향 벨트 교차 방출, 다중 타일 복합 필터링, 정체 해소 후 방출 재개를 통합 검증합니다.
+/// Storage/Building 입출력 의사결정 파이프라인 통합 테스트.
+/// 벨트 이동 -> 건물 입고 연계, 다중 외향 벨트 교차 방출, 다중 타일 복합 필터링, 정체 해소 후 방출 재개를 통합 검증.
 /// </summary>
 public class Phase3StorageDecisionTests : EcsWorldTestFixture
 {

@@ -5,9 +5,9 @@ using Unity.Entities;
 /// CrafterDecisionSystem이 계산한 상태 전이 결정을 CrafterState에 최종 반영하는 State Owner 시스템.
 ///
 /// [책임]
-/// - StateApplyGroup(Phase 5)에서 실행됩니다.
-/// - 활성화된 CrafterStateDecision.NextStatus를 CrafterState.Status에 반영합니다.
-/// - Consume-on-Apply 원칙에 따라 반영 후 CrafterStateDecision을 즉시 비활성화합니다.
+/// - StateApplyGroup(Phase 5)에서 실행.
+/// - 활성화된 CrafterStateDecision.NextStatus를 CrafterState.Status에 반영.
+/// - Consume-on-Apply 원칙에 따라 반영 후 CrafterStateDecision을 즉시 비활성화.
 ///
 /// [Architecture V2]
 /// - Decision: CrafterState Read Only -> CrafterStateDecision.NextStatus 산출 및 활성화
@@ -37,7 +37,7 @@ public partial struct CrafterStateApplySystem : ISystem
 
 /// <summary>
 /// 활성화된 CrafterStateDecision을 Persistent State에 반영하고 즉시 소비하는 병렬 Burst Job.
-/// IJobEntity가 Execute 시그니처를 기준으로 Query를 자동 생성합니다.
+/// IJobEntity가 Execute 시그니처를 기준으로 Query를 자동 생성.
 /// </summary>
 [BurstCompile]
 public partial struct CrafterStateApplyJob : IJobEntity
@@ -49,7 +49,7 @@ public partial struct CrafterStateApplyJob : IJobEntity
     {
         state.Status = decision.NextStatus;
 
-        // Consume-on-Apply: 동일 상태 전이 결정이 다음 프레임에 다시 적용되지 않도록 즉시 비활성화합니다.
+        // Consume-on-Apply: 동일 상태 전이 결정이 다음 프레임에 다시 적용되지 않도록 즉시 비활성화.
         decisionEnabled.ValueRW = false;
     }
 }

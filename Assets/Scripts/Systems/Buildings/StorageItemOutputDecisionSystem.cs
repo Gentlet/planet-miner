@@ -7,13 +7,13 @@ using Unity.Mathematics;
 /// 일반 창고(Storage) 내부에 보관된 아이템(StoredItemElement)의 외부 벨트 방출 적합성을 판정하는 시스템.
 /// 
 /// [책임]
-/// - DecisionGroup(Phase 2)에서 실행됩니다.
-/// - 일반 보관 버퍼(StoredItemElement)를 가지고 있으면서 생산물 버퍼(ProductItemElement)가 없는 일반 창고 건물을 탐색합니다.
-/// - 건물 둘레 타일(Perimeter)을 순회하여 건물 외부로 향하는 외향 벨트(Outward Belt)를 감지합니다.
-/// - 외향 벨트 시작점(Progress = 0.0f)에 ItemSpacing 이상의 여유 공간이 확보되었는지 확인합니다.
-/// - 방출 조건 충족 시 FIFO 0번 아이템을 대상으로 CanOutput = true, ItemToOutput, TargetBeltPosition을 기록하고 활성화합니다.
-/// - 방출 조건 미충족 시(아이템 없음, 외향 벨트 없음, 또는 벨트 정체) 컴포넌트를 비활성화합니다.
-/// - [상태-의사결정 분리]: 버퍼에서 아이템을 제거하거나 소유권을 변경하지 않으며, 순수 의사결정 컴포넌트(BuildingItemOutputDecision)만 갱신합니다.
+/// - DecisionGroup(Phase 2)에서 실행.
+/// - 일반 보관 버퍼(StoredItemElement)를 가지고 있으면서 생산물 버퍼(ProductItemElement)가 없는 일반 창고 건물을 탐색.
+/// - 건물 둘레 타일(Perimeter)을 순회하여 건물 외부로 향하는 외향 벨트(Outward Belt)를 감지.
+/// - 외향 벨트 시작점(Progress = 0.0f)에 ItemSpacing 이상의 여유 공간이 확보되었는지 확인.
+/// - 방출 조건 충족 시 FIFO 0번 아이템을 대상으로 CanOutput = true, ItemToOutput, TargetBeltPosition을 기록하고 활성화.
+/// - 방출 조건 미충족 시(아이템 없음, 외향 벨트 없음, 또는 벨트 정체) 컴포넌트를 비활성화.
+/// - [상태-의사결정 분리]: 버퍼에서 아이템을 제거하거나 소유권을 변경하지 않으며, 순수 의사결정 컴포넌트(BuildingItemOutputDecision)만 갱신.
 /// </summary>
 [UpdateInGroup(typeof(DecisionGroup))]
 [BurstCompile]

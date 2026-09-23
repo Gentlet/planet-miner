@@ -7,17 +7,17 @@ using Unity.Mathematics;
 /// 제작기(Crafter)의 제작 조건(선택된 레시피, 입력 재료 완비 여부, 출력 버퍼 여유 공간)을 판정하는 의사결정 시스템.
 /// 
 /// [책임]
-/// - DecisionGroup(Phase 2)에서 실행됩니다.
-/// - RecipeRegistry Blob에서 선택된 레시피(SelectedRecipeId)를 조회합니다.
-/// - [옵션 A 선소비 & 정책 B 만석 대기]:
+/// - DecisionGroup(Phase 2)에서 실행.
+/// - RecipeRegistry Blob에서 선택된 레시피(SelectedRecipeId)를 조회.
+/// - [제작/출력 판정]:
 ///   1. 미착수 상태(!IsCraftingActive): StoredItemElement에 레시피 필요 재료가 모두 구비되어 있는지 확인하여 CanStartCraft 결정.
 ///   2. 진행 중 상태(IsCraftingActive && Progress < 1.0f): CanAdvance = true 및 NextStatus = Crafting 결정.
 ///   3. 완료 상태(IsCraftingActive && Progress >= 1.0f): ProductItemElement에 주생산품/부산품 수용 공간(1스택 한도)이 있는지 검사하여
 ///      공간이 있으면 CanProduceOutput = true, 만석이면 NextStatus = WaitingForOutput 결정.
-/// - CrafterState는 Read Only로 취급하며 Persistent State(Status)를 직접 수정하지 않습니다.
-/// - 실행 결정은 CrafterDecision, 상태 전이 결정은 CrafterStateDecision으로 분리해 기록합니다.
-/// - CrafterStateDecision은 StateApplyGroup의 CrafterStateApplySystem에서 실제 CrafterState.Status로 반영 후 비활성화됩니다.
-/// - CrafterDecision 활성 상태는 Phase 4 Execution 처리 여부만 의미합니다.
+/// - CrafterState Read Only, Persistent State(Status) 직접 수정 금지.
+/// - 실행 결정은 CrafterDecision, 상태 전이 결정은 CrafterStateDecision으로 분리해 기록.
+/// - CrafterStateDecision은 StateApplyGroup의 CrafterStateApplySystem에서 실제 CrafterState.Status로 반영 후 비활성화.
+/// - CrafterDecision 활성 상태는 Phase 4 Execution 처리 여부만 의미.
 /// </summary>
 [UpdateInGroup(typeof(DecisionGroup))]
 [BurstCompile]
@@ -109,9 +109,9 @@ public partial struct CrafterDecisionJob : IJobEntity
                 decisionEnabled.ValueRW = false;
                 return;
             }
-            // 출력 버퍼가 완전히 비워졌으면 아래 정상 판정 흐름으로 계속 진행합니다.
+            // 출력 버퍼가 완전히 비워졌으면 아래 정상 판정 흐름으로 계속 진행.
             // 실제 Status 해제는 이번 Decision의 NextStatus가 StateApply에서 반영되며,
-            // 같은 프레임 BuildingItemInputDecision은 기존 WaitingForByproductOutput을 읽을 수 있습니다.
+            // 같은 프레임 BuildingItemInputDecision은 기존 WaitingForByproductOutput 상태 참조 가능.
         }
 
         // 1. 레시피 유효성 검사
@@ -148,8 +148,8 @@ public partial struct CrafterDecisionJob : IJobEntity
         decision.RecipeIndex = recipeIdx;
         ref var recipe = ref registry.Recipes[recipeIdx];
 
-        // StateApply에서 아직 소비되지 않은 생산 결과가 있으면 새 제작/출력을 시작하지 않습니다.
-        // 정상 프레임에서는 같은 프레임 StateApply에서 비워지지만, Phase 누락/지연 시 중복 생산을 방지하는 안전장치입니다.
+        // StateApply 미소비 생산 결과 존재 시 새 제작/출력 차단
+        // 정상 프레임에서는 같은 프레임 StateApply에서 비워지지만, Phase 누락/지연 시 중복 생산을 방지하는 안전장치.
         if (productResults.Length > 0)
         {
             decision.CanCraft = false;
@@ -212,7 +212,7 @@ public partial struct CrafterDecisionJob : IJobEntity
             }
             else
             {
-                // Progress >= 1.0f: 제작 완료 상태 (정책 B: 출력 공간 확보 대기)
+                // Progress >= 1.0f: 제작 완료, 출력 공간 확보 전까지 대기
                 decision.CanAdvance = false;
                 decision.CanStartCraft = false;
 

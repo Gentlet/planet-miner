@@ -7,10 +7,10 @@ using Unity.Transforms;
 using UnityEngine;
 
 /// <summary>
-/// Task 3.4: Storage Buffer Invariant 검증 테스트.
+/// Storage Buffer Invariant 검증 테스트.
 /// 창고 버퍼(DynamicBuffer<StoredItemElement>)와 ItemOwnership 간의 양방향 일관성,
 /// 슬롯 범위, 슬롯 단일 품목 규칙, MaxStack 한도, StorageFilter 준수,
-/// 그리고 미소비 확정 결정(Decision) 잔류 감시를 단위 및 통합 검증합니다.
+/// 그리고 미소비 확정 결정(Decision) 잔류 감시를 단위 및 통합 검증.
 /// </summary>
 public class Phase3StorageInvariantTests : EcsWorldTestFixture
 {

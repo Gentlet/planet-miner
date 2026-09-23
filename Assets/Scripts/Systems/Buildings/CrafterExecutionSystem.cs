@@ -8,20 +8,20 @@ using Unity.Mathematics;
 /// 레시피 변경 시 잔여 재료 배출(Byproduct to Output) 및 입력 필터 자동 동기화를 수행하는 실행 시스템.
 /// 
 /// [책임]
-/// - ExecutionGroup(Phase 4)에서 실행됩니다.
+/// - ExecutionGroup(Phase 4)에서 실행.
 /// - 레시피 변경 감지:
 ///   - SelectedRecipeId != ActiveRecipeId 감지 시 진행 중이던 제작을 취소하고,
-///     StoredItemElement에 있던 잔여 재료들을 ProductItemElement(출력 버퍼)로 이관하여 외부 벨트로 자동 배출되도록 합니다.
-///   - 새 레시피의 재료 목록을 기반으로 StorageFilter(Whitelist)를 자동으로 갱신합니다.
-/// - [옵션 A 선소비 & 피드백 3번 무결성]:
+///     StoredItemElement에 있던 잔여 재료들을 ProductItemElement(출력 버퍼)로 이관하여 외부 벨트로 자동 배출되도록 .
+///   - 새 레시피의 재료 목록을 기반으로 StorageFilter(Whitelist)를 자동으로 갱신.
+/// - [재료 선소비]:
 ///   - 신규 제작 착수(CanStartCraft == true && !IsCraftingActive) 시, StoredItemElement에서 레시피 재료를
-///     RemoveAt으로 즉시 제거하고 DestroyItemRequest를 발행하여 Storage Invariant를 100% 보장합니다.
+///     RemoveAt으로 즉시 제거 후 DestroyItemRequest 발행, Storage Buffer 정합성 유지.
 /// - 진행도 누적:
-///   - (DeltaTime * Speed) / CraftTime 비율로 Progress를 누적합니다.
-/// - [정책 B 만석 대기 및 배출]:
+///   - (DeltaTime * Speed) / CraftTime 비율로 Progress를 누적.
+/// - [출력 대기 및 배출]:
 ///   - Progress >= 1.0f 도달 후 출력 버퍼에 공간이 확보되면(CanProduceOutput == true),
-///     ProductResult(Slot 0 주생산품, Slot 1 부산품)를 기록하고 IsCraftingActive = false 및 Progress = 0.0f로 리셋합니다.
-///   - ProductResult는 같은 프레임 StateApply의 ItemLifecycleApplySystem이 실제 Item Entity와 ProductItemElement로 변환합니다.
+///     ProductResult(Slot 0 주생산품, Slot 1 부산품)를 기록하고 IsCraftingActive = false 및 Progress = 0.0f로 리셋.
+///   - ProductResult는 같은 프레임 StateApply의 ItemLifecycleApplySystem이 실제 Item Entity와 ProductItemElement로 변환.
 /// </summary>
 [UpdateInGroup(typeof(ExecutionGroup))]
 [BurstCompile]
@@ -110,7 +110,7 @@ public partial struct CrafterExecutionJob : IJobEntity
         ref var recipe = ref registry.Recipes[recipeIdx];
 
         // =========================================================================
-        // 2. [신규 제작 착수 & 재료 선소비 (옵션 A & 피드백 3번 완전 준수)]
+        // 2. 신규 제작 착수 및 재료 선소비
         // =========================================================================
         if (decision.CanStartCraft && !state.IsCraftingActive)
         {
@@ -147,12 +147,12 @@ public partial struct CrafterExecutionJob : IJobEntity
         }
 
         // =========================================================================
-        // 4. [제작 완료 & ProductResult 기록 (다중 부산물 지원 및 정책 B)]
+        // 4. 제작 완료 및 다중 Output ProductResult 기록
         // =========================================================================
         if (state.IsCraftingActive && state.Progress >= 1.0f && decision.CanProduceOutput)
         {
-            // 정상적으로는 StateApply에서 매 프레임 소비되므로 비어 있어야 합니다.
-            // 미소비 결과가 남아 있다면 중복 결과를 기록하지 않습니다.
+            // 정상적으로는 StateApply에서 매 프레임 소비되므로 비어 있어야 .
+            // 미소비 결과 존재 시 중복 ProductResult 기록 차단
             if (productResults.Length > 0)
             {
                 return;

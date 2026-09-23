@@ -7,9 +7,9 @@ using Unity.Transforms;
 using UnityEngine;
 
 /// <summary>
-/// Task 2.4: Belt Domain 전체 파이프라인 통합 및 Invariant 검증 테스트.
+/// Belt Domain 전체 파이프라인 통합 및 Invariant 검증 테스트.
 /// SpatialSync -> Decision -> Execution -> SpatialSync -> InvariantValidation 전체 흐름의
-/// 위치 정합성, 공간 인덱스 동기화, 간격 보존, 무결성 위반 감지 기능을 검증합니다.
+/// 위치 정합성, 공간 인덱스 동기화, 간격 보존, 무결성 위반 감지 기능을 검증.
 /// </summary>
 public class Phase2BeltIntegrationTests : EcsWorldTestFixture
 {

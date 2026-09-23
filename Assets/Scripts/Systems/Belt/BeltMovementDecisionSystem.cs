@@ -8,13 +8,13 @@ using Unity.Mathematics;
 /// 벨트 위 아이템의 이동 가능 거리를 계산하고 막힘(Backpressure) 상태를 판정하는 의사결정 시스템.
 /// 
 /// [책임]
-/// - DecisionGroup(Phase 2)에서 실행됩니다.
+/// - DecisionGroup(Phase 2)에서 실행.
 /// - 현재 벨트의 속도, 선행 아이템과의 간격(ItemSpacing), 다음 타일의 벨트 유무 및 정체 여부를 계산하여
-///   이번 프레임에 전진할 거리인 PlannedMovement와 IsBlocked 플래그를 BeltMovementDecision에 기록합니다.
+///   이번 프레임에 전진할 거리인 PlannedMovement와 IsBlocked 플래그를 BeltMovementDecision에 기록.
 /// - [상태-의사결정 분리]: 상태 컴포넌트(BeltMovementState)는 오직 읽기(in)만 수행하고,
-///   산출물은 의사결정 컴포넌트(BeltMovementDecision)에 기록(ref)하므로 Job 내 컨테이너 Aliasing이 발생하지 않는 완전한 Safe Job입니다.
+///   산출물은 BeltMovementDecision에 기록하고 BeltMovementState는 읽기 전용으로 유지.
 /// - [엄격한 책임 분리]: 이 시스템은 좌표나 진행률(Progress, GridPosition)을 수정하지 않으며,
-///   실제 위치 반영은 ExecutionGroup의 BeltMovementExecutionSystem에서 수행됩니다.
+///   실제 위치 반영은 ExecutionGroup의 BeltMovementExecutionSystem에서 수행.
 /// </summary>
 [UpdateInGroup(typeof(DecisionGroup))]
 [BurstCompile]

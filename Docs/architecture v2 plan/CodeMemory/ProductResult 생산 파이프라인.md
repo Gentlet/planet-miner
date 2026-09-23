@@ -332,7 +332,8 @@ if (productResults.Length > 0)
     decision.CanAdvance = false;
     decision.CanProduceOutput = false;
 
-    state.Status = CrafterStatusEnum.WaitingForOutput;
+    stateDecision.NextStatus = CrafterStatusEnum.WaitingForOutput;
+    stateDecisionEnabled.ValueRW = true;
     decisionEnabled.ValueRW = false;
     return;
 }
@@ -360,22 +361,29 @@ if (recipe.TryGetPrimaryOutput(out var primary) && primary.Amount > 0)
 }
 ```
 
-현재 지원 중인 첫 번째 Byproduct:
+현재 Crafter는 다중 Output을 지원하며 `recipe.Outputs` 전체를 순회한다.
 
 ```csharp
-if (recipe.Outputs.Length > 1 && recipe.Outputs[1].IsByproduct)
+for (int outIdx = 0; outIdx < recipe.Outputs.Length; outIdx++)
 {
-    var byproduct = recipe.Outputs[1];
+    ref var output = ref recipe.Outputs[outIdx];
 
-    if (byproduct.Amount > 0)
+    if (output.ItemType != ItemTypeEnum.None && output.Amount > 0)
     {
         productResults.Add(
             new ProductResult(
-                byproduct.ItemType,
-                byproduct.Amount,
-                slotIndex: 1));
+                output.ItemType,
+                output.Amount,
+                slotIndex: outIdx));
     }
 }
+```
+
+Slot 계약:
+
+```text
+Slot 0   = Primary Output
+Slot 1+  = Byproducts
 ```
 
 예:
@@ -385,6 +393,7 @@ Recipe Output
 
 Iron × 3
 Stone × 2
+Copper × 1
 ```
 
 Execution 결과:
@@ -399,9 +408,14 @@ ProductResult[1]
 ItemType  = Stone
 Count     = 2
 SlotIndex = 1
+
+ProductResult[2]
+ItemType  = Copper
+Count     = 1
+SlotIndex = 2
 ```
 
-Item Entity 5개를 Execution에서 만들지 않는다.
+Execution에서는 실제 Item Entity를 생성하지 않는다.
 
 ---
 
@@ -697,30 +711,24 @@ Skipped: 0
 
 ### Crafter 다중 Byproduct
 
-현재 Recipe 데이터 모델은 여러 Byproduct를 표현할 수 있지만,
-Crafter Execution은 기존 정책을 유지하여 첫 번째 Byproduct만 처리한다.
+다중 Byproduct 지원은 완료되었다.
 
-현재:
-
-```text
-Primary    → 지원
-Byproduct0 → 지원
-Byproduct1+ → 아직 미지원
-```
-
-이 문제는 별도 Architecture V2 피드백 항목으로 처리한다.
-
-`ProductResult` 자체는 DynamicBuffer이므로 다중 부산물 확장에 제약이 없다.
-
-향후에는:
+현재 계약:
 
 ```text
-recipe.Outputs 전체 순회
-    ↓
-Output별 ProductResult 추가
+Primary      → Slot 0
+Byproduct 1  → Slot 1
+Byproduct 2  → Slot 2
+...
 ```
 
-형태로 확장할 수 있다.
+Decision 단계에서는 모든 Output Slot의 Capacity를 확인하며,
+하나라도 공간이 부족하면 All-or-Nothing 정책으로 전체 배출을 대기한다.
+
+Execution 단계에서는 `recipe.Outputs` 전체를 순회하여
+각 Output별 `ProductResult`를 기록한다.
+
+따라서 현재 ProductResult 파이프라인 자체에는 다중 부산물 관련 미해결 제약이 없다.
 
 ---
 

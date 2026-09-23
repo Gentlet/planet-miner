@@ -47,7 +47,7 @@ namespace PlanetMiner.Config
         public const string DefaultResourcePath = "Config/CrafterRecipeConfig";
 
         /// <summary>
-        /// Resources 경로에서 JSON을 로드하여 RecipeRegistryBlob을 빌드합니다.
+        /// Resources 경로에서 JSON을 로드하여 RecipeRegistryBlob을 빌드.
         /// </summary>
         public static BlobAssetReference<RecipeRegistryBlob> LoadBlobAssetFromResources(string resourcePath = DefaultResourcePath)
         {
@@ -62,7 +62,7 @@ namespace PlanetMiner.Config
         }
 
         /// <summary>
-        /// JSON 문자열을 파싱하여 BlobAssetReference<RecipeRegistryBlob>을 빌드합니다.
+        /// JSON 문자열을 파싱하여 BlobAssetReference<RecipeRegistryBlob>을 빌드.
         /// </summary>
         public static BlobAssetReference<RecipeRegistryBlob> BuildBlobAssetFromJson(string json)
         {

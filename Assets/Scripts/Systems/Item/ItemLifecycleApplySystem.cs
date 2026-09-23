@@ -8,12 +8,12 @@ using Unity.Transforms;
 /// 아이템 엔티티의 탄생(생성) 및 죽음(파괴) 전담 시스템.
 /// 
 /// [책임]
-/// - StateApplyGroup(Phase 5)에서 실행됩니다.
-/// - ProductResult를 처리하여 생산 완료 결과를 실제 아이템 엔티티와 ProductItemElement로 반영합니다.
-/// - SpawnItemRequest를 처리하여 아이템 엔티티를 생성하고 기본 컴포넌트를 초기화합니다.
-/// - DestroyItemRequest가 활성화된 아이템 엔티티를 파괴합니다.
+/// - StateApplyGroup(Phase 5)에서 실행.
+/// - ProductResult를 처리하여 생산 완료 결과를 실제 아이템 엔티티와 ProductItemElement로 반영.
+/// - SpawnItemRequest를 처리하여 아이템 엔티티를 생성하고 기본 컴포넌트를 초기화.
+/// - DestroyItemRequest가 활성화된 아이템 엔티티를 파괴.
 /// - 단일 워커 Burst Job들을 순차 스케줄링하여 구조적 변경(Structural Change) 명령을
-///   EndStateApplyEntityCommandBufferSystem에 비동기 기록합니다.
+///   EndStateApplyEntityCommandBufferSystem에 비동기 기록.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
 public partial struct ItemLifecycleApplySystem : ISystem
@@ -139,7 +139,7 @@ public partial struct ProductResultApplyJob : IJobEntity
                     producerEntity,
                     new ProductItemElement(newItem, result.ItemType, result.SlotIndex));
 
-                // 생산 건물 내부에 보관된 상태로 생성되므로 1회성 Request / 이동 관련 상태는 비활성화합니다.
+                // 생산 건물 내부에 보관된 상태로 생성되므로 1회성 Request / 이동 관련 상태는 비활성화.
                 ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
                 ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
                 ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
@@ -148,7 +148,7 @@ public partial struct ProductResultApplyJob : IJobEntity
             }
         }
 
-        // Consume-on-Apply: 논리적 생산 결과는 같은 StateApply 프레임에서 모두 소비합니다.
+        // Consume-on-Apply: 논리적 생산 결과는 같은 StateApply 프레임에서 모두 소비.
         productResults.Clear();
     }
 }

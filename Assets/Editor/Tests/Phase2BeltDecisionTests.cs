@@ -4,8 +4,8 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Task 2.2: Belt Decision System 통합 및 단위 테스트.
-/// 벨트 위 아이템의 PlannedMovement 및 IsBlocked 의사결정 규칙을 검증합니다.
+/// Belt Decision System 통합 및 단위 테스트.
+/// 벨트 위 아이템의 PlannedMovement 및 IsBlocked 의사결정 규칙을 검증.
 /// </summary>
 public class Phase2BeltDecisionTests : EcsWorldTestFixture
 {

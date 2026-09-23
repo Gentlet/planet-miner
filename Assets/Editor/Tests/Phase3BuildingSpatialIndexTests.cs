@@ -4,7 +4,7 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Task 3.2.1: BuildingSpatialIndex 및 다중 타일 점유/회전 스왑 단위 테스트.
+/// BuildingSpatialIndex 및 다중 타일 점유/회전 스왑 단위 테스트.
 /// </summary>
 public class Phase3BuildingSpatialIndexTests : EcsWorldTestFixture
 {

@@ -5,10 +5,10 @@ using Unity.Mathematics;
 using Unity.Transforms;
 
 /// <summary>
-/// Task 3.3: Storage 소유권 이전 및 상태 전이 연동 테스트.
+/// Storage 소유권 이전 및 상태 전이 연동 테스트.
 /// 벨트 아이템 -> 창고 적재(버퍼 추가, 소유권 전환, 벨트 비활성화, 공간 인덱스 제외),
 /// 창고 아이템 -> 벨트 방출(버퍼 제거, 소유권 해제, 벨트 활성화 Progress=0, 공간 인덱스 복원),
-/// 슬롯 예약 경합(Reservation) 및 스택 병합 규칙을 종합 검증합니다.
+/// 슬롯 예약 경합(Reservation) 및 스택 병합 규칙을 종합 검증.
 /// </summary>
 public class Phase3StorageOwnershipTests : EcsWorldTestFixture
 {

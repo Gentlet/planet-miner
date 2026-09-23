@@ -6,7 +6,7 @@ using Unity.Entities;
 using Unity.Jobs;
 
 /// <summary>
-/// Task 3.2.2 & BlobAsset 리팩토링: ItemRegistry 및 아이템별 MaxStack 불변 Blob 설정 인프라 단위 테스트.
+/// ItemRegistry 및 아이템별 MaxStack 불변 Blob 설정 인프라 단위 테스트.
 /// </summary>
 public class Phase3ItemConfigTests : EcsWorldTestFixture
 {

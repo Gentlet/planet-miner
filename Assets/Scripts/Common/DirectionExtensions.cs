@@ -7,7 +7,7 @@ using Unity.Mathematics;
 public static class DirectionExtensions
 {
     /// <summary>
-    /// 방향 열거형을 2D 그리드 오프셋 벡터(int2)로 변환합니다.
+    /// 방향 열거형을 2D 그리드 오프셋 벡터(int2)로 변환.
     /// </summary>
     public static int2 ToInt2(this DirectionEnum dir)
     {

@@ -3,7 +3,7 @@ using Unity.Entities;
 /// <summary>
 /// [부착 대상: 벨트 건물 엔티티 (Belt Building Entity)]
 /// 벨트 건물 엔티티의 고유 속성 컴포넌트.
-/// 벨트 엔티티는 [GridPosition, Direction, BeltComponent] 조합으로 구성됩니다.
+/// 벨트 엔티티는 [GridPosition, Direction, BeltComponent] 조합으로 구성.
 /// </summary>
 public struct BeltComponent : IComponentData
 {
@@ -21,8 +21,8 @@ public struct BeltComponent : IComponentData
 /// <summary>
 /// [부착 대상: 아이템 엔티티 (Item Entity)]
 /// 벨트 위에서 이동 중인 아이템의 위치 진행 상태(State)를 나타내는 Persistent Enableable 컴포넌트.
-/// - 벨트 위에 위치할 때만 활성화(Enabled)되며, 바닥에 떨어지거나 창고에 수납되면 비활성화됩니다.
-/// - DecisionGroup에서는 오직 읽기([ReadOnly])만 수행되며, ExecutionGroup에서만 실제 Progress가 전진(Write)됩니다.
+/// - 벨트 위에 위치할 때만 활성화(Enabled)되며, 바닥에 떨어지거나 창고에 수납되면 비활성화.
+/// - DecisionGroup에서는 오직 읽기([ReadOnly])만 수행되며, ExecutionGroup에서만 실제 Progress가 전진(Write).
 /// </summary>
 public struct BeltMovementState : IComponentData, IEnableableComponent
 {
@@ -41,8 +41,8 @@ public struct BeltMovementState : IComponentData, IEnableableComponent
 /// [부착 대상: 아이템 엔티티 (Item Entity)]
 /// 벨트 위 아이템의 프레임 단위 이동 의사결정 산출물(Decision)을 저장하는 Persistent Enableable 컴포넌트.
 /// - DecisionGroup(BeltMovementDecisionSystem)에서 계산하여 기록(Write)하고,
-///   ExecutionGroup(BeltMovementExecutionSystem)에서 실제 이동 반영 후 소비됩니다.
-/// - 상태 컴포넌트(BeltMovementState)와 분리하여 Job 내 컨테이너 Aliasing을 원천 차단하고 순수 Safe Burst Job을 보장합니다.
+///   ExecutionGroup(BeltMovementExecutionSystem)에서 실제 이동 반영 후 소비.
+/// - BeltMovementState와 Decision 데이터를 분리하여 동일 Job 내 상태/결정 책임 분리.
 /// </summary>
 public struct BeltMovementDecision : IComponentData, IEnableableComponent
 {

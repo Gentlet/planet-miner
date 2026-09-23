@@ -5,7 +5,7 @@ namespace PlanetMiner.Tests
 {
     /// <summary>
     /// ECS 격리 테스트를 위한 기본 픽스처.
-    /// 각 테스트마다 독립된 World를 생성하고 종료 시 자동으로 정리합니다.
+    /// 각 테스트마다 독립된 World를 생성하고 종료 시 자동으로 정리.
     /// </summary>
     public abstract class EcsWorldTestFixture
     {

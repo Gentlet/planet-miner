@@ -9,17 +9,17 @@ using Unity.Mathematics;
 /// 
 /// [책임]
 /// - SynchronizationGroup(Phase 6)에서 실행되어 비동기 잡 체인으로 공간 인덱스를 Clear하고
-///   현재 월드에 살아있는 유효한 월드 아이템(ItemOwnership.IsWorldItem == true)만 일괄 재등록합니다.
+///   현재 월드에 살아있는 유효한 월드 아이템(ItemOwnership.IsWorldItem == true)만 일괄 재등록.
 /// - ItemSpatialIndexFence를 통해 이전 Phase의 Reader 잡들이 모두 완료된 후 쓰기를 시작하며,
-///   Map.Capacity 확장과 같은 메인 스레드 재할당 시에만 제한적으로 Complete()를 호출합니다.
-/// - ISystem 및 [BurstCompile] 기반으로 멀티스레드 병렬 Job(IJob, IJobEntity)을 통해 비차단(Non-blocking) 고속 처리합니다.
+///   Map.Capacity 확장과 같은 메인 스레드 재할당 시에만 제한적으로 Complete()를 호출.
+/// - ISystem/Burst 기반 병렬 Job으로 Spatial Index 갱신.
 /// </summary>
 [UpdateInGroup(typeof(SynchronizationGroup))]
 [BurstCompile]
 public partial struct ItemSpatialSyncSystem : ISystem
 {
     // 월드 아이템 및 보관(Stored) 아이템을 모두 포함하는 아이템 쿼리
-    // 실제 월드 아이템 필터링은 Job 내부에서 ItemOwnership.IsWorldItem으로 수행됩니다.
+    // 실제 월드 아이템 필터링은 Job 내부에서 ItemOwnership.IsWorldItem으로 수행.
     private EntityQuery _itemQuery;
 
     [BurstCompile]

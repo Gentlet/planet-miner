@@ -9,16 +9,16 @@ using Unity.Transforms;
 /// 창고 아이템의 입고 및 출고 상태 전이를 일괄 적용하는 시스템.
 /// 
 /// [책임]
-/// - StateApplyGroup(Phase 5)에서 ItemOwnershipApplySystem 직전에 실행됩니다.
+/// - StateApplyGroup(Phase 5)에서 ItemOwnershipApplySystem 직전에 실행.
 /// - 단일 워커 스레드 Burst Job(BuildingItemInputApplyJob, BuildingItemOutputApplyJob)을 순차적으로 스케줄링하여
-///   메인 스레드 부하를 0으로 유지하면서, 버퍼 조작과 월드 컴포넌트 상태 전이를 즉각적이고 안전하게 적용합니다.
+///   버퍼 조작과 컴포넌트 상태 전이를 StateApply 단계에서 적용.
 /// - [입고]: 슬롯 예약이 완료된 아이템(CanDeposit == true && TargetSlotIndex >= 0)을 창고 버퍼(DynamicBuffer<StoredItemElement>)에 적재하고,
-///           BeltMovementState를 비활성화한 뒤 TransferOwnershipRequest(TargetOwner = 창고)를 발행합니다.
+///           BeltMovementState를 비활성화한 뒤 TransferOwnershipRequest(TargetOwner = 창고)를 발행.
 /// - [출고]: 출고가 확정된 건물(CanOutput == true)의 버퍼에서 대상 아이템(ItemToOutput)을 제거하고,
 ///           GridPosition, Direction, BeltMovementState(Progress = 0.0f), LocalTransform을 벨트 시작점으로 복원한 뒤
-///           TransferOwnershipRequest(TargetOwner = Entity.Null)를 발행하여 월드 아이템으로 전환합니다.
+///           TransferOwnershipRequest(TargetOwner = Entity.Null)를 발행하여 월드 아이템으로 전환.
 /// - [엄격한 단일 책임 분리]: 이 시스템은 창고 버퍼와 월드 상태 전이만 처리하며,
-///   최종 소유권(ItemOwnership) 갱신은 뒤이어 실행되는 ItemOwnershipApplySystem에 위임합니다.
+///   최종 소유권(ItemOwnership) 갱신은 뒤이어 실행되는 ItemOwnershipApplySystem에 위임.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
 [UpdateBefore(typeof(ItemOwnershipApplySystem))]

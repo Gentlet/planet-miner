@@ -3,7 +3,7 @@ using PlanetMiner.Tests;
 using Unity.Entities;
 
 /// <summary>
-/// Task 3.1: Storage 컴포넌트, FixedBitSet, StorageFilter, StoredItemElement 단위 테스트.
+/// Storage 컴포넌트, FixedBitSet, StorageFilter, StoredItemElement 단위 테스트.
 /// </summary>
 public class Phase3StorageComponentTests : EcsWorldTestFixture
 {

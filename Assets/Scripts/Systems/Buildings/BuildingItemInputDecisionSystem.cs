@@ -7,14 +7,14 @@ using Unity.Mathematics;
 /// 벨트 종단에 도달한 아이템의 건물 입고 적합성을 판정하는 시스템.
 /// 
 /// [책임]
-/// - DecisionGroup(Phase 2)에서 실행됩니다.
-/// - 벨트 끝(Progress >= 1.0f - AlignmentEpsilon)에 도달한 월드 아이템을 감지합니다.
-/// - BuildingSpatialIndex를 통해 진행 방향 다음 타일의 건물 존재 및 수납 기능(Storage) 여부를 O(1)로 조회합니다.
-/// - StorageFilter가 부착된 경우 아이템 허용 여부를 검사합니다.
-/// - 적합 시 CanDeposit = true, TargetBuilding 지정, TargetSlotIndex = -1(Reservation 단계 확정용)을 기록하고 활성화합니다.
-/// - 필터 차단 또는 부적합 시 CanDeposit = false를 기록하여 입고 불가 상태를 전달합니다.
+/// - DecisionGroup(Phase 2)에서 실행.
+/// - 벨트 끝(Progress >= 1.0f - AlignmentEpsilon)에 도달한 월드 아이템을 감지.
+/// - BuildingSpatialIndex를 통해 진행 방향 다음 타일의 건물 존재 및 수납 기능(Storage) 여부를 O(1)로 조회.
+/// - StorageFilter가 부착된 경우 아이템 허용 여부를 검사.
+/// - 적합 시 CanDeposit = true, TargetBuilding 지정, TargetSlotIndex = -1(Reservation 단계 확정용)을 기록하고 활성화.
+/// - 필터 차단 또는 부적합 시 CanDeposit = false를 기록하여 입고 불가 상태를 전달.
 /// - [엄격한 단일 책임 원칙 (SRP)]: 벨트 이동 컴포넌트(BeltMovementDecision)를 수정하지 않으며, 
-///   오직 자신의 의사결정 컴포넌트(BuildingItemInputDecision)만 갱신하므로 쓰기 경합이 발생하지 않습니다.
+///   BuildingItemInputDecision만 갱신하여 다른 도메인 상태와의 쓰기 경합 방지.
 /// </summary>
 [UpdateInGroup(typeof(DecisionGroup))]
 [BurstCompile]

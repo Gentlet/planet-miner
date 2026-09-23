@@ -4,9 +4,9 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Task 4.1: Resource 및 Miner 컴포넌트 정의 및 공간 색인 인프라 검증 테스트.
+/// Resource 및 Miner 컴포넌트 정의 및 공간 색인 인프라 검증 테스트.
 /// ResourceNode, ResourceConfig, ResourceSpatialIndex, MinerState, MinerDecision, ProductResult의
-/// 데이터 구조와 공간 색인 수명주기를 검증합니다.
+/// 데이터 구조와 공간 색인 수명주기를 검증.
 /// </summary>
 public class Phase4MinerComponentTests : EcsWorldTestFixture
 {

@@ -4,7 +4,7 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Task 4.2: Miner Decision & Execution System 통합 파이프라인 검증 테스트 (내부 버퍼 모델).
+/// Miner Decision & Execution System 통합 파이프라인 검증 테스트 (내부 버퍼 모델).
 /// - MinerDecisionSystem: 하부 자원 감지, 내부 버퍼 여유 검사, 다중 자원 우선순위
 /// - MinerExecutionSystem: 진행도 누적, 채굴 완료 시 ProductResult 기록, 자원 차감 및 고갈 파괴
 /// - BuildingItemOutput 파이프라인 연계: 채굴기 버퍼의 아이템이 외향 벨트로 정상 방출되는 전체 2단계 파이프라인 검증
@@ -334,7 +334,7 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         Assert.AreEqual(0, productResults.Length, "ProductResult must be consumed during StateApply.");
         Assert.AreEqual(50, productBuffer.Length, "StateApply should fill exactly the final stack slot.");
 
-        // 소비된 ProductResult를 다시 처리해 중복 아이템을 생성하면 안 됩니다.
+        // 소비된 ProductResult를 다시 처리해 중복 아이템을 생성금지.
         RunStateApplyPhase();
         productBuffer = _entityManager.GetBuffer<ProductItemElement>(minerEntity);
         Assert.AreEqual(50, productBuffer.Length, "A consumed ProductResult must never create a duplicate item.");

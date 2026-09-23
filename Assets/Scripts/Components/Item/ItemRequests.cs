@@ -59,7 +59,7 @@ public struct DestroyItemRequest : IEnableableRequest
 
 /// <summary>
 /// [1. 역할]            : 아이템 소유권 이전 요청 (대상 부착형 방식 - 모델 B)
-///                      위치 이동 책임과 분리되어 순수하게 소유자(Owner) 변경만 전담합니다.
+///                      위치 이동 책임과 분리되어 순수하게 소유자(Owner) 변경만 전담.
 /// [2. Producer (생성자)] : StorageInput/Output, DroneCargoTransfer 등
 /// [3. Consumer (소비자)] : ItemOwnershipApplySystem (StateApplyGroup)
 /// [4. Create Phase]    : DecisionGroup

@@ -5,10 +5,10 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Phase 5 Crafter 레시피 변경 및 입고 차단/복귀 파이프라인 검증 테스트 (피드백 1번).
+/// Phase 5 Crafter 레시피 변경 및 입고 차단/복귀 파이프라인 검증 테스트.
 /// - 레시피 변경 시 CommandGroup에서 원자적 처리 (Filter 갱신, Byproduct to ProductBuffer, 진행도 리셋)
 /// - ProductItemElement에 잔여물이 있는 동안 CrafterStatusEnum.WaitingForByproductOutput 상태 진입
-/// - WaitingForByproductOutput 동안 BuildingItemInputDecisionSystem에서 재료 입고 완전 차단 (방안 A)
+/// - WaitingForByproductOutput 동안 BuildingItemInputDecisionSystem에서 재료 입고 차단 
 /// - ProductItemElement가 완전히 비워지면 Idle로 복귀하고 새 레시피 재료 입고 개시
 /// </summary>
 public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
@@ -81,7 +81,7 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
     public void Test01_RecipeChange_EntersWaitingForByproductOutput_BlocksBeltDeposit()
     {
         // Arrange: (1, 0)에 Recipe 1(Iron) Crafter 배치.
-        // 기존 CrafterExecution 레시피 변경 테스트의 검증도 이 파이프라인 테스트로 통합합니다.
+        // 기존 CrafterExecution 레시피 변경 테스트의 검증도 이 파이프라인 테스트로 통합.
         var crafter = CreateCrafter(new int2(1, 0), recipeId: 1);
         Entities.CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore, 0);
         Entities.CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore, 0);
@@ -137,7 +137,7 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
         _inputDecisionHandle.Update(_world.Unmanaged);
 
         // Assert 3: 새 레시피의 재료(Copper_Ore)이고 필터가 허용하더라도,
-        // Crafter가 WaitingForByproductOutput 상태이므로 입고가 완전 차단(CanDeposit == false)되어야 함!
+        // Crafter가 WaitingForByproductOutput 상태이므로 입고가 차단(CanDeposit == false)되어야 함!
         var inputDecision = _entityManager.GetComponentData<BuildingItemInputDecision>(beltItem);
         Assert.IsFalse(inputDecision.CanDeposit, "Input must be blocked while Crafter is WaitingForByproductOutput.");
         Assert.AreEqual(crafter, inputDecision.TargetBuilding);
@@ -175,7 +175,7 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
         state = _entityManager.GetComponentData<CrafterState>(crafter);
         Assert.AreEqual(CrafterStatusEnum.WaitingForByproductOutput, state.Status);
 
-        // EndStateApply playback 이후 DynamicBuffer handle을 다시 획득합니다.
+        // EndStateApply playback 이후 DynamicBuffer handle을 다시 획득.
         productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
 
         // 2. 출력 버퍼가 완전히 비워짐
