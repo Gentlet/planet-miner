@@ -176,7 +176,7 @@ public class Phase3StorageDecisionTests : EcsWorldTestFixture
         Assert.AreEqual(storage, decisionAllowed.TargetBuilding);
         Assert.IsTrue(decisionAllowed.CanDeposit, "Iron_Ore must be allowed by whitelist filter.");
 
-        Assert.IsTrue(_entityManager.IsComponentEnabled<BuildingItemInputDecision>(blockedItem));
+        Assert.IsFalse(_entityManager.IsComponentEnabled<BuildingItemInputDecision>(blockedItem));
         var decisionBlocked = _entityManager.GetComponentData<BuildingItemInputDecision>(blockedItem);
         Assert.AreEqual(storage, decisionBlocked.TargetBuilding);
         Assert.IsFalse(decisionBlocked.CanDeposit, "Coal must be blocked by whitelist filter.");

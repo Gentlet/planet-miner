@@ -157,7 +157,6 @@ public class Phase3StorageOwnershipTests : EcsWorldTestFixture
         _entityManager.SetComponentData(item, new TransferOwnershipRequest(Entity.Null));
 
         _entityManager.SetComponentEnabled<BeltMovementState>(item, false);
-        _entityManager.SetComponentEnabled<BeltMovementDecision>(item, false);
         _entityManager.SetComponentEnabled<BuildingItemInputDecision>(item, false);
         _entityManager.SetComponentEnabled<TransferOwnershipRequest>(item, false);
 
@@ -189,7 +188,6 @@ public class Phase3StorageOwnershipTests : EcsWorldTestFixture
         var beltState = _entityManager.GetComponentData<BeltMovementState>(item);
         Assert.AreEqual(0.0f, beltState.Progress, "벨트 시작점(Progress = 0.0f)으로 복원");
         Assert.IsTrue(_entityManager.IsComponentEnabled<BeltMovementState>(item), "BeltMovementState 컴포넌트 활성화");
-        Assert.IsTrue(_entityManager.IsComponentEnabled<BeltMovementDecision>(item), "BeltMovementDecision 컴포넌트 활성화");
 
         // TransferOwnershipRequest 발행 확인 (TargetOwner = Null: 월드 아이템 전환)
         Assert.IsTrue(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item));

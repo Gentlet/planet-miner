@@ -143,7 +143,6 @@ public partial struct ProductResultApplyJob : IJobEntity
                 ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
                 ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
                 ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
-                ECB.SetComponentEnabled<BeltMovementDecision>(newItem, false);
                 ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
             }
         }
@@ -199,7 +198,6 @@ public partial struct SpawnItemApplyJob : IJobEntity
 
         // 상태 및 의사결정 컴포넌트 비활성화 초기화
         ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
-        ECB.SetComponentEnabled<BeltMovementDecision>(newItem, false);
         ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
 
         // Consume-on-Apply: 요청 엔티티 파괴

@@ -80,8 +80,8 @@ public class Phase3BuildingInputDecisionTests : EcsWorldTestFixture
         // Act
         SyncSpatialAndRunDecision();
 
-        // Assert: Decision is enabled with CanDeposit = false
-        Assert.IsTrue(_entityManager.IsComponentEnabled<BuildingItemInputDecision>(item));
+        // Assert: 입고 불가 Decision은 비활성화
+        Assert.IsFalse(_entityManager.IsComponentEnabled<BuildingItemInputDecision>(item));
         var decision = _entityManager.GetComponentData<BuildingItemInputDecision>(item);
         Assert.AreEqual(storage, decision.TargetBuilding);
         Assert.IsFalse(decision.CanDeposit, "Item should not be allowed to deposit due to filter.");
@@ -134,7 +134,7 @@ public class Phase3BuildingInputDecisionTests : EcsWorldTestFixture
         SyncSpatialAndRunDecision();
 
         // Assert
-        Assert.IsTrue(_entityManager.IsComponentEnabled<BuildingItemInputDecision>(item));
+        Assert.IsFalse(_entityManager.IsComponentEnabled<BuildingItemInputDecision>(item));
         var decision = _entityManager.GetComponentData<BuildingItemInputDecision>(item);
         Assert.AreEqual(pole, decision.TargetBuilding);
         Assert.IsFalse(decision.CanDeposit);

@@ -47,7 +47,7 @@ public struct SpawnItemRequest : IRequestComponent
 /// [1. 역할]            : 아이템 엔티티 파괴 및 소모 마킹 요청 (대상 부착형 방식 - 모델 B)
 /// [2. Producer (생성자)] : 제작기(Crafter 재료 소모), 폐기 시스템 등
 /// [3. Consumer (소비자)] : ItemLifecycleApplySystem (StateApplyGroup)
-/// [4. Create Phase]    : DecisionGroup
+/// [4. Create Phase]    : ExecutionGroup
 /// [5. Consume Phase]   : StateApplyGroup
 /// [6. 수명주기 원칙]    : Consume-on-Apply (처리 즉시 ecb.DestroyEntity(itemEntity))
 /// [7. 실패 정책]        : 이미 유효하지 않은 엔티티인 경우 SetComponentEnabled(false)로 비활성화
@@ -60,9 +60,9 @@ public struct DestroyItemRequest : IEnableableRequest
 /// <summary>
 /// [1. 역할]            : 아이템 소유권 이전 요청 (대상 부착형 방식 - 모델 B)
 ///                      위치 이동 책임과 분리되어 순수하게 소유자(Owner) 변경만 전담.
-/// [2. Producer (생성자)] : StorageInput/Output, DroneCargoTransfer 등
+/// [2. Producer (생성자)] : BuildingItemStorageApplySystem 등 소유권 변경을 요청하는 StateApply 시스템
 /// [3. Consumer (소비자)] : ItemOwnershipApplySystem (StateApplyGroup)
-/// [4. Create Phase]    : DecisionGroup
+/// [4. Create Phase]    : StateApplyGroup
 /// [5. Consume Phase]   : StateApplyGroup
 /// [6. 수명주기 원칙]    : Consume-on-Apply (처리 즉시 SetComponentEnabled(false)로 비활성화)
 /// [7. 실패 정책]        : TargetOwner가 유효하지 않은 경우 무시하고 비활성화(Drop)

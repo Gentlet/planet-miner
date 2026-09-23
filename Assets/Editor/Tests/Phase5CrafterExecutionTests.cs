@@ -129,7 +129,26 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test02_IngredientsSupplied_StartsCraftingAndConsumesMaterialsImmediately()
+    public void Test02_DisabledCrafterDecision_IsExcludedFromExecution()
+    {
+        var crafter = CreateCrafter(recipeId: 1);
+        CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore);
+
+        RunDecisionPhase();
+
+        Assert.IsTrue(_entityManager.IsComponentEnabled<CrafterDecision>(crafter));
+        _entityManager.SetComponentEnabled<CrafterDecision>(crafter, false);
+
+        RunExecutionPhase(deltaTime: 0.1f);
+
+        var state = _entityManager.GetComponentData<CrafterState>(crafter);
+        Assert.IsFalse(state.IsCraftingActive);
+        Assert.AreEqual(0.0f, state.Progress, 0.0001f);
+        Assert.AreEqual(1, _entityManager.GetBuffer<StoredItemElement>(crafter).Length);
+    }
+
+    [Test]
+    public void Test03_IngredientsSupplied_StartsCraftingAndConsumesMaterialsImmediately()
     {
         // Arrange: Recipe 1 (Iron_Ore 1개 필요)
         var crafter = CreateCrafter(recipeId: 1);
@@ -145,11 +164,13 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         Assert.IsTrue(decision.CanStartCraft);
 
         // Act 2: Execution Phase (제작 착수 및 재료 선소비)
-        RunExecutionPhase(deltaTime: 0.1f);
+        Simulation.SetDeltaTime(0.1f);
+        Simulation.UpdateAndComplete(_crafterExecutionHandle);
 
-        // Assert: StoredItemElement에서 아이템이 즉시 제거되었는지 확인 (ECB 반영 후 재조회)
+        // Assert: Execution에서 재료 제거와 DestroyItemRequest 활성화가 즉시 반영
         var storedBuffer = _entityManager.GetBuffer<StoredItemElement>(crafter);
         Assert.AreEqual(0, storedBuffer.Length, "StoredItemElement must be cleared immediately upon craft start.");
+        Assert.IsTrue(_entityManager.IsComponentEnabled<DestroyItemRequest>(oreItem));
 
         var state = _entityManager.GetComponentData<CrafterState>(crafter);
         Assert.IsTrue(state.IsCraftingActive, "IsCraftingActive must be true after consuming ingredients.");
@@ -161,7 +182,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test03_CraftingProgress_AdvancesOverTime()
+    public void Test04_CraftingProgress_AdvancesOverTime()
     {
         // Arrange: Recipe 1 (CraftTime = 1.0s)
         var crafter = CreateCrafter(recipeId: 1);
@@ -186,7 +207,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test04_CraftingComplete_SpawnsProductToProductBuffer()
+    public void Test05_CraftingComplete_SpawnsProductToProductBuffer()
     {
         // Arrange: Recipe 1 (CraftTime = 1.0s, Output: Iron 1개)
         var crafter = CreateCrafter(recipeId: 1);
@@ -231,7 +252,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test05_Backpressure_ProductBufferFull_WaitsForOutputAtProgress1()
+    public void Test06_Backpressure_ProductBufferFull_WaitsForOutputAtProgress1()
     {
         // Arrange: Recipe 1, 출력 버퍼에 이미 MaxStack(50개) 적재되어 있는 상황
         var crafter = CreateCrafter(recipeId: 1);
@@ -299,7 +320,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test06_MultipleByproducts_SpawnsAllOutputsToRespectiveSlots()
+    public void Test07_MultipleByproducts_SpawnsAllOutputsToRespectiveSlots()
     {
         // Arrange: 레시피 10 (주완성품 Iron 1 + 부산품1 Stone 1 + 부산품2 Copper 1)
         string customJson = @"
@@ -365,7 +386,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test07_MultipleByproducts_Backpressure_AllOrNothing_WaitsIfAnySlotFull()
+    public void Test08_MultipleByproducts_Backpressure_AllOrNothing_WaitsIfAnySlotFull()
     {
         // Arrange: 레시피 10 (주완성품 Iron 1 + 부산품1 Stone 1 + 부산품2 Copper 1)
         string customJson = @"
