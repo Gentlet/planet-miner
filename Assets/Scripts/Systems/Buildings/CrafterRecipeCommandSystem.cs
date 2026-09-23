@@ -8,10 +8,10 @@ using Unity.Mathematics;
 /// [책임]
 /// - ChangeCrafterRecipeRequest 요청 엔티티를 감지하여 레시피 변경을 원자적으로 수행합니다.
 /// - 1. 기존 진행도 리셋 (Progress = 0, IsCraftingActive = false)
-/// - 2. 잔여 StoredItemElement 재료를 ProductItemElement(출력 버퍼)로 강제 배출(Purge, Slot 2+)
+/// - 2. 잔여 StoredItemElement 재료를 ProductItemElement(출력 버퍼)로 부산물 배출(Byproduct, Slot 1+)
 /// - 3. StorageFilter를 새 레시피의 재료 Whitelist로 즉시 갱신 (0 이하면 Blacklist)
 /// - 4. SelectedRecipeId와 ActiveRecipeId를 새 레시피 ID로 갱신
-/// - 5. 상태 전환: ProductItemElement에 아이템이 남아있으면 WaitingForPurgeOutput, 없으면 Idle (또는 NoRecipe)
+/// - 5. 상태 전환: ProductItemElement에 아이템이 남아있으면 WaitingForByproductOutput, 없으면 Idle (또는 NoRecipe)
 /// - 6. 처리 완료된 ChangeCrafterRecipeRequest 엔티티 파괴 (Consume-on-Apply)
 /// </summary>
 [UpdateInGroup(typeof(CommandGroup))]
@@ -95,7 +95,7 @@ public partial struct CrafterRecipeCommandSystem : ISystem
                 crafterState.Progress = 0.0f;
                 crafterState.IsCraftingActive = false;
 
-                // 2. StoredItemElement -> ProductItemElement 잔여 재료 배출 (Slot 2+)
+                // 2. StoredItemElement -> ProductItemElement 잔여 재료 Byproduct 배출 (Slot 1+)
                 if (_storedBufferLookup.HasBuffer(crafter) && _productBufferLookup.HasBuffer(crafter))
                 {
                     var storedItems = _storedBufferLookup[crafter];
@@ -124,17 +124,17 @@ public partial struct CrafterRecipeCommandSystem : ISystem
                                 uniqueTypes.Add(typeByte);
                             }
 
-                            int purgeSlot = 2 + math.max(0, typeIndex);
-                            productItems.Add(new ProductItemElement(item.ItemEntity, item.ItemType, purgeSlot));
+                            int byproductSlot = 1 + math.max(0, typeIndex);
+                            productItems.Add(new ProductItemElement(item.ItemEntity, item.ItemType, byproductSlot));
                         }
 
                         storedItems.Clear();
                     }
 
-                    // 5. 상태 전환: ProductItemElement에 아이템이 남아있으면 WaitingForPurgeOutput
+                    // 5. 상태 전환: ProductItemElement에 아이템이 남아있으면 WaitingForByproductOutput
                     if (productItems.Length > 0)
                     {
-                        crafterState.Status = CrafterStatusEnum.WaitingForPurgeOutput;
+                        crafterState.Status = CrafterStatusEnum.WaitingForByproductOutput;
                     }
                     else
                     {

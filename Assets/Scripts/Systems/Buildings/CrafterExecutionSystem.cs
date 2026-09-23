@@ -5,7 +5,7 @@ using Unity.Mathematics;
 
 /// <summary>
 /// 제작기(Crafter)의 재료 소모, 제작 진행도 누적, 완성품/부산품 생산 결과 기록,
-/// 레시피 변경 시 잔여 재료 배출(Purge to Output) 및 입력 필터 자동 동기화를 수행하는 실행 시스템.
+/// 레시피 변경 시 잔여 재료 배출(Byproduct to Output) 및 입력 필터 자동 동기화를 수행하는 실행 시스템.
 /// 
 /// [책임]
 /// - ExecutionGroup(Phase 4)에서 실행됩니다.

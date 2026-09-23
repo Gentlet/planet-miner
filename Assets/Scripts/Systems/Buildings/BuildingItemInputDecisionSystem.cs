@@ -158,11 +158,11 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
             return;
         }
 
-        // 5.5 제작기(Crafter) 상태 검사: WaitingForPurgeOutput 상태인 경우 재료 입고 완전 차단
+        // 5.5 제작기(Crafter) 상태 검사: WaitingForByproductOutput 상태인 경우 재료 입고 완전 차단
         if (CrafterStateLookup.HasComponent(buildingInfo.Entity))
         {
             var crafterState = CrafterStateLookup[buildingInfo.Entity];
-            if (crafterState.Status == CrafterStatusEnum.WaitingForPurgeOutput)
+            if (crafterState.Status == CrafterStatusEnum.WaitingForByproductOutput)
             {
                 inputDecision.TargetBuilding = buildingInfo.Entity;
                 inputDecision.CanDeposit = false;
