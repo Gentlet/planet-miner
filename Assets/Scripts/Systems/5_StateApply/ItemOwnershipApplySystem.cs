@@ -1,6 +1,7 @@
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Rendering;
 
 /// <summary>
 /// 아이템 소유권 상태 적용 시스템 (State Owner).
@@ -8,6 +9,7 @@ using Unity.Entities;
 /// [책임]
 /// - StateApplyGroup(Phase 5)에서 실행.
 /// - TransferOwnershipRequest를 처리하여 ItemOwnership의 단일 원본(Source of Truth)을 갱신.
+/// - 소유권 전환(수납 <-> 방출)에 따라 DisableRendering 컴포넌트를 추가/제거하여 렌더링 표시 상태 동기화.
 /// - 단일 워커 Burst Job(ItemOwnershipApplyJob)으로 소유권 변경 순차 적용.
 /// - Consume-on-Apply 원칙에 따라 처리 즉시 TransferOwnershipRequest를 비활성화.
 /// </summary>
@@ -34,17 +36,22 @@ public partial struct ItemOwnershipApplySystem : ISystem
     {
     }
 
-    [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
         _entityStorageInfoLookup.Update(ref state);
 
+        var ecbSystem = state.World.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
+        var ecb = ecbSystem.CreateCommandBuffer();
+
         var job = new ItemOwnershipApplyJob
         {
-            EntityStorageInfoLookup = _entityStorageInfoLookup
+            EntityStorageInfoLookup = _entityStorageInfoLookup,
+            ECB = ecb
         };
 
-        state.Dependency = job.Schedule(_requestQuery, state.Dependency);
+        var handle = job.Schedule(_requestQuery, state.Dependency);
+        ecbSystem.AddJobHandleForProducer(handle);
+        state.Dependency = handle;
     }
 }
 
@@ -57,7 +64,10 @@ public partial struct ItemOwnershipApplyJob : IJobEntity
     [ReadOnly]
     public EntityStorageInfoLookup EntityStorageInfoLookup;
 
+    public EntityCommandBuffer ECB;
+
     public void Execute(
+        Entity entity,
         ref ItemOwnership ownership,
         RefRW<TransferOwnershipRequest> request,
         EnabledRefRW<TransferOwnershipRequest> requestEnabled)
@@ -66,12 +76,20 @@ public partial struct ItemOwnershipApplyJob : IJobEntity
 
         if (targetOwner == Entity.Null)
         {
-            // 월드로 방출 (월드 아이템 전환)
+            // 수납 -> 월드로 방출: 렌더링 활성화
+            if (ownership.IsStored)
+            {
+                ECB.RemoveComponent<DisableRendering>(entity);
+            }
             ownership = ItemOwnership.WorldItem;
         }
         else if (EntityStorageInfoLookup.Exists(targetOwner))
         {
-            // 특정 건물/창고 보관 아이템으로 전환
+            // 월드 -> 시설 수납: 렌더링 비활성화
+            if (ownership.IsWorldItem)
+            {
+                ECB.AddComponent<DisableRendering>(entity);
+            }
             ownership = ItemOwnership.Stored(targetOwner);
         }
         // 수신자가 유효하지 않은(파괴된) 유령 엔티티인 경우 소유권 변경을 무시하고 Drop
@@ -80,3 +98,4 @@ public partial struct ItemOwnershipApplyJob : IJobEntity
         requestEnabled.ValueRW = false;
     }
 }
+

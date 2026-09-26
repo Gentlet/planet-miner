@@ -209,6 +209,7 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         RunStateApplyPhase();
 
         // 검증: 버퍼에서 제거되었고 월드 벨트 아이템으로 전환됨
+        buffer = _entityManager.GetBuffer<ProductItemElement>(minerEntity);
         Assert.AreEqual(0, buffer.Length, "Miner buffer should now be empty after output.");
         var itemOwnership = _entityManager.GetComponentData<ItemOwnership>(minedItem);
         Assert.IsTrue(itemOwnership.IsWorldItem, "Item should now be a WorldItem on belt.");
