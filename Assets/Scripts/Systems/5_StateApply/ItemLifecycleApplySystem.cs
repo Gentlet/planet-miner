@@ -2,6 +2,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Rendering;
 using Unity.Transforms;
 
 /// <summary>
@@ -12,8 +13,8 @@ using Unity.Transforms;
 /// - ProductResult를 처리하여 생산 완료 결과를 실제 아이템 엔티티와 ProductItemElement로 반영.
 /// - SpawnItemRequest를 처리하여 아이템 엔티티를 생성하고 기본 컴포넌트를 초기화.
 /// - DestroyItemRequest가 활성화된 아이템 엔티티를 파괴.
-/// - 단일 워커 Burst Job들을 순차 스케줄링하여 구조적 변경(Structural Change) 명령을
-///   EndStateApplyEntityCommandBufferSystem에 비동기 기록.
+/// - 프리팹 데이터베이스(ItemPrefabElement)에 등록된 프리팹을 우선 인스턴스화하고, 미등록 시 Safe Fallback 아키타입으로 안전 대체.
+/// - 수납 아이템에 대해 DisableRendering 컴포넌트를 부착하여 렌더 파이프라인에서 제외.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
 public partial struct ItemLifecycleApplySystem : ISystem
@@ -24,10 +25,12 @@ public partial struct ItemLifecycleApplySystem : ISystem
     private EntityQuery _destroyQuery;
     private BufferLookup<StoredItemElement> _storedBufferLookup;
     private BufferLookup<ProductItemElement> _productBufferLookup;
+    private BufferLookup<ItemPrefabElement> _itemPrefabBufferLookup;
+    private EntityQuery _prefabDbQuery;
 
     public void OnCreate(ref SystemState state)
     {
-        // [임시 Fallback 아키타입]
+        // 프리팹 누락 시 사용할 Fallback 시뮬레이션 아키타입
         _fallbackItemArchetype = state.EntityManager.CreateArchetype(
             ComponentType.ReadWrite<ItemIdentity>(),
             ComponentType.ReadWrite<ItemOwnership>(),
@@ -42,6 +45,7 @@ public partial struct ItemLifecycleApplySystem : ISystem
 
         _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
         _productBufferLookup = state.GetBufferLookup<ProductItemElement>(true);
+        _itemPrefabBufferLookup = state.GetBufferLookup<ItemPrefabElement>(true);
 
         _productResultQuery = SystemAPI.QueryBuilder()
             .WithAllRW<ProductResult>()
@@ -55,6 +59,10 @@ public partial struct ItemLifecycleApplySystem : ISystem
         _destroyQuery = SystemAPI.QueryBuilder()
             .WithAll<DestroyItemRequest>()
             .Build();
+
+        _prefabDbQuery = SystemAPI.QueryBuilder()
+            .WithAll<ItemPrefabDatabase, ItemPrefabElement>()
+            .Build();
     }
 
     [BurstCompile]
@@ -64,17 +72,24 @@ public partial struct ItemLifecycleApplySystem : ISystem
 
     public void OnUpdate(ref SystemState state)
     {
-        var ecbSystem = state.World.GetExistingSystemManaged<EndStateApplyEntityCommandBufferSystem>();
+        var ecbSystem = state.World.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
         var ecb = ecbSystem.CreateCommandBuffer();
 
         _storedBufferLookup.Update(ref state);
         _productBufferLookup.Update(ref state);
+        _itemPrefabBufferLookup.Update(ref state);
+
+        Entity prefabDbEntity = _prefabDbQuery.IsEmptyIgnoreFilter
+            ? Entity.Null
+            : _prefabDbQuery.GetSingletonEntity();
 
         // 1. [생산 결과 적용 Job] ProductResult -> 실제 Item + ProductItemElement
         var productResultJob = new ProductResultApplyJob
         {
             ECB = ecb,
-            FallbackItemArchetype = _fallbackItemArchetype
+            FallbackItemArchetype = _fallbackItemArchetype,
+            ItemPrefabBufferLookup = _itemPrefabBufferLookup,
+            PrefabDbEntity = prefabDbEntity
         };
         var productResultHandle = productResultJob.Schedule(_productResultQuery, state.Dependency);
 
@@ -83,6 +98,8 @@ public partial struct ItemLifecycleApplySystem : ISystem
         {
             ECB = ecb,
             FallbackItemArchetype = _fallbackItemArchetype,
+            ItemPrefabBufferLookup = _itemPrefabBufferLookup,
+            PrefabDbEntity = prefabDbEntity,
             StoredBufferLookup = _storedBufferLookup,
             ProductBufferLookup = _productBufferLookup
         };
@@ -109,6 +126,11 @@ public partial struct ProductResultApplyJob : IJobEntity
     public EntityCommandBuffer ECB;
     public EntityArchetype FallbackItemArchetype;
 
+    [ReadOnly]
+    public BufferLookup<ItemPrefabElement> ItemPrefabBufferLookup;
+
+    public Entity PrefabDbEntity;
+
     public void Execute(
         Entity producerEntity,
         ref DynamicBuffer<ProductResult> productResults)
@@ -126,24 +148,61 @@ public partial struct ProductResultApplyJob : IJobEntity
                 continue;
             }
 
+            Entity prefabEntity = Entity.Null;
+            if (PrefabDbEntity != Entity.Null && ItemPrefabBufferLookup.HasBuffer(PrefabDbEntity))
+            {
+                var buffer = ItemPrefabBufferLookup[PrefabDbEntity];
+                for (int i = 0; i < buffer.Length; i++)
+                {
+                    if (buffer[i].Type == result.ItemType)
+                    {
+                        prefabEntity = buffer[i].Prefab;
+                        break;
+                    }
+                }
+            }
+
             for (int countIndex = 0; countIndex < result.Count; countIndex++)
             {
-                Entity newItem = ECB.CreateEntity(FallbackItemArchetype);
+                Entity newItem;
+                if (prefabEntity != Entity.Null)
+                {
+                    newItem = ECB.Instantiate(prefabEntity);
+                    ECB.SetComponent(newItem, new ItemIdentity(result.ItemType));
+                    ECB.AddComponent(newItem, new GridPosition(int2.zero));
+                    ECB.SetComponent(newItem, LocalTransform.FromPosition(float3.zero));
+                    ECB.AddComponent(newItem, ItemOwnership.Stored(producerEntity));
 
-                ECB.SetComponent(newItem, new ItemIdentity(result.ItemType));
-                ECB.SetComponent(newItem, new GridPosition(int2.zero));
-                ECB.SetComponent(newItem, LocalTransform.FromPosition(float3.zero));
-                ECB.SetComponent(newItem, ItemOwnership.Stored(producerEntity));
+                    ECB.AddComponent<DestroyItemRequest>(newItem);
+                    ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
+                    ECB.AddComponent<TransferOwnershipRequest>(newItem);
+                    ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
+                    ECB.AddComponent<BeltMovementState>(newItem);
+                    ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
+                    ECB.AddComponent<BeltMovementDecision>(newItem);
+                    ECB.AddComponent<BuildingItemInputDecision>(newItem);
+                    ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
+                }
+                else
+                {
+                    newItem = ECB.CreateEntity(FallbackItemArchetype);
+                    ECB.SetComponent(newItem, new ItemIdentity(result.ItemType));
+                    ECB.SetComponent(newItem, new GridPosition(int2.zero));
+                    ECB.SetComponent(newItem, LocalTransform.FromPosition(float3.zero));
+                    ECB.SetComponent(newItem, ItemOwnership.Stored(producerEntity));
+
+                    ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
+                    ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
+                    ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
+                    ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
+                }
+
+                // 생산 시설 내부 보관 아이템이므로 렌더링 비활성화
+                ECB.AddComponent<DisableRendering>(newItem);
 
                 ECB.AppendToBuffer(
                     producerEntity,
                     new ProductItemElement(newItem, result.ItemType, result.SlotIndex));
-
-                // 생산 건물 내부에 보관된 상태로 생성되므로 1회성 Request / 이동 관련 상태는 비활성화.
-                ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
-                ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
-                ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
-                ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
             }
         }
 
@@ -160,6 +219,11 @@ public partial struct SpawnItemApplyJob : IJobEntity
 {
     public EntityCommandBuffer ECB;
     public EntityArchetype FallbackItemArchetype;
+
+    [ReadOnly]
+    public BufferLookup<ItemPrefabElement> ItemPrefabBufferLookup;
+
+    public Entity PrefabDbEntity;
 
     [ReadOnly]
     public BufferLookup<StoredItemElement> StoredBufferLookup;
@@ -200,14 +264,62 @@ public partial struct SpawnItemApplyJob : IJobEntity
 
         if (canSpawn)
         {
-            Entity newItem = ECB.CreateEntity(FallbackItemArchetype);
+            Entity prefabEntity = Entity.Null;
+            if (PrefabDbEntity != Entity.Null && ItemPrefabBufferLookup.HasBuffer(PrefabDbEntity))
+            {
+                var buffer = ItemPrefabBufferLookup[PrefabDbEntity];
+                for (int i = 0; i < buffer.Length; i++)
+                {
+                    if (buffer[i].Type == request.ItemType)
+                    {
+                        prefabEntity = buffer[i].Prefab;
+                        break;
+                    }
+                }
+            }
 
-            ECB.SetComponent(newItem, new ItemIdentity(request.ItemType));
-            ECB.SetComponent(newItem, new GridPosition(request.Position));
-            ECB.SetComponent(newItem, LocalTransform.FromPosition(isWorld
+            float3 spawnPos = isWorld
                 ? new float3(request.Position.x, request.Position.y, 0f)
-                : float3.zero));
-            ECB.SetComponent(newItem, ownership);
+                : float3.zero;
+
+            Entity newItem;
+            if (prefabEntity != Entity.Null)
+            {
+                newItem = ECB.Instantiate(prefabEntity);
+                ECB.SetComponent(newItem, new ItemIdentity(request.ItemType));
+                ECB.AddComponent(newItem, new GridPosition(request.Position));
+                ECB.SetComponent(newItem, LocalTransform.FromPosition(spawnPos));
+                ECB.AddComponent(newItem, ownership);
+
+                ECB.AddComponent<DestroyItemRequest>(newItem);
+                ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
+                ECB.AddComponent<TransferOwnershipRequest>(newItem);
+                ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
+                ECB.AddComponent<BeltMovementState>(newItem);
+                ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
+                ECB.AddComponent<BeltMovementDecision>(newItem);
+                ECB.AddComponent<BuildingItemInputDecision>(newItem);
+                ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
+            }
+            else
+            {
+                newItem = ECB.CreateEntity(FallbackItemArchetype);
+                ECB.SetComponent(newItem, new ItemIdentity(request.ItemType));
+                ECB.SetComponent(newItem, new GridPosition(request.Position));
+                ECB.SetComponent(newItem, LocalTransform.FromPosition(spawnPos));
+                ECB.SetComponent(newItem, ownership);
+
+                ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
+                ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
+                ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
+                ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
+            }
+
+            // 수납 아이템의 경우 렌더링 비활성화
+            if (!isWorld)
+            {
+                ECB.AddComponent<DisableRendering>(newItem);
+            }
 
             if (request.Destination == ItemSpawnDestination.Product)
             {
@@ -217,14 +329,6 @@ public partial struct SpawnItemApplyJob : IJobEntity
             {
                 ECB.AppendToBuffer(request.TargetOwner, new StoredItemElement(newItem, request.ItemType, request.TargetSlotIndex));
             }
-
-            // 1회성 Request 컴포넌트들을 비활성화 상태로 초기화
-            ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
-            ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
-
-            // 상태 및 의사결정 컴포넌트 비활성화 초기화
-            ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
-            ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
         }
 
         // Consume-on-Apply: 요청 엔티티 파괴
@@ -245,3 +349,4 @@ public partial struct DestroyItemApplyJob : IJobEntity
         ECB.DestroyEntity(entity);
     }
 }
+
