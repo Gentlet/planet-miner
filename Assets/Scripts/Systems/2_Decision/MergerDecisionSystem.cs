@@ -157,7 +157,8 @@ public partial struct MergerDecisionJob : IJobEntity
         }
 
         // 3. InputCursor부터 back -> left -> right 순서로 입력 벨트 탐색 (Work-conserving)
-        byte startCursor = routingState.InputCursor;
+        // 기준선이 변경된 경우 0번 포트부터 탐색
+        byte startCursor = (outputBelt != routingState.OutputBelt) ? (byte)0 : routingState.InputCursor;
         Entity candidateItem = Entity.Null;
         Entity candidateSourceBelt = Entity.Null;
 

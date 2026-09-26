@@ -99,6 +99,7 @@ public partial struct RoutingApplyJob : IJobEntity
         Entity targetBelt = decision.TargetBelt;
 
         if (item != Entity.Null && targetBelt != Entity.Null &&
+            GridPositionLookup.HasComponent(item) &&
             GridPositionLookup.HasComponent(targetBelt) &&
             DirectionLookup.HasComponent(targetBelt))
         {
