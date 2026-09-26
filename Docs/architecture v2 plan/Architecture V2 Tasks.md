@@ -365,11 +365,11 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 검증: `Phase6BeltDestinationReservationTests` 6개 단위 테스트 전수 통과 (빈 벨트 단일 출고 승인, 다중 건물 출고 PlacementStamp 경합, 건물 출고 vs 라우팅 전달 경합, 공간 부족 시 거부, 공간 충분 시 정상 승인, 무요청 시 조기 반환). 전체 EditMode 130/130 Pass.
   - 완료 기준: 승인된 이동만 반영되며 기존 물류와 함께 최소 간격을 완벽히 유지.
 
-- [ ] **Task 6.3: Splitter 분배 구현**
+- [x] **Task 6.3: Splitter 분배 구현**
   - 선행 조건: Task 6.1~6.2.
-  - 구현 범위·상태 소유자: 입력과 가능한 출구를 선택하고 승인된 이동을 반영한다. Splitter는 자신의 라우팅 cursor를 소유하며 성공한 전달에만 이를 갱신한다.
+  - 구현 범위·상태 소유자: `SplitterDecisionSystem` (`DecisionGroup`) 구현으로 입력 벨트 종단 아이템 감지 및 Forward -> Right -> Left 순환 포트 탐색(Work-conserving 우회) 처리. `RoutingApplySystem` (`StateApplyGroup`) 구현으로 승인된 이동 적용, 대상 벨트 시작점(Progress 0.0f) 인계 및 실제 배출 포트 기준 `OutputCursor` 전진(`AdvanceCursor`). 영속 상태와 의사결정 완벽 분리.
   - 후속 연결: 연결 소멸과 잔류 아이템은 Task 6.5에서 검증한다.
-  - 검증: 정상 순환, 일부 출구 차단, 전체 차단, 차단 해제 시 이동·cursor·아이템 수를 검사한다.
+  - 검증: `Phase6SplitterPipelineTests` 5개 단위 테스트 전수 통과 (정상 3방향 라운드로빈 순환, 차단 포트 우회 분배, 전체 차단 시 아이템 보존 및 커서 동결, 차단 해제 시 분배 재개, PlacementStamp 우선순위 기준선 자동 선택). 전체 EditMode 135/135 Pass.
   - 완료 기준: 확인된 분배 순서를 지키며 실패한 이동에서 아이템과 순환 상태가 잘못 전진하지 않는다.
 
 - [ ] **Task 6.4: Merger 합류 구현**
