@@ -159,7 +159,8 @@ public partial struct SplitterDecisionJob : IJobEntity
         }
 
         // 3. OutputCursor부터 forward -> right -> left 순서로 출력 벨트 탐색 (Work-conserving)
-        byte startCursor = routingState.OutputCursor;
+        // 기준선이 변경된 경우 0번 포트부터 탐색
+        byte startCursor = (inputBelt != routingState.InputBelt) ? (byte)0 : routingState.OutputCursor;
         Entity targetBelt = Entity.Null;
 
         for (byte offset = 0; offset < RoutingDirectionUtility.RoutingPortCount; offset++)
