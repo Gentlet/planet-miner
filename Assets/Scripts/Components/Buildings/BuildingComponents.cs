@@ -17,6 +17,7 @@ public enum BuildingTypeEnum : byte
     DroneStation,
     Splitter,
     Merger,
+    Belt,
     Count
 }
 
