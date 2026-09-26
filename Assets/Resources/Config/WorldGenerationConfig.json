@@ -1,0 +1,41 @@
+{
+  "worldSeed": 1,
+  "configs": [
+    {
+      "type": "Iron_Ore",
+      "weight": 0.35,
+      "minPatchRadius": 1,
+      "maxPatchRadius": 2,
+      "cellFillChance": 0.1,
+      "minAmount": 100,
+      "maxAmount": 300
+    },
+    {
+      "type": "Copper_Ore",
+      "weight": 0.3,
+      "minPatchRadius": 1,
+      "maxPatchRadius": 2,
+      "cellFillChance": 0.1,
+      "minAmount": 100,
+      "maxAmount": 300
+    },
+    {
+      "type": "Coal",
+      "weight": 0.25,
+      "minPatchRadius": 1,
+      "maxPatchRadius": 2,
+      "cellFillChance": 0.1,
+      "minAmount": 120,
+      "maxAmount": 350
+    },
+    {
+      "type": "Stone",
+      "weight": 0.3,
+      "minPatchRadius": 1,
+      "maxPatchRadius": 2,
+      "cellFillChance": 0.1,
+      "minAmount": 80,
+      "maxAmount": 250
+    }
+  ]
+}
