@@ -883,6 +883,21 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 );
             }
         }
+
+        // 3. RoutingTransferDecision 활성 결정 잔류 감시
+        foreach (var (decision, entity) in
+                 SystemAPI.Query<RefRO<RoutingTransferDecision>>()
+                          .WithEntityAccess())
+        {
+            if (decision.ValueRO.Item != Entity.Null && decision.ValueRO.TargetBelt != Entity.Null)
+            {
+                ReportViolation(
+                    "DecisionLifecycle",
+                    $"RoutingTransferDecision remained active (Item={decision.ValueRO.Item.Index}:{decision.ValueRO.Item.Version}, TargetBelt={decision.ValueRO.TargetBelt.Index}:{decision.ValueRO.TargetBelt.Version}) at the end of the frame on Entity ({entity.Index}:{entity.Version}). Decision was not consumed in StateApplyGroup.",
+                    entity
+                );
+            }
+        }
     }
 
     /// <summary>
