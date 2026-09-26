@@ -372,11 +372,11 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 검증: `Phase6SplitterPipelineTests` 5개 단위 테스트 전수 통과 (정상 3방향 라운드로빈 순환, 차단 포트 우회 분배, 전체 차단 시 아이템 보존 및 커서 동결, 차단 해제 시 분배 재개, PlacementStamp 우선순위 기준선 자동 선택). 전체 EditMode 135/135 Pass.
   - 완료 기준: 확인된 분배 순서를 지키며 실패한 이동에서 아이템과 순환 상태가 잘못 전진하지 않는다.
 
-- [ ] **Task 6.4: Merger 합류 구현**
+- [x] **Task 6.4: Merger 합류 구현**
   - 선행 조건: Task 6.1~6.2.
-  - 구현 범위·상태 소유자: 여러 입력 중 전달할 후보를 선택하고 단일 출력의 승인을 적용한다. Merger가 입력 선택 순서를 소유한다.
+  - 구현 범위·상태 소유자: `MergerDecisionSystem` (`DecisionGroup`) 구현으로 단일 출력 벨트 수용 공간 사전 검사(정체 시 커서 동결 및 대기) 및 Back(0) -> Left(1) -> Right(2) 순환 포트 탐색(Work-conserving 우회) 처리. `RoutingApplySystem` (`StateApplyGroup`) 확장으로 승인된 합류 이동 적용, 대상 벨트 시작점(Progress 0.0f) 인계 및 실제 유입 포트 기준 `InputCursor` 전진(`AdvanceCursor`). 영속 상태와 의사결정 완벽 분리.
   - 후속 연결: 연결 소멸은 Task 6.5, 복합 경합은 Task 6.6에서 검증한다.
-  - 검증: 동시 도착, 일부 입력 비어 있음, 출력 정체와 재개 시 선택 순서·간격을 검사한다.
+  - 검증: `Phase6MergerPipelineTests` 5개 단위 테스트 전수 통과 (동시 도착 3방향 순환, 비어있는 포트 우회 합류, 출력 정체 시 대기 및 커서 동결, 정체 해제 시 합류 재개, PlacementStamp 기준 출력선 자동 선택). 전체 EditMode 140/140 Pass.
   - 완료 기준: 기존 우선순위·순환 규칙과 일치하고 중복 전달·규칙 위반 대기가 없다.
 
 - [ ] **Task 6.5: 연결 변경 및 잔류 아이템 처리**

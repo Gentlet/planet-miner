@@ -24,6 +24,7 @@ public partial struct RoutingApplySystem : ISystem
     private ComponentLookup<BeltMovementState> _beltMovementStateLookup;
     private ComponentLookup<LocalTransform> _transformLookup;
     private ComponentLookup<SplitterRoutingState> _splitterRoutingStateLookup;
+    private ComponentLookup<MergerRoutingState> _mergerRoutingStateLookup;
 
     private EntityQuery _activeTransferQuery;
 
@@ -35,6 +36,7 @@ public partial struct RoutingApplySystem : ISystem
         _beltMovementStateLookup = state.GetComponentLookup<BeltMovementState>(false);
         _transformLookup = state.GetComponentLookup<LocalTransform>(false);
         _splitterRoutingStateLookup = state.GetComponentLookup<SplitterRoutingState>(false);
+        _mergerRoutingStateLookup = state.GetComponentLookup<MergerRoutingState>(false);
 
         _activeTransferQuery = SystemAPI.QueryBuilder()
             .WithAllRW<RoutingTransferDecision>()
@@ -59,6 +61,7 @@ public partial struct RoutingApplySystem : ISystem
         _beltMovementStateLookup.Update(ref state);
         _transformLookup.Update(ref state);
         _splitterRoutingStateLookup.Update(ref state);
+        _mergerRoutingStateLookup.Update(ref state);
 
         var applyJob = new RoutingApplyJob
         {
@@ -66,7 +69,8 @@ public partial struct RoutingApplySystem : ISystem
             DirectionLookup = _directionLookup,
             BeltMovementStateLookup = _beltMovementStateLookup,
             TransformLookup = _transformLookup,
-            SplitterRoutingStateLookup = _splitterRoutingStateLookup
+            SplitterRoutingStateLookup = _splitterRoutingStateLookup,
+            MergerRoutingStateLookup = _mergerRoutingStateLookup
         };
 
         state.Dependency = applyJob.Schedule(_activeTransferQuery, state.Dependency);
@@ -84,6 +88,7 @@ public partial struct RoutingApplyJob : IJobEntity
     public ComponentLookup<BeltMovementState> BeltMovementStateLookup;
     public ComponentLookup<LocalTransform> TransformLookup;
     public ComponentLookup<SplitterRoutingState> SplitterRoutingStateLookup;
+    public ComponentLookup<MergerRoutingState> MergerRoutingStateLookup;
 
     public void Execute(
         Entity routerEntity,
@@ -151,9 +156,38 @@ public partial struct RoutingApplyJob : IJobEntity
                     splitterState.OutputCursor = RoutingDirectionUtility.AdvanceCursor(portIndex);
                 }
             }
+
+            // 5. Merger 영속 라우팅 상태 갱신
+            if (MergerRoutingStateLookup.HasComponent(routerEntity) &&
+                GridPositionLookup.HasComponent(routerEntity))
+            {
+                ref var mergerState = ref MergerRoutingStateLookup.GetRefRW(routerEntity).ValueRW;
+                int2 routerPos = GridPositionLookup[routerEntity].Value;
+
+                // 기준 출력 벨트 및 전방 방향 동기화
+                if (decision.TargetBelt != Entity.Null)
+                {
+                    mergerState.OutputBelt = decision.TargetBelt;
+                    if (DirectionLookup.HasComponent(decision.TargetBelt))
+                    {
+                        mergerState.ForwardDirection = DirectionLookup[decision.TargetBelt].dir;
+                    }
+                }
+
+                // 유입된 포트 인덱스 역산 및 커서 전진
+                if (decision.SourceBelt != Entity.Null && GridPositionLookup.HasComponent(decision.SourceBelt))
+                {
+                    int2 sourceBeltPos = GridPositionLookup[decision.SourceBelt].Value;
+                    if (RoutingDirectionUtility.TryGetDirection(routerPos, sourceBeltPos, out DirectionEnum inRelativeDir))
+                    {
+                        byte portIndex = RoutingDirectionUtility.GetMergerPortIndex(mergerState.ForwardDirection, inRelativeDir);
+                        mergerState.InputCursor = RoutingDirectionUtility.AdvanceCursor(portIndex);
+                    }
+                }
+            }
         }
 
-        // 5. 프레임 의사결정 소비 및 비활성화
+        // 6. 프레임 의사결정 소비 및 비활성화
         decision.Item = Entity.Null;
         decision.SourceBelt = Entity.Null;
         decision.TargetBelt = Entity.Null;
