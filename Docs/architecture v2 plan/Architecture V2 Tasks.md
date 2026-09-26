@@ -356,12 +356,14 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 검증: `Phase6RoutingContractTests`에서 4방향 상대 포트 순서, 입출력 벨트 방향 판정, cursor 순환, Frame Decision 활성 상태, 포트 역산 유틸리티, `PlacementStamp`의 Tick/Order 비교 계약 검증 통과. 전체 EditMode 124/124 Pass.
   - 완료 기준: 기존 게임 규칙, 쓰기 책임, 실행 Phase, 후속 소비 경계가 데이터 계약으로 고정되고 Task 6.2~6.5 구현에 필요한 모호성 제거.
 
-- [ ] **Task 6.2: 공유 목적지 경합 해결**
+- [x] **Task 6.2: 공유 목적지 경합 해결**
   - 선행 조건: Task 6.1.
-  - 구현 범위·상태 소유자: 동일 출력 위치를 향하는 이동·출고의 승인과 거부를 일관되게 처리한다. 일반 벨트·건물 출고도 경합 참여자로 포함하고 승인 상태의 소유자를 명시한다.
-  - 후속 연결: Splitter·Merger의 구체적인 후보 선택은 Task 6.3~6.4에서 연결한다.
-  - 검증: 다중 후보, 기존 점유, 간격 부족, 승인 후 대상 무효화 시 중복 진입과 잔류 승인을 검사한다.
-  - 완료 기준: 승인된 이동만 반영되며 기존 물류와 함께 최소 간격을 유지한다.
+  - 구현 범위·상태 소유자: `ReservationGroup` (Phase 3)에서 실행되는 `BeltDestinationReservationSystem` 구현. 외부 건물 출고(`BuildingItemOutputDecision`)와 분배기/합류기 라우팅(`RoutingTransferDecision`)의 공유 대상 벨트 입구(`Progress = 0.0f`) 진입 경합을 단일 원자적으로 조율.
+  - 경합 규칙: (1) 벨트 자체 이동은 `BeltMovement` 파이프라인에 전담시켜 전체 벨트 풀 스캔 제거 및 O(외부 후보 수)의 초경량화 달성, (2) 대상 벨트 입구에 `ItemSpacing(0.25f)` 여유 공간 및 정원(4개) 여유가 확인된 경우에만 진입 허용, (3) 동일 대상 벨트를 노리는 외부 후보들 간에는 `PlacementStamp(Tick, Order)` 순서로 단 1개만 승인.
+  - 승인·거부 계약: 거부된 후보는 `IEnableableComponent` 비활성화(`SetComponentEnabled=false`) 및 `CanOutput = false`로 즉시 처리하여 `StateApplyGroup` 실행 및 미소비 결정을 원천 차단. `WorldInvariantValidationSystem`에 `RoutingTransferDecision` 활성 잔류 감시 불변식 추가.
+  - 후속 연결: Splitter·Merger의 구체적인 후보 선택 및 cursor 갱신은 Task 6.3~6.4에서 연결.
+  - 검증: `Phase6BeltDestinationReservationTests` 6개 단위 테스트 전수 통과 (빈 벨트 단일 출고 승인, 다중 건물 출고 PlacementStamp 경합, 건물 출고 vs 라우팅 전달 경합, 공간 부족 시 거부, 공간 충분 시 정상 승인, 무요청 시 조기 반환). 전체 EditMode 130/130 Pass.
+  - 완료 기준: 승인된 이동만 반영되며 기존 물류와 함께 최소 간격을 완벽히 유지.
 
 - [ ] **Task 6.3: Splitter 분배 구현**
   - 선행 조건: Task 6.1~6.2.
