@@ -74,21 +74,62 @@
 
 ### 기존 구현의 보완 검증
 
-다음 항목은 정적 점검에서 발견한 검증 공백을 추적한다. 기존 완료 체크를 되돌리지 않으며, 구현 수정이나 실행 검증이 이미 끝났다는 뜻도 아니다. 해당 계약을 후속 Task에서 사용하기 전에 확인한다.
+다음 항목은 정적 점검 및 개선 피드백(`PlanetMiner_architecture-v2_feedback.md`)에서 발견된 검증 공백과 아키텍처 불변식 준수 여부를 추적·반영한 항목이다.
 
-- [ ] **보완 검증 F1: Crafter의 실제 Group / ECB 순서 검증**
+- [x] **보완 검증 F1: Crafter의 실제 Group / ECB 순서 검증**
   - 선행 조건: 현재 Crafter·Item lifecycle·StateApply 실행 순서 확인.
-  - 구현 범위·상태 소유자: 실제 그룹에서 제작 시작·재료 소모·생산 요청을 재현하고, 요청 소비와 소유 버퍼 반영 시점이 어긋나면 기존 소유자 경계 안에서 수정한다.
+  - 구현 범위·상태 소유자: `CrafterDecisionSystem`의 영속 상태 직접 수정을 배제하고, `CrafterStateDecision` 컴포넌트 도입으로 `DecisionGroup`과 `StateApplyGroup`의 책임을 명확히 분리. 생산물은 `ProductResult` 버퍼를 거쳐 `ItemLifecycleApplySystem`에서 안전하게 스폰 및 소유권 반영.
   - 후속 연결: Phase 6 생산물 출력 통합, Phase 8 전력 기반 제작, Phase 10A 연구의 재료 소비 검증.
-  - 검증: 테스트 내부 추가 ECB 재생 없이 요청 잔류, 고아 아이템, 중복 생산을 검사한다.
+  - 검증: 테스트 내부 임의의 추가 ECB 재생 없이 `Phase5CrafterExecutionTests` (Test01~Test08) 전수 통과 확인.
   - 완료 기준: 실제 프레임 경계에서 소유권·요청 수명주기 불변식을 만족하고 관련 회귀 테스트가 통과한다.
 
-- [ ] **보완 검증 F2: Crafter 레시피 해제·변경 경계 검증**
+- [x] **보완 검증 F2: Crafter 레시피 해제·변경 경계 검증**
   - 선행 조건: 현재 레시피 변경 및 `StorageFilter` 계약 확인.
-  - 구현 범위·상태 소유자: 레시피 해제 시 빈 Blacklist가 모든 품목을 허용하는 설정과 입고 차단 의도의 불일치를 재현하고, 의도가 확인된 범위에서 수정한다.
+  - 구현 범위·상태 소유자: `CrafterRecipeCommandSystem`을 구축하여 `CommandGroup`에서 레시피 변경 및 `StorageFilter`를 원자적으로 갱신. 변경 시 잔여 재료의 Byproduct 버퍼(Slot 1+) 이관 및 `WaitingForByproductOutput` 상태 진입을 통해 불일치 재료 입고 원천 차단.
   - 후속 연결: Task 10B.3 제작기 설정 UI.
-  - 검증: 레시피 해제, 반복 변경, 잔여 입력·출력물이 있는 상태의 필터와 소유권을 검사한다. 선소비 재료의 반환 여부는 기존 규칙을 확인하며 새로 정하지 않는다.
+  - 검증: `Phase5RecipeChangePipelineTests` (Test01~Test02)를 통해 레시피 변경 직후 같은 프레임 입고 차단 및 버퍼 비움 후 복귀 전수 통과 확인.
   - 완료 기준: 확인된 레시피 변경 규칙과 필터 동작이 일치하고 아이템 유실·중복이 없다.
+
+- [x] **보완 검증 F3: DestroyItemRequest 발행 전 Owner Buffer 선제거 계약 및 Invariant 검증 (피드백 6)**
+  - 선행 조건: `DestroyItemRequest` 수명주기 및 `StoredItemElement`/`ProductItemElement` 소유권 계약 확인.
+  - 구현 범위·상태 소유자: 아이템 파괴를 유발하는 시스템(Crafter, 철거, 연구 등)이 `DestroyItemRequest`를 활성화하기 전 소유 버퍼에서 해당 엔티티를 반드시 선제거(`RemoveAt`)하도록 Producer 책임 확정.
+  - 후속 연결: Phase 7 Construction 철거, Phase 9 Drone 화물 소비, Phase 10 Research 소비.
+  - 검증: 버퍼 미제거 채 엔티티 파괴 시 `WorldInvariantValidationSystem`이 Fail-Fast로 감출하도록 구현. `Phase1ItemIntegrationTests` (Test11, Test12) 통과.
+  - 완료 기준: 댕글링 엔티티 참조 방지 및 버퍼-파괴 수명주기 불변식을 보장한다.
+
+- [x] **보완 검증 F4: Simulation DeltaTime 정책 일원화 및 상한 클램핑 검증 (피드백 7)**
+  - 선행 조건: `GameConstants.MaxSimulationDeltaTime` (0.1f) 공통 상수 확인.
+  - 구현 범위·상태 소유자: Belt, Crafter에 이어 `MinerExecutionSystem`에도 `math.min(dt, 0.1f)` 클램핑을 일원화 적용하여 프레임 hitch 발생 시 도메인 간 시뮬레이션 시간 왜곡 방지.
+  - 후속 연결: Phase 8 Power, Phase 9 Drone 이동/충전 파이프라인.
+  - 검증: `Phase4MinerPipelineTests`에 대형 DeltaTime 입력 시 진행도 0.1f 제한 검증(`Test10`) 통과.
+  - 완료 기준: 모든 시뮬레이션 시스템이 단일 DeltaTime 정책을 준수한다.
+
+- [x] **보완 검증 F5: MaxStorageSlots 제한 실제 강제 및 Invariant 검증 (피드백 8)**
+  - 선행 조건: `GameConstants.MaxStorageSlots = 120` 제약 확인.
+  - 구현 범위·상태 소유자: 조용한 clamp로 인한 데이터 오염을 방지하기 위해 `WorldInvariantValidationSystem`에서 `Storage.SlotCount <= 0 || Storage.SlotCount > MaxStorageSlots`를 직접 검사하여 조기 감출(Fail-Fast). Burst 안전망(Reservation 클램프)은 보조 유지.
+  - 후속 연결: Phase 3 기본 건물 설정 로딩, Task 7.3 건물 초기화.
+  - 검증: `Phase3StorageComponentTests`에 상한 초과(200), 하한 위반(0), 경계값 정상(120) 검증 테스트 3종(`Test04`, `Test05`, `Test06`) 통과.
+  - 완료 기준: 저장소 슬롯 경계값 위반이 조기에 탐지되고 메모리 오염을 차단한다.
+
+- [x] **보완 검증 F6: BuildingSpatialIndex 동적 용량 확장 및 전수 인덱싱 검증 (피드백 10)**
+  - 선행 조건: `BuildingSpatialIndex` NativeParallelMultiHashMap 구조 확인.
+  - 구현 범위·상태 소유자: 기본 용량(1024)을 초과하는 대규모/다중 타일 건물 배치 시 인덱스 동적 용량 확장 알고리즘 개선.
+  - 후속 연결: Phase 7 Construction Core 대규모 배치.
+  - 검증: `Phase3BuildingSpatialIndexTests`에 3x3 건물 150개(총 1350타일) 생성 시 동적 용량 확장 및 전수 인덱싱 검증(`Test05`) 통과.
+  - 완료 기준: 대규모 타일 건물 등록 시 공간 인덱스 용량 부족으로 인한 누락이 없다.
+
+- [x] **보완 검증 F7: SpawnItemRequest의 ItemSpawnDestination 목적지 명시 (피드백 5)**
+  - 선행 조건: `SpawnItemRequest`의 `TargetOwner` 버퍼 중복 모호성 확인.
+  - 구현 범위·상태 소유자: `ItemSpawnDestination` (World, Storage, Product) enum 정의 및 요청 시 목적지 명시 확정.
+  - 후속 연결: Phase 7 공사 자재 스폰, Phase 9 드론 아이템 스폰, Save/Load.
+  - 완료 기준: 스폰 요청 대상 버퍼 우선순위 모호성이 제거되고 의도한 버퍼/월드로 정확히 배정된다.
+
+- [x] **보완 검증 F8: Crafter 다중 부산물 처리 통일 및 All-or-Nothing 출력 검증 (피드백 3)**
+  - 선행 조건: Recipe Blob의 다중 `Outputs` 모델 확인.
+  - 구현 범위·상태 소유자: Crafter가 단일 부산물이 아닌 다중 부산물 전체를 순회 처리하도록 계약을 확정하고, 하나의 부산물 슬롯이라도 만석이면 배출을 대기하는 All-or-Nothing 정책 적용.
+  - 후속 연결: Phase 6 Splitter/Merger 복합 부산물 물류 처리.
+  - 검증: `Phase5CrafterExecutionTests` (`Test07`, `Test08`)를 통해 다중 부산물 슬롯별 배출 및 All-or-Nothing 백프레셔 검증 통과.
+  - 완료 기준: 레시피 정의와 런타임 부산물 배출 동작이 완전히 일치한다.
 
 ---
 
@@ -133,8 +174,8 @@
   - [x] `ItemOwnership` (단일 원본 소유권 - `Owner == Entity.Null` 월드 아이템, `Owner != Entity.Null` 수납 아이템)
   - [x] World Item과 Stored Item의 상태 구분 정의 (소유권 단일 원본 기반 판별로 불필요한 토글 제거)
 - [x] **Task 1.2: Item 상태 제어용 1회성 Request 정의**
-  - [x] `SpawnItemRequest` (독립 엔티티 방식 - 모델 A: 월드 및 수납 스폰 통합 지원)
-  - [x] `DestroyItemRequest` (대상 부착형 - 모델 B: `IEnableableRequest` 소모/파괴 마킹)
+  - [x] `SpawnItemRequest` (독립 엔티티 방식 - 모델 A: 월드 및 수납 스폰 통합 지원, `ItemSpawnDestination` 목적지 명시)
+  - [x] `DestroyItemRequest` (대상 부착형 - 모델 B: `IEnableableRequest` 소모/파괴 마킹, 소유 버퍼 선제거 계약 확정)
   - [x] `TransferOwnershipRequest` (대상 부착형 - 모델 B: `IEnableableRequest` 순수 소유권 이전 전담)
   - [x] 8대 메타데이터 주석 규약(Producer, Consumer, Consume Phase 등) 명시 및 `Components/Item/` 폴더화 완료
 - [x] **Task 1.3: Item Ownership State Owner 시스템 구현**
@@ -148,8 +189,9 @@
   - [x] World Item은 반드시 유효한 공간 인덱스에 등록되어 있어야 함을 검증 (양방향 정합성)
   - [x] Stored Item의 Owner Entity는 실제로 존재하는 유효 엔티티여야 함을 검증
   - [x] 프레임 종료 시 미소비(Unconsumed) 활성 Request 잔류 감시 안전망 연동
+  - [x] `DestroyItemRequest` 활성화 전 소유 버퍼 미제거 시 Invariant Fail-Fast 감출 검증 (`Phase1ItemIntegrationTests` Test11, Test12 Pass)
 - [x] **Task 1.6: Phase 1 통합 검증 (Integration Test)**
-  - [x] 아이템 생성 → 위치 변경 → 공간 조회 → 소유권 이전 → 파괴 흐름 테스트 통과 (Phase1ItemIntegrationTests 7/7 Pass)
+  - [x] 아이템 생성 → 위치 변경 → 공간 조회 → 소유권 이전 → 파괴 흐름 테스트 통과 (Phase1ItemIntegrationTests 회귀 테스트 포함 전수 통과)
 
 ### 후속 런타임 연결
 
@@ -190,6 +232,7 @@
     - [x] `BuildingTypeEnum`, `BuildingFootprint` 컴포넌트 정의 (다중 타일 2x2, 3x3 등 지원)
     - [x] `BuildingInfo`, `BuildingSpatialIndex`, `BuildingSpatialIndexFence` 구조체 정의 (Resource-Level JobHandle Fence 패턴)
     - [x] `BuildingSpatialSyncSystem` (`SynchronizationGroup`, Phase 6) 구현: 다중 타일 일괄 등록 및 비동기 Clear/Populate 체인
+    - [x] `BuildingSpatialIndex` 대규모 다중 타일 건물 수용을 위한 동적 Capacity 확장 및 안전 인덱싱 검증 (`Phase3BuildingSpatialIndexTests` Test05 Pass)
   - [x] **Task 3.2.2: 아이템별 스택 설정 인프라 (ItemConfig) 구축**
     - [x] `ItemConfig` 컴포넌트 및 싱글톤 버퍼 정의
     - [x] `ItemTypeEnum`별 `MaxStack`(광석 50, 완제품 100, 드론 1 등) 설정 제공
@@ -215,6 +258,7 @@
   - [x] `ItemOwnershipApplySystem`에서 트랜잭션 무결성 검증
 - [x] **Task 3.4: Storage Buffer Invariant 검증**
   - [x] `ItemOwnership.Owner == StorageEntity` ↔ `Storage DynamicBuffer에 아이템 등록` 양방향 무결성 검증
+  - [x] `Storage.SlotCount <= GameConstants.MaxStorageSlots` (120) 경계값 초과 차단 Invariant 검증 (`Phase3StorageComponentTests` Test04~06 Pass)
 
 ### 후속 런타임 연결
 
@@ -233,8 +277,9 @@
   - [x] `ResourceNode` (타입, 매장량, 그리드 위치)
   - [x] `MinerComponent` (채굴 속도, 진행도, 배출 방향)
 - [x] **Task 4.2: Miner Decision & Execution System 구현**
-  - [x] 채굴 조건 판단 (하부 자원 유무, 내부 출력 버퍼 여유 검사)
+  - [x] 채굴 조건 판단 (하부 자원 유무, 내부 출력 버퍼 여유 검사 및 지연 스폰을 고려한 Pending Capacity 검사)
   - [x] 채굴 진행도 누적 및 아이템 스폰 트리거 (채굴 완료 시 채굴기 버퍼로 SpawnItemRequest 발행, 자원 차감/고갈 파괴, 기존 BuildingItemOutput 출고 파이프라인 100% 재사용)
+  - [x] `GameConstants.MaxSimulationDeltaTime` (0.1f) 정책 일원화 및 대형 DeltaTime 입력 클램핑 안전망 검증 (`Phase4MinerPipelineTests` Test10 Pass)
 - [x] **Task 4.3: 자원 채굴 → 스폰 → 벨트 → 창고 파이프라인 완성**
   - [x] 광물 스폰(`Command/StateApply`) → 벨트 이송(`Decision/Execution`) → 창고 적재(`Decision/Reservation/StateApply`)
   - [x] 시스템 간 직접 호출 없이 오직 GameSimulationGroup 6대 Phase 데이터 파이프라인만으로 전체 게임 루프 동작 완주
@@ -289,19 +334,27 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 - [x] **Task 5.1: Recipe 데이터 구조 정의 (BlobAsset / Unmanaged Struct)**
 - [x] **Task 5.2: Crafter 재료 수집 및 제작 진행 시스템 구현**
   - [x] 입력 버퍼 재료 확인 → 소모 처리 → 제작 진행도 누적 → 결과물 출력 (선소비 모델 및 정책 B 만석 대기 완주)
+  - [x] `CrafterStateDecision` 컴포넌트 분리 도입: `CrafterDecisionSystem`의 영속 상태 직접 수정 제거 및 `CrafterStateApplySystem`에서 상태 전이 일괄 반영
+  - [x] 다중 부산물(Byproducts) 분배 및 All-or-Nothing 출력 공간 검증 (`Phase5CrafterExecutionTests` Test07, Test08 Pass)
+  - [x] `ProductResult` 전용 버퍼를 통한 지연 스폰 및 수명주기 정리 (`ItemLifecycleApplySystem` 연결)
 - [x] **Task 5.3: 제작 취소 및 레시피 변경 롤백 규칙 구현**
-  - [x] 레시피 변경 시 진행 중 제작 롤백, StoredItemElement 잔여 재료의 ProductItemElement(Slot 2+ 고유 슬롯) 배출 이관 및 StorageFilter 자동 동기화 완성
+  - [x] `CrafterRecipeCommandSystem` 구현: `CommandGroup`에서 레시피 변경 및 `StorageFilter` 원자적 동기화 완료
+  - [x] 레시피 변경 시 진행 중 제작 롤백 및 잔여 재료의 `ProductItemElement` (Slot 1+ 부산물 슬롯) 배출 이관
+  - [x] `WaitingForByproductOutput` 상태 진입 및 출력물 잔류 시 새 레시피 재료 입고 원천 차단 검증 (`Phase5RecipeChangePipelineTests` Test01, Test02 Pass)
 
 ---
 
 ## 🔀 [Phase 6] Splitter / Merger (분배기 및 합류기)
 
-- [ ] **Task 6.1: 라우팅 규칙 및 데이터 계약 정의**
-  - 선행 조건: Phase 2 벨트 및 Phase 3 입출력 계약 확인, 관련 레거시 라우팅 코드 대조.
-  - 구현 범위·상태 소유자: 입력·출력 포트 선택, 순환 순서, 연결 변경 규칙과 라우팅 상태·결정 데이터를 정의한다. 위치·소유권은 기존 Item 계약을 따른다.
-  - 후속 연결: Task 6.2~6.5에서 경합·이동·연결 변경을 구현한다.
-  - 검증: 직선·회전·복수 포트·입출구 소멸 사례의 기대 결과를 기존 동작과 대조한다.
-  - 완료 기준: 규칙·쓰기 책임·실행 Group·요청 소비 시점이 명확하고 불명확한 게임 규칙은 확인되어 있다.
+- [x] **Task 6.1: 라우팅 규칙 및 데이터 계약 정의**
+  - 선행 조건: Phase 2 벨트 및 Phase 3 입출력 계약 확인, 기존 Splitter/Merger 라우팅 규칙 대조 완료.
+  - 구현 범위·상태 소유자: 기존 유연한 우회 분배(Work-conserving) 동작을 유지하도록 `SplitterRoutingState`, `MergerRoutingState`, 슬림화된 `RoutingTransferDecision(Item, SourceBelt, TargetBelt)`, 범용 `PlacementStamp` 계약 정의. Splitter는 가장 먼저 설치된 입력 벨트를 기준으로 `forward -> right -> left`, Merger는 가장 먼저 설치된 출력 벨트를 기준으로 `back -> left -> right` 순환. 성공한 전달에만 cursor 진행. 아이템 위치·소유권은 기존 Item 계약 유지.
+  - 배치 순서 계약: `PlacementStamp(Tick, Order)`는 권위 있는 건물 배치 요청이 확정될 때 결정하고 공사 현장 및 실제 건물 엔티티까지 그대로 전달. 같은 Tick의 `Order`는 요청 입력의 결정적 순서에서 산출하며 전역 Sequence Singleton 증가나 `Entity.Index/Version`을 순서 원본으로 사용하지 않음. Stamp 미할당은 값 센티널이 아니라 컴포넌트 부착 여부로 구분.
+  - 데이터 책임: 영속 라우팅 상태는 StateApply 소유, DecisionGroup은 읽기 및 프레임 `RoutingTransferDecision` 산출. `RoutingTransferDecision`은 고빈도 Frame Decision으로 `TargetBeltPosition`, `PortDirection`, `PortIndex`를 배제하고 `(Item, SourceBelt, TargetBelt)`만 소유. 실제 나간 포트 인덱스는 `TargetBelt` 위치와 `ForwardDirection`의 상대 각도로 실시간 역산(`RoutingDirectionUtility.GetSplitterPortIndex`).
+  - 연결 변경 및 인계 계약: 아이템은 입력 벨트 종단(`Progress=1.0`)에서 출력 벨트 시작점(`Progress=0.0`)으로 원자적 직결 인계(Direct Hand-off)되므로 분배기 타일 내부 체류/갇힘 상태가 없으며 `SplitterRetainedItemElement` 버퍼는 배제. 선택된 입출력 벨트 소멸 시 남은 후보 중 가장 먼저 설치된 벨트로 기준선을 재선택(Task 6.5).
+  - 후속 연결: Task 6.2~6.5에서 경합·이동·연결 변경 구현. `PlacementStamp` 발급과 요청 → 현장 → 건물 전달은 Task 7.2~7.5의 권위 있는 건설 경로에서 연결.
+  - 검증: `Phase6RoutingContractTests`에서 4방향 상대 포트 순서, 입출력 벨트 방향 판정, cursor 순환, Frame Decision 활성 상태, 포트 역산 유틸리티, `PlacementStamp`의 Tick/Order 비교 계약 검증 통과. 전체 EditMode 124/124 Pass.
+  - 완료 기준: 기존 게임 규칙, 쓰기 책임, 실행 Phase, 후속 소비 경계가 데이터 계약으로 고정되고 Task 6.2~6.5 구현에 필요한 모호성 제거.
 
 - [ ] **Task 6.2: 공유 목적지 경합 해결**
   - 선행 조건: Task 6.1.
@@ -353,7 +406,7 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 
 - [ ] **Task 7.2: 원자적 배치 예약 및 공사 현장 생성**
   - 선행 조건: Task 7.1, 관련 건물 정의·공사 비용 데이터.
-  - 구현 범위·상태 소유자: 여러 후보 footprint를 전부 예약한 뒤 건설 요청을 현장으로 전환한다. 공간 예약과 현장 상태는 각 소유자가 처리한다.
+  - 구현 범위·상태 소유자: 여러 후보 footprint를 전부 예약한 뒤 건설 요청을 현장으로 전환한다. 권위 있는 배치 요청에서 `PlacementStamp(Tick, Order)`를 확정하고 현장에 그대로 전달한다. 공간 예약과 현장 상태는 각 소유자가 처리한다.
   - 후속 연결: 플레이어 입력·미리보기·복사는 Task 10B.2에서 연결한다.
   - 검증: 일부 셀 충돌, 잘못된 정의, 중복 요청, 생성 실패 시 모든 임시 예약의 롤백을 검사한다.
   - 완료 기준: 부분 현장·고아 예약 없이 요청이 성공하거나 전체 취소된다.
@@ -367,7 +420,7 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 
 - [ ] **Task 7.3: 공통 건물 생성 경로 구현**
   - 선행 조건: Task 7.1·7.3.1 및 현재 이식된 건물 타입의 데이터 계약.
-  - 구현 범위·상태 소유자: 건물 생성 소유자가 베이킹된 프리팹과 Task 3.5의 기본 설정으로 공통 공간·방향·타입 데이터와 타입별 필수 컴포넌트를 초기화한다.
+  - 구현 범위·상태 소유자: 건물 생성 소유자가 베이킹된 프리팹과 Task 3.5의 기본 설정으로 공통 공간·방향·타입 데이터와 타입별 필수 컴포넌트를 초기화한다. 생성 요청 또는 공사 현장의 `PlacementStamp`를 실제 건물 엔티티에 그대로 전달한다.
   - 후속 연결: 아직 미이식인 전력·정거장·연구 건물의 초기화는 해당 Phase에서 확장한다.
   - 검증: 타입별 필수 상태, 생성 실패, 점유 등록 전에 미완성 인스턴스가 관찰되는지 검사한다.
   - 완료 기준: 현재 이식 대상 건물이 일관된 초기 상태로 생성되고 실패 시 잔류 엔티티·점유가 없다.

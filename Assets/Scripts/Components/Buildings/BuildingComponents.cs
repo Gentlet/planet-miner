@@ -15,6 +15,8 @@ public enum BuildingTypeEnum : byte
     ResearchBuilding,
     MainFacility,
     DroneStation,
+    Splitter,
+    Merger,
     Count
 }
 
