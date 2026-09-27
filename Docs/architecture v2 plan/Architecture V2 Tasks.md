@@ -400,11 +400,11 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 
 이 Phase의 완료 범위는 건설 코어다. 테스트에서 유효한 자재 도착·철거 실행 결과를 전달하여 검증하고, 실제 드론 운반·사용자 철거는 Task 9.17·9.20에서 연결한다. 테스트용 결과 주입을 즉시 건설·즉시 철거 같은 런타임 게임 규칙으로 추가하지 않는다.
 
-- [ ] **Task 7.1: 공간 점유·예약의 소유권 계약 정의**
+- [x] **Task 7.1: 공간 점유·예약의 소유권 계약 정의**
   - 선행 조건: 현재 `BuildingFootprint`, `BuildingSpatialIndex`, `BuildingSpatialSyncSystem`과 Phase 6 연결 계약 확인.
-  - 구현 범위·상태 소유자: 기존 크기·위치 데이터를 재사용하고 권위 있는 점유·예약 상태와 파생 조회 인덱스의 역할, 등록·해제 시점을 정의한다.
+  - 구현 범위·상태 소유자: 기존 크기·위치 데이터를 재사용하고 권위 있는 점유·예약 상태와 파생 조회 인덱스의 역할, 등록·해제 시점을 정의한다. `BuildingTypeEnum.ConstructionSite`를 추가하여 공사 현장을 `BuildingSpatialIndex`에 완공 건물과 동일하게 통합 등록($O(1)$ 동시 조회). `ConstructionComponents.cs`(`PlacementFlags`: 기본 `StrictAllOrNothing`, 선택 `AllowPartialPlacement`, `ConstructionSite`, `ConstructionSiteFlags`, `PlacementValidationResult`) 정의. `BuildingPlacementValidationUtility`를 통해 UI 프리뷰와 시뮬레이션 시스템이 공유하는 순수 함수 검증 유틸리티 구현 (다중 셀, 음수 좌표, 회전 Bounding Box Min Cell Anchor, 벨트 덮어쓰기 허용, 채굴기 자원 노드 필수 검사, 바닥 월드 아이템 회수 대기 연계, 다중 배치 선점 충돌 중재).
   - 후속 연결: 실제 예약과 현장 생성은 Task 7.2에서 구현한다. 레거시 `ChunkMapSystem`을 전제로 새로 만들지 않는다.
-  - 검증: 다중 셀·회전·음수 좌표·동일 프레임 충돌의 예약 및 점유 상태 전이를 대조한다.
+  - 검증: 다중 셀·회전·음수 좌표·동일 프레임 충돌의 예약 및 점유 상태 전이를 대조한다. `Phase7ConstructionContractTests` 8종 단위/통합 테스트 전수 통과 (218/218 EditMode 테스트 100% Pass).
   - 완료 기준: 원본 상태, 수정 권한, 인덱스 반영 시점이 하나의 계약으로 정리된다.
 
 - [ ] **Task 7.2: 원자적 배치 예약 및 공사 현장 생성**
