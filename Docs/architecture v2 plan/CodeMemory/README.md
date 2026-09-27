@@ -48,6 +48,18 @@ SimulationSystemGroup
 
 ## 현재 구현 범위와 증거의 한계
 
+### Task 4.5~4.8 월드 생성 수명주기 (2026-09-27 갱신)
+
+- `WorldGenerationConfigLoader`가 월드 시드·초기 크기·자원 설정을 검증하고 `WorldGenerationConfigLoadSystem`이 한 번 게시한다. 미정의 enum 숫자 값도 거부한다. `InitialChunkLoadBootstrapSystem`은 초기 N×N 청크를 요청 큐에 넣는다.
+- `ChunkLoadCommandSystem`이 `GeneratedChunkTracker`의 완료 집합(`Map`)과 접수/반영 대기 집합(`Pending`)을 소유한다. 요청은 두 집합으로 중복 제거하고 `GeneratedChunkReadyElement`로 전달한다. 미처리 전달 버퍼를 프레임 시작에 지우지 않는다.
+- `ResourceGenerationCommandSystem`은 설정별 프리팹을 업데이트당 한 번 조회한다. DB 지연, 필수 프리팹 누락, 소멸된 참조, LocalTransform 누락은 전체 청크 대기로 처리한다. 생성 가능한 자원 종류를 일부만 먼저 생성하지 않는다.
+- 준비된 청크의 스폰 명령과 `GeneratedChunkCompletedElement`를 같은 `EndStateApplyEntityCommandBufferSystem`에 순서대로 기록하고 Ready를 소비한다. 즉시 Playback 우회 경로는 없다. Pending은 유지되며, 다음 Command에서 완료 알림을 소비한 뒤에만 Map으로 옮긴다. 정상적인 빈 청크도 완료 알림을 게시한다.
+- 자원은 ECB 반영 프레임의 `ResourceSpatialSyncSystem`에서 등록되고 다음 프레임의 Miner가 조회한다. 공간 인덱스 소유자는 변경하지 않는다.
+- 관련 회귀 테스트는 `Phase4WorldGenerationConfigTests`, `Phase4ChunkLifecycleTests`, `Phase4ResourceGenerationTests`, `Phase4ResourceAuthoringAndSpawnTests`다. 통합 테스트는 실제 GameSimulationGroup과 EndStateApply를 사용한다. 테스트용 ECS 프리팹 검증은 실제 SubScene 베이킹·시각 검증을 대체하지 않는다.
+- 이번 개선 검증: Unity 6000.4.11f1 재컴파일 및 최신 런타임/테스트 어셈블리 확인 완료. 위 네 클래스의 EditMode 결과는 각각 9/9, 6/6, 7/7, 13/13 통과(총 35, Failed/Skipped/Inconclusive 0)다. Play Mode·실제 베이킹·시각·성능 측정은 수행하지 않았다.
+
+아래 항목은 이 문서 최초 작성 시점의 범위 기록이며, 월드 생성은 위 갱신 절을 우선한다.
+
 - 현재 `Assets/Scripts`에는 아이템, 벨트, 건물 입출고, 채굴기, 제작기의 코어와 Splitter/Merger의 데이터/방향 유틸리티가 있다. `RoutingTransferDecision`을 생성해 실제 전송을 적용하는 런타임 시스템은 이 54개 파일에 없다. `BeltDestinationReservationSystem`은 이미 활성화된 라우팅 결정의 목적지 경합만 처리한다.
 - 현재 C# 집합에는 건설, 전력, 드론, 연구, UI, 월드 로딩/렌더링 구현이 없다. `BuildingTypeEnum`에 종류가 정의되어 있는 사실은 해당 기능의 런타임 구현을 뜻하지 않는다. 후속 계획은 상위 `Architecture V2 Tasks.md`를 참조한다.
 - `Assets/Editor/Tests`의 24개 파일은 Phase 1~6 코어와 일부 연결/불변식을 테스트하도록 작성되어 있다. 이번 작업은 소스 읽기와 문서화이며 Unity 컴파일, EditMode, Play Mode 테스트를 새로 실행하지 않았다. 테스트 메서드가 존재한다는 사실은 현재 통과 증거가 아니다.
