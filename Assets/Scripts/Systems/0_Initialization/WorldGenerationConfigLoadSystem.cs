@@ -2,7 +2,7 @@ using Unity.Entities;
 using UnityEngine;
 
 /// <summary>
-/// 월드 초기화 시점에 WorldGenerationConfig.json을 로드하여 ResourceGenerationSettings 싱글톤 및 자원 생성 설정을 ECS에 1회 게시하는 부트스트랩 시스템.
+/// 월드 초기화 시점에 WorldGenerationConfig.json을 로드하여 자원과 바닥 생성 설정을 같은 ECS 엔티티에 1회 게시한다.
 /// </summary>
 [UpdateInGroup(typeof(InitializationSystemGroup))]
 public partial struct WorldGenerationConfigLoadSystem : ISystem
@@ -27,11 +27,12 @@ public partial struct WorldGenerationConfigLoadSystem : ISystem
             WorldGenerationConfigLoader.DefaultResourcePath,
             out uint worldSeed,
             out int initialChunkSize,
-            out var elements);
+            out var elements,
+            out var floor);
 
-        if (success && elements != null && elements.Count > 0)
+        if (success && elements != null && elements.Count > 0 && floor != null)
         {
-            WorldGenerationConfigLoader.PublishConfig(state.EntityManager, worldSeed, initialChunkSize, elements);
+            WorldGenerationConfigLoader.PublishConfig(state.EntityManager, worldSeed, initialChunkSize, elements, floor);
         }
         else
         {

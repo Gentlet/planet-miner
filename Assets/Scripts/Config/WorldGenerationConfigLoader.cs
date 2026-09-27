@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using Unity.Entities;
+using Unity.Collections;
 using UnityEngine;
 
 /// <summary>
@@ -16,6 +18,7 @@ public static class WorldGenerationConfigLoader
         public uint worldSeed;
         public int initialChunkSize;
         public List<ResourceGenerationConfigData> configs;
+        public FloorGenerationConfigData floor;
     }
 
     [Serializable]
@@ -28,6 +31,40 @@ public static class WorldGenerationConfigLoader
         public float cellFillChance;
         public int minAmount;
         public int maxAmount;
+    }
+
+    [Serializable]
+    public class FloorGenerationConfigData
+    {
+        public int biomeRegionSizeInChunks;
+        public int transitionWidthInChunks;
+        public float boundaryNoiseScaleInCells;
+        public float boundaryNoiseAmplitudeInCells;
+        public float nearBiomePreferenceExponent;
+        public List<FloorVariantConfigData> transitionFloorVariants;
+        public List<FloorBiomeConfigData> biomes;
+    }
+
+    [Serializable]
+    public class FloorBiomeConfigData
+    {
+        public string id;
+        public float selectionWeight;
+        public List<FloorVariantConfigData> floorVariants;
+    }
+
+    [Serializable]
+    public class FloorVariantConfigData
+    {
+        public string spriteResourcePath;
+        public float weight;
+    }
+
+    public sealed class FloorGenerationDefinition
+    {
+        public FloorGenerationSettings Settings;
+        public List<FloorBiomeElement> Biomes;
+        public List<FloorVariantElement> Variants;
     }
 
     /// <summary>
@@ -51,9 +88,20 @@ public static class WorldGenerationConfigLoader
         out int initialChunkSize,
         out List<ResourceGenerationConfigElement> elements)
     {
+        return TryLoadConfigFromResources(resourcePath, out worldSeed, out initialChunkSize, out elements, out _);
+    }
+
+    public static bool TryLoadConfigFromResources(
+        string resourcePath,
+        out uint worldSeed,
+        out int initialChunkSize,
+        out List<ResourceGenerationConfigElement> elements,
+        out FloorGenerationDefinition floor)
+    {
         worldSeed = 0;
         initialChunkSize = 0;
         elements = null;
+        floor = null;
 
         TextAsset asset = Resources.Load<TextAsset>(resourcePath);
         if (asset == null)
@@ -62,7 +110,7 @@ public static class WorldGenerationConfigLoader
             return false;
         }
 
-        return TryParseAndValidateJson(asset.text, out worldSeed, out initialChunkSize, out elements);
+        return TryParseAndValidateJson(asset.text, out worldSeed, out initialChunkSize, out elements, out floor);
     }
 
     /// <summary>
@@ -85,9 +133,20 @@ public static class WorldGenerationConfigLoader
         out int initialChunkSize,
         out List<ResourceGenerationConfigElement> elements)
     {
+        return TryParseAndValidateJson(jsonText, out worldSeed, out initialChunkSize, out elements, out _);
+    }
+
+    public static bool TryParseAndValidateJson(
+        string jsonText,
+        out uint worldSeed,
+        out int initialChunkSize,
+        out List<ResourceGenerationConfigElement> elements,
+        out FloorGenerationDefinition floor)
+    {
         worldSeed = 0;
         initialChunkSize = 0;
         elements = null;
+        floor = null;
 
         if (string.IsNullOrEmpty(jsonText))
         {
@@ -189,11 +248,130 @@ public static class WorldGenerationConfigLoader
                 entry.maxAmount));
         }
 
+        if (!TryValidateFloor(configFile.floor, out FloorGenerationDefinition validatedFloor))
+        {
+            return false;
+        }
+
         worldSeed = configFile.worldSeed;
         initialChunkSize = configFile.initialChunkSize > 0 ? configFile.initialChunkSize : 3;
         elements = validatedList;
+        floor = validatedFloor;
         return true;
     }
+
+    private static bool TryValidateFloor(FloorGenerationConfigData config, out FloorGenerationDefinition floor)
+    {
+        floor = null;
+        if (config == null || config.biomeRegionSizeInChunks <= 0 ||
+            config.transitionWidthInChunks < 0 || config.transitionWidthInChunks > config.biomeRegionSizeInChunks ||
+            !IsPositiveFinite(config.boundaryNoiseScaleInCells) ||
+            !IsNonNegativeFinite(config.boundaryNoiseAmplitudeInCells) ||
+            !IsPositiveFinite(config.nearBiomePreferenceExponent))
+        {
+            Debug.LogError("[WorldGenerationConfigLoader] Invalid floor generation parameters.");
+            return false;
+        }
+
+        if (config.biomes == null || config.biomes.Count == 0 ||
+            config.transitionFloorVariants == null || config.transitionFloorVariants.Count == 0)
+        {
+            Debug.LogError("[WorldGenerationConfigLoader] Floor biomes and transition variants are required.");
+            return false;
+        }
+
+        var variants = new List<FloorVariantElement>();
+        if (!TryAddVariants(config.transitionFloorVariants, "Transition", variants))
+        {
+            return false;
+        }
+
+        var biomes = new List<FloorBiomeElement>(config.biomes.Count);
+        var ids = new HashSet<string>(StringComparer.Ordinal);
+        float totalWeight = 0f;
+        foreach (FloorBiomeConfigData biome in config.biomes)
+        {
+            if (biome == null || string.IsNullOrWhiteSpace(biome.id) ||
+                !ids.Add(biome.id) || !IsPositiveFinite(biome.selectionWeight) ||
+                Encoding.UTF8.GetByteCount(biome.id) > FixedString64Bytes.UTF8MaxLengthInBytes)
+            {
+                Debug.LogError("[WorldGenerationConfigLoader] Invalid or duplicate floor biome id/weight.");
+                return false;
+            }
+
+            int start = variants.Count;
+            if (!TryAddVariants(biome.floorVariants, biome.id, variants))
+            {
+                return false;
+            }
+
+            biomes.Add(new FloorBiomeElement
+            {
+                Id = biome.id,
+                SelectionWeight = biome.selectionWeight,
+                VariantStart = start,
+                VariantCount = variants.Count - start
+            });
+            totalWeight += biome.selectionWeight;
+        }
+
+        if (!IsPositiveFinite(totalWeight))
+        {
+            Debug.LogError("[WorldGenerationConfigLoader] Floor biome total weight is invalid.");
+            return false;
+        }
+
+        floor = new FloorGenerationDefinition
+        {
+            Settings = new FloorGenerationSettings
+            {
+                BiomeRegionSizeInChunks = config.biomeRegionSizeInChunks,
+                TransitionWidthInChunks = config.transitionWidthInChunks,
+                BoundaryNoiseScaleInCells = config.boundaryNoiseScaleInCells,
+                BoundaryNoiseAmplitudeInCells = config.boundaryNoiseAmplitudeInCells,
+                NearBiomePreferenceExponent = config.nearBiomePreferenceExponent,
+                TransitionVariantCount = config.transitionFloorVariants.Count
+            },
+            Biomes = biomes,
+            Variants = variants
+        };
+        return true;
+    }
+
+    private static bool TryAddVariants(List<FloorVariantConfigData> source, string owner, List<FloorVariantElement> target)
+    {
+        if (source == null || source.Count == 0)
+        {
+            Debug.LogError($"[WorldGenerationConfigLoader] {owner} has no floor variants.");
+            return false;
+        }
+
+        float totalWeight = 0f;
+        foreach (FloorVariantConfigData variant in source)
+        {
+            if (variant == null || string.IsNullOrWhiteSpace(variant.spriteResourcePath) ||
+                !IsPositiveFinite(variant.weight) ||
+                Encoding.UTF8.GetByteCount(variant.spriteResourcePath) > FixedString128Bytes.UTF8MaxLengthInBytes ||
+                Resources.Load<Sprite>(variant.spriteResourcePath) == null)
+            {
+                Debug.LogError($"[WorldGenerationConfigLoader] Invalid floor variant or missing Sprite for {owner}: '{variant?.spriteResourcePath}'.");
+                return false;
+            }
+
+            totalWeight += variant.weight;
+            target.Add(new FloorVariantElement { SpriteResourcePath = variant.spriteResourcePath, Weight = variant.weight });
+        }
+
+        if (!IsPositiveFinite(totalWeight))
+        {
+            Debug.LogError($"[WorldGenerationConfigLoader] {owner} floor variant total weight is invalid.");
+            return false;
+        }
+        return true;
+    }
+
+    private static bool IsPositiveFinite(float value) => value > 0f && !float.IsNaN(value) && !float.IsInfinity(value);
+    private static bool IsNonNegativeFinite(float value) => value >= 0f && !float.IsNaN(value) && !float.IsInfinity(value);
 
     /// <summary>
     /// 검증된 월드 생성 설정을 ECS 싱글톤 엔티티와 DynamicBuffer로 게시합니다.
@@ -215,6 +393,16 @@ public static class WorldGenerationConfigLoader
         int initialChunkSize,
         List<ResourceGenerationConfigElement> elements)
     {
+        return PublishConfig(entityManager, worldSeed, initialChunkSize, elements, null);
+    }
+
+    public static Entity PublishConfig(
+        EntityManager entityManager,
+        uint worldSeed,
+        int initialChunkSize,
+        List<ResourceGenerationConfigElement> elements,
+        FloorGenerationDefinition floor)
+    {
         Entity entity = entityManager.CreateEntity(typeof(ResourceGenerationSettings));
         entityManager.SetComponentData(entity, new ResourceGenerationSettings(worldSeed, initialChunkSize));
 
@@ -222,6 +410,15 @@ public static class WorldGenerationConfigLoader
         for (int i = 0; i < elements.Count; i++)
         {
             buffer.Add(elements[i]);
+        }
+
+        if (floor != null)
+        {
+            entityManager.AddComponentData(entity, floor.Settings);
+            DynamicBuffer<FloorBiomeElement> biomes = entityManager.AddBuffer<FloorBiomeElement>(entity);
+            foreach (FloorBiomeElement biome in floor.Biomes) biomes.Add(biome);
+            DynamicBuffer<FloorVariantElement> variants = entityManager.AddBuffer<FloorVariantElement>(entity);
+            foreach (FloorVariantElement variant in floor.Variants) variants.Add(variant);
         }
 
         return entity;
