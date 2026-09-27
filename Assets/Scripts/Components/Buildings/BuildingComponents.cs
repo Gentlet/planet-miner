@@ -18,6 +18,7 @@ public enum BuildingTypeEnum : byte
     Splitter,
     Merger,
     Belt,
+    ConstructionSite,
     Count
 }
 
