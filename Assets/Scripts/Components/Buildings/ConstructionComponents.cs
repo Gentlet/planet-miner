@@ -106,7 +106,12 @@ public enum PlacementValidationCode : byte
     /// <summary>
     /// StrictAllOrNothing 정책으로 인해 묶음 내 다른 후보의 충돌로 인해 함께 롤백/취소됨.
     /// </summary>
-    BatchAllOrNothingRolledBack = 6
+    BatchAllOrNothingRolledBack = 6,
+
+    /// <summary>
+    /// 연구가 아직 완료되지 않아 잠긴 건물임 (건설 거부).
+    /// </summary>
+    BlockedByResearch = 7
 }
 
 /// <summary>
@@ -142,5 +147,24 @@ public struct PlacementCandidate
         FootprintSize = footprintSize;
         OriginPosition = originPosition;
         Direction = direction;
+    }
+}
+
+/// <summary>
+/// 공사 현장에 필요한 자재 요구량 및 현재 조달량 버퍼 엘리먼트 (Unmanaged).
+/// </summary>
+public struct ConstructionMaterialRequirementElement : IBufferElementData
+{
+    public ItemTypeEnum ItemType;
+    public int RequiredQuantity;
+    public int DeliveredQuantity;
+
+    public bool IsSatisfied => DeliveredQuantity >= RequiredQuantity;
+
+    public ConstructionMaterialRequirementElement(ItemTypeEnum itemType, int requiredQuantity, int deliveredQuantity = 0)
+    {
+        ItemType = itemType;
+        RequiredQuantity = requiredQuantity;
+        DeliveredQuantity = deliveredQuantity;
     }
 }
