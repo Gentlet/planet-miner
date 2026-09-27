@@ -1,0 +1,105 @@
+{
+  "buildings": [
+    {
+      "buildingType": "Belt",
+      "speed": 10.0,
+      "storageCapacity": 0,
+      "isUnlockedByDefault": true,
+      "requiredResearch": "",
+      "materials": [
+        { "itemType": "Iron", "quantity": 1 }
+      ]
+    },
+    {
+      "buildingType": "Miner",
+      "speed": 0.1,
+      "storageCapacity": 0,
+      "isUnlockedByDefault": true,
+      "requiredResearch": "",
+      "materials": [
+        { "itemType": "Iron", "quantity": 3 }
+      ]
+    },
+    {
+      "buildingType": "Crafter",
+      "speed": 1.0,
+      "storageCapacity": 0,
+      "isUnlockedByDefault": true,
+      "requiredResearch": "",
+      "materials": [
+        { "itemType": "Iron", "quantity": 3 }
+      ]
+    },
+    {
+      "buildingType": "Storage",
+      "speed": 0.0,
+      "storageCapacity": 10,
+      "isUnlockedByDefault": true,
+      "requiredResearch": "",
+      "materials": [
+        { "itemType": "Iron", "quantity": 2 }
+      ]
+    },
+    {
+      "buildingType": "PowerPole",
+      "speed": 0.0,
+      "storageCapacity": 0,
+      "isUnlockedByDefault": true,
+      "requiredResearch": "",
+      "materials": [
+        { "itemType": "Copper", "quantity": 1 }
+      ]
+    },
+    {
+      "buildingType": "Splitter",
+      "speed": 0.0,
+      "storageCapacity": 0,
+      "isUnlockedByDefault": false,
+      "requiredResearch": "logistics_distribution",
+      "materials": [
+        { "itemType": "Iron", "quantity": 2 }
+      ]
+    },
+    {
+      "buildingType": "Merger",
+      "speed": 0.0,
+      "storageCapacity": 0,
+      "isUnlockedByDefault": false,
+      "requiredResearch": "logistics_distribution",
+      "materials": [
+        { "itemType": "Iron", "quantity": 2 }
+      ]
+    },
+    {
+      "buildingType": "CoalGenerator",
+      "speed": 0.0,
+      "storageCapacity": 0,
+      "isUnlockedByDefault": false,
+      "requiredResearch": "coal_power",
+      "materials": [
+        { "itemType": "Iron", "quantity": 4 }
+      ]
+    },
+    {
+      "buildingType": "DroneStation",
+      "speed": 0.0,
+      "storageCapacity": 0,
+      "isUnlockedByDefault": false,
+      "requiredResearch": "drone_logistics",
+      "materials": [
+        { "itemType": "Iron", "quantity": 5 }
+      ]
+    },
+    {
+      "buildingType": "ResearchBuilding",
+      "speed": 1.0,
+      "storageCapacity": 0,
+      "isUnlockedByDefault": true,
+      "requiredResearch": "",
+      "materials": [
+        { "itemType": "Iron", "quantity": 3 },
+        { "itemType": "Copper", "quantity": 3 }
+      ]
+    }
+  ]
+}

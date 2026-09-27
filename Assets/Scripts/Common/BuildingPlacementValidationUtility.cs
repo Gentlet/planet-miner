@@ -44,8 +44,14 @@ public static class BuildingPlacementValidationUtility
         DirectionEnum direction,
         in NativeParallelHashMap<int2, BuildingInfo>.ReadOnly buildingMap,
         in NativeParallelHashMap<int2, Entity>.ReadOnly resourceMap,
-        in NativeParallelMultiHashMap<int2, Entity>.ReadOnly itemMap)
+        in NativeParallelMultiHashMap<int2, Entity>.ReadOnly itemMap,
+        bool isUnlocked = true)
     {
+        if (!isUnlocked)
+        {
+            return new PlacementValidationResult(PlacementValidationCode.BlockedByResearch);
+        }
+
         if (footprintSize.x <= 0 || footprintSize.y <= 0)
         {
             return new PlacementValidationResult(PlacementValidationCode.InvalidFootprint);
@@ -199,6 +205,180 @@ public static class BuildingPlacementValidationUtility
                 if (results[i].IsValid)
                 {
                     // 원래 유효했으나 묶음 전체 실패로 인해 연쇄 취소됨
+                    results[i] = new PlacementValidationResult(PlacementValidationCode.BatchAllOrNothingRolledBack);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// BuildingConfig 버퍼를 참조하여 연구 해금 상태까지 함께 검증하는 배치 묶음 검증 오버로드.
+    /// </summary>
+    public static void ValidateBatchPlacement(
+        NativeArray<PlacementCandidate> candidates,
+        PlacementFlags flags,
+        in NativeParallelHashMap<int2, BuildingInfo>.ReadOnly buildingMap,
+        in NativeParallelHashMap<int2, Entity>.ReadOnly resourceMap,
+        in NativeParallelMultiHashMap<int2, Entity>.ReadOnly itemMap,
+        NativeArray<PlacementValidationResult> results,
+        in DynamicBuffer<BuildingConfigElement> configBuffer,
+        Allocator allocator = Allocator.Temp)
+    {
+        var claimedCells = new NativeParallelHashSet<int2>(math.max(16, candidates.Length * 4), allocator);
+        bool anyFailed = false;
+
+        for (int i = 0; i < candidates.Length; i++)
+        {
+            var candidate = candidates[i];
+            bool isUnlocked = configBuffer.IsEmpty || BuildingConfigLookupUtility.IsBuildingUnlocked(configBuffer, candidate.TargetType);
+
+            var singleResult = ValidateSinglePlacement(
+                candidate.TargetType,
+                candidate.FootprintSize,
+                candidate.OriginPosition,
+                candidate.Direction,
+                buildingMap,
+                resourceMap,
+                itemMap,
+                isUnlocked);
+
+            if (!singleResult.IsValid)
+            {
+                results[i] = singleResult;
+                anyFailed = true;
+                continue;
+            }
+
+            int2 effectiveSize = GetEffectiveSize(candidate.FootprintSize, candidate.Direction);
+            bool internallyConflict = false;
+
+            for (int y = 0; y < effectiveSize.y && !internallyConflict; y++)
+            {
+                for (int x = 0; x < effectiveSize.x; x++)
+                {
+                    int2 cell = candidate.OriginPosition + new int2(x, y);
+                    if (claimedCells.Contains(cell))
+                    {
+                        internallyConflict = true;
+                        break;
+                    }
+                }
+            }
+
+            if (internallyConflict)
+            {
+                results[i] = new PlacementValidationResult(PlacementValidationCode.BlockedByConstructionSite);
+                anyFailed = true;
+                continue;
+            }
+
+            for (int y = 0; y < effectiveSize.y; y++)
+            {
+                for (int x = 0; x < effectiveSize.x; x++)
+                {
+                    claimedCells.Add(candidate.OriginPosition + new int2(x, y));
+                }
+            }
+
+            results[i] = singleResult;
+        }
+
+        claimedCells.Dispose();
+
+        bool allowPartial = (flags & PlacementFlags.AllowPartialPlacement) != 0;
+        if (!allowPartial && anyFailed)
+        {
+            for (int i = 0; i < results.Length; i++)
+            {
+                if (results[i].IsValid)
+                {
+                    results[i] = new PlacementValidationResult(PlacementValidationCode.BatchAllOrNothingRolledBack);
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// BuildingConfig NativeArray를 참조하여 연구 해금 상태까지 함께 검증하는 배치 묶음 검증 오버로드.
+    /// </summary>
+    public static void ValidateBatchPlacement(
+        NativeArray<PlacementCandidate> candidates,
+        PlacementFlags flags,
+        in NativeParallelHashMap<int2, BuildingInfo>.ReadOnly buildingMap,
+        in NativeParallelHashMap<int2, Entity>.ReadOnly resourceMap,
+        in NativeParallelMultiHashMap<int2, Entity>.ReadOnly itemMap,
+        NativeArray<PlacementValidationResult> results,
+        in NativeArray<BuildingConfigElement> configs,
+        Allocator allocator = Allocator.Temp)
+    {
+        var claimedCells = new NativeParallelHashSet<int2>(math.max(16, candidates.Length * 4), allocator);
+        bool anyFailed = false;
+
+        for (int i = 0; i < candidates.Length; i++)
+        {
+            var candidate = candidates[i];
+            bool isUnlocked = !configs.IsCreated || configs.Length == 0 || BuildingConfigLookupUtility.IsBuildingUnlocked(configs, candidate.TargetType);
+
+            var singleResult = ValidateSinglePlacement(
+                candidate.TargetType,
+                candidate.FootprintSize,
+                candidate.OriginPosition,
+                candidate.Direction,
+                buildingMap,
+                resourceMap,
+                itemMap,
+                isUnlocked);
+
+            if (!singleResult.IsValid)
+            {
+                results[i] = singleResult;
+                anyFailed = true;
+                continue;
+            }
+
+            int2 effectiveSize = GetEffectiveSize(candidate.FootprintSize, candidate.Direction);
+            bool internallyConflict = false;
+
+            for (int y = 0; y < effectiveSize.y && !internallyConflict; y++)
+            {
+                for (int x = 0; x < effectiveSize.x; x++)
+                {
+                    int2 cell = candidate.OriginPosition + new int2(x, y);
+                    if (claimedCells.Contains(cell))
+                    {
+                        internallyConflict = true;
+                        break;
+                    }
+                }
+            }
+
+            if (internallyConflict)
+            {
+                results[i] = new PlacementValidationResult(PlacementValidationCode.BlockedByConstructionSite);
+                anyFailed = true;
+                continue;
+            }
+
+            for (int y = 0; y < effectiveSize.y; y++)
+            {
+                for (int x = 0; x < effectiveSize.x; x++)
+                {
+                    claimedCells.Add(candidate.OriginPosition + new int2(x, y));
+                }
+            }
+
+            results[i] = singleResult;
+        }
+
+        claimedCells.Dispose();
+
+        bool allowPartial = (flags & PlacementFlags.AllowPartialPlacement) != 0;
+        if (!allowPartial && anyFailed)
+        {
+            for (int i = 0; i < results.Length; i++)
+            {
+                if (results[i].IsValid)
+                {
                     results[i] = new PlacementValidationResult(PlacementValidationCode.BatchAllOrNothingRolledBack);
                 }
             }

@@ -11,14 +11,15 @@ public class Phase3BuildingRuntimeConfigTests : EcsWorldTestFixture
     [Test]
     public void Test01_LoadFromResources_ParsesAndValidatesAllBuildingTypes()
     {
-        // Resources/Config/BuildingRuntimeConfig.json 로드 및 검증
-        bool success = BuildingRuntimeConfigLoader.TryLoadConfigFromResources(
-            BuildingRuntimeConfigLoader.DefaultResourcePath,
-            out var elements);
+        // Resources/Config/BuildingConfig.json 로드 및 검증
+        bool success = BuildingConfigLoader.TryLoadConfigFromResources(
+            BuildingConfigLoader.DefaultResourcePath,
+            out var configs,
+            out var materials);
 
         Assert.IsTrue(success, "Resources 설정 파일 로드 및 파싱이 성공해야 함");
-        Assert.IsNotNull(elements);
-        Assert.AreEqual(5, elements.Count, "Belt, Miner, Crafter, Storage, ResearchBuilding 총 5종이어야 함");
+        Assert.IsNotNull(configs);
+        Assert.AreEqual(10, configs.Count, "통합 설정은 총 10종의 건물 설정을 포함해야 함");
 
         // 각 건물별 스펙 값 검증
         bool foundBelt = false;
@@ -27,7 +28,7 @@ public class Phase3BuildingRuntimeConfigTests : EcsWorldTestFixture
         bool foundStorage = false;
         bool foundResearch = false;
 
-        foreach (var el in elements)
+        foreach (var el in configs)
         {
             switch (el.BuildingType)
             {
@@ -65,20 +66,21 @@ public class Phase3BuildingRuntimeConfigTests : EcsWorldTestFixture
     public void Test02_PublishConfig_CreatesSingletonEntityAndBuffer()
     {
         // 설정 로드 후 ECS 월드에 게시
-        bool success = BuildingRuntimeConfigLoader.TryLoadConfigFromResources(
-            BuildingRuntimeConfigLoader.DefaultResourcePath,
-            out var elements);
+        bool success = BuildingConfigLoader.TryLoadConfigFromResources(
+            BuildingConfigLoader.DefaultResourcePath,
+            out var configs,
+            out var materials);
         Assert.IsTrue(success);
 
-        Entity configEntity = BuildingRuntimeConfigLoader.PublishConfig(_entityManager, elements);
+        Entity configEntity = BuildingConfigLoader.PublishConfig(_entityManager, configs, materials);
         Assert.AreNotEqual(Entity.Null, configEntity);
 
-        // 싱글톤 확인
+        // 하위 호환성 싱글톤 및 버퍼 확인
         var query = _entityManager.CreateEntityQuery(typeof(BuildingRuntimeConfig), typeof(BuildingRuntimeConfigElement));
         Assert.AreEqual(1, query.CalculateEntityCount(), "정확히 1개의 싱글톤 엔티티가 존재해야 함");
 
         var buffer = _entityManager.GetBuffer<BuildingRuntimeConfigElement>(configEntity);
-        Assert.AreEqual(5, buffer.Length);
+        Assert.AreEqual(10, buffer.Length);
 
         // Lookup Utility 조회 검증
         bool foundMiner = BuildingRuntimeConfigLookupUtility.TryGetConfig(buffer, BuildingTypeEnum.Miner, out var minerConfig);
@@ -89,8 +91,8 @@ public class Phase3BuildingRuntimeConfigTests : EcsWorldTestFixture
         Assert.IsTrue(foundStorage);
         Assert.AreEqual(10, storageConfig.StorageCapacity);
 
-        // 미등록 건물 조회 시 false 반환 검증
-        bool foundNone = BuildingRuntimeConfigLookupUtility.TryGetConfig(buffer, BuildingTypeEnum.PowerPole, out _);
+        // 미등록 건물(ConstructionSite) 조회 시 false 반환 검증
+        bool foundNone = BuildingRuntimeConfigLookupUtility.TryGetConfig(buffer, BuildingTypeEnum.ConstructionSite, out _);
         Assert.IsFalse(foundNone);
     }
 
@@ -101,13 +103,13 @@ public class Phase3BuildingRuntimeConfigTests : EcsWorldTestFixture
 
         string invalidJson = @"{
             ""buildings"": [
-                { ""buildingType"": ""Miner"", ""speed"": -0.5 }
+                { ""buildingType"": ""Miner"", ""speed"": -0.5, ""storageCapacity"": 0, ""isUnlockedByDefault"": true }
             ]
         }";
 
-        bool success = BuildingRuntimeConfigLoader.TryParseJson(invalidJson, out var elements);
+        bool success = BuildingConfigLoader.TryParseJson(invalidJson, out var configs, out var materials);
         Assert.IsFalse(success, "음수 속도는 유효성 검사에서 실패해야 함");
-        Assert.IsNull(elements, "검증 실패 시 null을 반환하여 부분 게시를 방지해야 함");
+        Assert.IsNull(configs, "검증 실패 시 null을 반환하여 부분 게시를 방지해야 함");
     }
 
     [Test]
@@ -118,13 +120,13 @@ public class Phase3BuildingRuntimeConfigTests : EcsWorldTestFixture
         // MaxStorageSlots(120)을 초과하는 500 슬롯 설정
         string invalidJson = @"{
             ""buildings"": [
-                { ""buildingType"": ""Storage"", ""storageCapacity"": 500 }
+                { ""buildingType"": ""Storage"", ""speed"": 1.0, ""storageCapacity"": 500, ""isUnlockedByDefault"": true }
             ]
         }";
 
-        bool success = BuildingRuntimeConfigLoader.TryParseJson(invalidJson, out var elements);
+        bool success = BuildingConfigLoader.TryParseJson(invalidJson, out var configs, out var materials);
         Assert.IsFalse(success, "MaxStorageSlots 초과 슬롯 수는 유효성 검사에서 실패해야 함");
-        Assert.IsNull(elements);
+        Assert.IsNull(configs);
     }
 
     [Test]
@@ -134,30 +136,30 @@ public class Phase3BuildingRuntimeConfigTests : EcsWorldTestFixture
 
         string duplicateJson = @"{
             ""buildings"": [
-                { ""buildingType"": ""Crafter"", ""speed"": 1.0 },
-                { ""buildingType"": ""Crafter"", ""speed"": 2.0 }
+                { ""buildingType"": ""Crafter"", ""speed"": 1.0, ""storageCapacity"": 4, ""isUnlockedByDefault"": true },
+                { ""buildingType"": ""Crafter"", ""speed"": 2.0, ""storageCapacity"": 4, ""isUnlockedByDefault"": true }
             ]
         }";
 
-        bool success = BuildingRuntimeConfigLoader.TryParseJson(duplicateJson, out var elements);
+        bool success = BuildingConfigLoader.TryParseJson(duplicateJson, out var configs, out var materials);
         Assert.IsFalse(success, "중복 건물 타입은 유효성 검사에서 실패해야 함");
-        Assert.IsNull(elements);
+        Assert.IsNull(configs);
     }
 
     [Test]
-    public void Test06_BuildingRuntimeConfigLoadSystem_ExecutesOnceAndPublishes()
+    public void Test06_BuildingConfigInitSystem_ExecutesOnceAndPublishes()
     {
-        var systemHandle = _world.GetOrCreateSystem(typeof(BuildingRuntimeConfigLoadSystem));
+        var initSystem = _world.GetOrCreateSystemManaged<BuildingConfigInitSystem>();
 
-        // 1회 Update 실행
-        systemHandle.Update(_world.Unmanaged);
+        // OnCreate 시점에 이미 LoadAndPublish가 실행되어 싱글톤 게시됨
+        var query = _entityManager.CreateEntityQuery(typeof(BuildingConfig), typeof(BuildingConfigElement));
+        Assert.AreEqual(1, query.CalculateEntityCount(), "시스템 생성 후 싱글톤 엔티티가 게시되어야 함");
 
-        // 싱글톤 게시 확인
-        var query = _entityManager.CreateEntityQuery(typeof(BuildingRuntimeConfig), typeof(BuildingRuntimeConfigElement));
-        Assert.AreEqual(1, query.CalculateEntityCount(), "시스템 실행 후 싱글톤 엔티티가 게시되어야 함");
+        var runtimeQuery = _entityManager.CreateEntityQuery(typeof(BuildingRuntimeConfig), typeof(BuildingRuntimeConfigElement));
+        Assert.AreEqual(1, runtimeQuery.CalculateEntityCount(), "하위 호환성 싱글톤 엔티티가 게시되어야 함");
 
         // 추가 Update 실행해도 중복 생성되지 않음을 확인
-        systemHandle.Update(_world.Unmanaged);
+        initSystem.Update();
         Assert.AreEqual(1, query.CalculateEntityCount(), "중복 실행 시에도 단일 싱글톤만 유지되어야 함");
     }
 }
