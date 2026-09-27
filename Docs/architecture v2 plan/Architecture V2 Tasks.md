@@ -292,32 +292,32 @@
 
 Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. 아래 Task는 테스트에서 미리 만든 자원을 넘어, 설정·청크 요청에서 자원 엔티티가 생성되는 런타임 경로를 담당한다.
 
-- [ ] **Task 4.5: 초기 영역·월드 시드·자원 생성 설정 연결**
+- [x] **Task 4.5: 초기 영역·월드 시드·자원 생성 설정 연결**
   - 선행 조건: Task 0.6 및 기존 Resource 데이터 계약, 백업 초기 영역·자원 설정 Authoring 확인.
-  - 구현 범위·상태 소유자: 초기 로드 영역, 월드 시드, 자원별 광맥·매장량 설정을 검증해 ECS 정의 데이터로 게시한다. 기존 베이킹·로드 시점과 설정 의미를 확인하고 생성 진행 상태와 분리한다.
+  - 구현 범위·상태 소유자: 초기 로드 영역, 월드 시드, 자원별 광맥·매장량 설정을 검증해 ECS 정의 데이터로 게시한다. 기존 베이킹·로드 시점과 설정 의미를 확인하고 생성 진행 상태와 분리한다. 초경량 무한 맵 아키텍처에 따라 불필요한 청크 영역 설정 엔티티를 배제하고, `WorldGenerationConfig.json`에서 `worldSeed`와 광석 4종 설정(`configs`)을 파싱하여 `ResourceGenerationSettings` 싱글톤 및 DynamicBuffer로 1회 부트스트랩 게시(`WorldGenerationConfigLoadSystem`). 완전 중단(All-or-Nothing Fail-Fast) 검증을 적용.
   - 후속 연결: Task 4.6에서 초기 청크를 요청하고 Task 4.7에서 자원 배치를 계산한다.
-  - 검증: 같은 시드·설정, 잘못된 영역·품목·범위 값, 설정 누락·재초기화와 중복 게시를 검사한다.
+  - 검증: 같은 시드·설정, 잘못된 영역·품목·범위 값, 설정 누락·재초기화와 중복 게시를 검사한다. `Phase4WorldGenerationConfigTests` 6종 단위/통합 테스트 전수 통과 (173/173 EditMode 테스트 100% Pass).
   - 완료 기준: 초기 로딩과 자원 생성이 동일한 검증된 설정을 읽으며 설정 부재를 정상 초기화로 처리하지 않는다.
 
-- [ ] **Task 4.6: 청크 요청 수명주기 및 초기 영역 로딩 구현**
+- [x] **Task 4.6: 청크 요청 수명주기 및 초기 영역 로딩 구현**
   - 선행 조건: Task 4.5 및 기존 격자·청크 좌표 규칙 확인.
-  - 구현 범위·상태 소유자: 청크 로드 요청, 준비·생성 상태의 소유자를 정의하고 초기 영역 요청·중복 병합·요청 소비를 구현한다. 기존 개별 공간 인덱스의 상태를 다시 소유하지 않는다.
+  - 구현 범위·상태 소유자: 청크 로드 요청, 준비·생성 상태의 소유자를 정의하고 초기 영역 요청·중복 병합·요청 소비를 구현한다. 기존 개별 공간 인덱스의 상태를 다시 소유하지 않는다. 초경량 무한 맵 아키텍처에 맞춰 `ChunkUtility`(음수 좌표 FloorDiv 변환), `GeneratedChunkTracker`의 완료/대기 집합 및 `ChunkLoadRequestElement` 요청 큐 버퍼를 구축. `InitialChunkLoadBootstrapSystem`이 설정된 N×N(기본 3×3) 초기 청크 요청을 인큐하고, `ChunkLoadCommandSystem`(`CommandGroup`)이 중복을 O(1)로 제거(Idempotent Drop)하여 신규 청크를 `GeneratedChunkReadyElement`로 인계한다. 미처리 요청은 보존하고, EndStateApply의 완료 알림을 다음 Command에서 소비한 뒤에만 완료 집합에 등록한다.
   - 후속 연결: Task 4.7~4.8의 자원 생성·스폰 결과와 생성 완료를 연결하고, Task 10B.5에서 카메라 요청을 추가한다.
-  - 검증: 중복 요청, 겹치는 초기 영역, 음수 좌표, 생성 실패·재시도와 이미 생성된 청크 재요청을 검사한다. 기존에 없는 청크 언로드 정책은 추가하지 않는다.
+  - 검증: 중복 요청, 겹치는 초기 영역, 음수 좌표, 생성 실패·재시도와 이미 생성된 청크 재요청을 검사한다. `Phase4ChunkLifecycleTests` 6종 단위/통합 테스트 전수 통과 (179/179 EditMode 테스트 100% Pass).
   - 완료 기준: 요청과 청크 진행 상태가 일치하고 완료된 청크의 자원이 중복 생성되지 않는 계약이 마련된다.
 
-- [ ] **Task 4.7: 시드 기반 광맥 배치 및 자원 생성 요청 구현**
+- [x] **Task 4.7: 시드 기반 광맥 배치 및 자원 생성 요청 구현**
   - 선행 조건: Task 4.5~4.6 및 기존 광맥 생성 알고리즘 확인.
-  - 구현 범위·상태 소유자: 자원 생성 단계가 월드 시드·청크·품목 설정으로 배치를 계산하고 자원 스폰 요청을 게시한다. 생성 원본과 재생성 가능한 공간 인덱스를 구분한다.
-  - 후속 연결: Task 4.8에서 요청을 실제 자원 엔티티로 적용한다. 게임플레이용 채굴 로직을 다시 구현하지 않는다.
-  - 검증: 동일 시드 재현, 청크 로드 순서 변경, 경계를 넘는 광맥, 품목 간 중복 셀 및 재요청을 검사한다.
-  - 완료 기준: 기존 생성 규칙에 맞는 재현 가능한 요청을 만들고 생성되지 않은 자원을 완료 상태로 게시하지 않는다.
+  - 구현 범위·상태 소유자: `ChunkUtility.IsInsideChunk` 헬퍼 메서드 및 `ResourceGenerationUtility`(시드 기반 결정론적 패치 계산, 청크 경계 처리, 품목 선착순 셀 선점) 구현. `ResourceGenerationCommandSystem`(`CommandGroup`, `[UpdateAfter(typeof(ChunkLoadCommandSystem))]`)을 통해 `GeneratedChunkReadyElement` 버퍼를 읽고 중간 셀별 요청 엔티티 없이 ResourceNode 스폰 및 청크 완료 알림을 EndStateApply ECB에 기록한다. 완료 상태는 실제 반영 이후 확정하며 즉시 Playback 우회는 사용하지 않는다.
+  - 후속 연결: Task 4.8에서 Authoring/프리팹 베이킹 DB를 연결하여 실제 렌더 프리팹 인스턴스화로 확장.
+  - 검증: 동일 시드 100% 재현(Determinism), 청크 로드 순서 무관성(Cross-Chunk Load-Order Invariance), 타일 중복 배제(No Overlap), 설정 부재 안전성(Graceful Early Return), 파이프라인 연계 및 멱등성 검증. `Phase4ResourceGenerationTests` 7종 단위/통합 테스트 전수 통과 (186/186 EditMode 테스트 100% Pass).
+  - 완료 기준: 기존 생성 규칙에 맞는 재현 가능한 결정을 수행하고 EndStateApply에서 자원 엔티티를 반영하고 Synchronization에서 공간 인덱스에 등록한다.
 
-- [ ] **Task 4.8: 자원 Authoring·프리팹 DB 및 스폰·공간 등록 연결**
+- [x] **Task 4.8: 자원 Authoring·프리팹 DB 및 스폰·공간 등록 연결**
   - 선행 조건: Task 0.6·4.6~4.7 및 기존 ResourceNode·ResourceSpatialIndex·Miner 계약.
-  - 구현 범위·상태 소유자: 자원 프리팹을 베이킹하고 자원 생성 소유자가 스폰 요청을 소비하여 타입·매장량·위치·렌더 데이터를 초기화한다. Synchronization의 기존 자원 인덱스와 청크 생성 결과를 연결한다.
-  - 후속 연결: 기존 채굴·고갈 처리 및 Task 10B.5·10C.2에서 실제 월드 확장과 시각 결과를 확인한다.
-  - 검증: 요청→스폰→공간 조회→채굴→고갈 흐름, 중복 생성, 프리팹·설정 오류와 부분 스폰 실패를 실제 그룹 경계에서 검사한다.
+  - 구현 범위·상태 소유자: `ResourcePrefabDatabaseAuthoring` 구현으로 인스펙터 수동 목록 및 `Resources/Prefabs/Resource` 폴더 자동 수집(`ResourcesAutoLoad` 및 ContextMenu) 지원, `ResourcePrefabDatabase` 싱글톤 및 `ResourcePrefabElement` 버퍼에 `TransformUsageFlags.Renderable` 프리팹 베이킹. `ResourceGenerationUtility` 및 `ResourceGenerationCommandSystem`에서 프리팹 DB를 조회하여 `ecb.Instantiate(prefab)`를 통해 렌더 컴포넌트 복제 및 `[GridPosition, ResourceNode, LocalTransform]` 초기화 연결. 방안 B 엄격 차단(Strict Fail)을 적용하여 프리팹 DB 부재 또는 필요한 프리팹 누락 시 전체 청크를 대기시킨다. 일부 광석만 생성하지 않으며 준비 후 같은 요청으로 재시도한다. 설정별 프리팹 조회는 업데이트당 한 번 수행한다. `SynchronizationGroup`의 `ResourceSpatialSyncSystem`을 통해 `ResourceSpatialIndex` 자동 등록 및 기존 채굴기(`Miner`) 파이프라인과 직결.
+  - 후속 연결: Task 10B.5·10C.2에서 실제 월드 확장과 시각 결과를 확인.
+  - 검증: 프리팹 DB 조회, 프리팹 인스턴스화 및 Transform 초기화, 프리팹 누락 시 엄격 차단, DB 부재/빈 버퍼 시 안전 차단, 채굴기 연계 및 매장량 고갈 시 엔티티 파괴 완주 검증. `Phase4ResourceAuthoringAndSpawnTests` 6종 단위/통합 테스트 전수 통과 (192/192 EditMode 테스트 100% Pass).
   - 완료 기준: 설정과 청크 요청으로 생성한 자원이 기존 채굴 파이프라인에 참여하고 실패 시 고아 요청·중복 자원·잘못된 청크 완료 상태가 없다.
 
 - [ ] **Task 4.9: 바닥 설정 로딩 및 바이옴 생성 계약 구현**

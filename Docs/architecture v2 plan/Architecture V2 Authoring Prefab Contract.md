@@ -101,6 +101,8 @@ Unity Entities 1.0+의 하이브리드 트랜스폼 베이킹 정책에 따라, 
 
 ## 5. 프리팹 누락 처리 및 Safe Fallback 계약
 
+**Task 4.8 자원 도메인 예외:** 자원은 fallback 엔티티를 생성하지 않는다. DB·설정 버퍼가 준비되지 않았거나 생성에 필요한 프리팹 참조/LocalTransform이 누락되면 청크 전체를 대기한다. 일부 자원만 먼저 스폰하지 않으며, 준비 후 같은 대기 요청을 한 번 처리한다. 아래 Safe Fallback은 현재 Item 경로에 적용되며 자원 경로에는 적용하지 않는다.
+
 1. **프리팹 데이터베이스 조회 실패 처리**:
    - 런타임 시스템이 특정 `ItemType` 또는 `BuildingType`의 프리팹을 조회했을 때 해당 항목이 없거나 `Prefab == Entity.Null`인 경우:
    - `UnityEngine.Debug.LogError`를 통해 누락 사실을 에디터/로그에 명확히 기록.
