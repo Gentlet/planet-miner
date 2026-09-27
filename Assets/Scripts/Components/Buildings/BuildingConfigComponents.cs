@@ -20,19 +20,22 @@ public struct BuildingConfigElement : IBufferElementData
     public int StorageCapacity;
     public bool IsUnlocked;
     public FixedString32Bytes RequiredResearch;
+    public int2 Footprint;
 
     public BuildingConfigElement(
         BuildingTypeEnum buildingType,
         float speed,
         int storageCapacity,
         bool isUnlocked,
-        FixedString32Bytes requiredResearch = default)
+        FixedString32Bytes requiredResearch = default,
+        int2 footprint = default)
     {
         BuildingType = buildingType;
         Speed = speed;
         StorageCapacity = storageCapacity;
         IsUnlocked = isUnlocked;
         RequiredResearch = requiredResearch;
+        Footprint = footprint.Equals(int2.zero) ? new int2(1, 1) : footprint;
     }
 }
 
@@ -76,6 +79,27 @@ public static class BuildingConfigLookupUtility
         }
 
         config = default;
+        return false;
+    }
+
+    /// <summary>
+    /// 지정된 건물의 기본 Footprint(크기)를 조회.
+    /// </summary>
+    public static bool TryGetFootprint(
+        in DynamicBuffer<BuildingConfigElement> buffer,
+        BuildingTypeEnum type,
+        out int2 footprint)
+    {
+        for (int i = 0; i < buffer.Length; i++)
+        {
+            if (buffer[i].BuildingType == type)
+            {
+                footprint = buffer[i].Footprint;
+                return true;
+            }
+        }
+
+        footprint = int2.zero;
         return false;
     }
 

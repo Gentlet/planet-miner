@@ -6,6 +6,7 @@
       "storageCapacity": 0,
       "isUnlockedByDefault": true,
       "requiredResearch": "",
+      "footprint": [1, 1],
       "materials": [
         { "itemType": "Iron", "quantity": 1 }
       ]
@@ -16,6 +17,7 @@
       "storageCapacity": 0,
       "isUnlockedByDefault": true,
       "requiredResearch": "",
+      "footprint": [2, 2],
       "materials": [
         { "itemType": "Iron", "quantity": 3 }
       ]
@@ -26,6 +28,7 @@
       "storageCapacity": 0,
       "isUnlockedByDefault": true,
       "requiredResearch": "",
+      "footprint": [2, 2],
       "materials": [
         { "itemType": "Iron", "quantity": 3 }
       ]
@@ -36,6 +39,7 @@
       "storageCapacity": 10,
       "isUnlockedByDefault": true,
       "requiredResearch": "",
+      "footprint": [1, 1],
       "materials": [
         { "itemType": "Iron", "quantity": 2 }
       ]
@@ -46,6 +50,7 @@
       "storageCapacity": 0,
       "isUnlockedByDefault": true,
       "requiredResearch": "",
+      "footprint": [1, 1],
       "materials": [
         { "itemType": "Copper", "quantity": 1 }
       ]
@@ -56,6 +61,7 @@
       "storageCapacity": 0,
       "isUnlockedByDefault": false,
       "requiredResearch": "logistics_distribution",
+      "footprint": [1, 1],
       "materials": [
         { "itemType": "Iron", "quantity": 2 }
       ]
@@ -66,6 +72,7 @@
       "storageCapacity": 0,
       "isUnlockedByDefault": false,
       "requiredResearch": "logistics_distribution",
+      "footprint": [1, 1],
       "materials": [
         { "itemType": "Iron", "quantity": 2 }
       ]
@@ -76,6 +83,7 @@
       "storageCapacity": 0,
       "isUnlockedByDefault": false,
       "requiredResearch": "coal_power",
+      "footprint": [3, 3],
       "materials": [
         { "itemType": "Iron", "quantity": 4 }
       ]
@@ -86,6 +94,7 @@
       "storageCapacity": 0,
       "isUnlockedByDefault": false,
       "requiredResearch": "drone_logistics",
+      "footprint": [3, 3],
       "materials": [
         { "itemType": "Iron", "quantity": 5 }
       ]
@@ -96,9 +105,21 @@
       "storageCapacity": 0,
       "isUnlockedByDefault": true,
       "requiredResearch": "",
+      "footprint": [3, 3],
       "materials": [
         { "itemType": "Iron", "quantity": 3 },
         { "itemType": "Copper", "quantity": 3 }
+      ]
+    },
+    {
+      "buildingType": "MainFacility",
+      "speed": 0.0,
+      "storageCapacity": 50,
+      "isUnlockedByDefault": true,
+      "requiredResearch": "",
+      "footprint": [3, 3],
+      "materials": [
+        { "itemType": "Iron", "quantity": 10 }
       ]
     }
   ]

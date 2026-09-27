@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Mathematics;
 using UnityEngine;
 
 /// <summary>
@@ -21,6 +22,7 @@ public class BuildingConfigJsonEntry
     public int storageCapacity;
     public bool isUnlockedByDefault = true;
     public string requiredResearch;
+    public int[] footprint;
     public List<BuildingMaterialJsonEntry> materials = new List<BuildingMaterialJsonEntry>();
 }
 
@@ -115,11 +117,11 @@ public static class BuildingConfigLoader
             }
 
             // 용량 및 속도 검증
-            if (buildingType == BuildingTypeEnum.Storage)
+            if (buildingType == BuildingTypeEnum.Storage || buildingType == BuildingTypeEnum.MainFacility)
             {
                 if (entry.storageCapacity <= 0 || entry.storageCapacity > GameConstants.MaxStorageSlots)
                 {
-                    Debug.LogError($"[BuildingConfigLoader] Storage has invalid storageCapacity {entry.storageCapacity} (allowed: 1 ~ {GameConstants.MaxStorageSlots}).");
+                    Debug.LogError($"[BuildingConfigLoader] {buildingType} has invalid storageCapacity {entry.storageCapacity} (allowed: 1 ~ {GameConstants.MaxStorageSlots}).");
                     return false;
                 }
             }
@@ -127,6 +129,18 @@ public static class BuildingConfigLoader
             {
                 Debug.LogError($"[BuildingConfigLoader] {buildingType} has invalid speed {entry.speed} (cannot be negative).");
                 return false;
+            }
+
+            // Footprint 검증
+            int2 footprint = new int2(1, 1);
+            if (entry.footprint != null)
+            {
+                if (entry.footprint.Length != 2 || entry.footprint[0] < 1 || entry.footprint[1] < 1)
+                {
+                    Debug.LogError($"[BuildingConfigLoader] {buildingType} has invalid footprint. Dimensions must be 2 positive integers (width, height >= 1).");
+                    return false;
+                }
+                footprint = new int2(entry.footprint[0], entry.footprint[1]);
             }
 
             FixedString32Bytes reqResearch = default;
@@ -140,7 +154,8 @@ public static class BuildingConfigLoader
                 entry.speed,
                 entry.storageCapacity,
                 entry.isUnlockedByDefault,
-                reqResearch));
+                reqResearch,
+                footprint));
 
             // 건설 자재 검증
             if (entry.materials != null)
