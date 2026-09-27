@@ -58,6 +58,12 @@ SimulationSystemGroup
 - 관련 회귀 테스트는 `Phase4WorldGenerationConfigTests`, `Phase4ChunkLifecycleTests`, `Phase4ResourceGenerationTests`, `Phase4ResourceAuthoringAndSpawnTests`다. 통합 테스트는 실제 GameSimulationGroup과 EndStateApply를 사용한다. 테스트용 ECS 프리팹 검증은 실제 SubScene 베이킹·시각 검증을 대체하지 않는다.
 - 이번 개선 검증: Unity 6000.4.11f1 재컴파일 및 최신 런타임/테스트 어셈블리 확인 완료. 위 네 클래스의 EditMode 결과는 각각 9/9, 6/6, 7/7, 13/13 통과(총 35, Failed/Skipped/Inconclusive 0)다. Play Mode·실제 베이킹·시각·성능 측정은 수행하지 않았다.
 
+### Task 4.9 바닥 생성 계약 (2026-09-27 갱신)
+
+- `WorldGenerationConfig.json`의 `floor`가 레거시 바닥 파라미터·Grass/Dirt·전이 Sprite 목록을 보관하며, 자원과 단일 `worldSeed`를 공유한다. 별도 `FloorGenerationConfig.json`은 제거했다.
+- `WorldGenerationConfigLoader`는 자원과 바닥 설정, Sprite Resources 참조를 모두 검증한 뒤 함께 게시한다. 바닥 파라미터는 `FloorGenerationSettings`, 바이옴과 변형은 동일 엔티티의 버퍼다.
+- `FloorBiomeSampler`는 월드 셀 좌표의 `FloorTileSelection` 및 변형 Sprite 경로를 계산한다. 청크나 점유 상태를 소유하지 않으며 렌더링·메시·표시 수명주기는 Task 10B.6에 남는다.
+
 아래 항목은 이 문서 최초 작성 시점의 범위 기록이며, 월드 생성은 위 갱신 절을 우선한다.
 
 - 현재 `Assets/Scripts`에는 아이템, 벨트, 건물 입출고, 채굴기, 제작기의 코어와 Splitter/Merger의 데이터/방향 유틸리티가 있다. `RoutingTransferDecision`을 생성해 실제 전송을 적용하는 런타임 시스템은 이 54개 파일에 없다. `BeltDestinationReservationSystem`은 이미 활성화된 라우팅 결정의 목적지 경합만 처리한다.

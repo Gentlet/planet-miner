@@ -69,14 +69,16 @@
 
 ## 바닥 바이옴 프레젠테이션
 
-`FloorChunkRenderer`는 장면 로드 뒤 `RuntimeInitializeOnLoadMethod`에서 단일 persistent GameObject로 만들어지고, `Resources/Config/FloorGenerationConfig.json`을 읽어 자원 생성이 완료된 청크마다 바닥 메시를 하나 만든다. 렌더러는 `ChunkMapSystem`의 자원 생성 완료 알림 큐만 소비하며, 셀 floor 값, 건물·자원 점유, 예약, 자원 생성에는 관여하지 않는 순수한 배경 렌더링이다. 완료 알림은 렌더러가 초기화되기 전에도 큐에 보존되므로 매 프레임 전체 청크 목록을 폴링하지 않는다.
+V2 Task 4.9에서 `WorldGenerationConfig.json`의 단일 `worldSeed`와 `floor` 설정을 함께 검증한다. `WorldGenerationConfigLoadSystem`은 자원 설정과 `FloorGenerationSettings`·`FloorBiomeElement`·`FloorVariantElement`를 같은 설정 엔티티에 게시한다. `FloorBiomeSampler.SelectFloor`은 월드 셀 좌표만으로 `FloorTileSelection`을 계산하고, `GetVariant`로 렌더러가 사용할 Sprite Resources 경로를 얻는다. 바닥 선택은 건물·자원 점유를 읽거나 변경하지 않는다. 청크 메쉬·표시 수명주기는 Task 10B.6 범위이며 아직 구현되지 않았다.
+
+`V2 Test Scene`의 서브씬에는 네 자원 프리팹을 참조하는 `ResourcePrefabDatabaseAuthoring`이 있다. 메인 장면의 `V2FloorBiomePreview`는 실행 중 ECS 바닥 설정을 읽어 초기 3×3 청크 범위의 바이옴·전이 결과를 색상 텍스처 한 장으로 표시하는 테스트 전용 진단 표시다. 실제 바닥 Sprite의 메시·머티리얼을 검증하는 렌더러는 아니다.
 
 - 바이옴 영역은 설정된 `biomeRegionSizeInChunks`(기본 3×3 청크) 단위로 고정 시드 해시에서 선택한다.
 - `transitionWidthInChunks`(기본 총 2청크) 안에서는 저주파 도메인 워프와 좌표 해시로 인접 바이옴 바닥을 결정론적으로 섞는다. `nearBiomePreferenceExponent`(기본 0.5)는 완충지대에서 가까운 쪽 바이옴의 우세가 증가하는 속도를 정하며, 1보다 작을수록 더 빨리 우세해진다.
 - 서로 다른 바이옴이 실제로 만나는 완충지대에서는 `transitionFloorVariants[]`의 전이 타일도 사용한다. 경계 중심에 가까울수록 전이 타일 확률이 높고, 각 바이옴 핵심 영역에 가까울수록 해당 바이옴의 일반 바닥 타일 확률이 높다.
 - 바닥 이미지와 가중치는 `biomes[].floorVariants[]` 설정 목록에서 관리한다. 이미지는 `Resources` 경로를 사용하며, 추가 바이옴·변형은 코드를 분기하지 않고 설정으로 확장한다.
 - 각 셀 결과는 월드 시드와 월드 좌표만으로 계산하므로 청크·카메라 로드 순서와 무관하다.
-- 하나의 청크 메시 안에서 variant별 submesh/material을 사용하고, 생성한 청크 GameObject를 내부 dictionary에 보관한다.
+- 과거 렌더러는 하나의 청크 메시 안에서 variant별 submesh/material을 사용했으며, V2 렌더링 구현 시 참고한다.
 - vertex, UV, variant별 triangle 목록은 렌더러가 보유한 scratch buffer를 청크마다 비워 재사용한다. sprite UV와 material 배열도 variant 초기화 시 한 번 구성한다.
 - 청크 unload가 구현될 때에는 해당 청크의 바닥 메시 GameObject도 함께 해제해야 한다.
 

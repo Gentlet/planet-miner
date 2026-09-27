@@ -206,7 +206,8 @@ public class Phase4WorldGenerationConfigTests : EcsWorldTestFixture
         systemHandle.Update(_world.Unmanaged);
 
         // 싱글톤 게시 확인
-        var query = _entityManager.CreateEntityQuery(typeof(ResourceGenerationSettings), typeof(ResourceGenerationConfigElement));
+        var query = _entityManager.CreateEntityQuery(typeof(ResourceGenerationSettings), typeof(ResourceGenerationConfigElement),
+            typeof(FloorGenerationSettings), typeof(FloorBiomeElement), typeof(FloorVariantElement));
         Assert.AreEqual(1, query.CalculateEntityCount(), "시스템 실행 후 싱글톤 엔티티가 게시되어야 함");
 
         // 추가 Update 실행해도 중복 생성되지 않음을 확인
@@ -266,20 +267,8 @@ public class Phase4WorldGenerationConfigTests : EcsWorldTestFixture
         Assert.IsNull(elements);
 
         // 반면 int.MaxValue - 1은 정상 통과
-        string validMaxJson = $@"{{
-            ""worldSeed"": 1,
-            ""configs"": [
-                {{
-                    ""type"": ""Iron_Ore"",
-                    ""weight"": 0.35,
-                    ""minPatchRadius"": 1,
-                    ""maxPatchRadius"": 2,
-                    ""cellFillChance"": 0.1,
-                    ""minAmount"": 100,
-                    ""maxAmount"": {int.MaxValue - 1}
-                }}
-            ]
-        }}";
+        string validMaxJson = Resources.Load<TextAsset>(WorldGenerationConfigLoader.DefaultResourcePath).text
+            .Replace("\"maxAmount\": 300", $"\"maxAmount\": {int.MaxValue - 1}");
 
         bool validSuccess = WorldGenerationConfigLoader.TryParseAndValidateJson(validMaxJson, out seed, out elements);
         Assert.IsTrue(validSuccess, "maxAmount가 int.MaxValue - 1이면 정상 통과해야 함");
