@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using PlanetMiner.Tests;
 using Unity.Entities;
@@ -5,6 +6,7 @@ using Unity.Mathematics;
 using Unity.Rendering;
 using Unity.Transforms;
 using UnityEngine;
+using UnityEngine.TestTools;
 
 public class Phase1ItemAuthoringPrefabTests : EcsWorldTestFixture
 {
@@ -184,8 +186,10 @@ public class Phase1ItemAuthoringPrefabTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test06_SpawnItem_MissingPrefab_FallsBackToSimulationArchetype()
+    public void Test06_SpawnItem_MissingPrefab_StrictFail_RejectsSpawning()
     {
+        LogAssert.Expect(LogType.Error, new Regex(".*Missing prefab for item type.*"));
+
         // 프리팹 DB 버퍼에 Stone이 등록되지 않은 상태
         var dbEntity = _entityManager.CreateEntity(typeof(ItemPrefabDatabase));
         _entityManager.AddBuffer<ItemPrefabElement>(dbEntity);
@@ -202,12 +206,11 @@ public class Phase1ItemAuthoringPrefabTests : EcsWorldTestFixture
         // StateApply 실행
         RunStateApplyPhase();
 
-        // 검증: 프리팹이 없어도 Safe Fallback 아키타입으로 엔티티가 정상 생성되어 시뮬레이션 연속성 보장
+        // 검증: Strict Fail 정책에 따라 프리팹 누락 시 아이템이 생성되지 않고 스폰 거부됨
         var query = _entityManager.CreateEntityQuery(typeof(ItemIdentity), typeof(GridPosition), typeof(ItemOwnership));
-        Assert.AreEqual(1, query.CalculateEntityCount(), "Safe Fallback으로 아이템이 1개 생성되어야 함");
+        Assert.AreEqual(0, query.CalculateEntityCount(), "프리팹이 누락된 경우 아이템이 생성되지 않아야 함");
 
-        var spawnedItem = query.GetSingletonEntity();
-        Assert.AreEqual(ItemTypeEnum.Stone, _entityManager.GetComponentData<ItemIdentity>(spawnedItem).Type);
-        Assert.AreEqual(new int2(3, 4), _entityManager.GetComponentData<GridPosition>(spawnedItem).Value);
+        // 요청 엔티티는 Consume-on-Apply로 정상 파괴됨
+        Assert.IsFalse(_entityManager.Exists(reqEntity), "스폰 요청 엔티티는 소비되어 파괴되어야 함");
     }
 }

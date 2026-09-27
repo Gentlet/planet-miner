@@ -19,7 +19,7 @@ public class Phase3BuildingRuntimeConfigTests : EcsWorldTestFixture
 
         Assert.IsTrue(success, "Resources 설정 파일 로드 및 파싱이 성공해야 함");
         Assert.IsNotNull(configs);
-        Assert.AreEqual(10, configs.Count, "통합 설정은 총 10종의 건물 설정을 포함해야 함");
+        Assert.AreEqual(11, configs.Count, "통합 설정은 총 11종의 건물 설정을 포함해야 함");
 
         // 각 건물별 스펙 값 검증
         bool foundBelt = false;
@@ -80,7 +80,7 @@ public class Phase3BuildingRuntimeConfigTests : EcsWorldTestFixture
         Assert.AreEqual(1, query.CalculateEntityCount(), "정확히 1개의 싱글톤 엔티티가 존재해야 함");
 
         var buffer = _entityManager.GetBuffer<BuildingRuntimeConfigElement>(configEntity);
-        Assert.AreEqual(10, buffer.Length);
+        Assert.AreEqual(11, buffer.Length);
 
         // Lookup Utility 조회 검증
         bool foundMiner = BuildingRuntimeConfigLookupUtility.TryGetConfig(buffer, BuildingTypeEnum.Miner, out var minerConfig);

@@ -142,31 +142,16 @@ public class Phase0AuthoringPrefabContractTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test05_SafeFallbackPolicy_CreatesUnrenderedSimulationEntity_WhenPrefabMissing()
+    public void Test05_StrictFailPolicy_MissingPrefab_PreventsEntityCreation()
     {
         // 프리팹 조회 실패 상황 시뮬레이션
         var itemBuffer = _entityManager.AddBuffer<ItemPrefabElement>(_entityManager.CreateEntity());
         bool hasPrefab = PrefabLookupUtility.TryGetItemPrefab(itemBuffer, ItemTypeEnum.Coal, out Entity prefab);
         Assert.IsFalse(hasPrefab);
+        Assert.AreEqual(Entity.Null, prefab);
 
-        // Safe Fallback 경로: 순수 시뮬레이션 아키타입으로 엔티티 생성
-        var fallbackArchetype = _entityManager.CreateArchetype(
-            ComponentType.ReadWrite<ItemIdentity>(),
-            ComponentType.ReadWrite<ItemOwnership>(),
-            ComponentType.ReadWrite<GridPosition>(),
-            ComponentType.ReadWrite<LocalTransform>(),
-            ComponentType.ReadWrite<BeltMovementState>()
-        );
-
-        Entity fallbackEntity = _entityManager.CreateEntity(fallbackArchetype);
-        _entityManager.SetComponentData(fallbackEntity, new ItemIdentity { Type = ItemTypeEnum.Coal });
-        _entityManager.SetComponentData(fallbackEntity, new ItemOwnership { Owner = Entity.Null });
-        _entityManager.SetComponentData(fallbackEntity, new GridPosition(new int2(5, 5)));
-
-        // 시뮬레이션 무결성 검증
-        Assert.IsTrue(_entityManager.Exists(fallbackEntity));
-        Assert.AreEqual(ItemTypeEnum.Coal, _entityManager.GetComponentData<ItemIdentity>(fallbackEntity).Type);
-        Assert.AreEqual(Entity.Null, _entityManager.GetComponentData<ItemOwnership>(fallbackEntity).Owner);
-        Assert.AreEqual(new int2(5, 5), _entityManager.GetComponentData<GridPosition>(fallbackEntity).Value);
+        // Strict Fail 원칙: 프리팹이 누락되면 엔티티 생성을 중단하고 어떤 인스턴스도 월드에 잔류하지 않아야 함
+        var query = _entityManager.CreateEntityQuery(typeof(ItemIdentity));
+        Assert.AreEqual(0, query.CalculateEntityCount(), "프리팹이 없는 경우 엔티티가 생성되지 않아야 함");
     }
 }

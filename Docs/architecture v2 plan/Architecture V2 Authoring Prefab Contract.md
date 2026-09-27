@@ -99,18 +99,22 @@ Unity Entities 1.0+의 하이브리드 트랜스폼 베이킹 정책에 따라, 
 
 ---
 
-## 5. 프리팹 누락 처리 및 Safe Fallback 계약
+## 5. 프리팹 누락 처리 및 안전 정책 (Strict Fail vs Test Fallback)
 
-**Task 4.8 자원 도메인 예외:** 자원은 fallback 엔티티를 생성하지 않는다. DB·설정 버퍼가 준비되지 않았거나 생성에 필요한 프리팹 참조/LocalTransform이 누락되면 청크 전체를 대기한다. 일부 자원만 먼저 스폰하지 않으며, 준비 후 같은 대기 요청을 한 번 처리한다. 아래 Safe Fallback은 현재 Item 경로에 적용되며 자원 경로에는 적용하지 않는다.
+**정책 원칙 (Strict Fail Policy 확정)**:
+런타임 환경에서 프리팹 데이터베이스가 활성화되어 있는 경우, 특정 타입의 프리팹이 미등록/누락되었을 때 불완전한 상태의 엔티티 생성을 방지하고 상태 불변식을 엄격히 유지하기 위해 **Strict Fail(스폰 거부 및 Error 로깅)** 정책을 적용한다.
 
-1. **프리팹 데이터베이스 조회 실패 처리**:
-   - 런타임 시스템이 특정 `ItemType` 또는 `BuildingType`의 프리팹을 조회했을 때 해당 항목이 없거나 `Prefab == Entity.Null`인 경우:
-   - `UnityEngine.Debug.LogError`를 통해 누락 사실을 에디터/로그에 명확히 기록.
-2. **Safe Fallback 스폰 동작**:
-   - 시뮬레이션 연속성을 보장하기 위해 스폰 요청을 일방적으로 버리거나 예외로 멈추지 않고, **순수 시뮬레이션 아키타입(Fallback Archetype)**을 사용하여 엔티티를 생성한다.
-   - Fallback 엔티티는 렌더링 메시/스프라이트가 누락될 수 있으나, ECS 시뮬레이션 상태(`ItemIdentity`, `ItemOwnership`, `GridPosition`, 이동, 버퍼 등)를 완벽히 보유하여 시스템 루프를 무결하게 완주한다.
-3. **후속 도메인별 구현 연결**:
-   - Task 1.7: Item 프리팹 베이킹 및 `ItemPrefabDatabaseAuthoring`
+1. **프리팹 데이터베이스 조회 실패 처리 (Strict Fail)**:
+   - 런타임 시스템이 특정 `BuildingType` 또는 `ItemType`의 프리팹을 조회했을 때 해당 항목이 없거나 `Prefab == Entity.Null`인 경우:
+   - `UnityEngine.Debug.LogError`를 통해 누락 사실을 명확히 기록하고 스폰 요청을 안전하게 폐기/거부(Drop/Reject)한다.
+   - 불완전한 유령 엔티티를 생성하지 않음으로써 후속 시뮬레이션 시스템의 상태 불변식을 완벽히 보존한다.
+2. **순수 시뮬레이션 단위 테스트 환경 격리 (Test Fallback)**:
+   - 월드에 프리팹 데이터베이스(`ItemPrefabDatabase` 등) 자체가 구축되지 않은 순수 ECS 단위/시뮬레이션 테스트 환경에 한해서는, 테스트 시뮬레이션 연속성을 위해 **Fallback Archetype**으로 엔티티를 생성하여 격리 지원한다.
+3. **자원 도메인 정책**:
+   - 자원(`ResourceNode`)은 fallback 엔티티를 생성하지 않으며, 프리팹 DB 미준비 시 청크 전체가 대기 후 정상 프리팹으로 일괄 스폰된다.
+4. **후속 도메인별 구현 연결**:
+   - Task 1.7: Item 프리팹 베이킹 및 `ItemPrefabDatabaseAuthoring` (Strict Fail 적용)
    - Task 4.8: Resource 프리팹 베이킹 및 `ResourcePrefabDatabaseAuthoring`
-   - Task 7.3.1: Building 프리팹 베이킹 및 `BuildingPrefabDatabaseAuthoring`
+   - Task 7.3.1: Building 프리팹 베이킹 및 `BuildingPrefabDatabaseAuthoring` (Strict Fail 적용, 11종 Footprint 규격 확정)
    - Task 9.3.1: Drone 프리팹 베이킹 및 `DronePrefabDatabaseAuthoring`
+

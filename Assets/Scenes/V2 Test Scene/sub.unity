@@ -119,6 +119,85 @@ NavMeshSettings:
     debug:
       m_Flags: 0
   m_NavMeshData: {fileID: 0}
+--- !u!1 &127414533
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 127414535}
+  - component: {fileID: 127414534}
+  m_Layer: 0
+  m_Name: Building Prefab Database
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &127414534
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 127414533}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a441fe642af56014ead8ac86241f227a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BuildingPrefabDatabaseAuthoring
+  LoadMode: 0
+  Prefabs:
+  - Type: 11
+    Prefab: {fileID: 9106238281758111696, guid: e2e1a0860e6ffc4448740f1c3edce5e9, type: 3}
+    Size: {x: 1, y: 1}
+  - Type: 5
+    Prefab: {fileID: 2222127362126821372, guid: b7c58e30127b42c8b23e69d12fa45d91, type: 3}
+    Size: {x: 3, y: 3}
+  - Type: 3
+    Prefab: {fileID: 2222127362126821372, guid: 59786e42313e48643b545ce5462797da, type: 3}
+    Size: {x: 2, y: 2}
+  - Type: 8
+    Prefab: {fileID: 2222127362126821372, guid: d4b5408225a54ef5874d7eac0cbb0f2f, type: 3}
+    Size: {x: 3, y: 3}
+  - Type: 7
+    Prefab: {fileID: 2222127362126821372, guid: 4c6b940515f54fe9b8bdf9535cb15799, type: 3}
+    Size: {x: 3, y: 3}
+  - Type: 10
+    Prefab: {fileID: 2222127362126821372, guid: 89e5f75603e6e164ebfc4d6358cb8098, type: 3}
+    Size: {x: 1, y: 1}
+  - Type: 2
+    Prefab: {fileID: 2222127362126821372, guid: 9d5459b95a4bac147a7d1a00418fdc36, type: 3}
+    Size: {x: 2, y: 2}
+  - Type: 4
+    Prefab: {fileID: 2222127362126821372, guid: 8552349de996420599300b397d057db8, type: 3}
+    Size: {x: 1, y: 1}
+  - Type: 6
+    Prefab: {fileID: 2222127362126821372, guid: 185e9f5b58f333045a2c3a39f2de1555, type: 3}
+    Size: {x: 3, y: 3}
+  - Type: 9
+    Prefab: {fileID: 2222127362126821372, guid: 4e1b8365c3829e64dad69342e5d3dd2f, type: 3}
+    Size: {x: 1, y: 1}
+  - Type: 1
+    Prefab: {fileID: 2222127362126821372, guid: 00d230803ef2fcf4985f4410a78e5677, type: 3}
+    Size: {x: 1, y: 1}
+--- !u!4 &127414535
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 127414533}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &134823944
 GameObject:
   m_ObjectHideFlags: 0
@@ -241,3 +320,4 @@ SceneRoots:
   m_Roots:
   - {fileID: 544924988}
   - {fileID: 134823946}
+  - {fileID: 127414535}

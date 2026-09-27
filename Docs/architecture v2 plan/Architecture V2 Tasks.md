@@ -414,12 +414,12 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 검증: 일부 셀 충돌, 잘못된 정의, 중복 요청, 생성 실패 시 모든 임시 예약의 롤백을 검사한다. `Phase7PlacementCommandTests` 8종 단위/통합 테스트 전수 통과 (226/226 EditMode 테스트 100% Pass).
   - 완료 기준: 부분 현장·고아 예약 없이 요청이 성공하거나 전체 취소된다.
 
-- [ ] **Task 7.3.1: 건물 Authoring·프리팹 DB 및 정의 연결**
+- [x] **Task 7.3.1: 건물 Authoring·프리팹 DB 및 정의 연결**
   - 선행 조건: Task 0.6·3.5 및 기존 건물 타입·footprint 계약.
-  - 구현 범위·상태 소유자: 건물 타입·프리팹·크기·렌더 데이터를 베이킹하고 기본 건물 설정과 연결한다. 정의 데이터는 생성 입력이며 런타임 점유·예약은 공간 소유자가 관리한다.
-  - 후속 연결: 이 하위 작업을 먼저 완료한 뒤 Task 7.3에서 실제 인스턴스 생성에 사용한다. 전력·정거장·연구 타입은 각 도메인 구현 시 정의를 확장한다.
-  - 검증: 잘못된 타입·중복 항목·프리팹 누락·footprint와 회전·시각 중심 및 베이킹/스폰의 컴포넌트 중복을 검사한다.
-  - 완료 기준: 현재 이식 대상의 건물 정의·프리팹이 유효하게 게시되고 생성 소유자가 일관되게 조회할 수 있다.
+  - 구현 범위·상태 소유자: 11종 전체 건물(Belt, Miner, Crafter, Storage, PowerPole, Splitter, Merger, CoalGenerator, DroneStation, ResearchBuilding, MainFacility)의 Footprint 규격을 `BuildingConfig.json`에 통합 정의(Belt/Splitter/Merger/PowerPole/Storage: 1x1, Miner/Crafter: 2x2, CoalGenerator/DroneStation/ResearchBuilding/MainFacility: 3x3)하고 `BuildingConfigLoader` 유효성 검증(Footprint 크기 >= 1, MainFacility 용량 50 등) 구현. `BuildingPrefabDatabaseAuthoring` 및 커스텀 인스펙터 에디터(`BuildingPrefabDatabaseAuthoringEditor`)를 구현하여 `PopulateFromResources()`를 통한 원클릭 11종 프리팹 자동 수집 지원. Baker에서 프리팹 원본에 `BuildingType`, `BuildingFootprint`를 동적으로 주입(방안 A)하고 `TransformUsageFlags.Renderable` 적용. `PrefabLookupUtility.TryGetBuildingPrefab` 순수 조회 유틸리티 구현 및 누락 시 Strict Fail(스폰 거부 및 Error 로깅) 정책 확립. 아이템 수명주기(`ItemLifecycleApplySystem`)에도 동일하게 프리팹 DB 활성화 환경에서의 Strict Fail 통일 및 무DB 순수 시뮬레이션 테스트 격리 Fallback 구현.
+  - 후속 연결: Task 7.3(공통 건물 생성 경로 구현)에서 `BuildingPrefabDatabase`와 `BuildingConfig`를 연계하여 실제 완공 건물 엔티티 인스턴스화 및 컴포넌트 초기화에 사용.
+  - 검증: `Phase7BuildingAuthoringPrefabTests` 7개 단위/통합 테스트 전수 통과 (11종 Footprint 로딩 및 유효성, `TryGetFootprint`, Baker 동적 컴포넌트 주입, `TryGetBuildingPrefab` 등록 조회, Strict Fail 거부, Resources 11개 자동 파퓰레이트, 잘못된 Footprint 실패). `Phase1ItemAuthoringPrefabTests` 6/6 Pass, 전체 프로젝트 EditMode 회귀 테스트 234/234 Pass (100%).
+  - 완료 기준: 11종 건물 정의와 프리팹 DB가 유효하게 게시되고 건물 생성 소유자가 일관되게 조회할 수 있다.
 
 - [ ] **Task 7.3: 공통 건물 생성 경로 구현**
   - 선행 조건: Task 7.1·7.3.1 및 현재 이식된 건물 타입의 데이터 계약.
@@ -470,9 +470,11 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 - [ ] **Task 8.1: 전력 설정·컴포넌트·상태 소유권 정의**
   - 선행 조건: 현재 생산·공간·건물 생성 계약과 기존 전력 설정 확인.
   - 구현 범위·상태 소유자: 전신주·발전기·소비자·망 상태를 정의하고 토폴로지, 공급 범위 조회, 외부 공급 데이터의 책임을 구분한다.
-  - 후속 연결: 망 구성·연결·배분·연료는 Task 8.2~8.6에서 구현한다.
-  - 검증: 설정의 누락·잘못된 값과 도메인 간 데이터 읽기·쓰기 계약을 검사한다.
-  - 완료 기준: 생산 도메인이 전력망 내부 구조를 몰라도 공급 결과를 소비할 수 있는 계약이 마련된다.
+  - 필수 결정 — 실행 순서·프레임 기준: 기존 전력·생산·충전 코드와 현재 V2의 입고(StateApply)·생산 진행(Execution) 경계를 대조하여, 수요 산정 → 가용 발전량 계산 → 공급 결과 게시 → 생산·충전 반영 → 실제 연료 차감의 실행 Group·그룹 내부 순서·읽는 데이터의 프레임을 명시한다. 같은 프레임 반영인지 이전 프레임 결과 소비인지는 이 Task에서 확정하며, 이 계획 추가만으로 어느 쪽도 승인하지 않는다.
+  - 필수 결정 — 상태 변경 반영: 석탄 신규 입고·연료 소진, 전신주·발전기·소비자 설치/철거, 수요 변경이 공급 결과에 반영되는 시점과 ECB·공간 동기화 경계를 정한다. 생산·충전량과 실제 발전·연료 차감은 같은 시뮬레이션 시간 구간 및 공통 DeltaTime 정책으로 대조할 수 있어야 한다.
+  - 후속 연결: 망 구성·연결·배분·연료는 Task 8.2~8.6에서 구현한다. Task 8.5~8.7·9.14·10A.3은 여기서 확정한 프레임 계약을 재사용한다. 기존 규칙으로 결정할 수 없는 동작 차이는 사용자 확인 후 확정한다.
+  - 검증: 설정의 누락·잘못된 값과 도메인 간 데이터 읽기·쓰기 계약을 검사한다. 연료 없음→입고, 마지막 연료 소진, 공급 중 설치/철거, 수요 변경의 프레임별 기대 결과와 담당 검증 Task를 기록한다. Task 8.7에서 실제 GameSimulationGroup·ECB 경계로 검증하고 드론·연구 연결은 각 후속 Task에서 확인한다.
+  - 완료 기준: 생산 도메인이 전력망 내부 구조를 몰라도 공급 결과를 소비할 수 있는 계약과 실행 순서·프레임 기준·경계 사례의 기대 결과가 확정된다. 후속 구현·실행 검증이 남아 있다는 사실은 별도로 기록한다.
 
 - [ ] **Task 8.2: 전신주 추가 및 망 생성·병합 구현**
   - 선행 조건: Task 8.1.

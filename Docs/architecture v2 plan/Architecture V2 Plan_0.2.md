@@ -703,6 +703,8 @@ Drone 구현 전에 반드시 transition table을 작성한다.
 
 Architecture V2에서 1회성 Command / Request / Event는 반드시 **생성자, 소비자, 제거 시점**을 명시한다.
 
+구체적인 소비·준비 대기·ECB 반영·결과 전달 계약과 현재 코드 예시는 [Architecture V2 Command Event Standard.md](Architecture%20V2%20Command%20Event%20Standard.md)를 따른다.
+
 ## 10.1 기본 원칙: Consume-on-Apply
 
 기본 규칙:
@@ -724,6 +726,8 @@ Item Ownership Consumer
 
 즉, 요청이 이미 처리되었는데 Cleanup Phase까지 의미 없이 남아있는 상태를 기본 구조로 만들지 않는다.
 
+검토와 처리 완료는 구분한다. 준비 조건이 충족되지 않은 요청은 정의된 정책에 따라 유지하거나 담당 소유자의 Pending 상태로 인계할 수 있다. ECB 명령 기록은 실제 반영 완료가 아니며, 반영 후 결과를 다음 프레임에 소비하는 경로도 허용한다. 소비·중복 방지·완료 판정은 위 표준의 경계를 따른다.
+
 기본 수명주기:
 
 ```text
@@ -740,6 +744,8 @@ Destroy / Disable / Recycle
 
 Cleanup Phase는 모든 Request를 일괄 삭제하는 곳이 아니라,
 정상적인 Consumer 처리 경로를 벗어난 임시 데이터를 정리하는 안전망으로 사용한다.
+
+정상 준비 대기와 다음 프레임 소비 예정인 결과는 정리 대상이 아니다. 현재 구현된 검증과 향후 정리 정책을 구분하고, 예약·화물 복구가 필요한 상태는 담당 소유자의 정리 경로를 거친다.
 
 예:
 
