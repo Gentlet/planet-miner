@@ -421,11 +421,11 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 검증: `Phase7BuildingAuthoringPrefabTests` 7개 단위/통합 테스트 전수 통과 (11종 Footprint 로딩 및 유효성, `TryGetFootprint`, Baker 동적 컴포넌트 주입, `TryGetBuildingPrefab` 등록 조회, Strict Fail 거부, Resources 11개 자동 파퓰레이트, 잘못된 Footprint 실패). `Phase1ItemAuthoringPrefabTests` 6/6 Pass, 전체 프로젝트 EditMode 회귀 테스트 234/234 Pass (100%).
   - 완료 기준: 11종 건물 정의와 프리팹 DB가 유효하게 게시되고 건물 생성 소유자가 일관되게 조회할 수 있다.
 
-- [ ] **Task 7.3: 공통 건물 생성 경로 구현**
+- [x] **Task 7.3: 공통 건물 생성 경로 구현**
   - 선행 조건: Task 7.1·7.3.1 및 현재 이식된 건물 타입의 데이터 계약.
-  - 구현 범위·상태 소유자: 건물 생성 소유자가 베이킹된 프리팹과 Task 3.5의 기본 설정으로 공통 공간·방향·타입 데이터와 타입별 필수 컴포넌트를 초기화한다. 생성 요청 또는 공사 현장의 `PlacementStamp`를 실제 건물 엔티티에 그대로 전달한다.
-  - 후속 연결: 아직 미이식인 전력·정거장·연구 건물의 초기화는 해당 Phase에서 확장한다.
-  - 검증: 타입별 필수 상태, 생성 실패, 점유 등록 전에 미완성 인스턴스가 관찰되는지 검사한다.
+  - 구현 범위·상태 소유자: `SpawnBuildingRequest` 요청 컴포넌트(`IRequestComponent`) 및 Phase 5 `StateApplyGroup`의 `BuildingLifecycleApplySystem` 구현. 베이킹된 프리팹(`PrefabLookupUtility.TryGetBuildingPrefab`)과 `BuildingConfig` 설정 데이터를 연계하여 완공 건물 엔티티 인스턴스화, 공통 컴포넌트(`BuildingType`, `BuildingFootprint`, `GridPosition`, `Direction`, `PlacementStamp`, `LocalTransform`) 및 핵심 6종 건물(`Belt`, `Miner`, `Crafter`, `Storage`, `Splitter`, `Merger`)의 타입별 필수 상태/의사결정/버퍼 컴포넌트 원자적 초기화. 요청 및 현장의 `PlacementStamp`를 건물 엔티티로 승계. 프리팹 DB 활성화 환경에서 프리팹 미등록 시 Strict Fail(스폰 거부, 에러 로깅, 엔티티 잔류 방지) 및 무DB 순수 시뮬레이션 환경용 `FallbackBuildingArchetype` 격리 지원. 요청 엔티티는 단일 프레임 내 파괴(`Consume-on-Apply`).
+  - 후속 연결: Task 7.4 공사 자재 수령 계약 후, Task 7.5 공사 완료 시스템에서 `ConstructionSite` 소비 및 `SpawnBuildingRequest` 발행을 통해 완공 건물 전환 연결. 미이식 5종 건물(`PowerPole`, `CoalGenerator`, `DroneStation`, `ResearchBuilding`, `MainFacility`) 전용 컴포넌트는 Phase 8·9·10에서 확장.
+  - 검증: `Phase7BuildingLifecycleTests` 10개 단위/통합 테스트 전수 통과 (Belt/Miner/Crafter/Storage/Splitter/Merger 컴포넌트 및 버퍼 초기화, `BuildingConfig` 속도·용량 반영, 프리팹 인스턴스화, Strict Fail 거부, 회전 Footprint 유효 크기, 무효 타입 거부). 전체 EditMode 테스트 244/244 Pass (100%).
   - 완료 기준: 현재 이식 대상 건물이 일관된 초기 상태로 생성되고 실패 시 잔류 엔티티·점유가 없다.
 
 - [ ] **Task 7.4: 공사 자재 요구량·수령 계약 구현**
