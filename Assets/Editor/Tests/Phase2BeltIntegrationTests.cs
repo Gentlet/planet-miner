@@ -107,6 +107,13 @@ public class Phase2BeltIntegrationTests : EcsWorldTestFixture
         for (int i = 0; i < 10; i++)
         {
             StepFullBeltSimulation(0.05f);
+            if (i == 0)
+            {
+                var firstDecision = _entityManager.GetComponentData<BeltMovementDecision>(item);
+                var firstState = _entityManager.GetComponentData<BeltMovementState>(item);
+                Assert.AreEqual(0.1f, firstState.Progress, 0.0001f);
+                Assert.AreEqual(0.0f, firstDecision.PlannedProgress, 0.0001f);
+            }
         }
 
         // Assert

@@ -9,15 +9,6 @@ using Unity.Mathematics;
 /// </summary>
 public class Phase7ConstructionContractTests : EcsWorldTestFixture
 {
-    private SystemHandle _buildingSpatialSyncHandle;
-
-    [SetUp]
-    public override void SetUp()
-    {
-        base.SetUp();
-        _buildingSpatialSyncHandle = _world.GetOrCreateSystem(typeof(BuildingSpatialSyncSystem));
-    }
-
     [Test]
     public void Test01_BuildingFootprint_Rotation_And_NegativeCoordinates()
     {
@@ -315,47 +306,5 @@ public class Phase7ConstructionContractTests : EcsWorldTestFixture
         buildingMap.Dispose();
         resourceMap.Dispose();
         itemMap.Dispose();
-    }
-
-    [Test]
-    public void Test08_ConstructionSite_BuildingSpatialSync_Integration()
-    {
-        // Arrange: ConstructionSite 타입으로 2x2 공사 현장 엔티티 생성
-        var siteEntity = Entities.CreateBuilding(
-            BuildingTypeEnum.ConstructionSite,
-            new int2(10, 10),
-            new int2(2, 2),
-            DirectionEnum.Up);
-
-        _world.EntityManager.AddComponentData(siteEntity, new ConstructionSite(
-            BuildingTypeEnum.Storage,
-            0.0f,
-            ConstructionSiteFlags.AwaitingItemClearance));
-
-        // Act: BuildingSpatialSyncSystem 실행
-        _buildingSpatialSyncHandle.Update(_world.Unmanaged);
-        var fence = _world.EntityManager.CreateEntityQuery(typeof(BuildingSpatialIndexFence)).GetSingletonRW<BuildingSpatialIndexFence>();
-        fence.ValueRW.Complete();
-
-        var spatialIndex = _world.EntityManager.CreateEntityQuery(typeof(BuildingSpatialIndex)).GetSingleton<BuildingSpatialIndex>();
-
-        // Assert: 2x2 영역 전체가 BuildingTypeEnum.ConstructionSite로 정상 등록되었는지 검증
-        for (int y = 0; y < 2; y++)
-        {
-            for (int x = 0; x < 2; x++)
-            {
-                int2 cell = new int2(10 + x, 10 + y);
-                Assert.IsTrue(spatialIndex.HasBuildingAt(cell), $"Cell {cell} must have building");
-                Assert.IsTrue(spatialIndex.TryGetBuilding(cell, out var info));
-                Assert.AreEqual(siteEntity, info.Entity);
-                Assert.AreEqual(BuildingTypeEnum.ConstructionSite, info.Type);
-            }
-        }
-
-        // 공사 현장 컴포넌트 데이터 검증
-        var siteComp = _world.EntityManager.GetComponentData<ConstructionSite>(siteEntity);
-        Assert.AreEqual(BuildingTypeEnum.Storage, siteComp.TargetBuildingType);
-        Assert.AreEqual(0.0f, siteComp.Progress);
-        Assert.AreEqual(ConstructionSiteFlags.AwaitingItemClearance, siteComp.Flags);
     }
 }

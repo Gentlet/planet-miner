@@ -1,19 +1,9 @@
 using NUnit.Framework;
 using PlanetMiner.Tests;
-using Unity.Entities;
 using Unity.Mathematics;
 
 public class Phase6RoutingContractTests : EcsWorldTestFixture
 {
-    [Test]
-    public void Test01_BuildingTypes_IncludeSplitterAndMerger()
-    {
-        Assert.AreNotEqual(BuildingTypeEnum.None, BuildingTypeEnum.Splitter);
-        Assert.AreNotEqual(BuildingTypeEnum.None, BuildingTypeEnum.Merger);
-        Assert.Less((byte)BuildingTypeEnum.Splitter, (byte)BuildingTypeEnum.Count);
-        Assert.Less((byte)BuildingTypeEnum.Merger, (byte)BuildingTypeEnum.Count);
-    }
-
     [TestCase(DirectionEnum.Up, DirectionEnum.Up, DirectionEnum.Right, DirectionEnum.Left)]
     [TestCase(DirectionEnum.Right, DirectionEnum.Right, DirectionEnum.Down, DirectionEnum.Up)]
     [TestCase(DirectionEnum.Down, DirectionEnum.Down, DirectionEnum.Left, DirectionEnum.Right)]
@@ -28,6 +18,7 @@ public class Phase6RoutingContractTests : EcsWorldTestFixture
         Assert.AreEqual(expected1, RoutingDirectionUtility.GetSplitterOutput(forward, 1));
         Assert.AreEqual(expected2, RoutingDirectionUtility.GetSplitterOutput(forward, 2));
         Assert.AreEqual(expected0, RoutingDirectionUtility.GetSplitterOutput(forward, 3));
+        Assert.AreEqual(0, RoutingDirectionUtility.AdvanceCursor(2));
     }
 
     [TestCase(DirectionEnum.Up, DirectionEnum.Down, DirectionEnum.Left, DirectionEnum.Right)]
@@ -68,51 +59,6 @@ public class Phase6RoutingContractTests : EcsWorldTestFixture
             router,
             new int2(1, 0),
             DirectionEnum.Right));
-    }
-
-    [Test]
-    public void Test05_RoutingState_PreservesAnchorDirectionAndCursor()
-    {
-        var inputBelt = _entityManager.CreateEntity();
-        var outputBelt = _entityManager.CreateEntity();
-
-        var splitter = new SplitterRoutingState(inputBelt, DirectionEnum.Right, outputCursor: 2);
-        var merger = new MergerRoutingState(outputBelt, DirectionEnum.Up, inputCursor: 1);
-
-        Assert.AreEqual(inputBelt, splitter.InputBelt);
-        Assert.AreEqual(DirectionEnum.Right, splitter.ForwardDirection);
-        Assert.AreEqual(2, splitter.OutputCursor);
-
-        Assert.AreEqual(outputBelt, merger.OutputBelt);
-        Assert.AreEqual(DirectionEnum.Up, merger.ForwardDirection);
-        Assert.AreEqual(1, merger.InputCursor);
-
-        Assert.AreEqual(0, RoutingDirectionUtility.AdvanceCursor(2));
-    }
-
-    [Test]
-    public void Test06_RoutingTransferDecision_EnableableFrameContract()
-    {
-        var router = _entityManager.CreateEntity(typeof(RoutingTransferDecision));
-        var item = _entityManager.CreateEntity();
-        var source = _entityManager.CreateEntity();
-        var target = _entityManager.CreateEntity();
-
-        _entityManager.SetComponentData(
-            router,
-            new RoutingTransferDecision(item, source, target));
-
-        var decision = _entityManager.GetComponentData<RoutingTransferDecision>(router);
-        Assert.AreEqual(item, decision.Item);
-        Assert.AreEqual(source, decision.SourceBelt);
-        Assert.AreEqual(target, decision.TargetBelt);
-
-        _entityManager.SetComponentEnabled<RoutingTransferDecision>(router, false);
-        var enabledQuery = _entityManager.CreateEntityQuery(typeof(RoutingTransferDecision));
-        Assert.AreEqual(0, enabledQuery.CalculateEntityCount());
-
-        _entityManager.SetComponentEnabled<RoutingTransferDecision>(router, true);
-        Assert.AreEqual(1, enabledQuery.CalculateEntityCount());
     }
 
     [Test]

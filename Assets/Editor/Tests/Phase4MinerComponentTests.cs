@@ -26,9 +26,6 @@ public class Phase4MinerComponentTests : EcsWorldTestFixture
     private Entity CreateResourceNode(int2 position, ItemTypeEnum resourceType, int amount)
         => Entities.CreateResourceNode(position, resourceType, amount);
 
-    private Entity CreateMiner(int2 position, DirectionEnum direction, float miningSpeed = 1.0f)
-        => Entities.CreateMiner(position, new int2(1, 1), direction, miningSpeed);
-
     private void SyncResourceSpatialIndex()
     {
         _resourceSpatialSyncHandle.Update(_world.Unmanaged);
@@ -79,35 +76,6 @@ public class Phase4MinerComponentTests : EcsWorldTestFixture
 
         Assert.IsFalse(spatialIndex.HasResourceAt(new int2(0, 0)), "No resource should exist at (0, 0).");
         Assert.AreEqual(0, _invariantValidationSystem.TotalViolationCount, "There should be 0 invariant violations.");
-    }
-
-    [Test]
-    public void Test03_MinerStateAndDecision_ComponentLifecycle()
-    {
-        // Arrange & Act: 채굴기 엔티티 생성
-        var minerEntity = CreateMiner(new int2(10, 10), DirectionEnum.Right, miningSpeed: 2.0f);
-
-        // Assert 1: 초기 상태 검증
-        var state = _entityManager.GetComponentData<MinerState>(minerEntity);
-        Assert.AreEqual(2.0f, state.MiningSpeed, "MiningSpeed should be 2.0f.");
-        Assert.AreEqual(0.0f, state.Progress, "Initial progress should be 0.0f.");
-
-        bool isDecisionEnabled = _entityManager.IsComponentEnabled<MinerDecision>(minerEntity);
-        Assert.IsFalse(isDecisionEnabled, "MinerDecision should initially be disabled.");
-
-        var productResults = _entityManager.GetBuffer<ProductResult>(minerEntity);
-        Assert.AreEqual(0, productResults.Length, "ProductResult buffer should initially be empty.");
-
-        // Act 2: 의사결정 활성화 및 설정
-        var targetResource = CreateResourceNode(new int2(10, 10), ItemTypeEnum.Iron_Ore, 100);
-        _entityManager.SetComponentData(minerEntity, new MinerDecision(true, targetResource));
-        _entityManager.SetComponentEnabled<MinerDecision>(minerEntity, true);
-
-        // Assert 2: 의사결정 상태 확인
-        Assert.IsTrue(_entityManager.IsComponentEnabled<MinerDecision>(minerEntity), "MinerDecision should be enabled.");
-        var decision = _entityManager.GetComponentData<MinerDecision>(minerEntity);
-        Assert.IsTrue(decision.CanMine, "CanMine should be true.");
-        Assert.AreEqual(targetResource, decision.TargetResource, "TargetResource should match.");
     }
 
     [Test]

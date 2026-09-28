@@ -1,7 +1,6 @@
 using NUnit.Framework;
 using PlanetMiner.Tests;
 using Unity.Entities;
-using Unity.Mathematics;
 using Unity.Rendering;
 
 /// <summary>
@@ -24,6 +23,31 @@ public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
     {
         Simulation.UpdateAndComplete(_materialApplySystem);
         Simulation.Playback(_ecbSystem);
+    }
+
+    private Entity CreateSite(BuildingTypeEnum type, int required, int delivered = 0, int reserved = 0)
+    {
+        var site = _entityManager.CreateEntity();
+        _entityManager.AddComponentData(site, new ConstructionSite(type, required == delivered ? 1.0f : 0.0f));
+        var requirements = _entityManager.AddBuffer<ConstructionMaterialRequirementElement>(site);
+        requirements.Add(new ConstructionMaterialRequirementElement(ItemTypeEnum.Iron, required, delivered, reserved));
+        _entityManager.AddBuffer<StoredItemElement>(site);
+        return site;
+    }
+
+    private Entity CreateWorldItem(ItemTypeEnum type)
+    {
+        var item = _entityManager.CreateEntity();
+        _entityManager.AddComponentData(item, new ItemIdentity(type));
+        _entityManager.AddComponentData(item, ItemOwnership.WorldItem);
+        return item;
+    }
+
+    private Entity RequestSupply(Entity site, Entity item, ItemTypeEnum type)
+    {
+        var request = _entityManager.CreateEntity();
+        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(site, item, type));
+        return request;
     }
 
     [Test]
@@ -55,20 +79,13 @@ public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
     public void Test02_SupplyMaterial_SingleValid_IncreasesDeliveredAndTransfersOwnership()
     {
         // 1. 공사 현장 생성: Miner, Iron 2개 요구
-        var siteEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(siteEntity, new ConstructionSite(BuildingTypeEnum.Miner, 0.0f));
-        var reqBuffer = _entityManager.AddBuffer<ConstructionMaterialRequirementElement>(siteEntity);
-        reqBuffer.Add(new ConstructionMaterialRequirementElement(ItemTypeEnum.Iron, 2));
-        _entityManager.AddBuffer<StoredItemElement>(siteEntity);
+        var siteEntity = CreateSite(BuildingTypeEnum.Miner, required: 2);
 
         // 2. 월드 아이템 생성: Iron
-        var itemEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(itemEntity, new ItemIdentity(ItemTypeEnum.Iron));
-        _entityManager.AddComponentData(itemEntity, ItemOwnership.WorldItem);
+        var itemEntity = CreateWorldItem(ItemTypeEnum.Iron);
 
         // 3. 자재 전달 요청 발행
-        var reqEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(reqEntity, new SupplyConstructionMaterialRequest(siteEntity, itemEntity, ItemTypeEnum.Iron));
+        var reqEntity = RequestSupply(siteEntity, itemEntity, ItemTypeEnum.Iron);
 
         RunMaterialApplyPhase();
 
@@ -100,19 +117,12 @@ public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
     public void Test03_SupplyMaterial_WithExistingReservation_DecrementsReservedQuantity()
     {
         // 1. 운송 예약이 2개 걸려 있는 현장 준비 (요구 3, 조달 0, 예약 2)
-        var siteEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(siteEntity, new ConstructionSite(BuildingTypeEnum.Storage, 0.0f));
-        var reqBuffer = _entityManager.AddBuffer<ConstructionMaterialRequirementElement>(siteEntity);
-        reqBuffer.Add(new ConstructionMaterialRequirementElement(ItemTypeEnum.Iron, 3, deliveredQuantity: 0, reservedQuantity: 2));
-        _entityManager.AddBuffer<StoredItemElement>(siteEntity);
+        var siteEntity = CreateSite(BuildingTypeEnum.Storage, required: 3, reserved: 2);
 
         // 2. Iron 아이템 전달
-        var itemEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(itemEntity, new ItemIdentity(ItemTypeEnum.Iron));
-        _entityManager.AddComponentData(itemEntity, ItemOwnership.WorldItem);
+        var itemEntity = CreateWorldItem(ItemTypeEnum.Iron);
 
-        var reqEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(reqEntity, new SupplyConstructionMaterialRequest(siteEntity, itemEntity, ItemTypeEnum.Iron));
+        RequestSupply(siteEntity, itemEntity, ItemTypeEnum.Iron);
 
         RunMaterialApplyPhase();
 
@@ -127,19 +137,12 @@ public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
     public void Test04_SupplyMaterial_WrongItemType_StrictRejection()
     {
         // 1. 현장은 Iron만 요구함
-        var siteEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(siteEntity, new ConstructionSite(BuildingTypeEnum.Miner, 0.0f));
-        var reqBuffer = _entityManager.AddBuffer<ConstructionMaterialRequirementElement>(siteEntity);
-        reqBuffer.Add(new ConstructionMaterialRequirementElement(ItemTypeEnum.Iron, 2));
-        _entityManager.AddBuffer<StoredItemElement>(siteEntity);
+        var siteEntity = CreateSite(BuildingTypeEnum.Miner, required: 2);
 
         // 2. Copper 아이템을 전달 시도
-        var itemEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(itemEntity, new ItemIdentity(ItemTypeEnum.Copper));
-        _entityManager.AddComponentData(itemEntity, ItemOwnership.WorldItem);
+        var itemEntity = CreateWorldItem(ItemTypeEnum.Copper);
 
-        var reqEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(reqEntity, new SupplyConstructionMaterialRequest(siteEntity, itemEntity, ItemTypeEnum.Copper));
+        var reqEntity = RequestSupply(siteEntity, itemEntity, ItemTypeEnum.Copper);
 
         RunMaterialApplyPhase();
 
@@ -160,19 +163,12 @@ public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
     public void Test05_SupplyMaterial_OverDelivery_StrictRejection()
     {
         // 1. 이미 요구 수량이 100% 충족된 현장 (요구 1, 조달 1)
-        var siteEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(siteEntity, new ConstructionSite(BuildingTypeEnum.Storage, 1.0f));
-        var reqBuffer = _entityManager.AddBuffer<ConstructionMaterialRequirementElement>(siteEntity);
-        reqBuffer.Add(new ConstructionMaterialRequirementElement(ItemTypeEnum.Iron, 1, deliveredQuantity: 1));
-        _entityManager.AddBuffer<StoredItemElement>(siteEntity);
+        var siteEntity = CreateSite(BuildingTypeEnum.Storage, required: 1, delivered: 1);
 
         // 2. 추가 Iron 전달 시도 (초과 전달)
-        var itemEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(itemEntity, new ItemIdentity(ItemTypeEnum.Iron));
-        _entityManager.AddComponentData(itemEntity, ItemOwnership.WorldItem);
+        var itemEntity = CreateWorldItem(ItemTypeEnum.Iron);
 
-        var reqEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(reqEntity, new SupplyConstructionMaterialRequest(siteEntity, itemEntity, ItemTypeEnum.Iron));
+        RequestSupply(siteEntity, itemEntity, ItemTypeEnum.Iron);
 
         RunMaterialApplyPhase();
 
@@ -185,18 +181,15 @@ public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test06_SupplyMaterial_DeadOrCanceledSite_StrictRejection()
+    public void Test06_SupplyMaterial_DeadSite_StrictRejection()
     {
         // 1. 존재하지 않는 임의의 엔티티를 현장으로 지정
         var deadSite = _entityManager.CreateEntity();
         _entityManager.DestroyEntity(deadSite); // 파괴됨
 
-        var itemEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(itemEntity, new ItemIdentity(ItemTypeEnum.Iron));
-        _entityManager.AddComponentData(itemEntity, ItemOwnership.WorldItem);
+        var itemEntity = CreateWorldItem(ItemTypeEnum.Iron);
 
-        var reqEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(reqEntity, new SupplyConstructionMaterialRequest(deadSite, itemEntity, ItemTypeEnum.Iron));
+        var reqEntity = RequestSupply(deadSite, itemEntity, ItemTypeEnum.Iron);
 
         RunMaterialApplyPhase();
 
@@ -209,33 +202,16 @@ public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
     public void Test07_SupplyMaterial_MultipleSupplies_SameFrame_AccumulatesCorrectly()
     {
         // 1. 현장 준비: Iron 3개 요구
-        var siteEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(siteEntity, new ConstructionSite(BuildingTypeEnum.Crafter, 0.0f));
-        var reqBuffer = _entityManager.AddBuffer<ConstructionMaterialRequirementElement>(siteEntity);
-        reqBuffer.Add(new ConstructionMaterialRequirementElement(ItemTypeEnum.Iron, 3));
-        _entityManager.AddBuffer<StoredItemElement>(siteEntity);
+        var siteEntity = CreateSite(BuildingTypeEnum.Crafter, required: 3);
 
         // 2. 같은 프레임에 아이템 3개 동시 전달 요청 발행
-        var item1 = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(item1, new ItemIdentity(ItemTypeEnum.Iron));
-        _entityManager.AddComponentData(item1, ItemOwnership.WorldItem);
+        var item1 = CreateWorldItem(ItemTypeEnum.Iron);
+        var item2 = CreateWorldItem(ItemTypeEnum.Iron);
+        var item3 = CreateWorldItem(ItemTypeEnum.Iron);
 
-        var item2 = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(item2, new ItemIdentity(ItemTypeEnum.Iron));
-        _entityManager.AddComponentData(item2, ItemOwnership.WorldItem);
-
-        var item3 = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(item3, new ItemIdentity(ItemTypeEnum.Iron));
-        _entityManager.AddComponentData(item3, ItemOwnership.WorldItem);
-
-        var req1 = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(req1, new SupplyConstructionMaterialRequest(siteEntity, item1, ItemTypeEnum.Iron));
-
-        var req2 = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(req2, new SupplyConstructionMaterialRequest(siteEntity, item2, ItemTypeEnum.Iron));
-
-        var req3 = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(req3, new SupplyConstructionMaterialRequest(siteEntity, item3, ItemTypeEnum.Iron));
+        var req1 = RequestSupply(siteEntity, item1, ItemTypeEnum.Iron);
+        var req2 = RequestSupply(siteEntity, item2, ItemTypeEnum.Iron);
+        var req3 = RequestSupply(siteEntity, item3, ItemTypeEnum.Iron);
 
         RunMaterialApplyPhase();
 
@@ -262,33 +238,16 @@ public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
     public void Test08_SupplyMaterial_MultipleSupplies_ExceedingBatch_AcceptsUntilFullAndRejectsRemainder()
     {
         // 1. 현장 준비: Iron 2개만 요구
-        var siteEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(siteEntity, new ConstructionSite(BuildingTypeEnum.Crafter, 0.0f));
-        var reqBuffer = _entityManager.AddBuffer<ConstructionMaterialRequirementElement>(siteEntity);
-        reqBuffer.Add(new ConstructionMaterialRequirementElement(ItemTypeEnum.Iron, 2));
-        _entityManager.AddBuffer<StoredItemElement>(siteEntity);
+        var siteEntity = CreateSite(BuildingTypeEnum.Crafter, required: 2);
 
         // 2. 아이템 3개 동시 전달 시도 (1개 초과)
-        var item1 = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(item1, new ItemIdentity(ItemTypeEnum.Iron));
-        _entityManager.AddComponentData(item1, ItemOwnership.WorldItem);
+        var item1 = CreateWorldItem(ItemTypeEnum.Iron);
+        var item2 = CreateWorldItem(ItemTypeEnum.Iron);
+        var item3 = CreateWorldItem(ItemTypeEnum.Iron);
 
-        var item2 = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(item2, new ItemIdentity(ItemTypeEnum.Iron));
-        _entityManager.AddComponentData(item2, ItemOwnership.WorldItem);
-
-        var item3 = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(item3, new ItemIdentity(ItemTypeEnum.Iron));
-        _entityManager.AddComponentData(item3, ItemOwnership.WorldItem);
-
-        var req1 = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(req1, new SupplyConstructionMaterialRequest(siteEntity, item1, ItemTypeEnum.Iron));
-
-        var req2 = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(req2, new SupplyConstructionMaterialRequest(siteEntity, item2, ItemTypeEnum.Iron));
-
-        var req3 = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(req3, new SupplyConstructionMaterialRequest(siteEntity, item3, ItemTypeEnum.Iron));
+        RequestSupply(siteEntity, item1, ItemTypeEnum.Iron);
+        RequestSupply(siteEntity, item2, ItemTypeEnum.Iron);
+        RequestSupply(siteEntity, item3, ItemTypeEnum.Iron);
 
         RunMaterialApplyPhase();
 
