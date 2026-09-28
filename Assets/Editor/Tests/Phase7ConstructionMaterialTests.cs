@@ -8,20 +8,20 @@ using Unity.Rendering;
 /// </summary>
 public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
 {
-    private SystemHandle _materialApplySystem;
+    private SystemHandle _lifecycleApplySystem;
     private EndStateApplyEntityCommandBufferSystem _ecbSystem;
 
     [SetUp]
     public override void SetUp()
     {
         base.SetUp();
-        _materialApplySystem = _world.GetOrCreateSystem<ConstructionMaterialApplySystem>();
+        _lifecycleApplySystem = _world.GetOrCreateSystem<ConstructionLifecycleApplySystem>();
         _ecbSystem = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
     }
 
     private void RunMaterialApplyPhase()
     {
-        Simulation.UpdateAndComplete(_materialApplySystem);
+        Simulation.UpdateAndComplete(_lifecycleApplySystem);
         Simulation.Playback(_ecbSystem);
     }
 

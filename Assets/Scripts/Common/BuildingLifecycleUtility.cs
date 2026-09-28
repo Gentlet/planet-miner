@@ -7,7 +7,7 @@ using Unity.Transforms;
 /// 완공 건물 엔티티 생성 및 컴포넌트 초기화를 공통으로 처리하는 유틸리티 (Unmanaged / Burst 호환).
 /// 
 /// [책임]
-/// - BuildingLifecycleApplySystem(SpawnBuildingRequest 소비) 및 ConstructionCompletionApplySystem(현장 완공 전환)에서 공유.
+/// - BuildingLifecycleApplySystem(SpawnBuildingRequest 소비) 및 ConstructionLifecycleApplySystem(현장 완공 전환)에서 공유.
 /// - 프리팹 DB 인스턴스화 또는 Fallback 아키타입 생성을 일관되게 수행.
 /// - 공통 컴포넌트(BuildingType, Footprint, GridPosition, Direction, Stamp, LocalTransform) 및 타입별 필수 컴포넌트 원자적 주입.
 /// </summary>
