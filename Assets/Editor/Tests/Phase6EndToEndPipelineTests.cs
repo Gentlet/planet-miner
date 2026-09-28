@@ -51,6 +51,7 @@ public class Phase6EndToEndPipelineTests : EcsWorldTestFixture
 
         // 3. Phase 1: CommandGroup
         commandGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterRecipeCommandSystem>());
+        commandGroup.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>());
 
         // 4. Phase 2: DecisionGroup
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerDecisionSystem>());

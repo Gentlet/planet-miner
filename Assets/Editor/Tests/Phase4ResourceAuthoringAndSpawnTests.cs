@@ -262,13 +262,13 @@ public class Phase4ResourceAuthoringAndSpawnTests : EcsWorldTestFixture
         _entityManager.AddBuffer<ResourcePrefabElement>(database);
         var simulation = Simulation.CreateResourceGenerationPipeline();
         var probe = _world.GetOrCreateSystemManaged<ResourceGenerationBeforePlaybackProbe>();
-        var apply = _world.GetOrCreateSystemManaged<StateApplyGroup>();
-        apply.AddSystemToUpdateList(probe);
-        apply.SortSystems();
+        var command = _world.GetOrCreateSystemManaged<CommandGroup>();
+        command.AddSystemToUpdateList(probe);
+        command.SortSystems();
         _world.GetOrCreateSystem<InitialChunkLoadBootstrapSystem>().Update(_world.Unmanaged);
         simulation.Update();
 
-        Assert.AreEqual(0, probe.CompletionCount, "EndStateApply 전에는 완료 알림이 없어야 한다.");
+        Assert.AreEqual(0, probe.CompletionCount, "EndCommand 전에는 완료 알림이 없어야 한다.");
         Assert.AreEqual(0, probe.ResourceCount);
         Entity trackerEntity = GetTrackerEntity();
         Assert.AreEqual(1, _entityManager.GetBuffer<GeneratedChunkCompletedElement>(trackerEntity).Length);
@@ -335,12 +335,12 @@ public class Phase4ResourceAuthoringAndSpawnTests : EcsWorldTestFixture
     private void AssertCompletesOnce(GameSimulationGroup simulation)
     {
         var probe = _world.GetOrCreateSystemManaged<ResourceGenerationBeforePlaybackProbe>();
-        var apply = _world.GetOrCreateSystemManaged<StateApplyGroup>();
-        apply.AddSystemToUpdateList(probe);
-        apply.SortSystems();
+        var command = _world.GetOrCreateSystemManaged<CommandGroup>();
+        command.AddSystemToUpdateList(probe);
+        command.SortSystems();
         EnqueueOrigin();
         simulation.Update();
-        Assert.AreEqual(0, probe.ResourceCount, "실제 스폰은 Command가 아니라 EndStateApply에서 반영되어야 한다.");
+        Assert.AreEqual(0, probe.ResourceCount, "실제 스폰은 Command 직후가 아니라 EndCommand Playback에서 반영되어야 한다.");
         Assert.AreEqual(0, probe.CompletionCount);
         int spawned = ResourceCount();
         Assert.Greater(spawned, 0);
@@ -367,7 +367,9 @@ public class Phase4ResourceAuthoringAndSpawnTests : EcsWorldTestFixture
 }
 
 [DisableAutoCreation]
-[UpdateInGroup(typeof(StateApplyGroup))]
+[UpdateInGroup(typeof(CommandGroup))]
+[UpdateAfter(typeof(ResourceGenerationCommandSystem))]
+[UpdateBefore(typeof(EndCommandEntityCommandBufferSystem))]
 public partial class ResourceGenerationBeforePlaybackProbe : SystemBase
 {
     public int ResourceCount { get; private set; }

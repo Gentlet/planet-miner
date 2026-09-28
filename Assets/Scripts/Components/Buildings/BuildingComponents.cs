@@ -151,3 +151,18 @@ public struct BuildingItemOutputDecision : IComponentData, IEnableableComponent
         TargetBeltPosition = targetBeltPosition;
     }
 }
+
+/// <summary>
+/// 철거 불가 건물(예: MainFacility)임을 나타내는 태그 컴포넌트.
+/// 이 태그가 부착된 건물에 대한 DemolishBuildingRequest는 안전하게 거부(Strict Rejection)됨.
+/// </summary>
+public struct IndestructibleBuilding : IComponentData
+{
+}
+
+/// <summary>
+/// 동일 프레임 내 중복 철거 처리를 방지하기 위한 임시 마킹 태그 컴포넌트.
+/// </summary>
+public struct DemolishingBuildingTag : IComponentData
+{
+}

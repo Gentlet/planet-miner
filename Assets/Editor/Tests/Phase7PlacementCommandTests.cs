@@ -11,7 +11,7 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
 {
     private SystemHandle _commandHandle;
     private SystemHandle _spatialSyncHandle;
-    private EndStateApplyEntityCommandBufferSystem _endStateApplyEcb;
+    private EndCommandEntityCommandBufferSystem _endCommandEcb;
 
     private NativeParallelHashMap<int2, BuildingInfo> _buildingMap;
     private NativeParallelHashMap<int2, Entity> _resourceMap;
@@ -26,7 +26,7 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
         _spatialSyncHandle = _world.GetOrCreateSystem(typeof(BuildingSpatialSyncSystem));
         _world.GetOrCreateSystem(typeof(ResourceSpatialSyncSystem));
         _world.GetOrCreateSystem(typeof(ItemSpatialSyncSystem));
-        _endStateApplyEcb = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
+        _endCommandEcb = _world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
 
         // 시스템들이 OnCreate에서 생성한 공간 인덱스 맵 참조 가져오기
         _buildingMap = _entityManager.CreateEntityQuery(typeof(BuildingSpatialIndex)).GetSingleton<BuildingSpatialIndex>().Map;
@@ -43,7 +43,7 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
     private void UpdateCommandPhase()
     {
         _commandHandle.Update(_world.Unmanaged);
-        _endStateApplyEcb.Update();
+        _endCommandEcb.Update();
     }
 
     private void UpdateSynchronizationPhase()

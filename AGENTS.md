@@ -36,15 +36,15 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 | 단계 / `Assets/Scripts/Systems/` 하위 폴더 | 현재 시스템과 책임 |
 | --- | --- |
 | `0_Initialization/` | `ItemConfigInitSystem`, `RecipeInitSystem`, `BuildingConfigInitSystem`, `WorldGenerationConfigLoadSystem`이 설정을 게시한다. `InitialChunkLoadBootstrapSystem`은 월드 설정 이후 초기 청크를 요청한다. |
-| `1_Command/` | `ChunkLoadCommandSystem`은 청크 생성 수명주기를 관리하고 `ResourceGenerationCommandSystem`이 그 뒤에 자원 스폰을 기록한다. `CrafterRecipeCommandSystem`은 레시피를 변경하고 `BuildingPlacementCommandSystem`은 배치 요청을 검증한다. |
+| `1_Command/` | `ChunkLoadCommandSystem`은 청크 생성 수명주기를 관리하고 `ResourceGenerationCommandSystem`이 그 뒤에 자원 스폰을 기록한다. `CrafterRecipeCommandSystem`은 레시피를 변경하고 `BuildingPlacementCommandSystem`은 배치 요청을 검증한다. `EndCommandEntityCommandBufferSystem`이 Command 끝(OrderLast)에서 구조 변경을 재생하여 동일 프레임 Phase 2~4에서 물리적 실체로 상호작용할 수 있게 한다. |
 | `2_Decision/` | `BeltMovementDecisionSystem`, `BuildingItemInputDecisionSystem`, `StorageItemOutputDecisionSystem`, `ProductItemOutputDecisionSystem`, `MinerDecisionSystem`, `CrafterDecisionSystem`, `SplitterDecisionSystem`, `MergerDecisionSystem`이 실행 후보를 계산한다. |
 | `3_Reservation/` | `BuildingStorageInputReservationSystem`이 저장 슬롯을 배정하고 `BeltDestinationReservationSystem`이 건물 출고와 라우팅 전달의 목적지 경합을 중재한다. |
 | `4_Execution/` | `BeltMovementExecutionSystem`이 위치·진행도를 반영한다. `MinerExecutionSystem`과 `CrafterExecutionSystem`은 작업 진행과 생산 결과를 기록하며 제작 재료를 선소비한다. |
-| `5_StateApply/` | `BuildingItemStorageApplySystem`, `ItemOwnershipApplySystem`, `ItemLifecycleApplySystem`, `CrafterStateApplySystem`, `RoutingApplySystem`, `BuildingLifecycleApplySystem`, `ConstructionMaterialApplySystem`이 각 결과를 반영한다. `EndStateApplyEntityCommandBufferSystem`이 마지막에 구조 변경을 재생한다. |
+| `5_StateApply/` | `BuildingItemStorageApplySystem`, `ItemOwnershipApplySystem`, `ItemLifecycleApplySystem`, `CrafterStateApplySystem`, `RoutingApplySystem`, `BuildingLifecycleApplySystem`, `ConstructionLifecycleApplySystem`이 각 결과를 반영한다. `BuildingLifecycleApplySystem`은 물류 전송 이후에 실행(`UpdateAfter(RoutingApplySystem, BuildingItemStorageApplySystem)`)된다. `EndStateApplyEntityCommandBufferSystem`이 마지막(OrderLast)에 구조 변경을 재생한다. |
 | `6_Synchronization/` | `BeltSpatialSyncSystem`, `BuildingSpatialSyncSystem`, `ItemSpatialSyncSystem`, `ResourceSpatialSyncSystem`이 공간 인덱스를 재구축한다. |
 
 - 같은 그룹 안의 순서를 파일명이나 위 표의 나열 순서로 추정하지 않는다. 실제 `UpdateBefore`/`UpdateAfter`/`OrderLast`와 Job 의존성을 확인한다.
-- `BuildingItemStorageApplySystem`과 `RoutingApplySystem`은 `ItemOwnershipApplySystem`보다 먼저 실행한다. `WorldInvariantValidationSystem`은 Synchronization의 `OrderLast`다.
+- `BuildingItemStorageApplySystem`과 `RoutingApplySystem`은 `BuildingLifecycleApplySystem` 및 `ItemOwnershipApplySystem`보다 먼저 실행한다. `WorldInvariantValidationSystem`은 Synchronization의 `OrderLast`다.
 - 계획·테스트 이름의 `Phase7` 등은 개발 마일스톤 번호다. 런타임에 일곱 번째 실행 그룹이 있는 것은 아니다.
 
 ## 핵심 데이터와 변경 규칙
@@ -56,7 +56,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 - 각 맵의 `*SpatialIndexFence`는 NativeContainer 읽기·쓰기 Job 의존성을 관리한다. Reader는 마지막 Writer에 의존하고 자신의 핸들을 등록하며, Writer는 이전 Writer와 모든 Reader를 기다린다. 메인 스레드 직접 접근·용량 변경·Dispose 때도 해당 Fence를 확인한다. ECS 컴포넌트 의존성만으로 맵 접근이 동기화된다고 가정하지 않는다.
 - 인덱스는 Synchronization 이전의 구조 변경을 즉시 반영하지 않는다. 동일 프레임 배치·입출고·스폰 경합은 해당 요청/예약 경계에서 처리하며, 인덱스만 조회하고 이미 반영됐다고 간주하지 않는다.
 - 청크 변환은 `Chunks/ChunkUtility`의 floor division, 방향 오프셋은 `DirectionExtensions`, 라우팅 회전·포트 계산은 `RoutingDirectionUtility`를 사용한다. Footprint 계산은 `BuildingFootprint.GetEffectiveSize`와 `BuildingPlacementValidationUtility.GetEffectiveSize`를 확인한다. 크기 변경은 요청→생성→인덱스의 회전 적용 횟수까지 추적한다.
-- 구조 변경은 공통 `EndStateApplyEntityCommandBufferSystem`에 기록하고 Producer JobHandle을 등록한다. 실제 엔티티 생성·삭제 및 렌더 태그 변경은 Playback 시점에 확정된다. 구조 변경 전후에 `DynamicBuffer`를 계속 보관하지 말고, 필요하면 `ToNativeArray` 등으로 복사한 뒤 버퍼를 다시 얻는다. 기존 문서의 `DynamicBufferCopyUtility`는 현재 소스에 없다.
+- 구조 변경은 2-Sync Point 모델로 분리 관리한다. Phase 1 명령의 구조적 변경은 `EndCommandEntityCommandBufferSystem`에 기록하여 Command 종료 시점에 재생되며, Phase 4~5의 고갈 자원 파괴·수명주기 전이·철거·아이템 스폰/소멸은 `EndStateApplyEntityCommandBufferSystem`에 기록하여 StateApply 종료 시점에 재생된다. 실제 엔티티 생성·삭제 및 렌더 태그 변경은 각 Playback 시점에 확정된다. 구조 변경 전후에 `DynamicBuffer`를 계속 보관하지 말고, 필요하면 `ToNativeArray` 등으로 복사한 뒤 버퍼를 다시 얻는다. 기존 문서의 `DynamicBufferCopyUtility`는 현재 소스에 없다.
 
 ### 아이템·결정·요청
 

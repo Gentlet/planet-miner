@@ -43,11 +43,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
             return;
         }
 
-        var ecbSystem = state.World.GetExistingSystemManaged<EndStateApplyEntityCommandBufferSystem>();
-        if (ecbSystem == null)
-        {
-            return;
-        }
+        var ecbSystem = state.World.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
         var ecb = ecbSystem.CreateCommandBuffer();
 
         // BuildingConfig 조회 (존재 시 해금 상태 및 자재 요구량 사용)
