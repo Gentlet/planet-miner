@@ -442,12 +442,12 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 검증: `Phase7ConstructionCompletionTests` 8개 단위/통합 테스트 전수 통과 (자재 충족 시 현장/자재 소비 및 건물 생성/컴포넌트 초기화, 자재 부족 시 전환 보류, 바닥 청소 플래그 활성 시 완공 보류 및 해제 시 완공, 자재 공급 파이프라인 연계 및 완공 상태 검증, 복수 품목 자재 전수 충족 검사, 요구량 0 즉시 완공, 공간 인덱스 점유 연속성 유지 검증, 무효 목표 타입 차단). 전체 EditMode 테스트 248/248 Pass (100%).
   - 완료 기준: 중복 소비·중복 생성·점유 공백 없이 현장에서 건물로 전환된다.
 
-- [ ] **Task 7.6: 공사 취소 및 도착 자재 반환 구현**
+- [x] **Task 7.6: 공사 취소 및 도착 자재 반환 구현**
   - 선행 조건: Task 7.2·7.4~7.5.
-  - 구현 범위·상태 소유자: 현장 취소 전이, 도착 자재 반환, 공간 예약 해제와 후속 운송 취소 결과 계약을 구현한다.
-  - 후속 연결: 운송 중 취소·화물 복구는 Task 9.15~9.16·9.20에서 연결한다.
-  - 검증: 빈 현장·부분 도착·완료 직전 취소, 반복 취소 및 같은 프레임 완료 요청을 검사한다.
-  - 완료 기준: 확인된 취소 우선순위를 지키고 자재·현장·공간 예약이 중복 정리되거나 남지 않는다.
+  - 구현 범위·상태 소유자: Phase 5 `StateApplyGroup`의 `ConstructionCancelApplySystem` 구현 (`[UpdateBefore(typeof(ConstructionMaterialApplySystem))]`, `[UpdateBefore(typeof(ConstructionCompletionApplySystem))]`). `CancelConstructionRequest`를 소비하여 취소 승인 시 `site.Flags |= ConstructionSiteFlags.Cancelled`를 즉시 마킹하여 동일 프레임 [자재 도착/수령] 및 [완공 전환]을 원천 차단(Cancel Wins 정책). 현장에 이미 보관된 자재(`StoredItemElement`)를 `ItemOwnership.WorldItem`으로 전환하고 `DisableRendering` 제거 및 현장 그리드 좌표로 방출. `ECB.DestroyEntity(TargetSite)`를 통해 현장을 파괴하여 Phase 6 공간 동기화 시 건물 공간 점유를 안전하게 자동 해제. 중복 취소, 기파괴/완공 건물 대상 취소에 대해 요청만 안전하게 소비(Idempotent Drop / Strict Rejection).
+  - 후속 연결: 운송 중 취소·화물 복구 및 드론 예약 롤백 연동은 Task 9.15~9.16·9.20에서 연결한다.
+  - 검증: `Phase7ConstructionCancelTests` 7개 단위/통합 테스트 전수 통과 (빈 현장 즉시 취소 및 파괴, 보관 자재 보유 현장 취소 시 WorldItem 전환 및 DisableRendering 제거/바닥 방출, 완납 현장 취소 시 자재 반환 및 완공 차단, 동일 프레임 자재 공급+취소+완공 경쟁 시 Cancel Wins 및 자재 드론/월드 보존, 동일 프레임 중복 취소 Idempotent Drop, 무효/완공 대상 취소 Strict Rejection, 취소 시 공간 인덱스 해제). 전체 EditMode 테스트 255/255 Pass (100%).
+  - 완료 기준: 확인된 취소 우선순위(Cancel Wins)를 지키고 자재·현장·공간 예약이 중복 정리되거나 남지 않는다.
 
 - [ ] **Task 7.7: 건물 철거 코어 및 내용물 반환 구현**
   - 선행 조건: Task 7.3, Item 소유권 경계 및 Phase 6 연결 변경 처리.

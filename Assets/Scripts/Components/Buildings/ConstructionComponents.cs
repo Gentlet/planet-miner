@@ -31,7 +31,12 @@ public enum ConstructionSiteFlags : byte
     /// 공사 현장 바닥에 월드 아이템이 잔류하여 드론의 회수 완료를 대기 중인 상태.
     /// 회수가 완료되기 전까지는 완공으로 전환되지 않음.
     /// </summary>
-    AwaitingItemClearance = 1 << 0
+    AwaitingItemClearance = 1 << 0,
+
+    /// <summary>
+    /// 공사 현장이 취소되어 파괴 진행 중인 상태. 완공 전환 대상에서 즉시 제외됨.
+    /// </summary>
+    Cancelled = 1 << 1
 }
 
 /// <summary>

@@ -3,6 +3,29 @@
 > 목적: 현재 PlanetMiner의 기능과 도메인 개념은 최대한 재사용하되,  
 > **시스템 간 의존성·실행 순서 의존·상태 변경 경로의 복잡성**을 줄이는 방향으로 아키텍처를 새로 설계한다.
 
+
+## V2 구현 판단 기준 요약
+
+아래 항목은 세부 구현 시 우선 확인할 Architecture V2의 핵심 불변식이다. 세부 규칙은 본문의 해당 절을 따른다.
+
+1. **모든 중요한 상태에는 하나의 명확한 State Owner가 있다.** 다른 Domain은 해당 상태를 가능한 한 직접 수정하지 않는다.
+2. **System 간 협력은 직접 호출보다 ECS 데이터 계약을 우선한다.** Domain은 다른 Domain의 public contract만 알고 내부 실행 시점이나 처리 순서를 전제로 하지 않는다.
+3. **Decision은 다른 Domain의 Persistent State를 직접 변경하지 않는다.** 판단 결과를 데이터로 기록하고 실제 실행·상태 반영 책임과 분리한다.
+4. **System 간 통신 데이터는 성격에 따라 분류한다.** 고빈도·지속 상태는 `Persistent / Frame State`, 일회성 사건은 `Transient Command / Request / Event`, Entity 구조 변경은 `Structural Change`로 구분한다.
+5. **실행 흐름은 `Command → Decision → Reservation → Execution → StateApply → Synchronization / Cleanup` Phase를 기준으로 이해한다.** 세부 `UpdateBefore/After`보다 Phase 책임을 우선한다.
+6. **Source of Truth와 파생 데이터·Index를 구분한다.** 동일 정보를 여러 곳에 보관하더라도 원본은 하나만 두고 파생 데이터는 원본에서 재구성 가능해야 한다.
+7. **1회성 Request의 수명주기는 Consumer가 책임지는 `Consume-on-Apply`를 기본으로 한다.** 성공·실패·보류 정책과 제거 시점을 명확히 한다.
+8. **병렬화와 성능 최적화는 구조의 목적이 아니라 결과다.** 데이터 소유권과 접근 범위를 먼저 명확히 하고, 실제 Profiler 근거가 있을 때 Job/Burst 최적화를 진행한다.
+
+구현 판단 시 최소한 다음 네 질문에 답할 수 있어야 한다.
+
+```text
+1. 이 상태의 Owner는 누구인가?
+2. 이 System이 다른 Domain의 상태를 직접 변경하고 있지 않은가?
+3. 이 데이터는 Persistent State / Transient Request / Structural Change 중 무엇인가?
+4. 이 처리는 6단계 Phase 중 어디에 속하는가?
+```
+
 ---
 
 ## 1. 배경

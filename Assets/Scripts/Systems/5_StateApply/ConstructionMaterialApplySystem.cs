@@ -101,7 +101,15 @@ public partial struct SupplyConstructionMaterialApplyJob : IJobEntity
             !SiteLookup.HasComponent(request.TargetSite) ||
             !ReqBufferLookup.HasBuffer(request.TargetSite))
         {
-            // 현장이 존재하지 않거나 이미 파괴/취소됨 -> Strict Rejection
+            // 현장이 존재하지 않거나 이미 파괴됨 -> Strict Rejection
+            ECB.DestroyEntity(requestEntity);
+            return;
+        }
+
+        var site = SiteLookup[request.TargetSite];
+        if ((site.Flags & ConstructionSiteFlags.Cancelled) != 0)
+        {
+            // 현장이 취소되어 파괴 진행 중임 -> Strict Rejection (자재 소유권 유지, 요청만 소비)
             ECB.DestroyEntity(requestEntity);
             return;
         }
@@ -178,7 +186,7 @@ public partial struct SupplyConstructionMaterialApplyJob : IJobEntity
             totalDelivered += reqBuffer[i].DeliveredQuantity;
         }
 
-        var site = SiteLookup[request.TargetSite];
+        site = SiteLookup[request.TargetSite];
         if (totalRequired > 0)
         {
             site.Progress = math.clamp((float)totalDelivered / totalRequired, 0f, 1f);
