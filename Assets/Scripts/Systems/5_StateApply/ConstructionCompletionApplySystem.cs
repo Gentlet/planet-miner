@@ -18,6 +18,7 @@ using Unity.Mathematics;
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
 [UpdateAfter(typeof(ConstructionMaterialApplySystem))]
+[UpdateAfter(typeof(ConstructionCancelApplySystem))]
 [UpdateBefore(typeof(BuildingLifecycleApplySystem))]
 public partial struct ConstructionCompletionApplySystem : ISystem
 {
@@ -139,8 +140,8 @@ public partial struct ConstructionCompletionApplyJob : IJobEntity
         in BuildingFootprint footprint,
         in DynamicBuffer<ConstructionMaterialRequirementElement> requirements)
     {
-        // 1. 공사 현장 상태 플래그 검사: 바닥 아이템 청소 대기 중이면 완공 보류
-        if ((site.Flags & ConstructionSiteFlags.AwaitingItemClearance) != 0)
+        // 1. 공사 현장 상태 플래그 검사: 바닥 아이템 청소 대기 중이거나 취소된 현장이면 완공 보류
+        if ((site.Flags & (ConstructionSiteFlags.AwaitingItemClearance | ConstructionSiteFlags.Cancelled)) != 0)
         {
             return;
         }
