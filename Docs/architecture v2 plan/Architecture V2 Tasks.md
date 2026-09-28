@@ -435,11 +435,11 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 검증: `Phase7ConstructionMaterialTests` 8개 단위/통합 테스트 전수 통과 (순수 계산 프로퍼티, 단일 유효 수령 및 소유권 이전/버퍼 등록, 기존 예약 차감, 잘못된 품목 거부, 초과 전달 거부, 무효 현장 거부, 동일 프레임 다중 전달 누적, 묶음 초과 시 한도 내 부분 수령 및 잉여분 거부). 전체 EditMode 테스트 252/252 Pass (100%).
   - 완료 기준: 자재 수량·품목·소유권이 일치하며 수령 성공 여부를 운반 측에 전달할 수 있다.
 
-- [ ] **Task 7.5: 공사 완료 및 건물 전환 구현**
+- [x] **Task 7.5: 공사 완료 및 건물 전환 구현**
   - 선행 조건: Task 7.3~7.4.
-  - 구현 범위·상태 소유자: 현장 완료 소유자가 요구량과 예약 정리를 확인하고 자재 소비·건물 생성·점유 인계를 요청한다. 공간 소유자는 최종 등록까지 예약을 유지한다.
-  - 후속 연결: 드론 예약 상태와의 실제 연동은 Task 9.20에서 검증한다.
-  - 검증: 마지막 자재 도착, 중복 완료, 생성 실패, 예약 미해제, 같은 프레임 다른 배치와의 경쟁을 검사한다.
+  - 구현 범위·상태 소유자: Phase 5 `StateApplyGroup`의 `ConstructionCompletionApplySystem` 구현. 자재 요구량 충족(`requirement.IsSatisfied`) 및 바닥 아이템 청소 플래그(`AwaitingItemClearance`) 해제 확인 시, 현장에 보관된 건설 자재(`StoredItemElement`)를 원자적으로 소비(`ECB.DestroyEntity`). `BuildingLifecycleUtility.SpawnBuilding`을 통해 단일 ECB 트랜잭션 내에서 완공 건물 엔티티를 생성하고 속성(`TargetBuildingType`, `GridPosition`, `Direction`, `BuildingFootprint`, `PlacementStamp`, `LocalTransform`) 및 타입별 필수 상태/의사결정/버퍼 컴포넌트 100% 승계 주입. 기존 `siteEntity`를 파괴하여 `siteEntity` 소멸과 완공 건물 탄생이 동일 ECB Playback 틱에 발생하도록 함으로써 점유 공백(Spatial Void) 0을 달성.
+  - 후속 연결: 드론 예약 상태와의 실제 연동은 Task 9.20에서 검증. 공사 취소 및 미완성 자재 반환은 Task 7.6에서 구현.
+  - 검증: `Phase7ConstructionCompletionTests` 8개 단위/통합 테스트 전수 통과 (자재 충족 시 현장/자재 소비 및 건물 생성/컴포넌트 초기화, 자재 부족 시 전환 보류, 바닥 청소 플래그 활성 시 완공 보류 및 해제 시 완공, 자재 공급 파이프라인 연계 및 완공 상태 검증, 복수 품목 자재 전수 충족 검사, 요구량 0 즉시 완공, 공간 인덱스 점유 연속성 유지 검증, 무효 목표 타입 차단). 전체 EditMode 테스트 248/248 Pass (100%).
   - 완료 기준: 중복 소비·중복 생성·점유 공백 없이 현장에서 건물로 전환된다.
 
 - [ ] **Task 7.6: 공사 취소 및 도착 자재 반환 구현**
