@@ -117,196 +117,23 @@ public partial struct SpawnBuildingApplyJob : IJobEntity
 
     public void Execute(Entity requestEntity, in SpawnBuildingRequest request)
     {
-        if (request.TargetType == BuildingTypeEnum.None || request.TargetType == BuildingTypeEnum.ConstructionSite)
-        {
-            // 무효하거나 공사 현장 타입은 완공 건물 스폰 대상이 아님
-            ECB.DestroyEntity(requestEntity);
-            return;
-        }
-
-        int2 baseFootprint = request.FootprintSize;
-        float speed = (request.TargetType == BuildingTypeEnum.Belt) ? 2.0f : 1.0f;
-        int storageCapacity = 20;
-
-        if (HasConfig && ConfigEntity != Entity.Null && ConfigBufferLookup.HasBuffer(ConfigEntity))
-        {
-            var configBuffer = ConfigBufferLookup[ConfigEntity];
-            if (BuildingConfigLookupUtility.TryGetConfig(configBuffer, request.TargetType, out var config))
-            {
-                speed = config.Speed;
-                storageCapacity = config.StorageCapacity;
-                if (baseFootprint.x <= 0 || baseFootprint.y <= 0)
-                {
-                    baseFootprint = config.Footprint;
-                }
-            }
-        }
-
-        if (baseFootprint.x <= 0 || baseFootprint.y <= 0)
-        {
-            baseFootprint = GetDefaultFootprint(request.TargetType);
-        }
-
-        BuildingFootprint footprint = new BuildingFootprint(baseFootprint);
-        int2 effectiveSize = footprint.GetEffectiveSize(request.Direction);
-        float3 spawnPosition = new float3(request.Position.x, request.Position.y, 0f);
-
-        if (HasPrefabDb)
-        {
-            Entity prefabEntity = Entity.Null;
-            int2 dbFootprint = int2.zero;
-
-            if (PrefabDbEntity != Entity.Null && PrefabBufferLookup.HasBuffer(PrefabDbEntity))
-            {
-                var buffer = PrefabBufferLookup[PrefabDbEntity];
-                PrefabLookupUtility.TryGetBuildingPrefab(buffer, request.TargetType, out prefabEntity, out dbFootprint);
-            }
-
-            if (prefabEntity == Entity.Null)
-            {
-                // 프리팹 DB 활성화 환경에서 프리팹 미등록 시 Strict Fail: 스폰 중단 및 로깅
-                FixedString128Bytes msg = default;
-                msg.Append((FixedString128Bytes)"[BuildingLifecycleApplySystem] Missing prefab for building type '");
-                msg.Append(request.TargetType.ToFixedString());
-                msg.Append((FixedString128Bytes)"'. SpawnBuildingRequest rejected.");
-                UnityEngine.Debug.LogError(msg);
-
-                ECB.DestroyEntity(requestEntity);
-                return;
-            }
-
-            // 프리팹 인스턴스화
-            Entity newBuilding = ECB.Instantiate(prefabEntity);
-
-            // 공통 컴포넌트 주입
-            ECB.AddComponent(newBuilding, new BuildingType(request.TargetType));
-            ECB.AddComponent(newBuilding, new BuildingFootprint(effectiveSize));
-            ECB.AddComponent(newBuilding, new GridPosition(request.Position));
-            ECB.AddComponent(newBuilding, new Direction(request.Direction));
-            ECB.AddComponent(newBuilding, request.Stamp);
-            ECB.SetComponent(newBuilding, LocalTransform.FromPosition(spawnPosition));
-
-            // 타입별 필수 컴포넌트 및 버퍼 주입
-            AttachTypeSpecificComponents(ref ECB, newBuilding, request.TargetType, request.Direction, speed, storageCapacity);
-        }
-        else
-        {
-            // 프리팹 DB가 없는 순수 시뮬레이션 환경 (테스트 등): Fallback 아키타입으로 엔티티 생성
-            Entity newBuilding = ECB.CreateEntity(FallbackBuildingArchetype);
-
-            ECB.SetComponent(newBuilding, new BuildingType(request.TargetType));
-            ECB.SetComponent(newBuilding, new BuildingFootprint(effectiveSize));
-            ECB.SetComponent(newBuilding, new GridPosition(request.Position));
-            ECB.SetComponent(newBuilding, new Direction(request.Direction));
-            ECB.SetComponent(newBuilding, request.Stamp);
-            ECB.SetComponent(newBuilding, LocalTransform.FromPosition(spawnPosition));
-
-            AttachTypeSpecificComponents(ref ECB, newBuilding, request.TargetType, request.Direction, speed, storageCapacity);
-        }
+        BuildingLifecycleUtility.SpawnBuilding(
+            ref ECB,
+            request.TargetType,
+            request.Position,
+            request.Direction,
+            request.FootprintSize,
+            request.Stamp,
+            HasPrefabDb,
+            PrefabDbEntity,
+            HasConfig,
+            ConfigEntity,
+            FallbackBuildingArchetype,
+            PrefabBufferLookup,
+            ConfigBufferLookup
+        );
 
         // 요청 엔티티 소비 (Consume-on-Apply)
         ECB.DestroyEntity(requestEntity);
-    }
-
-    private static void AttachTypeSpecificComponents(
-        ref EntityCommandBuffer ecb,
-        Entity building,
-        BuildingTypeEnum type,
-        DirectionEnum direction,
-        float speed,
-        int storageCapacity)
-    {
-        switch (type)
-        {
-            case BuildingTypeEnum.Belt:
-                ecb.AddComponent(building, new BeltComponent(speed > 0f ? speed : 2.0f));
-                break;
-
-            case BuildingTypeEnum.Miner:
-                ecb.AddComponent(building, new MinerState(speed > 0f ? speed : 1.0f));
-                ecb.AddComponent<MinerDecision>(building);
-                ecb.SetComponentEnabled<MinerDecision>(building, false);
-                ecb.AddBuffer<ProductItemElement>(building);
-                ecb.AddBuffer<ProductResult>(building);
-                ecb.AddComponent<BuildingItemOutputDecision>(building);
-                ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);
-                break;
-
-            case BuildingTypeEnum.Crafter:
-                ecb.AddComponent(building, new CrafterState(selectedRecipeId: 0, speed: speed > 0f ? speed : 1.0f));
-                ecb.AddComponent<CrafterDecision>(building);
-                ecb.SetComponentEnabled<CrafterDecision>(building, false);
-                ecb.AddBuffer<StoredItemElement>(building);
-                ecb.AddBuffer<ProductItemElement>(building);
-                ecb.AddBuffer<ProductResult>(building);
-                ecb.AddComponent<BuildingItemOutputDecision>(building);
-                ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);
-                break;
-
-            case BuildingTypeEnum.Storage:
-                ecb.AddComponent(building, new Storage(storageCapacity > 0 ? storageCapacity : 20));
-                ecb.AddBuffer<StoredItemElement>(building);
-                ecb.AddComponent(building, new StorageFilter());
-                ecb.AddComponent<BuildingItemOutputDecision>(building);
-                ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);
-                break;
-
-            case BuildingTypeEnum.Splitter:
-                ecb.AddComponent(building, new SplitterRoutingState(Entity.Null, direction, 0));
-                ecb.AddComponent<RoutingTransferDecision>(building);
-                ecb.SetComponentEnabled<RoutingTransferDecision>(building, false);
-                break;
-
-            case BuildingTypeEnum.Merger:
-                ecb.AddComponent(building, new MergerRoutingState(Entity.Null, direction, 0));
-                ecb.AddComponent<RoutingTransferDecision>(building);
-                ecb.SetComponentEnabled<RoutingTransferDecision>(building, false);
-                break;
-
-            case BuildingTypeEnum.MainFacility:
-                // 메인 기지는 기본 저장 공간을 제공
-                if (storageCapacity > 0)
-                {
-                    ecb.AddComponent(building, new Storage(storageCapacity));
-                    ecb.AddBuffer<StoredItemElement>(building);
-                    ecb.AddComponent(building, new StorageFilter());
-                    ecb.AddComponent<BuildingItemOutputDecision>(building);
-                    ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);
-                }
-                break;
-
-            case BuildingTypeEnum.PowerPole:
-            case BuildingTypeEnum.CoalGenerator:
-            case BuildingTypeEnum.DroneStation:
-            case BuildingTypeEnum.ResearchBuilding:
-                // 전력/드론/연구 도메인 컴포넌트는 해당 Phase(Phase 8, 9, 10)에서 확장
-                break;
-        }
-    }
-
-    private static int2 GetDefaultFootprint(BuildingTypeEnum type)
-    {
-        switch (type)
-        {
-            case BuildingTypeEnum.Belt:
-            case BuildingTypeEnum.Splitter:
-            case BuildingTypeEnum.Merger:
-            case BuildingTypeEnum.PowerPole:
-            case BuildingTypeEnum.Storage:
-                return new int2(1, 1);
-
-            case BuildingTypeEnum.Miner:
-            case BuildingTypeEnum.Crafter:
-                return new int2(2, 2);
-
-            case BuildingTypeEnum.CoalGenerator:
-            case BuildingTypeEnum.DroneStation:
-            case BuildingTypeEnum.ResearchBuilding:
-            case BuildingTypeEnum.MainFacility:
-                return new int2(3, 3);
-
-            default:
-                return new int2(1, 1);
-        }
     }
 }
