@@ -53,3 +53,38 @@ public struct SpawnBuildingRequest : IComponentData, IRequestComponent
         Stamp = stamp;
     }
 }
+
+/// <summary>
+/// [1. 역할]         : 공사 현장에 건설 자재 전달 및 수령 요청 (Command / Transient Request)
+/// [2. Producer]     : 드론 운송 도착 시스템 (Phase 9), 플레이어/디버그 인터랙션, 테스트 러너
+/// [3. Consumer]     : ConstructionMaterialApplySystem (StateApplyGroup)
+/// [4. Create Phase]: ExecutionGroup / StateApplyGroup
+/// [5. Consume Phase]: StateApplyGroup (Phase 5)
+/// [6. 수명주기]     : 단일 프레임 소비 (Consume-on-Apply). EndStateApplyEntityCommandBufferSystem에 의해 처리 및 요청 엔티티 파괴
+/// [7. 결과 정책]    : 유효한 요구 자재일 경우 수령(DeliveredQuantity 증가, StoredItemElement 소유권 이전). 초과/오품/무효 현장 시 Strict Rejection (수령 거부, 아이템 소유권 유지, 요청 엔티티 소비)
+/// [8. 안전망]       : 요청 처리 후 즉시 파괴되어 고아 요청 누수 방지
+/// </summary>
+public struct SupplyConstructionMaterialRequest : IComponentData, IRequestComponent
+{
+    /// <summary>
+    /// 자재를 수령할 대상 공사 현장 엔티티.
+    /// </summary>
+    public Entity TargetSite;
+
+    /// <summary>
+    /// 전달할 자재 아이템 엔티티.
+    /// </summary>
+    public Entity ItemEntity;
+
+    /// <summary>
+    /// 전달할 자재 아이템의 종류.
+    /// </summary>
+    public ItemTypeEnum ItemType;
+
+    public SupplyConstructionMaterialRequest(Entity targetSite, Entity itemEntity, ItemTypeEnum itemType)
+    {
+        TargetSite = targetSite;
+        ItemEntity = itemEntity;
+        ItemType = itemType;
+    }
+}

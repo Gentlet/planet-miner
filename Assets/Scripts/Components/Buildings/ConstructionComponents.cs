@@ -151,20 +151,30 @@ public struct PlacementCandidate
 }
 
 /// <summary>
-/// 공사 현장에 필요한 자재 요구량 및 현재 조달량 버퍼 엘리먼트 (Unmanaged).
+/// 공사 현장에 필요한 자재 요구량, 조달량 및 운송 예약량 버퍼 엘리먼트 (Unmanaged).
 /// </summary>
 public struct ConstructionMaterialRequirementElement : IBufferElementData
 {
     public ItemTypeEnum ItemType;
-    public int RequiredQuantity;
-    public int DeliveredQuantity;
+    public int RequiredQuantity;  // 완공에 필요한 총 수량
+    public int DeliveredQuantity; // 현장에 도착/수령된 실제 수량
+    public int ReservedQuantity;  // 운송 중인 예약 수량 (드론 출발 시)
 
+    // 순수 계산 프로퍼티 (상태 부작용 없음)
+    public int RemainingRequired => math.max(0, RequiredQuantity - DeliveredQuantity);
+    public int RemainingToReserve => math.max(0, RequiredQuantity - (DeliveredQuantity + ReservedQuantity));
     public bool IsSatisfied => DeliveredQuantity >= RequiredQuantity;
+    public bool IsFullyReserved => (DeliveredQuantity + ReservedQuantity) >= RequiredQuantity;
 
-    public ConstructionMaterialRequirementElement(ItemTypeEnum itemType, int requiredQuantity, int deliveredQuantity = 0)
+    public ConstructionMaterialRequirementElement(
+        ItemTypeEnum itemType,
+        int requiredQuantity,
+        int deliveredQuantity = 0,
+        int reservedQuantity = 0)
     {
         ItemType = itemType;
         RequiredQuantity = requiredQuantity;
         DeliveredQuantity = deliveredQuantity;
+        ReservedQuantity = reservedQuantity;
     }
 }
