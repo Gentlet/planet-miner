@@ -428,11 +428,11 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 검증: `Phase7BuildingLifecycleTests` 10개 단위/통합 테스트 전수 통과 (Belt/Miner/Crafter/Storage/Splitter/Merger 컴포넌트 및 버퍼 초기화, `BuildingConfig` 속도·용량 반영, 프리팹 인스턴스화, Strict Fail 거부, 회전 Footprint 유효 크기, 무효 타입 거부). 전체 EditMode 테스트 244/244 Pass (100%).
   - 완료 기준: 현재 이식 대상 건물이 일관된 초기 상태로 생성되고 실패 시 잔류 엔티티·점유가 없다.
 
-- [ ] **Task 7.4: 공사 자재 요구량·수령 계약 구현**
+- [x] **Task 7.4: 공사 자재 요구량·수령 계약 구현**
   - 선행 조건: Task 7.2 및 Item 소유권·저장 계약.
-  - 구현 범위·상태 소유자: 현장이 요구량·도착량을 소유하고 아이템 소유권 경계를 통해 자재를 수령한다. 운송 예약 중인 수량과 도착한 자재를 구분하는 계약을 정의한다.
-  - 후속 연결: 실제 아이템·목적지 용량 예약과 드론 운송은 Task 9.6·9.12·9.20에서 구현·연결한다.
-  - 검증: 부분 도착, 초과·중복 전달, 잘못된 품목, 취소된 현장으로의 도착을 검사한다.
+  - 구현 범위·상태 소유자: `ConstructionMaterialRequirementElement`에 `ReservedQuantity` 및 순수 계산 프로퍼티(`RemainingRequired`, `RemainingToReserve`, `IsSatisfied`, `IsFullyReserved`)를 추가하여 운송 예약과 실제 도착 자재를 구분하는 순수 데이터 계약 정립. `SupplyConstructionMaterialRequest` 요청 컴포넌트(`IRequestComponent`) 및 Phase 5 `StateApplyGroup`의 `ConstructionMaterialApplySystem` 구현. 현장 유효성, 요구 품목 일치, 잔여량 존재 검증 후 자재 수령(`DeliveredQuantity` 증가, `ReservedQuantity` 차감), 현장 진행도(`Progress`) 갱신, 아이템 소유권의 현장 이전(`ItemOwnership.Stored(TargetSite)`), 렌더링 비활성화(`DisableRendering`), 현장 `StoredItemElement` 버퍼 보관 등록을 원자적으로 처리. 잘못된 품목·초과 전달·무효 현장 시 Strict Rejection(수령 거부, 아이템 소유권 유지, 요청만 소비) 적용. 단일 프레임 내 요청 엔티티 파괴(`Consume-on-Apply`).
+  - 후속 연결: 실제 드론의 아이템/목적지 용량 예약 및 운송 도착은 Task 9.6·9.12·9.20에서 구현·연결. 완공 시점의 자재 소비 및 건물 전환은 Task 7.5에서 처리.
+  - 검증: `Phase7ConstructionMaterialTests` 8개 단위/통합 테스트 전수 통과 (순수 계산 프로퍼티, 단일 유효 수령 및 소유권 이전/버퍼 등록, 기존 예약 차감, 잘못된 품목 거부, 초과 전달 거부, 무효 현장 거부, 동일 프레임 다중 전달 누적, 묶음 초과 시 한도 내 부분 수령 및 잉여분 거부). 전체 EditMode 테스트 252/252 Pass (100%).
   - 완료 기준: 자재 수량·품목·소유권이 일치하며 수령 성공 여부를 운반 측에 전달할 수 있다.
 
 - [ ] **Task 7.5: 공사 완료 및 건물 전환 구현**

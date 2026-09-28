@@ -152,8 +152,10 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                     ecb.AddComponent(siteEntity, new PlacementStamp(candidateTick, (uint)i));
                     ecb.AddComponent(siteEntity, LocalTransform.FromPosition(candidate.OriginPosition.x, candidate.OriginPosition.y, 0f));
 
-                    // 자재 요구량 버퍼 부착 및 초기화
+                    // 자재 요구량 버퍼 및 자재 수납 버퍼 부착
                     var reqBuffer = ecb.AddBuffer<ConstructionMaterialRequirementElement>(siteEntity);
+                    ecb.AddBuffer<StoredItemElement>(siteEntity);
+
                     if (hasConfig && materials.IsCreated)
                     {
                         BuildingConfigLookupUtility.PopulateRequirements(materials, candidate.TargetType, ref reqBuffer);
