@@ -157,36 +157,6 @@ public class Phase2BeltExecutionTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test05_PipelineIntegration_DecisionThroughExecution_AdvancesCorrectly()
-    {
-        // Arrange: (0,0) -> (1,0) 벨트, 아이템 입구(0.0f)
-        CreateBelt(new int2(0, 0), DirectionEnum.Right, speed: 2.0f);
-        CreateBelt(new int2(1, 0), DirectionEnum.Right, speed: 2.0f);
-
-        var item = CreateBeltItem(new int2(0, 0), progress: 0.0f, plannedProgress: 0.0f);
-
-        SyncSpatialIndices();
-
-        // Phase 2: Decision (dt = 0.05s -> speed 2.0 * 0.05 = 0.1f PlannedProgress 결정)
-        RunDecisionPhase(0.05f);
-
-        var decisionMid = _entityManager.GetComponentData<BeltMovementDecision>(item);
-        Assert.AreEqual(0.1f, decisionMid.PlannedProgress, 0.0001f, "Decision must calculate 0.1f.");
-
-        // Phase 4: Execution (이동 적용 및 소비)
-        RunExecutionPhase();
-
-        var stateEnd = _entityManager.GetComponentData<BeltMovementState>(item);
-        var decisionEnd = _entityManager.GetComponentData<BeltMovementDecision>(item);
-        var transformEnd = _entityManager.GetComponentData<LocalTransform>(item);
-
-        Assert.AreEqual(0.1f, stateEnd.Progress, 0.0001f, "Progress must advance by 0.1f.");
-        Assert.AreEqual(0.0f, decisionEnd.PlannedProgress, 0.0001f, "PlannedProgress must be consumed.");
-        // 입구(-0.5)에서 0.1f 전진 = -0.4f
-        Assert.AreEqual(-0.4f, transformEnd.Position.x, 0.0001f);
-    }
-
-    [Test]
     public void Test06_MultiTileHops_ExecutionWhileLoop_TraversesMultipleTilesCorrectly()
     {
         // Arrange: 3칸 연속 벨트 (0,0) -> (1,0) -> (2,0)

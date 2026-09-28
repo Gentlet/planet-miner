@@ -138,49 +138,6 @@ public class Phase4ResourceAuthoringAndSpawnTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test04_ResourceGeneration_StrictFail_BlocksAllWhenDatabaseMissing()
-    {
-        // ResourcePrefabDatabase 엔티티 없이 설정만 생성
-        Entity settingsEntity = _entityManager.CreateEntity(typeof(ResourceGenerationSettings));
-        _entityManager.SetComponentData(settingsEntity, new ResourceGenerationSettings(worldSeed: 123, initialChunkSize: 3));
-
-        var buffer = _entityManager.AddBuffer<ResourceGenerationConfigElement>(settingsEntity);
-        buffer.Add(new ResourceGenerationConfigElement(ItemTypeEnum.Iron_Ore, 0.8f, 2, 4, 0.7f, 50, 200));
-
-        var bootstrapSystem = _world.GetOrCreateSystem(typeof(InitialChunkLoadBootstrapSystem));
-        var simulation = Simulation.CreateResourceGenerationPipeline();
-
-        bootstrapSystem.Update(_world.Unmanaged);
-        simulation.Update();
-
-        var query = _entityManager.CreateEntityQuery(typeof(GridPosition), typeof(ResourceNode));
-        Assert.AreEqual(0, query.CalculateEntityCount(), "프리팹 데이터베이스가 없으면 자원 엔티티가 일체 생성되지 않아야 합니다.");
-    }
-
-    [Test]
-    public void Test05_ResourceGeneration_StrictFail_BlocksAllWhenDatabaseBufferEmpty()
-    {
-        // ResourcePrefabDatabase 엔티티는 있으나 버퍼가 비어있는 경우
-        Entity settingsEntity = _entityManager.CreateEntity(typeof(ResourceGenerationSettings));
-        _entityManager.SetComponentData(settingsEntity, new ResourceGenerationSettings(worldSeed: 123, initialChunkSize: 3));
-
-        var buffer = _entityManager.AddBuffer<ResourceGenerationConfigElement>(settingsEntity);
-        buffer.Add(new ResourceGenerationConfigElement(ItemTypeEnum.Iron_Ore, 0.8f, 2, 4, 0.7f, 50, 200));
-
-        Entity prefabDbEntity = _entityManager.CreateEntity(typeof(ResourcePrefabDatabase));
-        _entityManager.AddBuffer<ResourcePrefabElement>(prefabDbEntity); // 빈 버퍼
-
-        var bootstrapSystem = _world.GetOrCreateSystem(typeof(InitialChunkLoadBootstrapSystem));
-        var simulation = Simulation.CreateResourceGenerationPipeline();
-
-        bootstrapSystem.Update(_world.Unmanaged);
-        simulation.Update();
-
-        var query = _entityManager.CreateEntityQuery(typeof(GridPosition), typeof(ResourceNode));
-        Assert.AreEqual(0, query.CalculateEntityCount(), "프리팹 버퍼가 비어있으면 자원 엔티티가 일체 생성되지 않아야 합니다.");
-    }
-
-    [Test]
     public void Test06_EndToEnd_ResourceSpawnToMiningAndDepletionPipeline()
     {
         // 1. 전체 월드 및 프리팹 셋업

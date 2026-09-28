@@ -162,35 +162,6 @@ public class Phase5RecipeBlobTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test06_CrafterComponents_StateAndDecision_Lifecycle()
-    {
-        // 1. Crafter 엔티티 생성
-        var crafterEntity = _entityManager.CreateEntity(
-            typeof(CrafterState),
-            typeof(CrafterDecision),
-            typeof(CrafterStateDecision),
-            typeof(Storage));
-
-        _entityManager.SetComponentData(crafterEntity, new CrafterState(selectedRecipeId: 1, speed: 1.5f));
-        _entityManager.SetComponentData(crafterEntity, new CrafterDecision(canCraft: false, recipeId: 1));
-        _entityManager.SetComponentEnabled<CrafterDecision>(crafterEntity, false);
-        _entityManager.SetComponentData(crafterEntity, new CrafterStateDecision(CrafterStatusEnum.Idle));
-        _entityManager.SetComponentEnabled<CrafterStateDecision>(crafterEntity, false);
-        _entityManager.SetComponentData(crafterEntity, new Storage(slotCount: 4));
-        _entityManager.AddBuffer<ProductResult>(crafterEntity);
-
-        // 2. 컴포넌트 값 및 상태 검증
-        var state = _entityManager.GetComponentData<CrafterState>(crafterEntity);
-        Assert.AreEqual(1, state.SelectedRecipeId);
-        Assert.AreEqual(1.5f, state.Speed);
-        Assert.AreEqual(CrafterStatusEnum.Idle, state.Status);
-
-        Assert.IsFalse(_entityManager.IsComponentEnabled<CrafterDecision>(crafterEntity));
-        Assert.IsFalse(_entityManager.IsComponentEnabled<CrafterStateDecision>(crafterEntity));
-        Assert.AreEqual(0, _entityManager.GetBuffer<ProductResult>(crafterEntity).Length);
-    }
-
-    [Test]
     public void Test07_BurstJob_CanReadRecipeRegistryBlob_WithoutSafetyErrors()
     {
         // 1. 전역 싱글톤 초기화

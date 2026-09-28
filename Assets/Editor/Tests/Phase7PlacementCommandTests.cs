@@ -304,10 +304,10 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
     [Test]
     public void Test08_EndToEnd_PlacementToSpatialIndexSync()
     {
-        // 1. 배치 요청 생성
+        // 2x2 공사 현장이 배치 요청부터 공간 인덱스까지 등록되는지 확인
         CreatePlacementRequest(
             PlacementFlags.StrictAllOrNothing,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(10, 10)));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(2, 2), new int2(10, 10)));
 
         // 2. CommandGroup 실행 (ConstructionSite 생성)
         UpdateCommandPhase();
@@ -321,11 +321,17 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
 
         var spatialIndex = _world.EntityManager.CreateEntityQuery(typeof(BuildingSpatialIndex)).GetSingleton<BuildingSpatialIndex>();
 
-        // 4. 공간 인덱스 조회 검증
-        Assert.IsTrue(spatialIndex.HasBuildingAt(new int2(10, 10)));
-        Assert.IsTrue(spatialIndex.TryGetBuilding(new int2(10, 10), out var info));
-        Assert.AreEqual(siteEntity, info.Entity);
-        Assert.AreEqual(BuildingTypeEnum.ConstructionSite, info.Type);
+        // 4. 전체 footprint 셀이 동일한 공사 현장을 가리키는지 검증
+        for (int y = 0; y < 2; y++)
+        {
+            for (int x = 0; x < 2; x++)
+            {
+                var cell = new int2(10 + x, 10 + y);
+                Assert.IsTrue(spatialIndex.TryGetBuilding(cell, out var info));
+                Assert.AreEqual(siteEntity, info.Entity);
+                Assert.AreEqual(BuildingTypeEnum.ConstructionSite, info.Type);
+            }
+        }
     }
 
     [Test]
