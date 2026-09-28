@@ -57,7 +57,7 @@ public struct SpawnBuildingRequest : IComponentData, IRequestComponent
 /// <summary>
 /// [1. 역할]         : 공사 현장에 건설 자재 전달 및 수령 요청 (Command / Transient Request)
 /// [2. Producer]     : 드론 운송 도착 시스템 (Phase 9), 플레이어/디버그 인터랙션, 테스트 러너
-/// [3. Consumer]     : ConstructionMaterialApplySystem (StateApplyGroup)
+/// [3. Consumer]     : ConstructionLifecycleApplySystem (StateApplyGroup)
 /// [4. Create Phase]: ExecutionGroup / StateApplyGroup
 /// [5. Consume Phase]: StateApplyGroup (Phase 5)
 /// [6. 수명주기]     : 단일 프레임 소비 (Consume-on-Apply). EndStateApplyEntityCommandBufferSystem에 의해 처리 및 요청 엔티티 파괴
@@ -92,7 +92,7 @@ public struct SupplyConstructionMaterialRequest : IComponentData, IRequestCompon
 /// <summary>
 /// [1. 역할]         : 진행 중인 공사 현장 취소 및 자재 반환 요청 (Command / Transient Request)
 /// [2. Producer]     : 플레이어/UI 철거 및 취소 액션, 디버그 인터랙션, 테스트 러너
-/// [3. Consumer]     : ConstructionCancelApplySystem (StateApplyGroup)
+/// [3. Consumer]     : ConstructionLifecycleApplySystem (StateApplyGroup)
 /// [4. Create Phase]: CommandGroup / ExecutionGroup / StateApplyGroup
 /// [5. Consume Phase]: StateApplyGroup (Phase 5)
 /// [6. 수명주기]     : 단일 프레임 소비 (Consume-on-Apply). EndStateApplyEntityCommandBufferSystem에 의해 처리 및 요청 엔티티 파괴

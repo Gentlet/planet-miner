@@ -8,8 +8,7 @@ using Unity.Mathematics;
 /// </summary>
 public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
 {
-    private SystemHandle _materialApplySystem;
-    private SystemHandle _completionApplySystem;
+    private SystemHandle _lifecycleApplySystem;
     private SystemHandle _spatialSyncSystem;
     private EndStateApplyEntityCommandBufferSystem _ecbSystem;
 
@@ -17,21 +16,20 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
-        _materialApplySystem = _world.GetOrCreateSystem<ConstructionMaterialApplySystem>();
-        _completionApplySystem = _world.GetOrCreateSystem<ConstructionCompletionApplySystem>();
+        _lifecycleApplySystem = _world.GetOrCreateSystem<ConstructionLifecycleApplySystem>();
         _spatialSyncSystem = _world.GetOrCreateSystem<BuildingSpatialSyncSystem>();
         _ecbSystem = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
     }
 
     private void RunCompletionPhase()
     {
-        Simulation.UpdateAndComplete(_completionApplySystem);
+        Simulation.UpdateAndComplete(_lifecycleApplySystem);
         Simulation.Playback(_ecbSystem);
     }
 
     private void RunMaterialApplyPhase()
     {
-        Simulation.UpdateAndComplete(_materialApplySystem);
+        Simulation.UpdateAndComplete(_lifecycleApplySystem);
         Simulation.Playback(_ecbSystem);
     }
 
@@ -205,16 +203,12 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
         var item = CreateWorldItem(ItemTypeEnum.Iron);
         var reqEntity = RequestSupply(site, item, ItemTypeEnum.Iron);
 
-        // 3. 자재 수령 Phase 실행 (도착 자재 수령 및 Stored 등록)
+        // 3. 자재 수령 및 완공 통합 Phase 실행 (공급과 완공이 단일 틱에 즉시 원자적으로 완료됨)
         RunMaterialApplyPhase();
 
         Assert.IsFalse(_entityManager.Exists(reqEntity), "자재 공급 요청은 소비되어야 함");
-        Assert.AreEqual(1, _entityManager.GetBuffer<StoredItemElement>(site).Length, "현장에 자재가 적재되어야 함");
 
-        // 4. 완공 Phase 실행 (현장 완공 판정 -> 자재 소비 + 완공 건물 생성 + 현장 파괴 원자적 완료)
-        RunCompletionPhase();
-
-        // 5. 완공 상태 검증
+        // 4. 완공 상태 검증
         Assert.IsFalse(_entityManager.Exists(site), "공사 현장은 완공되어 파괴되어야 함");
         Assert.IsFalse(_entityManager.Exists(item), "공급된 자재는 완공 시 소비되어 파괴되어야 함");
 
@@ -248,16 +242,13 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
         Assert.IsTrue(_entityManager.Exists(iron1));
         Assert.IsTrue(_entityManager.Exists(iron2));
 
-        // 3. Copper 자재 공급 및 수령
+        // 3. Copper 자재 공급 및 수령 (모든 자재가 충족되므로 즉시 완공 전환)
         var copperItem = CreateWorldItem(ItemTypeEnum.Copper);
         RequestSupply(site, copperItem, ItemTypeEnum.Copper);
 
         RunMaterialApplyPhase();
 
-        // 4. 완공 Phase 실행
-        RunCompletionPhase();
-
-        // 5. 모든 자재 충족 후 완공 및 모든 자재 파괴 확인
+        // 4. 모든 자재 충족 후 완공 및 모든 자재 파괴 확인
         Assert.IsFalse(_entityManager.Exists(site));
         Assert.IsFalse(_entityManager.Exists(iron1));
         Assert.IsFalse(_entityManager.Exists(iron2));

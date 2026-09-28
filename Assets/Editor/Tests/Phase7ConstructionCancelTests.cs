@@ -10,9 +10,7 @@ using Unity.Transforms;
 /// </summary>
 public class Phase7ConstructionCancelTests : EcsWorldTestFixture
 {
-    private SystemHandle _materialApplySystem;
-    private SystemHandle _cancelApplySystem;
-    private SystemHandle _completionApplySystem;
+    private SystemHandle _lifecycleApplySystem;
     private SystemHandle _spatialSyncSystem;
     private EndStateApplyEntityCommandBufferSystem _ecbSystem;
 
@@ -20,37 +18,32 @@ public class Phase7ConstructionCancelTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
-        _materialApplySystem = _world.GetOrCreateSystem<ConstructionMaterialApplySystem>();
-        _cancelApplySystem = _world.GetOrCreateSystem<ConstructionCancelApplySystem>();
-        _completionApplySystem = _world.GetOrCreateSystem<ConstructionCompletionApplySystem>();
+        _lifecycleApplySystem = _world.GetOrCreateSystem<ConstructionLifecycleApplySystem>();
         _spatialSyncSystem = _world.GetOrCreateSystem<BuildingSpatialSyncSystem>();
         _ecbSystem = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
     }
 
     private void RunCancelPhase()
     {
-        Simulation.UpdateAndComplete(_cancelApplySystem);
+        Simulation.UpdateAndComplete(_lifecycleApplySystem);
         Simulation.Playback(_ecbSystem);
     }
 
     private void RunMaterialApplyPhase()
     {
-        Simulation.UpdateAndComplete(_materialApplySystem);
+        Simulation.UpdateAndComplete(_lifecycleApplySystem);
         Simulation.Playback(_ecbSystem);
     }
 
     private void RunCancelAndCompletionPhase()
     {
-        Simulation.UpdateAndComplete(_cancelApplySystem);
-        Simulation.UpdateAndComplete(_completionApplySystem);
+        Simulation.UpdateAndComplete(_lifecycleApplySystem);
         Simulation.Playback(_ecbSystem);
     }
 
     private void RunFullPipelinePhase()
     {
-        Simulation.UpdateAndComplete(_cancelApplySystem);
-        Simulation.UpdateAndComplete(_materialApplySystem);
-        Simulation.UpdateAndComplete(_completionApplySystem);
+        Simulation.UpdateAndComplete(_lifecycleApplySystem);
         Simulation.Playback(_ecbSystem);
     }
 
