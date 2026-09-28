@@ -456,12 +456,18 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 검증: `Phase7BuildingDemolishTests` 13개 단위/통합 테스트 전수 통과 (빈 건물 철거, 보관/생산 내용물 월드 방출, 건축 비용 자재 100% 환급 스폰, Indestructible 파괴 거부, 무효/공사현장 대상 거부, 동일 프레임 중복 철거 멱등성, 공간 인덱스 해제, 벨트 철거 시 아이템 정적 보존, 프리팹 DB 아이템 환급 스폰, 프리팹 누락 시 Strict Fail Policy, 동일 틱 이동 아이템 타이밍 무결성 검증, 동일 프레임 물류 적용 후 철거 순서 보장 검증, EndCommandECB 즉시 커밋 검증). 전체 EditMode 테스트 268/268 Pass (100%).
   - 완료 기준: 현재 지원하는 건물의 내용물·공간·참조를 일관되게 정리하고 후속 도메인 연결 범위를 명시한다. 모델 1(2-Sync Point: EndCommandECB + EndStateApplyECB) 도입 및 Phase 5 실행 순서(UpdateAfter(RoutingApplySystem, BuildingItemStorageApplySystem)) 확립.
 
-- [ ] **Task 7.8: 건설 코어 수명주기 통합 검증**
+- [x] **Task 7.8: 건설 코어 수명주기 통합 검증**
   - 선행 조건: Task 7.2~7.7.
-  - 구현 범위·상태 소유자: 생성·수령·완료·취소·철거를 실제 그룹으로 연결하고 각 소유자의 결과를 검증한다.
-  - 후속 연결: Phase 8·9의 전력·운송·정거장 연동 검증은 별도로 추적한다.
-  - 검증: 테스트용 유효 도착 결과를 사용해 성공 흐름과 동일 프레임 취소·완료·철거 경쟁을 재현한다.
-  - 완료 기준: 코어 통합 테스트와 공간·아이템 불변식이 통과한다. 실제 운반·플레이 검증 완료로 기록하지 않는다.
+  - 구현 범위·상태 소유자: 6대 Phase(`Command` → `Decision` → `Reservation` → `Execution` → `StateApply` → `Synchronization`) 전체가 결합된 `GameSimulationGroup` 메가 파이프라인 상에서 건설 코어 수명주기(배치 요청 → 현장 실체화 → 자재 공급 → 완공 전환 → 생산/물류 가동 → 철거/환급 및 취소) 전 과정을 유기적으로 통합 검증. 2-Sync Point 아키텍처(`EndCommandEntityCommandBufferSystem`, `EndStateApplyEntityCommandBufferSystem`) 및 StateApply 내 실행 순서(`RoutingApplySystem`, `BuildingItemStorageApplySystem` → `BuildingLifecycleApplySystem`)가 실체화/스폰/철거 트랜잭션과 점유 공백(Spatial Void) 0을 정확히 보장함을 확인.
+  - 후속 연결: 실제 드론 운송·자재 배차 및 정거장 연동은 Phase 9, 전력망 연결 및 발전기 가동은 Phase 8에서 검증.
+  - 검증: `Phase7EndToEndConstructionPipelineTests` 5개 E2E 통합 테스트 전수 통과:
+    1. `Test01_HappyPath_FullConstructionLifecycle_ToOperationalLogisticsAndDemolition`: Miner 배치 → 현장 점유 → 자재 공급 → 점유 공백 없는 완공 스폰 → 30틱 연속 시뮬레이션 및 실제 채굴 생산 → 철거 및 채굴물/자재 반환/공간 해제 완전 수명주기 검증.
+    2. `Test02_CancelWins_PartialSupply_ToCancellation_RefundsWorldItemsAndReleasesSpatial`: Storage 자재 부분 납입 후 동일 틱 추가 자재+취소 동시 인큐 시 Cancel Wins 우선순위 적용, 기납입 자재 WorldItem 바닥 방출 및 현장 파괴/공간 해제 검증.
+    3. `Test03_BeltOverwrite_UpgradeLifecycle_SameBeltRedirectAndDifferentBeltUpgrade`: 동일 벨트 방향 재배치 시 무공사 즉시 Direction 갱신 및 이종 건물 충돌 배치 거부/벨트 보존 검증.
+    4. `Test04_ImmediateRepositioning_DemolishAndReconstructOnSameTile`: Storage 철거 후 자재 환급 및 바닥 정돈 직후 동일 타일 신규 Belt 배치, `AwaitingItemClearance` 회피 및 자재 공급 후 Belt 정상 완공 전환 검증.
+    5. `Test05_MultiTickContinuousSimulation_StressAndWorldInvariantZeroViolation`: 채굴기-벨트-창고 물류 라인과 공사 현장이 공존하는 복합 환경에서 100틱 연속 시뮬레이션 구동 시 `WorldInvariantValidationSystem` 위반 0건 스트레스 검증.
+    - 전체 EditMode 테스트 273/273 Pass (100%).
+  - 완료 기준: 실제 6대 Phase 시뮬레이션 루프 및 2-Sync Point 아키텍처 하에서 건설 코어 E2E 수명주기 및 공간·아이템 불변식이 완벽히 통과한다. (Phase 7 건설 코어 마일스톤 100% 달성 완료).
 
 ---
 
