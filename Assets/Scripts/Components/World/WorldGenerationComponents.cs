@@ -145,7 +145,7 @@ public struct GeneratedChunkReadyElement : IBufferElementData
 }
 
 /// <summary>
-/// Producer: ResourceGenerationCommandSystem의 EndStateApply ECB.
+/// Producer: ResourceGenerationCommandSystem의 EndCommand ECB.
 /// Consumer: 다음 Command의 ChunkLoadCommandSystem. 실제 스폰 반영 이후 완료를 확정하고 즉시 비운다.
 /// </summary>
 public struct GeneratedChunkCompletedElement : IBufferElementData

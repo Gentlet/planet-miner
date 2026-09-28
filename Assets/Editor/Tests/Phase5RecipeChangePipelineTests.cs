@@ -20,6 +20,7 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
     private SystemHandle _inputDecisionHandle;
     private SystemHandle _buildingSpatialSyncHandle;
     private SystemHandle _beltSpatialSyncHandle;
+    private EndCommandEntityCommandBufferSystem _endCommandEcb;
     private EndStateApplyEntityCommandBufferSystem _endStateApplyEcb;
 
     [SetUp]
@@ -37,6 +38,7 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
         _inputDecisionHandle = _world.GetOrCreateSystem(typeof(BuildingItemInputDecisionSystem));
         _buildingSpatialSyncHandle = _world.GetOrCreateSystem(typeof(BuildingSpatialSyncSystem));
         _beltSpatialSyncHandle = _world.GetOrCreateSystem(typeof(BeltSpatialSyncSystem));
+        _endCommandEcb = _world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
         _endStateApplyEcb = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
     }
 
@@ -101,7 +103,7 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
 
         // Phase 1 CommandGroup 실행
         _crafterCommandHandle.Update(_world.Unmanaged);
-        _endStateApplyEcb.Update();
+        _endCommandEcb.Update();
 
         // Assert 1: 기존 Iron_Ore가 ProductBuffer로 배출되고, Status가 WaitingForByproductOutput으로 변경되었는지 확인
         var storedBufferAfter = _entityManager.GetBuffer<StoredItemElement>(crafter);

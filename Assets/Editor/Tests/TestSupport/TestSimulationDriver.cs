@@ -46,6 +46,11 @@ namespace PlanetMiner.Tests
             ecbSystem.Update();
         }
 
+        public void Playback(EndCommandEntityCommandBufferSystem ecbSystem)
+        {
+            ecbSystem.Update();
+        }
+
         /// <summary>자원 생성/채굴 통합 테스트용 실제 6단계 실행 경계. 추가 Playback은 사용하지 않는다.</summary>
         public GameSimulationGroup CreateResourceGenerationPipeline(bool includeMining = false)
         {
@@ -64,6 +69,7 @@ namespace PlanetMiner.Tests
             simulation.AddSystemToUpdateList(sync);
             command.AddSystemToUpdateList(_world.GetOrCreateSystem<ChunkLoadCommandSystem>());
             command.AddSystemToUpdateList(_world.GetOrCreateSystem<ResourceGenerationCommandSystem>());
+            command.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>());
             apply.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>());
             sync.AddSystemToUpdateList(_world.GetOrCreateSystem<ResourceSpatialSyncSystem>());
             if (includeMining)

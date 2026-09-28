@@ -59,7 +59,7 @@ public partial struct CrafterRecipeCommandSystem : ISystem
 
         ref var registry = ref recipeRegistry.Value.Value;
 
-        var ecbSystem = state.World.GetExistingSystemManaged<EndStateApplyEntityCommandBufferSystem>();
+        var ecbSystem = state.World.GetExistingSystemManaged<EndCommandEntityCommandBufferSystem>();
         EntityCommandBuffer ecb;
         bool fallbackPlayback = false;
         if (ecbSystem != null)

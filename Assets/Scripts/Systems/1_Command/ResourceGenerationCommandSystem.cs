@@ -10,8 +10,8 @@ using Unity.Transforms;
 /// - CommandGroup(Phase 1)에서 ChunkLoadCommandSystem 바로 뒤에 실행되어,
 ///   필수 프리팹 전체가 준비될 때까지 요청을 유지한다.
 /// - 불필요한 중간 요청 엔티티(ResourceSpawnRequest) 생성/삭제 오버헤드를 배제하고 직접 엔티티 스폰.
-/// - EndStateApplyEntityCommandBufferSystem을 통해 구조적 변경을 일괄 처리하여,
-///   SynchronizationGroup(Phase 6) 진입 전 자원 엔티티가 월드에 존재하도록 보장.
+/// - EndCommandEntityCommandBufferSystem을 통해 구조적 변경을 일괄 처리하여,
+///   동일 프레임 Phase 2~4 및 SynchronizationGroup(Phase 6) 진입 전 자원 엔티티가 월드에 존재하도록 보장.
 /// </summary>
 [UpdateInGroup(typeof(CommandGroup))]
 [UpdateAfter(typeof(ChunkLoadCommandSystem))]
@@ -53,7 +53,7 @@ public partial struct ResourceGenerationCommandSystem : ISystem
             return;
         }
 
-        var ecbSystem = state.World.GetExistingSystemManaged<EndStateApplyEntityCommandBufferSystem>();
+        var ecbSystem = state.World.GetExistingSystemManaged<EndCommandEntityCommandBufferSystem>();
         if (ecbSystem == null)
         {
             return;

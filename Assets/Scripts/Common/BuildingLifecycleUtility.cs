@@ -167,6 +167,7 @@ public static class BuildingLifecycleUtility
                 break;
 
             case BuildingTypeEnum.MainFacility:
+                ecb.AddComponent<IndestructibleBuilding>(building);
                 if (storageCapacity > 0)
                 {
                     ecb.AddComponent(building, new Storage(storageCapacity));
