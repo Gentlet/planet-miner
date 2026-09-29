@@ -14,6 +14,14 @@ namespace PlanetMiner.Tests
         protected TestEntityFactory Entities;
         protected TestSimulationDriver Simulation;
 
+        protected void CreateGameplayPrefabDatabases()
+        {
+            TestPrefabDatabaseFactory.CreateBuildings(_entityManager);
+            TestPrefabDatabaseFactory.CreateItems(_entityManager);
+            // 선택한 Phase만 실행하는 격리 테스트의 입력 전제. 시작 검증은 별도 통합 테스트에서 실행한다.
+            _entityManager.CreateEntity(typeof(PrefabDatabaseReady));
+        }
+
         [SetUp]
         public virtual void SetUp()
         {

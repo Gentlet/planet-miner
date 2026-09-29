@@ -13,13 +13,12 @@ using Unity.Transforms;
 /// - ProductResult를 처리하여 생산 완료 결과를 실제 아이템 엔티티와 ProductItemElement로 반영.
 /// - SpawnItemRequest를 처리하여 아이템 엔티티를 생성하고 기본 컴포넌트를 초기화.
 /// - DestroyItemRequest가 활성화된 아이템 엔티티를 파괴.
-/// - 프리팹 데이터베이스(ItemPrefabElement)에 등록된 프리팹을 우선 인스턴스화하고, 미등록 시 Safe Fallback 아키타입으로 안전 대체.
+/// - 등록된 프리팹만 인스턴스화한다. DB/항목 누락은 시뮬레이션 중단 오류다.
 /// - 수납 아이템에 대해 DisableRendering 컴포넌트를 부착하여 렌더 파이프라인에서 제외.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
 public partial struct ItemLifecycleApplySystem : ISystem
 {
-    private EntityArchetype _fallbackItemArchetype;
     private EntityQuery _productResultQuery;
     private EntityQuery _spawnQuery;
     private EntityQuery _destroyQuery;
@@ -31,18 +30,6 @@ public partial struct ItemLifecycleApplySystem : ISystem
 
     public void OnCreate(ref SystemState state)
     {
-        // 프리팹 데이터베이스가 없는 순수 시뮬레이션 환경(테스트 등)에서 사용할 Fallback 아키타입
-        _fallbackItemArchetype = state.EntityManager.CreateArchetype(
-            ComponentType.ReadWrite<ItemIdentity>(),
-            ComponentType.ReadWrite<ItemOwnership>(),
-            ComponentType.ReadWrite<GridPosition>(),
-            ComponentType.ReadWrite<LocalTransform>(),
-            ComponentType.ReadWrite<DestroyItemRequest>(),
-            ComponentType.ReadWrite<TransferOwnershipRequest>(),
-            ComponentType.ReadWrite<BeltMovementState>(),
-            ComponentType.ReadWrite<BeltMovementDecision>(),
-            ComponentType.ReadWrite<BuildingItemInputDecision>()
-        );
 
         _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
         _productBufferLookup = state.GetBufferLookup<ProductItemElement>(true);
@@ -98,7 +85,6 @@ public partial struct ItemLifecycleApplySystem : ISystem
             ECB = ecb,
             HasPrefabDb = hasPrefabDb,
             PrefabDbEntity = prefabDbEntity,
-            FallbackItemArchetype = _fallbackItemArchetype,
             DemolitionRequests = demolitionRequests,
             ItemPrefabBufferLookup = _itemPrefabBufferLookup
         };
@@ -110,7 +96,6 @@ public partial struct ItemLifecycleApplySystem : ISystem
             ECB = ecb,
             HasPrefabDb = hasPrefabDb,
             PrefabDbEntity = prefabDbEntity,
-            FallbackItemArchetype = _fallbackItemArchetype,
             DemolitionRequests = demolitionRequests,
             ItemPrefabBufferLookup = _itemPrefabBufferLookup,
             StoredBufferLookup = _storedBufferLookup,
@@ -163,7 +148,6 @@ public partial struct ProductResultApplyJob : IJobEntity
     [ReadOnly] public NativeList<DemolishBuildingRequest> DemolitionRequests;
     public bool HasPrefabDb;
     public Entity PrefabDbEntity;
-    public EntityArchetype FallbackItemArchetype;
 
     [ReadOnly]
     public BufferLookup<ItemPrefabElement> ItemPrefabBufferLookup;
@@ -192,82 +176,57 @@ public partial struct ProductResultApplyJob : IJobEntity
                 continue;
             }
 
-            if (HasPrefabDb)
+            Entity prefabEntity = Entity.Null;
+            if (HasPrefabDb && PrefabDbEntity != Entity.Null && ItemPrefabBufferLookup.HasBuffer(PrefabDbEntity))
             {
-                Entity prefabEntity = Entity.Null;
-                if (PrefabDbEntity != Entity.Null && ItemPrefabBufferLookup.HasBuffer(PrefabDbEntity))
+                var buffer = ItemPrefabBufferLookup[PrefabDbEntity];
+                for (int i = 0; i < buffer.Length; i++)
                 {
-                    var buffer = ItemPrefabBufferLookup[PrefabDbEntity];
-                    for (int i = 0; i < buffer.Length; i++)
+                    if (buffer[i].Type == result.ItemType)
                     {
-                        if (buffer[i].Type == result.ItemType)
-                        {
-                            prefabEntity = buffer[i].Prefab;
-                            break;
-                        }
+                        prefabEntity = buffer[i].Prefab;
+                        break;
                     }
                 }
-
-                if (prefabEntity == Entity.Null)
-                {
-                    // 프리팹 DB 환경에서 프리팹 미등록 시 Strict Fail: 스폰 중단하고 로깅 (Burst 호환 FixedString 사용)
-                    FixedString128Bytes msg = default;
-                    msg.Append((FixedString64Bytes)"[ItemLifecycleApplySystem] Missing prefab for item type '");
-                    msg.Append(result.ItemType.ToFixedString());
-                    msg.Append((FixedString64Bytes)"'. Product spawning skipped.");
-                    UnityEngine.Debug.LogError(msg);
-                    continue;
-                }
-
-                for (int countIndex = 0; countIndex < result.Count; countIndex++)
-                {
-                    Entity newItem = ECB.Instantiate(prefabEntity);
-                    ECB.SetComponent(newItem, new ItemIdentity(result.ItemType));
-                    ECB.AddComponent(newItem, new GridPosition(int2.zero));
-                    ECB.SetComponent(newItem, LocalTransform.FromPosition(float3.zero));
-                    ECB.AddComponent(newItem, ItemOwnership.Stored(producerEntity));
-
-                    ECB.AddComponent<DestroyItemRequest>(newItem);
-                    ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
-                    ECB.AddComponent<TransferOwnershipRequest>(newItem);
-                    ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
-                    ECB.AddComponent<BeltMovementState>(newItem);
-                    ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
-                    ECB.AddComponent<BeltMovementDecision>(newItem);
-                    ECB.AddComponent<BuildingItemInputDecision>(newItem);
-                    ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
-
-                    // 생산 시설 내부 보관 아이템이므로 렌더링 비활성화
-                    ECB.AddComponent<DisableRendering>(newItem);
-
-                    ECB.AppendToBuffer(
-                        producerEntity,
-                        new ProductItemElement(newItem, result.ItemType, result.SlotIndex));
-                }
             }
-            else
+
+            if (prefabEntity == Entity.Null)
             {
-                // 프리팹 DB가 없는 순수 시뮬레이션 환경: Fallback 아키타입으로 엔티티 생성
-                for (int countIndex = 0; countIndex < result.Count; countIndex++)
-                {
-                    Entity newItem = ECB.CreateEntity(FallbackItemArchetype);
-                    ECB.SetComponent(newItem, new ItemIdentity(result.ItemType));
-                    ECB.SetComponent(newItem, new GridPosition(int2.zero));
-                    ECB.SetComponent(newItem, LocalTransform.FromPosition(float3.zero));
-                    ECB.SetComponent(newItem, ItemOwnership.Stored(producerEntity));
-
-                    ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
-                    ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
-                    ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
-                    ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
-
-                    ECB.AddComponent<DisableRendering>(newItem);
-
-                    ECB.AppendToBuffer(
-                        producerEntity,
-                        new ProductItemElement(newItem, result.ItemType, result.SlotIndex));
-                }
+                // 프리팹 DB 환경에서 프리팹 미등록 시 Strict Fail: 스폰 중단하고 로깅 (Burst 호환 FixedString 사용)
+                FixedString128Bytes msg = default;
+                msg.Append((FixedString64Bytes)"[ItemLifecycleApplySystem] Missing prefab for item type '");
+                msg.Append(result.ItemType.ToFixedString());
+                msg.Append((FixedString64Bytes)"'. Product spawning skipped.");
+                SimulationFailureUtility.Record(ref ECB, msg);
+                continue;
             }
+
+            for (int countIndex = 0; countIndex < result.Count; countIndex++)
+            {
+                Entity newItem = ECB.Instantiate(prefabEntity);
+                ECB.SetComponent(newItem, new ItemIdentity(result.ItemType));
+                ECB.AddComponent(newItem, new GridPosition(int2.zero));
+                ECB.SetComponent(newItem, LocalTransform.FromPosition(float3.zero));
+                ECB.AddComponent(newItem, ItemOwnership.Stored(producerEntity));
+
+                ECB.AddComponent<DestroyItemRequest>(newItem);
+                ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
+                ECB.AddComponent<TransferOwnershipRequest>(newItem);
+                ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
+                ECB.AddComponent<BeltMovementState>(newItem);
+                ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
+                ECB.AddComponent<BeltMovementDecision>(newItem);
+                ECB.AddComponent<BuildingItemInputDecision>(newItem);
+                ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
+
+                // 생산 시설 내부 보관 아이템이므로 렌더링 비활성화
+                ECB.AddComponent<DisableRendering>(newItem);
+
+                ECB.AppendToBuffer(
+                    producerEntity,
+                    new ProductItemElement(newItem, result.ItemType, result.SlotIndex));
+            }
+
         }
 
         // Consume-on-Apply: 논리적 생산 결과는 같은 StateApply 프레임에서 모두 소비.
@@ -285,7 +244,6 @@ public partial struct SpawnItemApplyJob : IJobEntity
     [ReadOnly] public NativeList<DemolishBuildingRequest> DemolitionRequests;
     public bool HasPrefabDb;
     public Entity PrefabDbEntity;
-    public EntityArchetype FallbackItemArchetype;
 
     [ReadOnly]
     public BufferLookup<ItemPrefabElement> ItemPrefabBufferLookup;
@@ -342,79 +300,48 @@ public partial struct SpawnItemApplyJob : IJobEntity
                 ? new float3(request.Position.x, request.Position.y, 0f)
                 : float3.zero;
 
-            if (HasPrefabDb)
+            Entity prefabEntity = Entity.Null;
+            if (HasPrefabDb && PrefabDbEntity != Entity.Null && ItemPrefabBufferLookup.HasBuffer(PrefabDbEntity))
             {
-                Entity prefabEntity = Entity.Null;
-                if (PrefabDbEntity != Entity.Null && ItemPrefabBufferLookup.HasBuffer(PrefabDbEntity))
+                var buffer = ItemPrefabBufferLookup[PrefabDbEntity];
+                for (int i = 0; i < buffer.Length; i++)
                 {
-                    var buffer = ItemPrefabBufferLookup[PrefabDbEntity];
-                    for (int i = 0; i < buffer.Length; i++)
+                    if (buffer[i].Type == request.ItemType)
                     {
-                        if (buffer[i].Type == request.ItemType)
-                        {
-                            prefabEntity = buffer[i].Prefab;
-                            break;
-                        }
-                    }
-                }
-
-                if (prefabEntity == Entity.Null)
-                {
-                    // 프리팹 DB 환경에서 프리팹 미등록 시 Strict Fail: 스폰 중단하고 로깅 (Burst 호환 FixedString 사용)
-                    FixedString128Bytes msg = default;
-                    msg.Append((FixedString64Bytes)"[ItemLifecycleApplySystem] Missing prefab for item type '");
-                    msg.Append(request.ItemType.ToFixedString());
-                    msg.Append((FixedString64Bytes)"'. SpawnItemRequest rejected.");
-                    UnityEngine.Debug.LogError(msg);
-                }
-                else
-                {
-                    Entity newItem = ECB.Instantiate(prefabEntity);
-                    ECB.SetComponent(newItem, new ItemIdentity(request.ItemType));
-                    ECB.AddComponent(newItem, new GridPosition(request.Position));
-                    ECB.SetComponent(newItem, LocalTransform.FromPosition(spawnPos));
-                    ECB.AddComponent(newItem, ownership);
-
-                    ECB.AddComponent<DestroyItemRequest>(newItem);
-                    ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
-                    ECB.AddComponent<TransferOwnershipRequest>(newItem);
-                    ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
-                    ECB.AddComponent<BeltMovementState>(newItem);
-                    ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
-                    ECB.AddComponent<BeltMovementDecision>(newItem);
-                    ECB.AddComponent<BuildingItemInputDecision>(newItem);
-                    ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
-
-                    // 수납 아이템의 경우 렌더링 비활성화
-                    if (!isWorld)
-                    {
-                        ECB.AddComponent<DisableRendering>(newItem);
-                    }
-
-                    if (request.Destination == ItemSpawnDestination.Product)
-                    {
-                        ECB.AppendToBuffer(request.TargetOwner, new ProductItemElement(newItem, request.ItemType, request.TargetSlotIndex));
-                    }
-                    else if (request.Destination == ItemSpawnDestination.Storage)
-                    {
-                        ECB.AppendToBuffer(request.TargetOwner, new StoredItemElement(newItem, request.ItemType, request.TargetSlotIndex));
+                        prefabEntity = buffer[i].Prefab;
+                        break;
                     }
                 }
             }
+
+            if (prefabEntity == Entity.Null)
+            {
+                // 프리팹 DB 환경에서 프리팹 미등록 시 Strict Fail: 스폰 중단하고 로깅 (Burst 호환 FixedString 사용)
+                FixedString128Bytes msg = default;
+                msg.Append((FixedString64Bytes)"[ItemLifecycleApplySystem] Missing prefab for item type '");
+                msg.Append(request.ItemType.ToFixedString());
+                msg.Append((FixedString64Bytes)"'. SpawnItemRequest rejected.");
+                SimulationFailureUtility.Record(ref ECB, msg);
+            }
             else
             {
-                // 프리팹 DB가 없는 순수 시뮬레이션 환경 (테스트 등): Fallback 아키타입으로 안전 생성
-                Entity newItem = ECB.CreateEntity(FallbackItemArchetype);
+                Entity newItem = ECB.Instantiate(prefabEntity);
                 ECB.SetComponent(newItem, new ItemIdentity(request.ItemType));
-                ECB.SetComponent(newItem, new GridPosition(request.Position));
+                ECB.AddComponent(newItem, new GridPosition(request.Position));
                 ECB.SetComponent(newItem, LocalTransform.FromPosition(spawnPos));
-                ECB.SetComponent(newItem, ownership);
+                ECB.AddComponent(newItem, ownership);
 
+                ECB.AddComponent<DestroyItemRequest>(newItem);
                 ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
+                ECB.AddComponent<TransferOwnershipRequest>(newItem);
                 ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
+                ECB.AddComponent<BeltMovementState>(newItem);
                 ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
+                ECB.AddComponent<BeltMovementDecision>(newItem);
+                ECB.AddComponent<BuildingItemInputDecision>(newItem);
                 ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
 
+                // 수납 아이템의 경우 렌더링 비활성화
                 if (!isWorld)
                 {
                     ECB.AddComponent<DisableRendering>(newItem);
@@ -429,6 +356,7 @@ public partial struct SpawnItemApplyJob : IJobEntity
                     ECB.AppendToBuffer(request.TargetOwner, new StoredItemElement(newItem, request.ItemType, request.TargetSlotIndex));
                 }
             }
+
         }
 
         // Consume-on-Apply: 요청 엔티티 파괴

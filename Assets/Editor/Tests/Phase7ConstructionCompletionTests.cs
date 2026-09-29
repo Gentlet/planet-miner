@@ -16,6 +16,7 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
+        CreateGameplayPrefabDatabases();
         _lifecycleApplySystem = _world.GetOrCreateSystem<ConstructionLifecycleApplySystem>();
         _spatialSyncSystem = _world.GetOrCreateSystem<BuildingSpatialSyncSystem>();
         _ecbSystem = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
@@ -316,5 +317,64 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
 
         Assert.IsTrue(_entityManager.Exists(siteNone), "유효하지 않은 목표 타입은 완공 전환되지 않아야 함");
         Assert.IsTrue(_entityManager.Exists(siteLoop), "ConstructionSite로의 순환 전환은 차단되어야 함");
+    }
+
+    [TestCase(0, false)]
+    [TestCase(1, false)]
+    [TestCase(2, false)]
+    [TestCase(2, true)]
+    public void SpawnRejected_PreservesSiteAndMaterials_AndStopsNextTick(int databaseFailure, bool supplyLastMaterial)
+    {
+        Entity database = _entityManager.CreateEntityQuery(typeof(BuildingPrefabDatabase)).GetSingletonEntity();
+        if (databaseFailure == 0)
+        {
+            _entityManager.DestroyEntity(database);
+        }
+        else
+        {
+            var entries = _entityManager.GetBuffer<BuildingPrefabElement>(database);
+            entries.Clear();
+            if (databaseFailure == 2)
+            {
+                entries.Add(new BuildingPrefabElement(BuildingTypeEnum.Miner, Entity.Null, new int2(2, 2)));
+            }
+        }
+
+        Entity site = CreateSite(BuildingTypeEnum.Miner, new int2(4, 6));
+        Entity first = StoreMaterialItem(site, ItemTypeEnum.Iron);
+        Entity second = supplyLastMaterial ? CreateWorldItem(ItemTypeEnum.Iron) : StoreMaterialItem(site, ItemTypeEnum.Iron);
+        _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site).Add(
+            new ConstructionMaterialRequirementElement(ItemTypeEnum.Iron, 2, supplyLastMaterial ? 1 : 2));
+        if (supplyLastMaterial)
+        {
+            RequestSupply(site, second, ItemTypeEnum.Iron);
+        }
+
+        var group = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
+        var apply = _world.GetOrCreateSystemManaged<StateApplyGroup>();
+        apply.AddSystemToUpdateList(_lifecycleApplySystem);
+        apply.AddSystemToUpdateList(_ecbSystem);
+        apply.SortSystems();
+        group.AddSystemToUpdateList(apply);
+
+        UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Error,
+            new System.Text.RegularExpressions.Regex(".*Missing prefab for building type.*"));
+        group.Update();
+        group.Update(); // 오류 게시 후에는 다시 Spawn을 시도하지 않아야 한다.
+
+        Assert.IsTrue(_entityManager.Exists(site));
+        Assert.IsTrue(_entityManager.Exists(first));
+        Assert.IsTrue(_entityManager.Exists(second));
+        Assert.AreEqual(site, _entityManager.GetComponentData<ItemOwnership>(first).Owner);
+        Assert.AreEqual(site, _entityManager.GetComponentData<ItemOwnership>(second).Owner);
+        var stored = _entityManager.GetBuffer<StoredItemElement>(site);
+        Assert.AreEqual(2, stored.Length);
+        Assert.AreEqual(first, stored[0].ItemEntity);
+        Assert.AreEqual(second, stored[1].ItemEntity);
+        Assert.AreEqual(2, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)[0].DeliveredQuantity);
+        using var buildings = _entityManager.CreateEntityQuery(typeof(MinerState));
+        using var errors = _entityManager.CreateEntityQuery(typeof(SimulationFatalError));
+        Assert.AreEqual(0, buildings.CalculateEntityCount());
+        Assert.AreEqual(1, errors.CalculateEntityCount());
     }
 }

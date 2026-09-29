@@ -9,6 +9,13 @@ using Unity.Transforms;
 /// <summary>F-005: 실제 그룹 정렬과 두 ECB 경계에서 생성 대기/철거의 인계를 검증한다.</summary>
 public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
 {
+    [SetUp]
+    public override void SetUp()
+    {
+        base.SetUp();
+        CreateGameplayPrefabDatabases();
+    }
+
     private EndCommandEntityCommandBufferSystem _endCommand;
     private BlobAssetReference<RecipeRegistryBlob> _recipeBlob;
     private BlobAssetReference<ItemRegistryBlob> _itemBlob;
@@ -32,7 +39,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
     [TestCase(false, true)]
     [TestCase(true, true)]
     public void ApprovedDemolition_DropsPendingCreation_PreservesContentsRefundAndWorldSpawn(
-        bool createItemSystemFirst, bool usePrefabDb)
+        bool createItemSystemFirst, bool useCustomPrefabDb)
     {
         var pipeline = CreatePipeline(createItemSystemFirst);
         int2 position = new int2(7, 9);
@@ -46,7 +53,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
             new ProductItemElement(productItem, ItemTypeEnum.Copper_Ore, 0));
         AddProductionResults(building);
         AddRefundConfig(BuildingTypeEnum.Crafter, 2);
-        if (usePrefabDb)
+        if (useCustomPrefabDb)
         {
             AddItemPrefabDb();
         }
@@ -407,6 +414,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
 
     private void AddItemPrefabDb()
     {
+        TestPrefabDatabaseFactory.RemoveDatabase<ItemPrefabDatabase>(_entityManager);
         Entity database = _entityManager.CreateEntity(typeof(ItemPrefabDatabase));
         _entityManager.AddBuffer<ItemPrefabElement>(database);
         foreach (var type in new[] { ItemTypeEnum.Iron, ItemTypeEnum.Copper, ItemTypeEnum.Stone, ItemTypeEnum.Drone })

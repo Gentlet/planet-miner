@@ -23,6 +23,7 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
+        CreateGameplayPrefabDatabases();
         _elapsedTime = 0.0f;
 
         // ItemRegistry 싱글톤 초기화 (스택 상한 및 아이템 불변 Blob 설정 제공)

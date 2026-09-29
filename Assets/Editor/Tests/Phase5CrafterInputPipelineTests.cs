@@ -20,6 +20,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
+        CreateGameplayPrefabDatabases();
         _recipes = RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
         _items = ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
         _commandEcb = _world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
@@ -38,9 +39,9 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
     [TestCase(false, true)]
     [TestCase(true, false)]
     [TestCase(true, true)]
-    public void ActualCreation_InitializesEmptyInputAndDisabledDecisions(bool withPrefab, bool fromConstruction)
+    public void ActualCreation_InitializesEmptyInputAndDisabledDecisions(bool withCustomPrefab, bool fromConstruction)
     {
-        Entity crafter = SpawnCrafter(withPrefab, fromConstruction);
+        Entity crafter = SpawnCrafter(withCustomPrefab, fromConstruction);
 
         Assert.AreEqual(CrafterStatusEnum.NoRecipe, _entityManager.GetComponentData<CrafterState>(crafter).Status);
         Assert.AreEqual(0, _entityManager.GetComponentData<CrafterState>(crafter).SelectedRecipeId);
@@ -365,7 +366,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
     [TestCase(true, false)]
     [TestCase(true, true)]
     public void SortedGroups_ActualCreation_Transport_Production_RecipeChange_AndClear(
-        bool withPrefab, bool fromConstruction)
+        bool withCustomPrefab, bool fromConstruction)
     {
         var pipeline = Simulation.CreateCrafterPipeline();
         var validation = _world.GetExistingSystemManaged<WorldInvariantValidationSystem>();
@@ -379,7 +380,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
             Assert.AreEqual(0, validation.TotalViolationCount, "Every completed frame must preserve world invariants.");
         };
 
-        Entity source = CreateCrafterSource(withPrefab, fromConstruction);
+        Entity source = CreateCrafterSource(withCustomPrefab, fromConstruction);
         Entity feeder = Entities.CreateStorage(new int2(-1, 0), new int2(1, 1));
         Entity receiver = Entities.CreateStorage(new int2(4, 0), new int2(1, 1));
         Entity inputBelt = Entities.CreateBelt(int2.zero, DirectionEnum.Right);
@@ -481,9 +482,9 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
         return request;
     }
 
-    private Entity SpawnCrafter(bool withPrefab = false, bool fromConstruction = false)
+    private Entity SpawnCrafter(bool withCustomPrefab = false, bool fromConstruction = false)
     {
-        Entity source = CreateCrafterSource(withPrefab, fromConstruction);
+        Entity source = CreateCrafterSource(withCustomPrefab, fromConstruction);
         if (fromConstruction)
         {
             Run<ConstructionLifecycleApplySystem>();
@@ -499,9 +500,9 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
         return query.GetSingletonEntity();
     }
 
-    private Entity CreateCrafterSource(bool withPrefab, bool fromConstruction)
+    private Entity CreateCrafterSource(bool withCustomPrefab, bool fromConstruction)
     {
-        if (withPrefab)
+        if (withCustomPrefab)
         {
             // ECS 모의 prefab: 기존 상태를 스폰 시 올바르게 초기화하는지도 확인한다.
             Entity prefab = _entityManager.CreateEntity(typeof(Prefab), typeof(LocalTransform), typeof(CrafterState),
@@ -510,6 +511,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
             _entityManager.SetComponentData(prefab, new CrafterState(5));
             _entityManager.SetComponentData(prefab, new Storage(9));
             _entityManager.AddBuffer<BuildingInputSlotElement>(prefab).Add(new BuildingInputSlotElement(ItemTypeEnum.Coal));
+            TestPrefabDatabaseFactory.RemoveDatabase<BuildingPrefabDatabase>(_entityManager);
             Entity database = _entityManager.CreateEntity(typeof(BuildingPrefabDatabase));
             _entityManager.AddBuffer<BuildingPrefabElement>(database)
                 .Add(new BuildingPrefabElement(BuildingTypeEnum.Crafter, prefab, new int2(2, 2)));

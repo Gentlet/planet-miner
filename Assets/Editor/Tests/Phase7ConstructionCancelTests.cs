@@ -18,6 +18,7 @@ public class Phase7ConstructionCancelTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
+        CreateGameplayPrefabDatabases();
         _lifecycleApplySystem = _world.GetOrCreateSystem<ConstructionLifecycleApplySystem>();
         _spatialSyncSystem = _world.GetOrCreateSystem<BuildingSpatialSyncSystem>();
         _ecbSystem = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();

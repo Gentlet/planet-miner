@@ -14,7 +14,7 @@ using Unity.Transforms;
 ///   2단계 (Material)   : SupplyConstructionMaterialRequest 소비 -> 취소된 현장 거부, 자재 요구량 충족, 자재 소유권 이전
 ///   3단계 (Completion) : 완공 조건 검사 -> 취소된 현장 보류, 보관 자재 소비, 완공 건물 인스턴스화, 현장 파괴
 /// - 시스템 간 얽혀있던 [UpdateBefore]/[UpdateAfter] 어트리뷰트 지옥을 제거하고 단일 트랜잭션 수명주기 확립.
-/// - EndStateApplyEntityCommandBufferSystem을 통해 단일 ECB 트랜잭션으로 상태 및 구조적 변경 커밋.
+/// - EndStateApplyEntityCommandBufferSystem을 통해 ECB로 변경을 반영한다. 전체 rollback을 보장하지 않는다.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
 [UpdateBefore(typeof(BuildingLifecycleApplySystem))]
@@ -25,7 +25,6 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
     private EntityQuery _siteQuery;
     private EntityQuery _prefabDbQuery;
     private EntityQuery _buildingConfigQuery;
-    private EntityArchetype _fallbackBuildingArchetype;
 
     private ComponentLookup<ConstructionSite> _siteLookup;
     private BufferLookup<ConstructionMaterialRequirementElement> _reqBufferLookup;
@@ -59,15 +58,6 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
         _buildingConfigQuery = SystemAPI.QueryBuilder()
             .WithAll<BuildingConfig, BuildingConfigElement>()
             .Build();
-
-        _fallbackBuildingArchetype = state.EntityManager.CreateArchetype(
-            ComponentType.ReadWrite<BuildingType>(),
-            ComponentType.ReadWrite<BuildingFootprint>(),
-            ComponentType.ReadWrite<GridPosition>(),
-            ComponentType.ReadWrite<Direction>(),
-            ComponentType.ReadWrite<PlacementStamp>(),
-            ComponentType.ReadWrite<LocalTransform>()
-        );
 
         _siteLookup = state.GetComponentLookup<ConstructionSite>(false);
         _reqBufferLookup = state.GetBufferLookup<ConstructionMaterialRequirementElement>(false);
@@ -155,7 +145,6 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
                 PrefabDbEntity = prefabDbEntity,
                 HasConfig = hasConfig,
                 ConfigEntity = configEntity,
-                FallbackBuildingArchetype = _fallbackBuildingArchetype,
                 StoredLookup = _storedBufferLookup,
                 StampLookup = _stampLookup,
                 PrefabBufferLookup = _prefabBufferLookup,
@@ -371,7 +360,6 @@ public partial struct ConstructionCompletionApplyJob : IJobEntity
     public Entity PrefabDbEntity;
     public bool HasConfig;
     public Entity ConfigEntity;
-    public EntityArchetype FallbackBuildingArchetype;
 
     [ReadOnly]
     public BufferLookup<StoredItemElement> StoredLookup;
@@ -415,6 +403,34 @@ public partial struct ConstructionCompletionApplyJob : IJobEntity
             }
         }
 
+        // 5. 완공 건물 엔티티 인스턴스화 및 컴포넌트 초기화 (BuildingLifecycleUtility 활용)
+        PlacementStamp stamp = default;
+        if (StampLookup.HasComponent(siteEntity))
+        {
+            stamp = StampLookup[siteEntity];
+        }
+
+        Entity building = BuildingLifecycleUtility.SpawnBuilding(
+            ref ECB,
+            site.TargetBuildingType,
+            pos.Value,
+            dir.dir,
+            footprint.Size,
+            stamp,
+            HasPrefabDb,
+            PrefabDbEntity,
+            HasConfig,
+            ConfigEntity,
+            in PrefabBufferLookup,
+            in ConfigBufferLookup
+        );
+
+        if (building == Entity.Null)
+        {
+            // 정상 수령 결과는 유지하고 자재/현장을 보존한다.
+            return;
+        }
+
         // 4. 보관된 자재 소비 (StoredItemElement 엔티티 파괴)
         if (StoredLookup.HasBuffer(siteEntity))
         {
@@ -428,29 +444,6 @@ public partial struct ConstructionCompletionApplyJob : IJobEntity
                 }
             }
         }
-
-        // 5. 완공 건물 엔티티 인스턴스화 및 컴포넌트 초기화 (BuildingLifecycleUtility 활용)
-        PlacementStamp stamp = default;
-        if (StampLookup.HasComponent(siteEntity))
-        {
-            stamp = StampLookup[siteEntity];
-        }
-
-        BuildingLifecycleUtility.SpawnBuilding(
-            ref ECB,
-            site.TargetBuildingType,
-            pos.Value,
-            dir.dir,
-            footprint.Size,
-            stamp,
-            HasPrefabDb,
-            PrefabDbEntity,
-            HasConfig,
-            ConfigEntity,
-            FallbackBuildingArchetype,
-            in PrefabBufferLookup,
-            in ConfigBufferLookup
-        );
 
         // 6. 공사 현장 엔티티 파괴 (동일 ECB Playback 틱에 발생하므로 점유 공백 0 달성)
         ECB.DestroyEntity(siteEntity);

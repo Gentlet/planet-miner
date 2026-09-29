@@ -7,4 +7,28 @@ using Unity.Entities;
 [UpdateInGroup(typeof(SimulationSystemGroup))]
 public partial class GameSimulationGroup : ComponentSystemGroup
 {
+    private EntityQuery _readyQuery;
+    private EntityQuery _fatalErrorQuery;
+
+    protected override void OnCreate()
+    {
+        base.OnCreate();
+        _readyQuery = GetEntityQuery(ComponentType.ReadOnly<PrefabDatabaseReady>());
+        _fatalErrorQuery = GetEntityQuery(ComponentType.ReadOnly<SimulationFatalError>());
+    }
+
+    protected override void OnUpdate()
+    {
+        if (_readyQuery.IsEmptyIgnoreFilter)
+        {
+            return;
+        }
+
+        if (!_fatalErrorQuery.IsEmptyIgnoreFilter)
+        {
+            return;
+        }
+
+        base.OnUpdate();
+    }
 }

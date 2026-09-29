@@ -19,6 +19,7 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
+        CreateGameplayPrefabDatabases();
         _lifecycleSystem = _world.GetOrCreateSystem<BuildingLifecycleApplySystem>();
         _ecbSystem = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
     }
@@ -30,9 +31,9 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test01_SpawnBuilding_Belt_Fallback_InitializesAllComponents()
+    public void Test01_SpawnBuilding_Belt_Prefab_InitializesAllComponents()
     {
-        // 1. 순수 시뮬레이션 환경(프리팹 DB 없음): Belt 스폰 요청 발행
+        // 1. 명시적인 테스트 프리팹 DB 환경: Belt 스폰 요청 발행
         var reqEntity = _entityManager.CreateEntity();
         _entityManager.AddComponentData(reqEntity, new SpawnBuildingRequest(
             BuildingTypeEnum.Belt,
@@ -246,6 +247,8 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
         // 1. 베이킹된 목 프리팹 및 프리팹 DB 엔티티 준비
         var mockPrefab = _entityManager.CreateEntity(typeof(Prefab), typeof(LocalTransform));
 
+        TestPrefabDatabaseFactory.RemoveDatabase<BuildingPrefabDatabase>(_entityManager);
+
         var dbEntity = _entityManager.CreateEntity(typeof(BuildingPrefabDatabase));
         var dbBuffer = _entityManager.AddBuffer<BuildingPrefabElement>(dbEntity);
         dbBuffer.Add(new BuildingPrefabElement(BuildingTypeEnum.Miner, mockPrefab, new int2(2, 2)));
@@ -277,6 +280,7 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
     {
         // 1. 프리팹 DB 엔티티가 활성화되어 있으나 Miner 프리팹은 등록되지 않은 상태
         var mockBeltPrefab = _entityManager.CreateEntity(typeof(Prefab), typeof(LocalTransform));
+        TestPrefabDatabaseFactory.RemoveDatabase<BuildingPrefabDatabase>(_entityManager);
         var dbEntity = _entityManager.CreateEntity(typeof(BuildingPrefabDatabase));
         var dbBuffer = _entityManager.AddBuffer<BuildingPrefabElement>(dbEntity);
         dbBuffer.Add(new BuildingPrefabElement(BuildingTypeEnum.Belt, mockBeltPrefab, new int2(1, 1)));

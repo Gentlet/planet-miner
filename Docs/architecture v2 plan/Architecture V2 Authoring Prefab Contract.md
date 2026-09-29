@@ -15,8 +15,8 @@
    - 런타임 가변 상태(소유권 `ItemOwnership`, 공간 좌표 `GridPosition`, 이동 진행도 `BeltMovementState`, 1회성 Request 컴포넌트 등)는 Baker가 미리 부착하지 않으며, 실제 생성을 소유하는 런타임 시스템이 인스턴스화 직후 초기화한다.
 2. **도메인별 모듈화 (Domain-Separated Prefab Databases)**:
    - 모든 프리팹을 하나의 거대한 엔티티에 섞지 않고, 도메인별 독립 엔티티(`Building`, `Item`, `Resource`, `Drone`)로 베이킹하여 관심사를 분리하고 불필요한 컴포넌트 결합을 방지한다.
-3. **무중단 안전성 (Safe Fallback Policy)**:
-   - 특정 타입의 프리팹이 미등록/누락된 상태에서 스폰 요청이 발생해도 시뮬레이션 전체가 중단되거나 댕글링 포인터가 생기지 않도록, 순수 엔티티 아키타입(무렌더링 시뮬레이션 전용 엔티티)으로 안전하게 대체 생성한다.
+3. **시작 검증과 명시적 중단**:
+   - 필수 프리팹 DB 검증을 통과하기 전에는 게임 시뮬레이션을 실행하지 않는다. 프리팹 DB 부재 fallback은 사용하지 않는다. 현재 정책의 기준은 `AGENTS.md`의 베이킹·프리팹 규칙이다.
 
 ---
 
@@ -99,22 +99,12 @@ Unity Entities 1.0+의 하이브리드 트랜스폼 베이킹 정책에 따라, 
 
 ---
 
-## 5. 프리팹 누락 처리 및 안전 정책 (Strict Fail vs Test Fallback)
+## 5. 프리팹 누락 처리 및 시작 검증
 
-**정책 원칙 (Strict Fail Policy 확정)**:
-런타임 환경에서 프리팹 데이터베이스가 활성화되어 있는 경우, 특정 타입의 프리팹이 미등록/누락되었을 때 불완전한 상태의 엔티티 생성을 방지하고 상태 불변식을 엄격히 유지하기 위해 **Strict Fail(스폰 거부 및 Error 로깅)** 정책을 적용한다.
+현재 정책은 [AGENTS.md](../../AGENTS.md)의 베이킹·프리팹 규칙을 따른다. 2026-09-30 사용자 결정으로 DB 부재 시 테스트용 fallback을 포함한 대체 생성 경로를 제거했다.
 
-1. **프리팹 데이터베이스 조회 실패 처리 (Strict Fail)**:
-   - 런타임 시스템이 특정 `BuildingType` 또는 `ItemType`의 프리팹을 조회했을 때 해당 항목이 없거나 `Prefab == Entity.Null`인 경우:
-   - `UnityEngine.Debug.LogError`를 통해 누락 사실을 명확히 기록하고 스폰 요청을 안전하게 폐기/거부(Drop/Reject)한다.
-   - 불완전한 유령 엔티티를 생성하지 않음으로써 후속 시뮬레이션 시스템의 상태 불변식을 완벽히 보존한다.
-2. **순수 시뮬레이션 단위 테스트 환경 격리 (Test Fallback)**:
-   - 월드에 프리팹 데이터베이스(`ItemPrefabDatabase` 등) 자체가 구축되지 않은 순수 ECS 단위/시뮬레이션 테스트 환경에 한해서는, 테스트 시뮬레이션 연속성을 위해 **Fallback Archetype**으로 엔티티를 생성하여 격리 지원한다.
-3. **자원 도메인 정책**:
-   - 자원(`ResourceNode`)은 fallback 엔티티를 생성하지 않으며, 프리팹 DB 미준비 시 청크 전체가 대기 후 정상 프리팹으로 일괄 스폰된다.
-4. **후속 도메인별 구현 연결**:
-   - Task 1.7: Item 프리팹 베이킹 및 `ItemPrefabDatabaseAuthoring` (Strict Fail 적용)
-   - Task 4.8: Resource 프리팹 베이킹 및 `ResourcePrefabDatabaseAuthoring`
-   - Task 7.3.1: Building 프리팹 베이킹 및 `BuildingPrefabDatabaseAuthoring` (Strict Fail 적용, 11종 Footprint 규격 확정)
-   - Task 9.3.1: Drone 프리팹 베이킹 및 `DronePrefabDatabaseAuthoring`
+- 실제 시작은 요청된 SubScene 로딩과 필수 DB 검증 이후 허용한다. 실패는 오류로 중단하며 자동 복구하지 않는다.
+- 격리 테스트는 테스트용 프리팹 DB를 명시적으로 구성한다. 시작 관문 테스트와 개별 Phase 테스트의 입력 전제를 구분한다.
+- 공통 건물 Spawn의 Null 반환 시 완료 caller는 현장·도착 자재를 보존한다. non-Null은 ECB 기록 결과이며 재생 완료/전체 rollback 보장이 아니다.
+- 자원은 원래 fallback이 없었다. 기존 청크별 프리팹 준비 검사는 유지하고, 게임 시작 전 공통 관문에서도 활성 자원의 등록을 검증한다.
 
