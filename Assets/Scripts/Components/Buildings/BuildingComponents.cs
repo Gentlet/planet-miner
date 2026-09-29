@@ -154,7 +154,7 @@ public struct BuildingItemOutputDecision : IComponentData, IEnableableComponent
 
 /// <summary>
 /// 철거 불가 건물(예: MainFacility)임을 나타내는 태그 컴포넌트.
-/// 이 태그가 부착된 건물에 대한 DemolishBuildingRequest는 안전하게 거부(Strict Rejection)됨.
+/// 이 태그가 부착된 건물에 대한 DemolishBuildingRequest는 BuildingDemolitionCommandSystem이 거부한다.
 /// </summary>
 public struct IndestructibleBuilding : IComponentData
 {

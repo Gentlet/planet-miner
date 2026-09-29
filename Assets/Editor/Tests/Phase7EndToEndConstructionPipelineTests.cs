@@ -55,6 +55,7 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         // 4. Phase 1: CommandGroup
         commandGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingPlacementCommandSystem>());
         commandGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterRecipeCommandSystem>());
+        commandGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingDemolitionCommandSystem>());
         commandGroup.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>());
 
         // 5. Phase 2: DecisionGroup

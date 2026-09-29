@@ -114,18 +114,19 @@ public struct CancelConstructionRequest : IComponentData, IRequestComponent
 
 /// <summary>
 /// [1. 역할]         : 완공된 건물 철거 및 내용물/자재 반환 요청 (Command / Transient Request)
-/// [2. Producer]     : 플레이어/UI 철거 액션, 드론 철거 완료 (Phase 9), 테스트 러너
-/// [3. Consumer]     : BuildingLifecycleApplySystem (StateApplyGroup)
-/// [4. Create Phase]: CommandGroup / ExecutionGroup / StateApplyGroup
-/// [5. Consume Phase]: StateApplyGroup (Phase 5)
-/// [6. 수명주기]     : 단일 프레임 소비 (Consume-on-Apply). EndStateApplyEntityCommandBufferSystem에 의해 처리 및 요청 엔티티 파괴
-/// [7. 결과 정책]    : 유효한 건물일 경우 내용물 방출, 건설 재료 환급 스폰, 건물 엔티티 파괴. 파괴 불가/무효/기철거/공사현장 대상일 경우 Strict Rejection / Idempotent Drop (요청만 소비)
-/// [8. 안전망]       : 요청 처리 후 즉시 파괴되어 고아 요청 누수 방지
+/// [2. Producer]     : 플레이어/UI 철거 액션, 테스트 러너 (Command 검증 전에 요청을 실체화)
+/// [3. Consumer]     : BuildingDemolitionCommandSystem 검증 -> BuildingLifecycleApplySystem 소비 / ItemLifecycleApplySystem 조회
+/// [4. Create Phase]: BuildingDemolitionCommandSystem 실행 전. EndCommand 재생이나 그 이후에 새 요청을 생성하지 않는다.
+/// [5. Consume Phase]: 거부/중복 요청은 EndCommand, 유효 요청은 EndStateApply에서 삭제
+/// [6. 수명주기]     : Command 이후 남은 요청은 철거 확정 대상이다. StateApply까지 요청 대상과 철거 가능 조건을 유지한다.
+/// [7. 결과 정책]    : 내용물 방출, 건설 재료 환급, 건물 파괴. 완료 생산물 폐기 및 대상 Storage/Product Spawn 거부.
 /// </summary>
 public struct DemolishBuildingRequest : IComponentData, IRequestComponent
 {
     /// <summary>
     /// 철거할 대상 완공 건물 엔티티.
+    /// Command 종료 후에는 검증된 대상만 남으며, StateApply에서는 이 값을 변경하지 않는다.
+    /// ItemLifecycleApplySystem은 EndStateApply 재생 이전에 요청을 읽어 생성 여부를 결정한다.
     /// </summary>
     public Entity TargetBuilding;
 

@@ -10,6 +10,8 @@ using Unity.Entities;
 /// - Buffer가 비어 있으면 처리할 생산 결과가 없음을 의미.
 /// - Count를 통해 한 종류의 생산 결과가 여러 개 생성되는 경우를 표현 가능.
 /// - SlotIndex는 생산 건물 내부 출력 정책(예: 0=주 생산물, 1=부산물)에 사용.
+/// - 같은 틱 Command에서 생산 건물의 철거가 승인되면 결과를 생성 없이 폐기한다.
+///   선소비한 제작 재료나 광물은 보상하지 않는다.
 /// </summary>
 [InternalBufferCapacity(4)]
 public struct ProductResult : IBufferElementData

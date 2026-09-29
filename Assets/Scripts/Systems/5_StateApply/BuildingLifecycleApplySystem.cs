@@ -10,7 +10,7 @@ using Unity.Transforms;
 /// 
 /// [책임 및 파이프라인 순서]
 /// - StateApplyGroup(Phase 5)에서 실행:
-///   1단계 (Demolish) : DemolishBuildingRequest 소비 -> 파괴 불가 검증, 보관/생산 내용물 월드 방출, 건축 비용 자재 100% 환급 스폰, 벨트 위 아이템 정적 보존, 건물 파괴
+///   1단계 (Demolish) : Command 검증을 통과한 DemolishBuildingRequest 소비 -> 보관/생산 내용물 월드 방출, 건축 비용 자재 100% 환급 스폰, 벨트 위 아이템 정적 보존, 건물 파괴
 ///   2단계 (Spawn)    : SpawnBuildingRequest 소비 -> 프리팹 DB 인스턴스화 또는 Fallback 생성, 컴포넌트 초기화
 /// - 동일 프레임 [철거 -> 생성]이 대칭적으로 처리되며, 요청 엔티티는 단일 프레임 내에 소비(Consume-on-Apply).
 /// - EndStateApplyEntityCommandBufferSystem을 통해 단일 ECB 트랜잭션으로 상태 및 구조적 변경 커밋.
@@ -32,7 +32,6 @@ public partial struct BuildingLifecycleApplySystem : ISystem
 
     private ComponentLookup<BuildingType> _buildingTypeLookup;
     private ComponentLookup<GridPosition> _gridPosLookup;
-    private ComponentLookup<IndestructibleBuilding> _indestructibleLookup;
     private BufferLookup<StoredItemElement> _storedBufferLookup;
     private BufferLookup<ProductItemElement> _productBufferLookup;
     private BufferLookup<BuildingConstructionMaterialElement> _materialBufferLookup;
@@ -89,9 +88,8 @@ public partial struct BuildingLifecycleApplySystem : ISystem
             .WithAll<BuildingConfig, BuildingConfigElement>()
             .Build();
 
-        _buildingTypeLookup = state.GetComponentLookup<BuildingType>(false);
+        _buildingTypeLookup = state.GetComponentLookup<BuildingType>(true);
         _gridPosLookup = state.GetComponentLookup<GridPosition>(true);
-        _indestructibleLookup = state.GetComponentLookup<IndestructibleBuilding>(true);
         _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
         _productBufferLookup = state.GetBufferLookup<ProductItemElement>(true);
         _materialBufferLookup = state.GetBufferLookup<BuildingConstructionMaterialElement>(true);
@@ -119,7 +117,6 @@ public partial struct BuildingLifecycleApplySystem : ISystem
 
         _buildingTypeLookup.Update(ref state);
         _gridPosLookup.Update(ref state);
-        _indestructibleLookup.Update(ref state);
         _storedBufferLookup.Update(ref state);
         _productBufferLookup.Update(ref state);
         _materialBufferLookup.Update(ref state);
@@ -153,7 +150,6 @@ public partial struct BuildingLifecycleApplySystem : ISystem
                 FallbackItemArchetype = _fallbackItemArchetype,
                 BuildingTypeLookup = _buildingTypeLookup,
                 GridPosLookup = _gridPosLookup,
-                IndestructibleLookup = _indestructibleLookup,
                 StoredBufferLookup = _storedBufferLookup,
                 ProductBufferLookup = _productBufferLookup,
                 MaterialBufferLookup = _materialBufferLookup,
@@ -232,13 +228,11 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
     public Entity ItemPrefabDbEntity;
     public EntityArchetype FallbackItemArchetype;
 
+    [ReadOnly]
     public ComponentLookup<BuildingType> BuildingTypeLookup;
 
     [ReadOnly]
     public ComponentLookup<GridPosition> GridPosLookup;
-
-    [ReadOnly]
-    public ComponentLookup<IndestructibleBuilding> IndestructibleLookup;
 
     [ReadOnly]
     public BufferLookup<StoredItemElement> StoredBufferLookup;
@@ -256,36 +250,20 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
 
     public void Execute(Entity requestEntity, in DemolishBuildingRequest request)
     {
-        // 1. 대상 건물 엔티티 검증 (무효 엔티티, 기파괴)
-        if (request.TargetBuilding == Entity.Null || !BuildingTypeLookup.HasComponent(request.TargetBuilding))
-        {
-            // 대상이 없거나 이미 파괴된 경우 요청만 안전하게 소비 (Idempotent Drop)
-            ECB.DestroyEntity(requestEntity);
-            return;
-        }
-
-        var bType = BuildingTypeLookup[request.TargetBuilding];
-        var buildingType = bType.Type;
-
-        // 공사 현장 타입이거나 무효 타입은 철거 대상이 아님 (공사 현장은 CancelConstructionRequest로 처리)
-        // bType.Type == BuildingTypeEnum.None은 이미 동일 프레임 앞선 요청에 의해 철거 마킹되었음을 의미 (중복 철거 방지)
-        if (buildingType == BuildingTypeEnum.None || buildingType == BuildingTypeEnum.ConstructionSite)
+        // 정책 검증과 중복 제거는 Command에서 끝난다. 여기서는 대상 소실만 방어한다.
+        if (request.TargetBuilding == Entity.Null)
         {
             ECB.DestroyEntity(requestEntity);
             return;
         }
 
-        // 파괴 불가 건물 검증 (IndestructibleBuilding 태그 또는 MainFacility)
-        if (IndestructibleLookup.HasComponent(request.TargetBuilding) || buildingType == BuildingTypeEnum.MainFacility)
+        if (!BuildingTypeLookup.HasComponent(request.TargetBuilding))
         {
-            // 철거 거부 (Strict Rejection: 건물은 온전히 보존하고 요청 엔티티만 소비)
             ECB.DestroyEntity(requestEntity);
             return;
         }
 
-        // 2. 동일 프레임 중복 철거 즉시 차단: 메모리에 즉시 None 마킹!
-        bType.Type = BuildingTypeEnum.None;
-        BuildingTypeLookup[request.TargetBuilding] = bType;
+        var buildingType = BuildingTypeLookup[request.TargetBuilding].Type;
 
         // 3. 건물 좌표 확인
         int2 sitePos = int2.zero;
