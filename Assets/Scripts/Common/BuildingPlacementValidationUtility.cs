@@ -15,18 +15,6 @@ using Unity.Mathematics;
 public static class BuildingPlacementValidationUtility
 {
     /// <summary>
-    /// 건물 회전 방향에 따른 유효 점유 크기(가로, 세로)를 반환.
-    /// Left / Right (90도 회전)인 경우 가로와 세로가 스왑됨.
-    /// </summary>
-    public static int2 GetEffectiveSize(int2 footprintSize, DirectionEnum direction)
-    {
-        int2 normalized = math.max(footprintSize, new int2(1, 1));
-        return (direction == DirectionEnum.Left || direction == DirectionEnum.Right)
-            ? new int2(normalized.y, normalized.x)
-            : normalized;
-    }
-
-    /// <summary>
     /// 단일 건물 배치 요청에 대한 유효성을 검증.
     /// </summary>
     /// <param name="targetType">설치하려는 건물 타입</param>
@@ -57,7 +45,7 @@ public static class BuildingPlacementValidationUtility
             return new PlacementValidationResult(PlacementValidationCode.InvalidFootprint);
         }
 
-        int2 effectiveSize = GetEffectiveSize(footprintSize, direction);
+        int2 effectiveSize = BuildingFootprintUtility.GetEffectiveSize(footprintSize, direction);
 
         bool hasResource = false;
         bool hasGroundItems = false;
@@ -157,7 +145,7 @@ public static class BuildingPlacementValidationUtility
             }
 
             // 동일 묶음 내 앞선 후보와의 셀 선점 충돌 검사
-            int2 effectiveSize = GetEffectiveSize(candidate.FootprintSize, candidate.Direction);
+            int2 effectiveSize = BuildingFootprintUtility.GetEffectiveSize(candidate.FootprintSize, candidate.Direction);
             bool internallyConflict = false;
 
             for (int y = 0; y < effectiveSize.y && !internallyConflict; y++)
@@ -249,7 +237,7 @@ public static class BuildingPlacementValidationUtility
                 continue;
             }
 
-            int2 effectiveSize = GetEffectiveSize(candidate.FootprintSize, candidate.Direction);
+            int2 effectiveSize = BuildingFootprintUtility.GetEffectiveSize(candidate.FootprintSize, candidate.Direction);
             bool internallyConflict = false;
 
             for (int y = 0; y < effectiveSize.y && !internallyConflict; y++)
@@ -336,7 +324,7 @@ public static class BuildingPlacementValidationUtility
                 continue;
             }
 
-            int2 effectiveSize = GetEffectiveSize(candidate.FootprintSize, candidate.Direction);
+            int2 effectiveSize = BuildingFootprintUtility.GetEffectiveSize(candidate.FootprintSize, candidate.Direction);
             bool internallyConflict = false;
 
             for (int y = 0; y < effectiveSize.y && !internallyConflict; y++)

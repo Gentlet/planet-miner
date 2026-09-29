@@ -133,7 +133,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                     var siteEntity = ecb.CreateEntity();
                     ecb.AddComponent(siteEntity, new BuildingType(BuildingTypeEnum.ConstructionSite));
 
-                    int2 effectiveSize = BuildingPlacementValidationUtility.GetEffectiveSize(candidate.FootprintSize, candidate.Direction);
+                    int2 effectiveSize = BuildingFootprintUtility.GetEffectiveSize(candidate.FootprintSize, candidate.Direction);
                     ecb.AddComponent(siteEntity, new BuildingFootprint(effectiveSize));
                     ecb.AddComponent(siteEntity, new GridPosition(candidate.OriginPosition));
                     ecb.AddComponent(siteEntity, new Direction(candidate.Direction));
