@@ -27,6 +27,7 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
+        CreateGameplayPrefabDatabases();
         _elapsedTime = 0.0f;
 
         // 1. 아이템 및 레시피 레지스트리 초기화

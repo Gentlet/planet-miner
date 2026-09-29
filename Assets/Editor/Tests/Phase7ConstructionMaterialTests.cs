@@ -15,6 +15,7 @@ public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
+        CreateGameplayPrefabDatabases();
         _lifecycleApplySystem = _world.GetOrCreateSystem<ConstructionLifecycleApplySystem>();
         _ecbSystem = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
     }

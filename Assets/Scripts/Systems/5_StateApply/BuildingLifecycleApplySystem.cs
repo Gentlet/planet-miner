@@ -11,17 +11,15 @@ using Unity.Transforms;
 /// [책임 및 파이프라인 순서]
 /// - StateApplyGroup(Phase 5)에서 실행:
 ///   1단계 (Demolish) : Command 검증을 통과한 DemolishBuildingRequest 소비 -> 보관/생산 내용물 월드 방출, 건축 비용 자재 100% 환급 스폰, 벨트 위 아이템 정적 보존, 건물 파괴
-///   2단계 (Spawn)    : SpawnBuildingRequest 소비 -> 프리팹 DB 인스턴스화 또는 Fallback 생성, 컴포넌트 초기화
+///   2단계 (Spawn)    : SpawnBuildingRequest 소비 -> 프리팹 DB 인스턴스화, 컴포넌트 초기화
 /// - 동일 프레임 [철거 -> 생성]이 대칭적으로 처리되며, 요청 엔티티는 단일 프레임 내에 소비(Consume-on-Apply).
-/// - EndStateApplyEntityCommandBufferSystem을 통해 단일 ECB 트랜잭션으로 상태 및 구조적 변경 커밋.
+/// - EndStateApplyEntityCommandBufferSystem을 통해 ECB로 변경을 반영한다. 전체 rollback을 보장하지 않는다.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
 [UpdateAfter(typeof(RoutingApplySystem))]
 [UpdateAfter(typeof(BuildingItemStorageApplySystem))]
 public partial struct BuildingLifecycleApplySystem : ISystem
 {
-    private EntityArchetype _fallbackBuildingArchetype;
-    private EntityArchetype _fallbackItemArchetype;
 
     private EntityQuery _demolishQuery;
     private EntityQuery _spawnQuery;
@@ -41,28 +39,6 @@ public partial struct BuildingLifecycleApplySystem : ISystem
 
     public void OnCreate(ref SystemState state)
     {
-        // 1. 프리팹 DB가 없는 순수 시뮬레이션 환경용 Fallback 건물 아키타입
-        _fallbackBuildingArchetype = state.EntityManager.CreateArchetype(
-            ComponentType.ReadWrite<BuildingType>(),
-            ComponentType.ReadWrite<BuildingFootprint>(),
-            ComponentType.ReadWrite<GridPosition>(),
-            ComponentType.ReadWrite<Direction>(),
-            ComponentType.ReadWrite<PlacementStamp>(),
-            ComponentType.ReadWrite<LocalTransform>()
-        );
-
-        // 2. 건설 자재 환급용 Fallback 아이템 아키타입
-        _fallbackItemArchetype = state.EntityManager.CreateArchetype(
-            ComponentType.ReadWrite<ItemIdentity>(),
-            ComponentType.ReadWrite<ItemOwnership>(),
-            ComponentType.ReadWrite<GridPosition>(),
-            ComponentType.ReadWrite<LocalTransform>(),
-            ComponentType.ReadWrite<DestroyItemRequest>(),
-            ComponentType.ReadWrite<TransferOwnershipRequest>(),
-            ComponentType.ReadWrite<BeltMovementState>(),
-            ComponentType.ReadWrite<BeltMovementDecision>(),
-            ComponentType.ReadWrite<BuildingItemInputDecision>()
-        );
 
         _demolishQuery = SystemAPI.QueryBuilder()
             .WithAll<DemolishBuildingRequest>()
@@ -147,7 +123,6 @@ public partial struct BuildingLifecycleApplySystem : ISystem
                 ConfigEntity = configEntity,
                 HasItemPrefabDb = hasItemPrefabDb,
                 ItemPrefabDbEntity = itemPrefabDbEntity,
-                FallbackItemArchetype = _fallbackItemArchetype,
                 BuildingTypeLookup = _buildingTypeLookup,
                 GridPosLookup = _gridPosLookup,
                 StoredBufferLookup = _storedBufferLookup,
@@ -178,7 +153,6 @@ public partial struct BuildingLifecycleApplySystem : ISystem
                 PrefabDbEntity = buildingPrefabDbEntity,
                 HasConfig = hasConfig,
                 ConfigEntity = configEntity,
-                FallbackBuildingArchetype = _fallbackBuildingArchetype,
                 PrefabBufferLookup = _buildingPrefabBufferLookup,
                 ConfigBufferLookup = _configBufferLookup
             };
@@ -226,7 +200,6 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
     public Entity ConfigEntity;
     public bool HasItemPrefabDb;
     public Entity ItemPrefabDbEntity;
-    public EntityArchetype FallbackItemArchetype;
 
     [ReadOnly]
     public ComponentLookup<BuildingType> BuildingTypeLookup;
@@ -324,33 +297,27 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
                     ItemTypeEnum itemType = materialDb[i].ItemType;
                     int quantity = materialDb[i].Quantity;
 
+                    Entity prefabEntity = Entity.Null;
                     if (HasItemPrefabDb && ItemPrefabDbEntity != Entity.Null && ItemPrefabBufferLookup.HasBuffer(ItemPrefabDbEntity))
                     {
-                        if (!PrefabLookupUtility.TryGetItemPrefab(ItemPrefabBufferLookup[ItemPrefabDbEntity], itemType, out Entity prefabEntity) ||
-                            prefabEntity == Entity.Null)
-                        {
-                            // Strict Fail Policy: 프리팹 DB 활성화 환경에서 프리팹 누락 시 스폰 거부 및 에러 로깅
-                            FixedString128Bytes msg = default;
-                            msg.Append((FixedString128Bytes)"[BuildingLifecycleApplySystem] Missing prefab for refund item type '");
-                            msg.Append(itemType.ToFixedString());
-                            msg.Append((FixedString128Bytes)"'. Refund spawning skipped.");
-                            UnityEngine.Debug.LogError(msg);
-                            continue;
-                        }
-
-                        for (int q = 0; q < quantity; q++)
-                        {
-                            SpawnRefundPrefabItem(prefabEntity, itemType, sitePos, worldPos);
-                        }
+                        PrefabLookupUtility.TryGetItemPrefab(ItemPrefabBufferLookup[ItemPrefabDbEntity], itemType, out prefabEntity);
                     }
-                    else
+                    if (prefabEntity == Entity.Null)
                     {
-                        // Fallback 시뮬레이션 환경 (순수 단위 테스트)
-                        for (int q = 0; q < quantity; q++)
-                        {
-                            SpawnRefundFallbackItem(itemType, sitePos, worldPos);
-                        }
+                        // Strict Fail Policy: 프리팹 DB 활성화 환경에서 프리팹 누락 시 스폰 거부 및 에러 로깅
+                        FixedString128Bytes msg = default;
+                        msg.Append((FixedString128Bytes)"[BuildingLifecycleApplySystem] Missing prefab for refund item type '");
+                        msg.Append(itemType.ToFixedString());
+                        msg.Append((FixedString128Bytes)"'. Refund spawning skipped.");
+                        SimulationFailureUtility.Record(ref ECB, msg);
+                        continue;
                     }
+
+                    for (int q = 0; q < quantity; q++)
+                    {
+                        SpawnRefundPrefabItem(prefabEntity, itemType, sitePos, worldPos);
+                    }
+
                 }
             }
         }
@@ -381,18 +348,6 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
         ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
     }
 
-    private void SpawnRefundFallbackItem(ItemTypeEnum itemType, int2 gridPos, float3 worldPos)
-    {
-        Entity fallbackItem = ECB.CreateEntity(FallbackItemArchetype);
-        ECB.SetComponent(fallbackItem, new ItemIdentity(itemType));
-        ECB.SetComponent(fallbackItem, ItemOwnership.WorldItem);
-        ECB.SetComponent(fallbackItem, new GridPosition(gridPos));
-        ECB.SetComponent(fallbackItem, LocalTransform.FromPosition(worldPos));
-        ECB.SetComponentEnabled<DestroyItemRequest>(fallbackItem, false);
-        ECB.SetComponentEnabled<TransferOwnershipRequest>(fallbackItem, false);
-        ECB.SetComponentEnabled<BeltMovementState>(fallbackItem, false);
-        ECB.SetComponentEnabled<BuildingItemInputDecision>(fallbackItem, false);
-    }
 }
 
 /// <summary>
@@ -406,7 +361,6 @@ public partial struct SpawnBuildingApplyJob : IJobEntity
     public Entity PrefabDbEntity;
     public bool HasConfig;
     public Entity ConfigEntity;
-    public EntityArchetype FallbackBuildingArchetype;
 
     [ReadOnly]
     public BufferLookup<BuildingPrefabElement> PrefabBufferLookup;
@@ -427,7 +381,6 @@ public partial struct SpawnBuildingApplyJob : IJobEntity
             PrefabDbEntity,
             HasConfig,
             ConfigEntity,
-            FallbackBuildingArchetype,
             in PrefabBufferLookup,
             in ConfigBufferLookup
         );

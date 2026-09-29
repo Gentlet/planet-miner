@@ -4,6 +4,8 @@
 
 ## 실행 경계
 
+프리팹 시작 관문과 실패 정책은 [AGENTS.md](../../../AGENTS.md)의 베이킹·프리팹 규칙을 따른다. `PrefabDatabaseInitializationSystem`이 준비를 게시하기 전이나 `SimulationFatalError`가 기록된 뒤에는 `GameSimulationGroup`을 실행하지 않는다. 런타임 프리팹 fallback은 제거되었고 테스트는 명시적인 DB를 제공한다.
+
 `GameSimulationGroup`은 Unity `SimulationSystemGroup`에 속한다. 그룹 속성으로 명시된 순서는 다음과 같다.
 
 ```text
@@ -59,7 +61,7 @@ SimulationSystemGroup
 - 레시피 변경 Command는 `CrafterDecision`/`CrafterStateDecision`의 값·활성 상태를 수정하거나 두 컴포넌트를 입력 구성 검사 조건으로 요구하지 않는다. 뒤의 `CrafterDecisionSystem`이 변경된 상태를 기준으로 프레임 결정을 작성한다. 생성 시 컴포넌트 구성·초기화와 런타임 결정 작성의 책임을 구분한다.
 - `CrafterRecipeCommandSystem`은 계산을 먼저 검증한 뒤 슬롯 수·품목 배정·필터를 함께 갱신한다. 레시피/아이템 설정 미게시 시 선택 요청을 유지하고, 잘못된 레시피/계산 실패는 기존 상태를 보존한 채 오류와 함께 요청을 소비한다. 레시피 해제는 설정 없이도 0슬롯/빈 필터로 처리한다. 잔여 입력은 원래 슬롯 구분을 유지하여 기존 출력 슬롯 뒤로 옮기고, 배출 완료 전 입고/제작 대기를 유지한다.
 - 입고 Decision은 0슬롯을 거부하고, Reservation은 입력 슬롯 버퍼가 있는 건물에 해당 품목 슬롯만 배정한다. 같은 프레임의 예약 수량과 기존 보관량을 합산해 MaxStack을 적용한다. 버퍼가 없는 일반 창고의 기존 예약 규칙은 유지한다. 불변식 검사는 입력 슬롯 길이·보관 품목 대응을 확인하며, 미선택/무재료 Crafter의 정상적인 빈 입력 구성만 0슬롯으로 허용한다.
-- 회귀 테스트는 `Phase5CrafterInputPipelineTests`에 있다. 개별 시스템 검증 15개에 더해 실제 정렬된 제작·물류 6단계 그룹을 사용하는 통합 4개가 있다. 직접 생성/공사 완료 × ECS 테스트 프리팹/fallback의 네 경로에서 실제 아이템 요청→공급 창고→벨트→제작기 입고→선소비→생산→벨트→목적지 창고까지 실행한다. 레시피 미선택 입고 차단, 변경 시 잔여물 배출, 해제도 검증하고, 추가 수동 ECB 재생 없이 매 프레임 불변식 위반 0건을 확인한다.
+- 회귀 테스트는 `Phase5CrafterInputPipelineTests`에 있다. 개별 시스템 검증 15개에 더해 실제 정렬된 제작·물류 6단계 그룹을 사용하는 통합 4개가 있다. 직접 생성/공사 완료 × 전체 테스트 DB/선택 타입 테스트 DB의 네 경로에서 실제 아이템 요청→공급 창고→벨트→제작기 입고→선소비→생산→벨트→목적지 창고까지 실행한다. 레시피 미선택 입고 차단, 변경 시 잔여물 배출, 해제도 검증하고, 추가 수동 ECB 재생 없이 매 프레임 불변식 위반 0건을 확인한다.
 - 3단계 결과: Unity 6000.4.11f1 재컴파일 `completed`, 오류 0, 런타임/테스트 어셈블리 최신성 확인. 입력 연결 EditMode 19/19 통과(실패/생략/Inconclusive 0). 로그는 `Logs/Codex/F037-stage3-integration-verification.json`, 상세 기록은 [F-037 검증 기록](../V2%20Quality%20Evaluation%20Plan/Results/F037-Verification.md). 실제 SubScene baked prefab, Play Mode, 전체 게임 시스템, 전체 EditMode는 실행하지 않았다. 기존 `RecipeBlob.TryFindIngredient` 및 제작 재료 집계(F-014)는 변경하지 않았다.
 - 2단계 검증: Unity 재컴파일 `completed`, 오류 0·어셈블리 최신성 확인. 관련 EditMode 59개 사례가 각 최종 실행에서 통과했다(새 입력 연결 15, 기존 제작 8, 레시피 변경 2, 건물 생성 10, 공사 완료 8, 저장 소유권/결정/불변식 15, 기존 물류 통합 1). 최초 실행의 테스트 준비 오류는 설정 기반 MaxStack, 공간 인덱스 초기화, 실제 아이템 생성 계약에 맞춰 수정했다. 마지막 입력 연결 결과는 `Logs/Codex/F037-stage2-input-verification.json`; 이전 실패/중간 결과는 `Logs/Codex/F037-stage2-verification.json`과 구분한다. 전체 EditMode 및 Play Mode는 실행하지 않았다.
 

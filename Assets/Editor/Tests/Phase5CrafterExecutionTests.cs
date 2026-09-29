@@ -24,6 +24,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
+        CreateGameplayPrefabDatabases();
 
         // 1. 레시피 레지스트리 전역 싱글톤 초기화
         _recipeBlob = RecipeInitSystem.InitializeRecipeRegistry(_entityManager);

@@ -24,6 +24,7 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
+        CreateGameplayPrefabDatabases();
         _demolitionCommandSystem = _world.GetOrCreateSystem<BuildingDemolitionCommandSystem>();
         _endCommand = _world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
         _lifecycleApplySystem = _world.GetOrCreateSystem<BuildingLifecycleApplySystem>();
@@ -330,6 +331,8 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         var mockPrefab = _entityManager.CreateEntity(typeof(Prefab), typeof(ItemIdentity), typeof(LocalTransform));
         _entityManager.SetComponentData(mockPrefab, new ItemIdentity(ItemTypeEnum.Iron));
 
+        TestPrefabDatabaseFactory.RemoveDatabase<ItemPrefabDatabase>(_entityManager);
+
         var dbEntity = _entityManager.CreateEntity(typeof(ItemPrefabDatabase));
         var prefabBuffer = _entityManager.AddBuffer<ItemPrefabElement>(dbEntity);
         prefabBuffer.Add(new ItemPrefabElement(ItemTypeEnum.Iron, mockPrefab));
@@ -364,8 +367,9 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         query.Dispose();
     }
 
-    [Test]
-    public void Test10_DemolishBuilding_WithPrefabDb_MissingPrefab_StrictFailPolicy()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Test10_DemolishBuilding_WithPrefabDb_MissingPrefab_StrictFailPolicy(bool missingDatabase)
     {
         // 1. 프리팹 DB는 등록되었으나 Iron_Ore만 있고 Iron은 누락된 상태
         LogAssert.Expect(LogType.Error, new Regex(".*Missing prefab for refund item type.*"));
@@ -373,9 +377,14 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         var mockPrefab = _entityManager.CreateEntity(typeof(Prefab), typeof(ItemIdentity), typeof(LocalTransform));
         _entityManager.SetComponentData(mockPrefab, new ItemIdentity(ItemTypeEnum.Iron_Ore));
 
-        var dbEntity = _entityManager.CreateEntity(typeof(ItemPrefabDatabase));
-        var prefabBuffer = _entityManager.AddBuffer<ItemPrefabElement>(dbEntity);
-        prefabBuffer.Add(new ItemPrefabElement(ItemTypeEnum.Iron_Ore, mockPrefab));
+        TestPrefabDatabaseFactory.RemoveDatabase<ItemPrefabDatabase>(_entityManager);
+
+        if (!missingDatabase)
+        {
+            var dbEntity = _entityManager.CreateEntity(typeof(ItemPrefabDatabase));
+            var prefabBuffer = _entityManager.AddBuffer<ItemPrefabElement>(dbEntity);
+            prefabBuffer.Add(new ItemPrefabElement(ItemTypeEnum.Iron_Ore, mockPrefab));
+        }
 
         // 2. Iron(누락된 프리팹)을 요구하는 건물 생성
         int2 pos = new int2(7, 7);

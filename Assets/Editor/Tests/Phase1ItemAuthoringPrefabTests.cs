@@ -185,14 +185,18 @@ public class Phase1ItemAuthoringPrefabTests : EcsWorldTestFixture
         Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item), "요청은 소비되어 비활성화되어야 함");
     }
 
-    [Test]
-    public void Test06_SpawnItem_MissingPrefab_StrictFail_RejectsSpawning()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Test06_SpawnItem_MissingPrefab_StrictFail_RejectsSpawning(bool missingDatabase)
     {
         LogAssert.Expect(LogType.Error, new Regex(".*Missing prefab for item type.*"));
 
         // 프리팹 DB 버퍼에 Stone이 등록되지 않은 상태
-        var dbEntity = _entityManager.CreateEntity(typeof(ItemPrefabDatabase));
-        _entityManager.AddBuffer<ItemPrefabElement>(dbEntity);
+        if (!missingDatabase)
+        {
+            var dbEntity = _entityManager.CreateEntity(typeof(ItemPrefabDatabase));
+            _entityManager.AddBuffer<ItemPrefabElement>(dbEntity);
+        }
 
         var reqEntity = _entityManager.CreateEntity(typeof(SpawnItemRequest));
         _entityManager.SetComponentData(reqEntity, new SpawnItemRequest
@@ -212,5 +216,29 @@ public class Phase1ItemAuthoringPrefabTests : EcsWorldTestFixture
 
         // 요청 엔티티는 Consume-on-Apply로 정상 파괴됨
         Assert.IsFalse(_entityManager.Exists(reqEntity), "스폰 요청 엔티티는 소비되어 파괴되어야 함");
+        using var errors = _entityManager.CreateEntityQuery(typeof(SimulationFatalError));
+        Assert.AreEqual(1, errors.CalculateEntityCount());
+    }
+
+    [Test]
+    public void ResourcesItemPrefabs_CoverEveryItemType_WithMatchingAuthoring()
+    {
+        var prefabs = Resources.LoadAll<GameObject>("Prefabs/Item");
+        var registered = new System.Collections.Generic.HashSet<ItemTypeEnum>();
+        foreach (var prefab in prefabs)
+        {
+            var authoring = prefab.GetComponent<ItemAuthoring>();
+            Assert.IsNotNull(authoring, prefab.name);
+            Assert.AreNotEqual(ItemTypeEnum.None, authoring.Type, prefab.name);
+            Assert.IsTrue(registered.Add(authoring.Type), "Duplicate item authoring: " + prefab.name);
+        }
+        foreach (ItemTypeEnum type in System.Enum.GetValues(typeof(ItemTypeEnum)))
+        {
+            if (type == ItemTypeEnum.None)
+            {
+                continue;
+            }
+            Assert.IsTrue(registered.Contains(type), "Missing item prefab: " + type);
+        }
     }
 }

@@ -8,7 +8,7 @@ using Unity.Transforms;
 /// 
 /// [책임]
 /// - BuildingLifecycleApplySystem(SpawnBuildingRequest 소비) 및 ConstructionLifecycleApplySystem(현장 완공 전환)에서 공유.
-/// - 프리팹 DB 인스턴스화 또는 Fallback 아키타입 생성을 일관되게 수행.
+/// - 등록된 프리팹만 인스턴스화한다. DB/항목 누락은 Null 반환 및 시뮬레이션 중단.
 /// - 공통 컴포넌트(BuildingType, Footprint, GridPosition, Direction, Stamp, LocalTransform) 및 타입별 필수 컴포넌트 원자적 주입.
 /// </summary>
 public static class BuildingLifecycleUtility
@@ -24,7 +24,6 @@ public static class BuildingLifecycleUtility
         Entity prefabDbEntity,
         bool hasConfig,
         Entity configEntity,
-        EntityArchetype fallbackArchetype,
         in BufferLookup<BuildingPrefabElement> prefabBufferLookup,
         in BufferLookup<BuildingConfigElement> configBufferLookup)
     {
@@ -62,51 +61,35 @@ public static class BuildingLifecycleUtility
 
         Entity newBuilding;
 
-        if (hasPrefabDb)
+        Entity prefabEntity = Entity.Null;
+        int2 dbFootprint = int2.zero;
+
+        if (hasPrefabDb && prefabDbEntity != Entity.Null && prefabBufferLookup.HasBuffer(prefabDbEntity))
         {
-            Entity prefabEntity = Entity.Null;
-            int2 dbFootprint = int2.zero;
-
-            if (prefabDbEntity != Entity.Null && prefabBufferLookup.HasBuffer(prefabDbEntity))
-            {
-                var buffer = prefabBufferLookup[prefabDbEntity];
-                PrefabLookupUtility.TryGetBuildingPrefab(buffer, targetType, out prefabEntity, out dbFootprint);
-            }
-
-            if (prefabEntity == Entity.Null)
-            {
-                FixedString128Bytes msg = default;
-                msg.Append((FixedString128Bytes)"[BuildingLifecycleUtility] Missing prefab for building type '");
-                msg.Append(targetType.ToFixedString());
-                msg.Append((FixedString128Bytes)"'. Spawn rejected.");
-                UnityEngine.Debug.LogError(msg);
-                return Entity.Null;
-            }
-
-            newBuilding = ecb.Instantiate(prefabEntity);
-
-            ecb.AddComponent(newBuilding, new BuildingType(targetType));
-            ecb.AddComponent(newBuilding, new BuildingFootprint(effectiveSize));
-            ecb.AddComponent(newBuilding, new GridPosition(position));
-            ecb.AddComponent(newBuilding, new Direction(direction));
-            ecb.AddComponent(newBuilding, stamp);
-            ecb.SetComponent(newBuilding, LocalTransform.FromPosition(spawnPosition));
-
-            AttachTypeSpecificComponents(ref ecb, newBuilding, targetType, direction, speed, storageCapacity);
+            var buffer = prefabBufferLookup[prefabDbEntity];
+            PrefabLookupUtility.TryGetBuildingPrefab(buffer, targetType, out prefabEntity, out dbFootprint);
         }
-        else
+
+        if (prefabEntity == Entity.Null)
         {
-            newBuilding = ecb.CreateEntity(fallbackArchetype);
-
-            ecb.SetComponent(newBuilding, new BuildingType(targetType));
-            ecb.SetComponent(newBuilding, new BuildingFootprint(effectiveSize));
-            ecb.SetComponent(newBuilding, new GridPosition(position));
-            ecb.SetComponent(newBuilding, new Direction(direction));
-            ecb.SetComponent(newBuilding, stamp);
-            ecb.SetComponent(newBuilding, LocalTransform.FromPosition(spawnPosition));
-
-            AttachTypeSpecificComponents(ref ecb, newBuilding, targetType, direction, speed, storageCapacity);
+            FixedString128Bytes msg = default;
+            msg.Append((FixedString128Bytes)"[BuildingLifecycleUtility] Missing prefab for building type '");
+            msg.Append(targetType.ToFixedString());
+            msg.Append((FixedString128Bytes)"'. Spawn rejected.");
+            SimulationFailureUtility.Record(ref ecb, msg);
+            return Entity.Null;
         }
+
+        newBuilding = ecb.Instantiate(prefabEntity);
+
+        ecb.AddComponent(newBuilding, new BuildingType(targetType));
+        ecb.AddComponent(newBuilding, new BuildingFootprint(effectiveSize));
+        ecb.AddComponent(newBuilding, new GridPosition(position));
+        ecb.AddComponent(newBuilding, new Direction(direction));
+        ecb.AddComponent(newBuilding, stamp);
+        ecb.SetComponent(newBuilding, LocalTransform.FromPosition(spawnPosition));
+
+        AttachTypeSpecificComponents(ref ecb, newBuilding, targetType, direction, speed, storageCapacity);
 
         return newBuilding;
     }

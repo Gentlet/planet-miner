@@ -26,6 +26,7 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
+        CreateGameplayPrefabDatabases();
 
         _resourceSpatialSyncHandle = _world.GetOrCreateSystem(typeof(ResourceSpatialSyncSystem));
         _beltSpatialSyncHandle = _world.GetOrCreateSystem(typeof(BeltSpatialSyncSystem));

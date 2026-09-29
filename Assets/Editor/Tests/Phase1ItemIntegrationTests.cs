@@ -15,6 +15,7 @@ public class Phase1ItemIntegrationTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
+        CreateGameplayPrefabDatabases();
 
         _lifecycleHandle = _world.GetOrCreateSystem(typeof(ItemLifecycleApplySystem));
         _ownershipHandle = _world.GetOrCreateSystem(typeof(ItemOwnershipApplySystem));

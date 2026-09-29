@@ -13,6 +13,7 @@
 | `Assets/Scripts/Common/BuildingFootprintUtility.cs` | 점유 크기의 최소 1칸 정규화와 방향 회전을 계산하며 BuildingFootprint 확장 메서드도 제공한다. |
 | `Assets/Scripts/Common/BuildingTypeExtensions.cs` | 건물 종류의 Burst 호환 FixedString 변환을 제공한다. |
 | `Assets/Scripts/Common/ItemTypeExtensions.cs` | 아이템 종류의 Burst 호환 FixedString 변환을 제공한다. |
+| `Assets/Scripts/Common/SimulationFailureUtility.cs` | Spawn 오류를 로그와 `SimulationFatalError`로 ECB에 게시한다. |
 | `Assets/Scripts/Common/PrefabLookupUtility.cs` | 건물·아이템·자원 프리팹 버퍼 조회를 제공하며 누락/Null 프리팹 실패 정책을 유지한다. |
 | `Assets/Scripts/Common/ResourceGenerationConfigLookupUtility.cs` | 품목별 자원 생성 설정 버퍼를 조회한다. |
 | `Assets/Scripts/Components/Belts/BeltComponents.cs` | `BeltComponent`, `BeltMovementState` 정의. |
@@ -34,6 +35,7 @@
 | `Assets/Scripts/Components/Items/ItemConfigComponents.cs` | `ItemDataBlob`, `ItemRegistryBlob`, `ItemRegistry` 정의. |
 | `Assets/Scripts/Components/Items/ItemRequests.cs` | `ItemSpawnDestination`, `SpawnItemRequest`, `DestroyItemRequest`, `TransferOwnershipRequest` 정의. |
 | `Assets/Scripts/Components/Items/ItemSpatialIndex.cs` | `ItemSpatialIndex`, `ItemSpatialIndexFence` 정의. |
+| `Assets/Scripts/Components/Prefabs/PrefabDatabaseReadiness.cs` | `PrefabDatabaseReady`, `SimulationFatalError` 정의. |
 | `Assets/Scripts/Components/Prefabs/PrefabDatabaseComponents.cs` | `BuildingPrefabDatabase`, `BuildingPrefabElement`, `ItemPrefabDatabase`, `ItemPrefabElement`, `ResourcePrefabDatabase`, `ResourcePrefabElement`, `DronePrefabDatabase`, `DronePrefab` 정의. |
 | `Assets/Scripts/Components/Production/Crafting/CrafterComponents.cs` | `CrafterStatusEnum`, `CrafterState` 정의. |
 | `Assets/Scripts/Components/Production/Crafting/CrafterDecisions.cs` | `CrafterDecision`, `CrafterStateDecision` 정의. |
@@ -62,7 +64,7 @@
 | `Assets/Scripts/Phases/CommandGroup.cs` | 명령 처리 그룹을 선언한다. |
 | `Assets/Scripts/Phases/DecisionGroup.cs` | Command 이후 판단 그룹을 선언한다. |
 | `Assets/Scripts/Phases/ExecutionGroup.cs` | Reservation 이후 실행 그룹을 선언한다. |
-| `Assets/Scripts/Phases/GameSimulationGroup.cs` | Simulation 하위의 V2 최상위 그룹을 선언한다. |
+| `Assets/Scripts/Phases/GameSimulationGroup.cs` | 프리팹 준비 전/중단 오류 후 실행을 차단하는 V2 최상위 그룹이다. |
 | `Assets/Scripts/Phases/ReservationGroup.cs` | Decision 이후 예약 그룹을 선언한다. |
 | `Assets/Scripts/Phases/StateApplyGroup.cs` | Execution 이후 상태 반영 그룹을 선언한다. |
 | `Assets/Scripts/Phases/SynchronizationGroup.cs` | StateApply 이후 동기화 그룹을 선언한다. |
@@ -71,6 +73,7 @@
 
 | 파일 | 현재 역할 |
 | --- | --- |
+| `Assets/Scripts/Systems/0_Initialization/PrefabDatabaseInitializationSystem.cs` | SubScene 로딩 이후 세 DB를 검증하고 게임 시작 허용 또는 중단을 게시한다. |
 | `Assets/Scripts/Systems/0_Initialization/ItemConfigInitSystem.cs` | StreamingAssets의 스택 설정을 읽어 `ItemRegistry`를 한 번 게시하고 Blob을 해제한다. |
 | `Assets/Scripts/Systems/0_Initialization/RecipeInitSystem.cs` | `RecipeRegistry`를 한 번 게시하고 소유 Blob을 해제한다. |
 | `Assets/Scripts/Systems/1_Command/CrafterRecipeCommandSystem.cs` | 새 입력 슬롯 계산 검증 후 진행도·슬롯 수·품목 배정·필터를 갱신하고 잔여 재료를 스택 구분을 유지해 Product로 옮긴다. Decision 데이터는 수정하지 않는다. |

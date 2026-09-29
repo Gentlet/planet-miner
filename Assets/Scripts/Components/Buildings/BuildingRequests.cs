@@ -9,7 +9,7 @@ using Unity.Mathematics;
 /// [4. Create Phase]: CommandGroup / ExecutionGroup / StateApplyGroup
 /// [5. Consume Phase]: StateApplyGroup (Phase 5)
 /// [6. 수명주기]     : 단일 프레임 소비 (Consume-on-Apply). EndStateApplyEntityCommandBufferSystem에 의해 처리 및 엔티티 파괴
-/// [7. 결과 정책]    : 프리팹 DB 환경에서 프리팹 누락 시 Strict Fail (스폰 거부 및 에러 로깅). DB 부재 시 Fallback 아키타입 생성
+/// [7. 결과 정책]    : DB/프리팹 누락 시 스폰 거부·요청 소비 및 SimulationFatalError 게시. 대체 생성하지 않는다.
 /// [8. 안전망]       : 요청 처리 후 즉시 파괴되어 고아 요청 누수 방지
 /// </summary>
 public struct SpawnBuildingRequest : IComponentData, IRequestComponent

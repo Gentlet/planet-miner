@@ -7,6 +7,13 @@ using Unity.Transforms;
 
 public class Phase4ResourceAuthoringAndSpawnTests : EcsWorldTestFixture
 {
+    [SetUp]
+    public override void SetUp()
+    {
+        base.SetUp();
+        CreateGameplayPrefabDatabases();
+    }
+
     private (Entity ConfigEntity, Entity PrefabDbEntity) SetupWorldWithPrefabs(
         uint worldSeed = 12345u,
         bool includeIron = true,
