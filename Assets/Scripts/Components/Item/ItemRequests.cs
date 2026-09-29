@@ -19,6 +19,7 @@ public enum ItemSpawnDestination : byte
 /// [5. Consume Phase]   : StateApplyGroup
 /// [6. 수명주기 원칙]    : Consume-on-Apply (처리 완료 즉시 ecb.DestroyEntity로 요청 엔티티 파괴)
 /// [7. 실패 정책]        : 부적절한 스폰 조건이거나 생성 실패 시 무시하고 폐기(Drop)
+///                       같은 틱 Command에서 철거가 승인된 대상의 Storage/Product 요청도 생성 없이 소비. World는 영향 없음.
 /// [8. 안전망 정책]      : 처리되지 못하고 타임아웃된 요청 엔티티는 WorldInvariantValidationSystem에서 감지
 /// </summary>
 public struct SpawnItemRequest : IRequestComponent

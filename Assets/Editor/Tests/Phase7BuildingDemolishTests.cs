@@ -14,6 +14,8 @@ using UnityEngine.TestTools;
 /// </summary>
 public class Phase7BuildingDemolishTests : EcsWorldTestFixture
 {
+    private SystemHandle _demolitionCommandSystem;
+    private EndCommandEntityCommandBufferSystem _endCommand;
     private SystemHandle _lifecycleApplySystem;
     private SystemHandle _spatialSyncSystem;
     private EndStateApplyEntityCommandBufferSystem _ecbSystem;
@@ -22,6 +24,8 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
+        _demolitionCommandSystem = _world.GetOrCreateSystem<BuildingDemolitionCommandSystem>();
+        _endCommand = _world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
         _lifecycleApplySystem = _world.GetOrCreateSystem<BuildingLifecycleApplySystem>();
         _spatialSyncSystem = _world.GetOrCreateSystem<BuildingSpatialSyncSystem>();
         _ecbSystem = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
@@ -29,8 +33,15 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
 
     private void RunDemolishPhase()
     {
+        RunDemolitionCommandPhase();
         Simulation.UpdateAndComplete(_lifecycleApplySystem);
         Simulation.Playback(_ecbSystem);
+    }
+
+    private void RunDemolitionCommandPhase()
+    {
+        Simulation.UpdateAndComplete(_demolitionCommandSystem);
+        Simulation.Playback(_endCommand);
     }
 
     private void RunSpatialSyncPhase()
@@ -454,6 +465,7 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
 
         // 동시에 targetBelt에 대한 철거 요청 인큐
         RequestDemolish(targetBelt);
+        RunDemolitionCommandPhase();
 
         // StateApplyGroup 1회 업데이트 (RoutingApply -> BuildingLifecycleApply -> EndStateApply ECB 순차 실행)
         stateApplyGroup.Update();

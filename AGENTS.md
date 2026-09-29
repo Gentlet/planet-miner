@@ -36,7 +36,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 | 단계 / `Assets/Scripts/Systems/` 하위 폴더 | 현재 시스템과 책임 |
 | --- | --- |
 | `0_Initialization/` | `ItemConfigInitSystem`, `RecipeInitSystem`, `BuildingConfigInitSystem`, `WorldGenerationConfigLoadSystem`이 설정을 게시한다. `InitialChunkLoadBootstrapSystem`은 월드 설정 이후 초기 청크를 요청한다. |
-| `1_Command/` | `ChunkLoadCommandSystem`은 청크 생성 수명주기를 관리하고 `ResourceGenerationCommandSystem`이 그 뒤에 자원 스폰을 기록한다. `CrafterRecipeCommandSystem`은 레시피를 변경하고 `BuildingPlacementCommandSystem`은 배치 요청을 검증한다. `EndCommandEntityCommandBufferSystem`이 Command 끝(OrderLast)에서 구조 변경을 재생하여 동일 프레임 Phase 2~4에서 물리적 실체로 상호작용할 수 있게 한다. |
+| `1_Command/` | `ChunkLoadCommandSystem`은 청크 생성 수명주기를 관리하고 `ResourceGenerationCommandSystem`이 그 뒤에 자원 스폰을 기록한다. `CrafterRecipeCommandSystem`은 레시피를 변경하고 `BuildingPlacementCommandSystem`은 배치 요청을 검증하고, `BuildingDemolitionCommandSystem`은 철거 요청을 검증한다. `EndCommandEntityCommandBufferSystem`이 Command 끝(OrderLast)에서 구조 변경을 재생하여 동일 프레임 Phase 2~4에서 물리적 실체로 상호작용할 수 있게 한다. |
 | `2_Decision/` | `BeltMovementDecisionSystem`, `BuildingItemInputDecisionSystem`, `StorageItemOutputDecisionSystem`, `ProductItemOutputDecisionSystem`, `MinerDecisionSystem`, `CrafterDecisionSystem`, `SplitterDecisionSystem`, `MergerDecisionSystem`이 실행 후보를 계산한다. |
 | `3_Reservation/` | `BuildingStorageInputReservationSystem`이 저장 슬롯을 배정하고 `BeltDestinationReservationSystem`이 건물 출고와 라우팅 전달의 목적지 경합을 중재한다. |
 | `4_Execution/` | `BeltMovementExecutionSystem`이 위치·진행도를 반영한다. `MinerExecutionSystem`과 `CrafterExecutionSystem`은 작업 진행과 생산 결과를 기록하며 제작 재료를 선소비한다. |
@@ -45,6 +45,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 
 - 같은 그룹 안의 순서를 파일명이나 위 표의 나열 순서로 추정하지 않는다. 실제 `UpdateBefore`/`UpdateAfter`/`OrderLast`와 Job 의존성을 확인한다.
 - `BuildingItemStorageApplySystem`과 `RoutingApplySystem`은 `BuildingLifecycleApplySystem` 및 `ItemOwnershipApplySystem`보다 먼저 실행한다. `WorldInvariantValidationSystem`은 Synchronization의 `OrderLast`다.
+- `BuildingDemolitionCommandSystem`은 대상 유효성·타입·철거 불가 조건을 검증하고 중복을 제거한다. 거부/중복 `DemolishBuildingRequest`는 EndCommand에서 삭제하며, 남은 요청을 `BuildingLifecycleApplySystem`과 `ItemLifecycleApplySystem`이 StateApply에서 읽기 전용으로 사용한다. 두 시스템 사이의 철거 승인 전달용 `UpdateAfter`는 없다. Item Lifecycle은 요청의 임시 비동기 복사본을 사용 후 해제하고, 유효 요청은 EndStateApply에서 삭제한다. 요청은 Command 검증 전에 실체화해야 하며 이후 대상·철거 가능 조건을 변경하지 않는다. 철거 대상의 완료 생산물은 생성 없이 폐기하고 Storage/Product Spawn은 거부한다. 선소비 재료·광물은 보상하지 않으며 기존 실물 반환·건축 비용 환급·World Spawn은 유지한다. 이는 기존 실물의 동시 입고·철거 렌더 태그 경합(F-004) 해결을 뜻하지 않는다.
 - 계획·테스트 이름의 `Phase7` 등은 개발 마일스톤 번호다. 런타임에 일곱 번째 실행 그룹이 있는 것은 아니다.
 
 ## 핵심 데이터와 변경 규칙
