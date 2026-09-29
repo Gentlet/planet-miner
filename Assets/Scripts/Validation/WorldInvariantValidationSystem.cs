@@ -572,13 +572,33 @@ public partial class WorldInvariantValidationSystem : SystemBase
         bool hasSpatialIndex = SystemAPI.TryGetSingleton<ItemSpatialIndex>(out var itemSpatialIndex);
         var itemOwnershipLookup = SystemAPI.GetComponentLookup<ItemOwnership>(true);
         var storageFilterLookup = SystemAPI.GetComponentLookup<StorageFilter>(true);
+        var inputSlotLookup = SystemAPI.GetBufferLookup<BuildingInputSlotElement>(true);
 
         foreach (var (storage, buffer, storageEntity) in
                  SystemAPI.Query<RefRO<Storage>, DynamicBuffer<StoredItemElement>>()
                           .WithEntityAccess())
         {
             int slotCount = storage.ValueRO.SlotCount;
-            if (slotCount <= 0 || slotCount > GameConstants.MaxStorageSlots)
+            bool hasInputSlots = inputSlotLookup.HasBuffer(storageEntity);
+            DynamicBuffer<BuildingInputSlotElement> inputSlots = default;
+            if (hasInputSlots)
+            {
+                inputSlots = inputSlotLookup[storageEntity];
+                if (inputSlots.Length != slotCount)
+                {
+                    ReportViolation("StorageInvariant",
+                        $"Input slot layout length {inputSlots.Length} differs from Storage capacity {slotCount}.", storageEntity);
+                }
+            }
+
+            bool hasFilter = storageFilterLookup.HasComponent(storageEntity);
+            StorageFilter filter = hasFilter ? storageFilterLookup[storageEntity] : default;
+            bool allowsZeroSlots = hasInputSlots && inputSlots.Length == 0 && buffer.Length == 0 &&
+                                   hasFilter && filter.Mode == StorageFilterMode.Whitelist &&
+                                   filter.Mask.Part0 == 0 && filter.Mask.Part1 == 0 &&
+                                   IsCrafterWithoutInputRequirements(storageEntity);
+            if (slotCount < 0 || slotCount > GameConstants.MaxStorageSlots ||
+                (slotCount == 0 && !allowsZeroSlots))
             {
                 ReportViolation(
                     "StorageInvariant",
@@ -586,9 +606,6 @@ public partial class WorldInvariantValidationSystem : SystemBase
                     storageEntity
                 );
             }
-
-            bool hasFilter = storageFilterLookup.HasComponent(storageEntity);
-            StorageFilter filter = hasFilter ? storageFilterLookup[storageEntity] : default;
 
             var slotTracker = new NativeParallelHashMap<int, int2>(math.max(16, slotCount), Allocator.Temp);
 
@@ -663,6 +680,13 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 }
 
                 // E. 필터 준수 검증
+                if (hasInputSlots && (element.SlotIndex >= inputSlots.Length ||
+                                      inputSlots[element.SlotIndex].ItemType != element.ItemType))
+                {
+                    ReportViolation("StorageInvariant",
+                        $"Item {element.ItemType} does not match the assigned input type of slot {element.SlotIndex}.", storageEntity);
+                }
+
                 if (hasFilter && !filter.IsItemAllowed(element.ItemType))
                 {
                     ReportViolation(
@@ -846,6 +870,42 @@ public partial class WorldInvariantValidationSystem : SystemBase
             slotKvpArray.Dispose();
             slotTracker.Dispose();
         }
+    }
+
+    /// <summary>
+    /// 레시피 미선택 또는 무재료 레시피의 유효한 0슬롯 구성을 확인.
+    /// </summary>
+    private bool IsCrafterWithoutInputRequirements(Entity building)
+    {
+        if (!SystemAPI.HasComponent<CrafterState>(building))
+        {
+            return false;
+        }
+
+        int recipeId = SystemAPI.GetComponent<CrafterState>(building).SelectedRecipeId;
+        if (recipeId <= 0)
+        {
+            return true;
+        }
+
+        // 유효한 무재료 레시피도 계산 결과가 0슬롯이다.
+        if (!SystemAPI.TryGetSingleton<RecipeRegistry>(out var recipes))
+        {
+            return false;
+        }
+
+        if (!recipes.Value.IsCreated)
+        {
+            return false;
+        }
+
+        ref var registry = ref recipes.Value.Value;
+        if (!registry.TryGetRecipeIndex(recipeId, out int recipeIndex))
+        {
+            return false;
+        }
+
+        return registry.Recipes[recipeIndex].Ingredients.Length == 0;
     }
 
     /// <summary>

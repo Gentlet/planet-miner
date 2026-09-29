@@ -20,6 +20,7 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
 {
     private ComponentLookup<Storage> _storageLookup;
     private BufferLookup<StoredItemElement> _storedBufferLookup;
+    private BufferLookup<BuildingInputSlotElement> _inputSlotLookup;
     private EntityQuery _inputQuery;
     private EntityQuery _itemRegistryQuery;
 
@@ -28,6 +29,7 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
     {
         _storageLookup = state.GetComponentLookup<Storage>(true);
         _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
+        _inputSlotLookup = state.GetBufferLookup<BuildingInputSlotElement>(true);
         _itemRegistryQuery = state.GetEntityQuery(ComponentType.ReadOnly<ItemRegistry>());
 
         _inputQuery = SystemAPI.QueryBuilder()
@@ -46,6 +48,7 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
     {
         _storageLookup.Update(ref state);
         _storedBufferLookup.Update(ref state);
+        _inputSlotLookup.Update(ref state);
 
         ItemRegistry itemRegistry = default;
         if (!_itemRegistryQuery.IsEmptyIgnoreFilter)
@@ -63,6 +66,7 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
         {
             StorageLookup = _storageLookup,
             StoredBufferLookup = _storedBufferLookup,
+            InputSlotLookup = _inputSlotLookup,
             ItemRegistry = itemRegistry,
             PendingAdditions = pendingAdditions
         };
@@ -86,6 +90,9 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
 
     [ReadOnly]
     public BufferLookup<StoredItemElement> StoredBufferLookup;
+
+    [ReadOnly]
+    public BufferLookup<BuildingInputSlotElement> InputSlotLookup;
 
     [ReadOnly]
     public ItemRegistry ItemRegistry;
@@ -122,6 +129,21 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
             return;
         }
 
+        bool hasInputSlots = InputSlotLookup.HasBuffer(building);
+        DynamicBuffer<BuildingInputSlotElement> inputSlots = default;
+        if (hasInputSlots)
+        {
+            inputSlots = InputSlotLookup[building];
+            if (inputSlots.Length != slotCount || slotCount > GameConstants.MaxStorageSlots ||
+                !ItemRegistry.Value.IsCreated)
+            {
+                inputDecision.CanDeposit = false;
+                inputDecision.TargetSlotIndex = -1;
+                inputDecisionEnabled.ValueRW = false;
+                return;
+            }
+        }
+
         ItemTypeEnum itemType = itemIdentity.Type;
         int maxStack = 50;
         if (ItemRegistry.Value.IsCreated)
@@ -137,7 +159,8 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
         for (int s = 0; s < safeSlotCount; s++)
         {
             slotOccupancy.Add(0);
-            slotTypes.Add((ItemTypeEnum)255); // Empty
+            // 전용 슬롯은 비어 있어도 품목이 정해져 있다. 같은 프레임의 예약끼리도 스택을 공유한다.
+            slotTypes.Add(hasInputSlots ? inputSlots[s].ItemType : (ItemTypeEnum)255);
         }
 
         for (int b = 0; b < storedBuffer.Length; b++)
@@ -164,6 +187,11 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
 
         for (int s = 0; s < safeSlotCount; s++)
         {
+            if (hasInputSlots && inputSlots[s].ItemType != itemType)
+            {
+                continue;
+            }
+
             if (slotOccupancy[s] == 0)
             {
                 if (firstEmptySlot == -1)

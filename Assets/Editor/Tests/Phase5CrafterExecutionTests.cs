@@ -13,6 +13,7 @@ using Unity.Mathematics;
 public class Phase5CrafterExecutionTests : EcsWorldTestFixture
 {
     private BlobAssetReference<RecipeRegistryBlob> _recipeBlob;
+    private BlobAssetReference<ItemRegistryBlob> _itemBlob;
     private SystemHandle _crafterDecisionHandle;
     private SystemHandle _crafterExecutionHandle;
     private SystemHandle _crafterStateApplyHandle;
@@ -26,6 +27,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
 
         // 1. 레시피 레지스트리 전역 싱글톤 초기화
         _recipeBlob = RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
+        _itemBlob = ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
 
         // 2. 시스템 핸들 획득
         _crafterDecisionHandle = _world.GetOrCreateSystem(typeof(CrafterDecisionSystem));
@@ -38,6 +40,10 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
     [TearDown]
     public override void TearDown()
     {
+        if (_itemBlob.IsCreated)
+        {
+            _itemBlob.Dispose();
+        }
         if (_recipeBlob.IsCreated)
         {
             _recipeBlob.Dispose();
@@ -254,7 +260,8 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
     [Test]
     public void Test06_Backpressure_ProductBufferFull_WaitsForOutputAtProgress1()
     {
-        // Arrange: Recipe 1, 출력 버퍼에 이미 MaxStack(50개) 적재되어 있는 상황
+        // Arrange: Recipe 1, 실제 아이템 설정의 MaxStack만큼 출력 버퍼를 채운다.
+        int maxStack = _itemBlob.Value.GetMaxStack(ItemTypeEnum.Iron);
         var crafter = CreateCrafter(recipeId: 1);
         CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore);
 
@@ -264,9 +271,9 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         var stateMid = _entityManager.GetComponentData<CrafterState>(crafter);
         Assert.AreEqual(1.0f, stateMid.Progress, 0.0001f);
 
-        // 2. 출력 버퍼를 인위적으로 50개(MaxStack) 채움 (구조적 변경 후 버퍼 획득)
-        NativeArray<Entity> dummyItems = new NativeArray<Entity>(50, Allocator.Temp);
-        for (int i = 0; i < 50; i++)
+        // 2. 출력 버퍼를 인위적으로 MaxStack만큼 채움 (구조적 변경 후 버퍼 획득)
+        NativeArray<Entity> dummyItems = new NativeArray<Entity>(maxStack, Allocator.Temp);
+        for (int i = 0; i < maxStack; i++)
         {
             var dummyItem = _entityManager.CreateEntity(typeof(ItemIdentity), typeof(ItemOwnership));
             _entityManager.SetComponentData(dummyItem, new ItemIdentity(ItemTypeEnum.Iron));
@@ -275,7 +282,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         }
 
         var productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
-        for (int i = 0; i < 50; i++)
+        for (int i = 0; i < maxStack; i++)
         {
             productBuffer.Add(new ProductItemElement(dummyItems[i], ItemTypeEnum.Iron, 0));
         }
@@ -302,11 +309,11 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         Assert.AreEqual(1.0f, stateAfterExec.Progress, 0.0001f, "Progress must remain at 1.0f while waiting for output.");
         
         productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
-        Assert.AreEqual(50, productBuffer.Length, "No additional product must be spawned while full.");
+        Assert.AreEqual(maxStack, productBuffer.Length, "No additional product must be spawned while full.");
 
         // 4. 출력 버퍼에서 1개 제거 (방출 시뮬레이션) 후 다시 실행
         productBuffer.RemoveAt(0);
-        Assert.AreEqual(49, productBuffer.Length);
+        Assert.AreEqual(maxStack - 1, productBuffer.Length);
 
         RunDecisionPhase();
         var decisionResume = _entityManager.GetComponentData<CrafterDecision>(crafter);
@@ -316,7 +323,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         RunStateApplyPhase();
 
         productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
-        Assert.AreEqual(50, productBuffer.Length, "Product must be spawned once space becomes available.");
+        Assert.AreEqual(maxStack, productBuffer.Length, "Product must be spawned once space becomes available.");
     }
 
     [Test]
@@ -424,9 +431,10 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         var stateMid = _entityManager.GetComponentData<CrafterState>(crafter);
         Assert.AreEqual(1.0f, stateMid.Progress, 0.0001f);
 
-        // 2. 부산품2(Slot 2: Copper)만 50개(MaxStack) 채움 (Slot 0, 1은 여유 공간 있음)
-        NativeArray<Entity> dummyItems = new NativeArray<Entity>(50, Allocator.Temp);
-        for (int i = 0; i < 50; i++)
+        int maxStack = _itemBlob.Value.GetMaxStack(ItemTypeEnum.Copper);
+        // 2. 부산품2(Slot 2: Copper)만 MaxStack만큼 채움 (Slot 0, 1은 여유 공간 있음)
+        NativeArray<Entity> dummyItems = new NativeArray<Entity>(maxStack, Allocator.Temp);
+        for (int i = 0; i < maxStack; i++)
         {
             var dummyItem = _entityManager.CreateEntity(typeof(ItemIdentity), typeof(ItemOwnership));
             _entityManager.SetComponentData(dummyItem, new ItemIdentity(ItemTypeEnum.Copper));
@@ -435,7 +443,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         }
 
         var productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
-        for (int i = 0; i < 50; i++)
+        for (int i = 0; i < maxStack; i++)
         {
             productBuffer.Add(new ProductItemElement(dummyItems[i], ItemTypeEnum.Copper, slotIndex: 2));
         }
@@ -461,11 +469,11 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         var stateAfterExec = _entityManager.GetComponentData<CrafterState>(crafter);
         Assert.AreEqual(1.0f, stateAfterExec.Progress, 0.0001f);
         productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
-        Assert.AreEqual(50, productBuffer.Length);
+        Assert.AreEqual(maxStack, productBuffer.Length);
 
         // 4. Slot 2에서 1개 제거하여 공간 확보 후 재검사
         productBuffer.RemoveAt(0);
-        Assert.AreEqual(49, productBuffer.Length);
+        Assert.AreEqual(maxStack - 1, productBuffer.Length);
 
         RunDecisionPhase();
         var decisionResume = _entityManager.GetComponentData<CrafterDecision>(crafter);
@@ -474,8 +482,8 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         RunExecutionPhase(deltaTime: 0.05f);
         RunStateApplyPhase();
 
-        // 5. 제작 완료되어 Iron(Slot 0), Stone(Slot 1), Copper(Slot 2)가 각각 추가됨 (총 49 + 3 = 52개)
+        // 5. 제작 완료되어 Iron(Slot 0), Stone(Slot 1), Copper(Slot 2)가 각각 추가됨 (기존 적재량 - 1 + 3개)
         productBuffer = _entityManager.GetBuffer<ProductItemElement>(crafter);
-        Assert.AreEqual(52, productBuffer.Length, "All 3 outputs must be produced once space is available.");
+        Assert.AreEqual(maxStack + 2, productBuffer.Length, "All 3 outputs must be produced once space is available.");
     }
 }

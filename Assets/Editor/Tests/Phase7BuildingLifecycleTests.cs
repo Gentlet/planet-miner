@@ -124,6 +124,14 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
         Assert.IsTrue(_entityManager.HasComponent<CrafterDecision>(crafter));
         Assert.IsFalse(_entityManager.IsComponentEnabled<CrafterDecision>(crafter));
 
+        Assert.IsTrue(_entityManager.HasComponent<CrafterStateDecision>(crafter));
+        Assert.IsFalse(_entityManager.IsComponentEnabled<CrafterStateDecision>(crafter));
+        Assert.AreEqual(0, _entityManager.GetComponentData<Storage>(crafter).SlotCount);
+        Assert.AreEqual(0, _entityManager.GetBuffer<BuildingInputSlotElement>(crafter).Length);
+        var filter = _entityManager.GetComponentData<StorageFilter>(crafter);
+        Assert.AreEqual(StorageFilterMode.Whitelist, filter.Mode);
+        Assert.IsFalse(filter.IsItemAllowed(ItemTypeEnum.Iron_Ore));
+
         // 입력 보관 버퍼 및 출력 버퍼 모두 확인
         Assert.IsTrue(_entityManager.HasBuffer<StoredItemElement>(crafter), "재료 보관용 StoredItemElement 버퍼가 있어야 함");
         Assert.IsTrue(_entityManager.HasBuffer<ProductItemElement>(crafter), "완성품용 ProductItemElement 버퍼가 있어야 함");

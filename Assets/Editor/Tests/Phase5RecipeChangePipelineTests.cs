@@ -14,6 +14,7 @@ using Unity.Mathematics;
 public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
 {
     private BlobAssetReference<RecipeRegistryBlob> _recipeBlob;
+    private BlobAssetReference<ItemRegistryBlob> _itemBlob;
     private SystemHandle _crafterCommandHandle;
     private SystemHandle _crafterDecisionHandle;
     private SystemHandle _crafterStateApplyHandle;
@@ -30,6 +31,7 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
 
         // 1. 레시피 레지스트리 초기화
         _recipeBlob = RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
+        _itemBlob = ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
 
         // 2. 시스템 핸들 획득
         _crafterCommandHandle = _world.GetOrCreateSystem(typeof(CrafterRecipeCommandSystem));
@@ -45,6 +47,10 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
     [TearDown]
     public override void TearDown()
     {
+        if (_itemBlob.IsCreated)
+        {
+            _itemBlob.Dispose();
+        }
         if (_recipeBlob.IsCreated)
         {
             _recipeBlob.Dispose();

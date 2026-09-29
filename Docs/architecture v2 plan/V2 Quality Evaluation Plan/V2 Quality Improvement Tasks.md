@@ -8,13 +8,13 @@
 
 | 분류 | 전체 | 완료 | 미완료 |
 | --- | ---: | ---: | ---: |
-| P1 | 5 | 0 | 5 |
+| P1 | 5 | 1 | 4 |
 | P2 | 34 | 0 | 34 |
 | P3 | 5 | 0 | 5 |
 | 판단 보류 | 4 | 0 | 4 |
-| 합계 | 48 | 0 | 48 |
+| 합계 | 48 | 1 | 47 |
 
-- 현재 모든 항목은 **미착수**다. 이 문서 작성은 수정이나 재검증 완료를 뜻하지 않는다.
+- 2026-09-29 기준 **F-037 완료**, 나머지 47개 항목은 미완료다. 항목별 변경·검증 근거와 제한을 확인한다.
 - 항목 하나를 선택해 원본 평가와 현재 소스를 확인하고, 해당 문제의 개선·검증까지 작은 단위로 진행한다. 아래 나열 순서는 강제 의존 순서가 아니다.
 - 각 항목의 설명은 평가 당시 근거를 요약했다. 코드 확인, 조건부 영향 추정, 실행 미확인을 원본에서 구분한다. 특히 P1 5건의 실패 반례는 평가에서 실행 재현하지 않았다.
 - `결정 필요`는 아직 채택하지 않은 정책이다. 현재 소스·최신 사용자 지시로 해결되지 않는 해당 항목의 선택만 사용자에게 확인한다. 다른 항목의 결정을 모두 기다릴 필요는 없다.
@@ -22,15 +22,84 @@
 - 완료 기준을 충족한 뒤 해당 체크박스와 현황 표를 갱신하고, 항목 아래에 **완료일·변경 파일 또는 커밋·검증 결과/로그·남은 제한**을 추가한다. 필요한 검증이 막혔다면 체크하지 않고 차단 사유를 기록한다.
 - 판단 보류 항목은 정책을 확정한 뒤 필요한 수정·문서화·검증을 마쳤을 때 닫는다. 변경 불필요로 결정하면 그 근거를 남긴다. 원본 평가 문서는 당시의 기록으로 보존한다.
 
+## 이슈별 추천 모델
+
+추천 작성일: 2026-09-29. **수정 전 쟁점 정리부터 구현·관련 회귀 검증까지** 해당 이슈를 맡길 기본 설정이다. 사용자가 아직 구현을 지시하지 않았다면 기존의 읽기 전용 확인 단계에서 멈춘다.
+
+OpenAI의 [모델 선택 안내](https://developers.openai.com/api/docs/guides/model-selection)는 작업의 판단 난이도와 품질·시간·비용을 함께 고려하도록 안내한다. 아래의 이슈별 배정과 추론 수준은 현재 Task 범위를 바탕으로 한 프로젝트용 추천이며, 이 프로젝트에서 모델별 성공률을 비교한 벤치마크 결과는 아니다. High와 XHigh는 추론 수준이며 XHigh는 Extra high를 뜻한다.
+
+- **GPT-6 Sol · Medium:** 동작을 유지하는 문서·주석 정리.
+- **GPT-6 Sol · High:** 범위가 명확한 입력 검증, 국소 수정, 테스트 격리·assertion 보강.
+- **GPT-6 Astra · High:** 여러 생성·소비 경로의 계약과 변경 영향을 함께 맞추는 작업.
+- **GPT-6 Astra · XHigh:** 소유권·실패 복구·ECB·Job/Fence 또는 복수 이동 후보가 얽힌 설계와 검증.
+- 이슈 심각도와 추론 난이도는 별개다. F-037은 P1이지만 확인된 생성 구성과 검증 경계가 비교적 명확해 Astra · High를 기본으로 잡았다.
+- 정책 질문이 없는 작은 변경으로 범위가 확정되면 설정을 낮출 수 있다. 반대로 동작 정책·수명·실행 순서까지 변경하거나 원인 불명 실패가 나타나면 Astra · XHigh로 재검토한다. 특히 F-036에서 고속 채굴 동작까지 변경한다면 Sol · Medium의 문서 정리 범위를 벗어난다.
+- 함께 처리하는 이슈는 더 높은 추천 설정을 기준으로 삼되, 각각의 완료 기준과 결과를 구분한다. 모델 선택이 사용자 결정을 대신하거나 테스트를 생략할 근거가 되지는 않는다.
+- 이 표 추가만으로 기존 대화의 모델을 변경하거나 새 작업을 지시하지 않는다.
+
+| 이슈 | 작업 | 추천 모델 | 추론 수준 | 추천 이유 |
+| --- | --- | --- | --- | --- |
+| F-001 | 공사 구현 문서 정합성 | GPT-6 Sol | Medium | 확인된 구현 범위와 문서 설명을 대조·갱신 |
+| F-002 | 자원 ECB 설명 정합성 | GPT-6 Sol | Medium | 기록·재생·소비 시점의 문서/주석 정리 |
+| F-003 | 공사 자재 중복·소유 인계 | GPT-6 Astra | XHigh | 중복 실물·예약·이전 소유 버퍼를 함께 조정 |
+| F-004 | 입고·철거 렌더 태그 경합 | GPT-6 Astra | XHigh | 복수 Writer와 ECB 순서의 최종 상태 조정 |
+| F-005 | 생성 대기·철거 경합 | GPT-6 Astra | XHigh | deferred 생성과 폐기의 수명 계약 설계 |
+| F-006 | 생산물 실체화 실패 정책 | GPT-6 Astra | XHigh | 실패·재시도·결과 소비·중복 생성 경계 설계 |
+| F-007 | MaxStack 계약 | GPT-6 Sol | High | 입력 범위 검증과 생산·예약 경계 사례 확인 |
+| F-008 | Blob 교체 수명 | GPT-6 Astra | XHigh | 소유권·Reader 종료·해제의 비동기 수명 조정 |
+| F-009 | fallback 테스트 격리 | GPT-6 Sol | High | 실제 파일 의존 제거와 실패 입력 주입 |
+| F-010 | 중복 공사 자재 행 | GPT-6 Sol | High | 정책 확정 후 게시·수령 총량 계약 검증 |
+| F-011 | 설정 실패와 무설정 구분 | GPT-6 Astra | High | 초기화·배치·완료의 공개 준비 계약 변경 |
+| F-012 | 긴 연구 키 파싱 | GPT-6 Sol | High | UTF-8 경계와 오류 반환의 국소 수정 |
+| F-013 | 무효 레시피 품목 | GPT-6 Sol | High | 품목 검증과 실패 시 게시·소비 범위 확인 |
+| F-014 | 중복 재료 비용 | GPT-6 Astra | High | Decision 승인과 Execution 선소비의 원자성 검토 |
+| F-015 | 레시피 ID 유효성 | GPT-6 Sol | High | 양의 고유 ID와 게시 실패 회귀 검증 |
+| F-016 | 부분 게시·Ready 의미 | GPT-6 Astra | High | 공개 overload·singleton·Bootstrap 계약 조정 |
+| F-017 | 설정 범위·산술 한계 | GPT-6 Sol | High | 설정 경계와 소비자 overflow의 집중 검증 |
+| F-018 | DB 유일성 | GPT-6 Astra | High | 등록 순서·복수 DB·Baker 정책의 영향 확인 |
+| F-019 | prefab 필수 구성 | GPT-6 Astra | High | 실제 자산·Baker 결과·Spawn 전제 대조 |
+| F-020 | Item 초기화 복제 | GPT-6 Astra | High | 공통화 시 생성·환급의 ECB와 실패 정책 보존 |
+| F-021 | 실제 Baker 테스트 | GPT-6 Astra | High | 베이킹 fixture와 실제 생성 계약 검증 |
+| F-022 | footprint 크기 출처 | GPT-6 Astra | High | request·Config·DB 우선순위와 편집 의미 통일 |
+| F-023 | footprint 이중 회전 | GPT-6 Astra | High | 배치·Spawn·완공·Sync의 표현 계약 통일 |
+| F-024 | 완공 Spawn 실패 손실 | GPT-6 Astra | XHigh | 성공 판정·자재 소비·현장 폐기·실패 보존 조정 |
+| F-025 | 빌드 장면 DB 이관 | GPT-6 Astra | High | GUID·직렬화 필드·enum·실제 Bake를 함께 검증 |
+| F-026 | 배치 공간 조회 동기화 | GPT-6 Astra | XHigh | NativeContainer Fence와 메인 스레드 접근 검증 |
+| F-027 | 별도 요청 중복 배치 | GPT-6 Astra | High | 프레임 전체 점유 승인과 Strict/Partial 의미 조정 |
+| F-028 | Fence의 추가 Reader 의존 | GPT-6 Astra | XHigh | ECS 의존 추적과 수동 Fence 안전성·병렬성 분석 |
+| F-029 | 일반 이동 목적지 경합 | GPT-6 Astra | XHigh | 이동·출고·Routing의 승인 범위와 우선순위 통합 |
+| F-030 | 전방 간격 침범 | GPT-6 Astra | XHigh | 여러 셀·속도·회전의 최종 간격 불변식 설계 |
+| F-031 | 예약 슬롯 품목 누락 | GPT-6 Sol | High | 품목·수량 누적과 MaxStack 경계 회귀 |
+| F-032 | 비활성 아이템 입고 | GPT-6 Astra | High | enable 의미와 철거·재설치 전환 계약 구분 |
+| F-033 | 원본 제거 실패 출고 | GPT-6 Astra | High | 오래된 승인·현재 Owner·실패 상태 보존 조정 |
+| F-034 | Routing 진입 기준 | GPT-6 Astra | High | 선검사와 공통 예약의 점유·간격 계약 통일 |
+| F-035 | 청크 난수 검증 공백 | GPT-6 Astra | High | 구현을 복제하지 않는 독립 기대값·경계 검증 설계 |
+| F-036 | 채굴 Progress 설명 | GPT-6 Sol | Medium | 현재 동작을 유지하는 주석·계약 정리 |
+| F-037 | Crafter 생성 구성 | GPT-6 Astra | High | 실제 Spawn·완공과 소비자 필수 구성·통합 회귀 |
+| F-038 | CrafterExecution 주석 | GPT-6 Sol | Medium | 기존 Command/Execution 책임에 맞춘 설명 정리 |
+| F-039 | 레시피 Lookup 동기화 | GPT-6 Astra | XHigh | 관련 Job 의존과 main-thread 접근의 완료 경계 검증 |
+| F-040 | 무효 레시피 변경 정책 | GPT-6 Astra | High | 진행 작업·선소비·잔여물·필터 보존 정책 검토 |
+| F-041 | PlacementStamp 동률 | GPT-6 Astra | High | 발급 범위와 여러 소비자의 공통 순서 계약 정리 |
+| F-042 | 불완전 현장 수령 | GPT-6 Sol | High | 필수 구성 검사와 부분 변경 방지 회귀 |
+| F-043 | 취소·공급 assertion | GPT-6 Sol | High | 기존 반환품과 새 공급 거부의 상태 구분 |
+| F-044 | 소유 버퍼 검사 누락 | GPT-6 Astra | High | 여러 버퍼·Owner·현장의 공통 유일성 검증 |
+| F-045 | 로그 덮어쓰기 | GPT-6 Sol | High | 고유 보고 식별·World 구분·격리 테스트 |
+| F-046 | 공용 로그 삭제 | GPT-6 Sol | High | 테스트 산출물 소유권과 기존 로그 보존 |
+| F-047 | 총합 assertion 공백 | GPT-6 Sol | High | 목표 위반별 assertion과 정상 대조군 보강 |
+| F-048 | 생산·분배 통합 assertion | GPT-6 Astra | High | 실제 생성·가공·분기별 물량·후속 출고 연결 검증 |
+
 ## P1 — 우선 개선할 핵심 동작
 
 ### F-037 — 실제 Crafter 생성 구성 누락
 
-- [ ] 완료 — **P1** · [최초 평가: Q21](Results/Q21.md)
+- [x] 완료 — **P1** · [최초 평가: Q21](Results/Q21.md) · 완료일: 2026-09-29
 - 문제: DB 없는 실제 Crafter Spawn에 `CrafterStateDecision`, `Storage`, `StorageFilter`가 빠져 제작 흐름에 진입하지 못한다. Factory 기반 테스트는 실제 생성물을 검증하지 않는다.
 - 작업: 직접 Spawn과 공사 완료가 사용하는 생성 구성을 소비 시스템의 필수 계약에 맞춘다. 초기 enable 상태와 prefab/fallback 차이를 함께 확인한다.
 - 완료 기준: 실제 생성한 Crafter로 레시피 선택→입고→재료 선소비→생산이 연결되고, 필수 구성·소유 버퍼·Owner가 일치한다. 실제 baked prefab 검증 여부는 별도로 기록한다.
-- 결정 필요: Crafter 입력 슬롯 수와 설정 출처. 테스트 Factory의 기본값 4를 근거 없이 적용하지 않는다.
+- 확정 규칙: 레시피 재료의 품목별 합산 요구량과 `ItemRegistry.MaxStack`으로 최소 전용 슬롯 수를 계산한다. 슬롯마다 최대 스택까지 비축할 수 있고, 레시피 미선택은 0슬롯/빈 Whitelist로 입고를 막는다.
+- 변경: `BuildingLifecycleUtility`, `BuildingInputSlotElement`/`BuildingInputSlotUtility`, `CrafterRecipeCommandSystem`, 입고 Decision/Reservation, 저장 불변식 검사 및 관련 테스트를 연결했다. Command는 제작 Decision을 수정하지 않는다.
+- 검증: Unity 6000.4.11f1 재컴파일 완료·오류 0·어셈블리 최신성 확인. `Phase5CrafterInputPipelineTests` 19/19 통과(실패/생략/Inconclusive 0). 그중 4개는 직접 생성/공사 완료 × ECS 테스트 프리팹/fallback을 실제 정렬된 6단계 그룹으로 실행하며, 입고·선소비·생산·후속 출고·잔여물 배출·해제와 매 프레임 불변식 0건을 확인한다. [검증 기록](Results/F037-Verification.md)에 변경 파일과 단계별 로그를 정리했다.
+- 제한: 실제 SubScene의 baked prefab 및 Play Mode/시각 결과는 미검증이다. 공사 완료 테스트는 요구 자재가 충족된 현장에서 시작하며 전체 배치·자재 배송 과정은 검증하지 않는다. F-014의 중복 재료 행 제작 판정 등 다른 이슈는 이번 완료 범위에 포함하지 않는다.
 
 ### F-024 — 공사 완료 Spawn 실패 후 자재·현장 삭제
 

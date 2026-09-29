@@ -158,6 +158,15 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
             return;
         }
 
+        if (StorageLookup[buildingInfo.Entity].SlotCount <= 0)
+        {
+            inputDecision.TargetBuilding = buildingInfo.Entity;
+            inputDecision.CanDeposit = false;
+            inputDecision.TargetSlotIndex = -1;
+            inputDecisionEnabled.ValueRW = false;
+            return;
+        }
+
         // 5.5 제작기(Crafter) 상태 검사: WaitingForByproductOutput 상태인 경우 재료 입고 완전 차단
         if (CrafterStateLookup.HasComponent(buildingInfo.Entity))
         {
