@@ -56,7 +56,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 - `BeltSpatialIndex`는 셀→`BeltInfo`, `BuildingSpatialIndex`는 점유 셀→`BuildingInfo`, `ResourceSpatialIndex`는 셀→자원 엔티티, `ItemSpatialIndex`는 셀→복수 월드 아이템을 저장한다. 소유자는 각 `*SpatialSyncSystem`이며 매 동기화 단계에서 Clear 후 재등록한다. `ChunkMapSystem`은 현재 소스에 없다.
 - 각 맵의 `*SpatialIndexFence`는 NativeContainer 읽기·쓰기 Job 의존성을 관리한다. Reader는 마지막 Writer에 의존하고 자신의 핸들을 등록하며, Writer는 이전 Writer와 모든 Reader를 기다린다. 메인 스레드 직접 접근·용량 변경·Dispose 때도 해당 Fence를 확인한다. ECS 컴포넌트 의존성만으로 맵 접근이 동기화된다고 가정하지 않는다.
 - 인덱스는 Synchronization 이전의 구조 변경을 즉시 반영하지 않는다. 동일 프레임 배치·입출고·스폰 경합은 해당 요청/예약 경계에서 처리하며, 인덱스만 조회하고 이미 반영됐다고 간주하지 않는다.
-- 청크 변환은 `Chunks/ChunkUtility`의 floor division, 방향 오프셋은 `DirectionExtensions`, 라우팅 회전·포트 계산은 `RoutingDirectionUtility`를 사용한다. Footprint 계산은 `BuildingFootprint.GetEffectiveSize`와 `BuildingPlacementValidationUtility.GetEffectiveSize`를 확인한다. 크기 변경은 요청→생성→인덱스의 회전 적용 횟수까지 추적한다.
+- 청크 변환은 `Chunks/ChunkUtility`의 floor division, 방향 오프셋은 `DirectionExtensions`, 라우팅 회전·포트 계산은 `RoutingDirectionUtility`를 사용한다. Footprint 정규화·회전 계산은 `Common/BuildingFootprintUtility.GetEffectiveSize`를 사용한다. `BuildingFootprint`의 동명 확장 메서드도 같은 계산을 호출한다. 크기 변경은 요청→생성→인덱스의 회전 적용 횟수까지 추적한다.
 - 구조 변경은 2-Sync Point 모델로 분리 관리한다. Phase 1 명령의 구조적 변경은 `EndCommandEntityCommandBufferSystem`에 기록하여 Command 종료 시점에 재생되며, Phase 4~5의 고갈 자원 파괴·수명주기 전이·철거·아이템 스폰/소멸은 `EndStateApplyEntityCommandBufferSystem`에 기록하여 StateApply 종료 시점에 재생된다. 실제 엔티티 생성·삭제 및 렌더 태그 변경은 각 Playback 시점에 확정된다. 구조 변경 전후에 `DynamicBuffer`를 계속 보관하지 말고, 필요하면 `ToNativeArray` 등으로 복사한 뒤 버퍼를 다시 얻는다. 기존 문서의 `DynamicBufferCopyUtility`는 현재 소스에 없다.
 
 ### 아이템·결정·요청
@@ -135,6 +135,12 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 | `Assets/Resources/Config/`, `Assets/StreamingAssets/` | 위 설정 입력과 기존 설정 파일 |
 | `Assets/Editor/` | 건물/아이템 DB의 Resources 목록 채우기 Inspector와 EditMode 테스트 |
 | `Tools/Codex/Verify-Unity.ps1` | PowerShell 7 이상용 Unity 컴파일/선택 테스트 검증 래퍼 |
+
+`Components/`는 도메인별로 나눈다. `Common/`은 격자·방향·공통 요청 계약, `Prefabs/`는 프리팹 DB, `Items/`는 아이템 식별·소유권, `Storage/`는 저장·필터·입력 슬롯, `Buildings/`는 건물 공통·생성·철거·배치 순서, `Construction/`은 배치 검증·공사·자재 요청을 둔다. `Belts/`, `Routing/`, `Resources/`, `World/`는 각각 벨트, 분배·합류, 자원, 청크·월드 생성 계약을 둔다. `Production/`에는 공통 생산 결과와 출력 대기 버퍼를, 그 아래 `Mining/`과 `Crafting/`에는 채굴·제작 전용 계약을 둔다.
+
+각 도메인에서는 상태·버퍼를 `*Components.cs`, 일회성/enableable 요청을 `*Requests.cs`, 프레임 결정을 `*Decisions.cs`, 실행 후 소비되는 임시 결과를 `*Results.cs`, 설정을 `*ConfigComponents.cs`로 구분한다. 공통 인터페이스·독립 계약 파일은 타입 이름을 유지하며, 공간 인덱스와 Fence는 해당 도메인의 `*SpatialIndex.cs`에 함께 둔다. 입출고 결정은 `Storage/BuildingItemDecisions.cs`, 월드 공통 시드·초기 청크 설정은 `World/WorldGenerationConfigComponents.cs`, 임시 생산 결과는 `Production/ProductResults.cs`에 둔다. 파일 분류는 실행 순서나 상태 소유권을 바꾸지 않는다. 현재 파일별 타입은 [C# 파일 색인](<Docs/architecture v2 plan/CodeMemory/CSharpFileIndex.md>)에서 찾는다.
+
+독립적인 정적 Utility와 확장 클래스는 `Assets/Scripts/Common/`에 둔다. 건물 통합 설정과 호환용 런타임 설정의 조회는 `BuildingConfigLookupUtility`의 버퍼 타입별 오버로드로 제공하며, 프리팹 조회와 자원 생성 설정 조회는 각각 `PrefabLookupUtility`, `ResourceGenerationConfigLookupUtility`가 담당한다. 컴포넌트 자체의 생성자·변환 연산자, Blob 접근, NativeContainer/Fence 수명주기 메서드는 데이터 계약과 함께 유지한다.
 
 관련 테스트는 `Assets/Editor/Tests/`에서 다음 범위로 먼저 좁힌다. 이름은 존재하는 검증 코드의 위치이며 최신 통과 결과를 뜻하지 않는다.
 

@@ -1,5 +1,3 @@
-using Unity.Burst;
-using Unity.Collections;
 using Unity.Entities;
 
 /// <summary>
@@ -24,30 +22,5 @@ public struct BuildingRuntimeConfigElement : IBufferElementData
         BuildingType = buildingType;
         Speed = speed;
         StorageCapacity = storageCapacity;
-    }
-}
-
-/// <summary>
-/// 건물 런타임 설정 조회를 위한 Burst 호환 순수 유틸리티.
-/// </summary>
-[BurstCompile]
-public static class BuildingRuntimeConfigLookupUtility
-{
-    public static bool TryGetConfig(
-        in DynamicBuffer<BuildingRuntimeConfigElement> buffer,
-        BuildingTypeEnum type,
-        out BuildingRuntimeConfigElement config)
-    {
-        for (int i = 0; i < buffer.Length; i++)
-        {
-            if (buffer[i].BuildingType == type)
-            {
-                config = buffer[i];
-                return true;
-            }
-        }
-
-        config = default;
-        return false;
     }
 }

@@ -97,6 +97,25 @@ public class Phase7BuildingAuthoringPrefabTests : EcsWorldTestFixture
         bool foundNone = BuildingConfigLookupUtility.TryGetFootprint(buffer, BuildingTypeEnum.PowerPole, out var noneSize);
         Assert.IsFalse(foundNone);
         Assert.AreEqual(int2.zero, noneSize);
+        Assert.AreEqual(int2.zero, noneSize);
+    }
+
+    [Test]
+    public void BuildingConfigLookup_UnlockStateAndMissingType_ArePreserved()
+    {
+        var configEntity = _entityManager.CreateEntity(typeof(BuildingConfigElement));
+        var buffer = _entityManager.GetBuffer<BuildingConfigElement>(configEntity);
+        buffer.Add(new BuildingConfigElement(BuildingTypeEnum.Belt, 10f, 0, true));
+        buffer.Add(new BuildingConfigElement(BuildingTypeEnum.Miner, 0.1f, 0, false));
+
+        Assert.IsTrue(BuildingConfigLookupUtility.IsBuildingUnlocked(buffer, BuildingTypeEnum.Belt));
+        Assert.IsFalse(BuildingConfigLookupUtility.IsBuildingUnlocked(buffer, BuildingTypeEnum.Miner));
+        Assert.IsFalse(BuildingConfigLookupUtility.IsBuildingUnlocked(buffer, BuildingTypeEnum.PowerPole));
+        Assert.IsFalse(BuildingConfigLookupUtility.TryGetConfig(buffer, BuildingTypeEnum.PowerPole, out BuildingConfigElement missing));
+        Assert.AreEqual(default(BuildingConfigElement), missing);
+
+        Assert.IsTrue(BuildingConfigLookupUtility.SetBuildingUnlocked(ref buffer, BuildingTypeEnum.Miner, true));
+        Assert.IsTrue(BuildingConfigLookupUtility.IsBuildingUnlocked(buffer, BuildingTypeEnum.Miner));
     }
 
     [Test]

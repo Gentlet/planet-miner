@@ -83,16 +83,16 @@ public class Phase3BuildingRuntimeConfigTests : EcsWorldTestFixture
         Assert.AreEqual(11, buffer.Length);
 
         // Lookup Utility 조회 검증
-        bool foundMiner = BuildingRuntimeConfigLookupUtility.TryGetConfig(buffer, BuildingTypeEnum.Miner, out var minerConfig);
+        bool foundMiner = BuildingConfigLookupUtility.TryGetConfig(buffer, BuildingTypeEnum.Miner, out var minerConfig);
         Assert.IsTrue(foundMiner);
         Assert.AreEqual(0.1f, minerConfig.Speed, 0.001f);
 
-        bool foundStorage = BuildingRuntimeConfigLookupUtility.TryGetConfig(buffer, BuildingTypeEnum.Storage, out var storageConfig);
+        bool foundStorage = BuildingConfigLookupUtility.TryGetConfig(buffer, BuildingTypeEnum.Storage, out var storageConfig);
         Assert.IsTrue(foundStorage);
         Assert.AreEqual(10, storageConfig.StorageCapacity);
 
         // 미등록 건물(ConstructionSite) 조회 시 false 반환 검증
-        bool foundNone = BuildingRuntimeConfigLookupUtility.TryGetConfig(buffer, BuildingTypeEnum.ConstructionSite, out _);
+        bool foundNone = BuildingConfigLookupUtility.TryGetConfig(buffer, BuildingTypeEnum.ConstructionSite, out _);
         Assert.IsFalse(foundNone);
     }
 

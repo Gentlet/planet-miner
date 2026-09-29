@@ -14,14 +14,14 @@ public class Phase7ConstructionContractTests : EcsWorldTestFixture
     {
         // 1. 회전 방향에 따른 유효 점유 크기(가로/세로 스왑) 검증
         int2 baseSize = new int2(2, 3);
-        Assert.AreEqual(new int2(2, 3), BuildingPlacementValidationUtility.GetEffectiveSize(baseSize, DirectionEnum.Up));
-        Assert.AreEqual(new int2(2, 3), BuildingPlacementValidationUtility.GetEffectiveSize(baseSize, DirectionEnum.Down));
-        Assert.AreEqual(new int2(3, 2), BuildingPlacementValidationUtility.GetEffectiveSize(baseSize, DirectionEnum.Right));
-        Assert.AreEqual(new int2(3, 2), BuildingPlacementValidationUtility.GetEffectiveSize(baseSize, DirectionEnum.Left));
+        Assert.AreEqual(new int2(2, 3), BuildingFootprintUtility.GetEffectiveSize(baseSize, DirectionEnum.Up));
+        Assert.AreEqual(new int2(2, 3), BuildingFootprintUtility.GetEffectiveSize(baseSize, DirectionEnum.Down));
+        Assert.AreEqual(new int2(3, 2), BuildingFootprintUtility.GetEffectiveSize(baseSize, DirectionEnum.Right));
+        Assert.AreEqual(new int2(3, 2), BuildingFootprintUtility.GetEffectiveSize(baseSize, DirectionEnum.Left));
 
         // 2. 음수 좌표계에서의 점유 영역 계산 검증
         int2 origin = new int2(-10, -5);
-        int2 effectiveSize = BuildingPlacementValidationUtility.GetEffectiveSize(baseSize, DirectionEnum.Right); // (3, 2)
+        int2 effectiveSize = BuildingFootprintUtility.GetEffectiveSize(baseSize, DirectionEnum.Right); // (3, 2)
 
         int cellCount = 0;
         for (int y = 0; y < effectiveSize.y; y++)
@@ -35,6 +35,22 @@ public class Phase7ConstructionContractTests : EcsWorldTestFixture
             }
         }
         Assert.AreEqual(6, cellCount);
+    }
+
+    [TestCase(0, 3, DirectionEnum.Up, 1, 3)]
+    [TestCase(-2, 3, DirectionEnum.Right, 3, 1)]
+    [TestCase(2, 0, DirectionEnum.Down, 2, 1)]
+    [TestCase(2, -3, DirectionEnum.Left, 1, 2)]
+    public void FootprintSize_NormalizesBeforeRotation_WithoutMutatingComponent(
+        int width, int height, DirectionEnum direction, int expectedWidth, int expectedHeight)
+    {
+        int2 originalSize = new int2(width, height);
+        var footprint = new BuildingFootprint(originalSize);
+        int2 expectedSize = new int2(expectedWidth, expectedHeight);
+
+        Assert.AreEqual(expectedSize, BuildingFootprintUtility.GetEffectiveSize(originalSize, direction));
+        Assert.AreEqual(expectedSize, footprint.GetEffectiveSize(direction));
+        Assert.AreEqual(originalSize, footprint.Size);
     }
 
     [Test]

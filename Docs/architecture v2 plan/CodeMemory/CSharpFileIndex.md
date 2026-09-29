@@ -1,35 +1,63 @@
 # Architecture V2 C# 파일 색인
 
-기준: 2026-09-26 현재 `rg --files -g '*.cs'`로 확인한 78개 파일. 경로는 저장소 루트 기준이다. 아래 역할은 C# 정의·쿼리·호출을 읽고 요약한 것이며, 테스트 실행 결과가 아니다. 위쪽 설계·흐름은 [README.md](README.md)를 참조한다.
+컴포넌트 파일 항목은 2026-09-30 도메인별 재배치 후 현재 소스의 선언을 기준으로 갱신했다. 경로는 저장소 루트 기준이다. 그 외 항목은 기존 조사 기록이며 전체 C# 파일을 빠짐없이 나열한 목록은 아니다. 역할·타입 목록은 테스트 실행 결과가 아니다. 위쪽 설계·흐름은 [README.md](README.md)를, 폴더 분류 기준은 [AGENTS.md](../../../AGENTS.md)를 참조한다.
 
-## 공통, 데이터, 설정, Phase (30개)
+## 공통, 데이터, 설정, Phase
 
 | 파일 | 현재 역할 |
 | --- | --- |
 | `Assets/Scripts/Common/DirectionExtensions.cs` | `DirectionEnum`을 인접 셀 오프셋으로 변환한다. |
 | `Assets/Scripts/Common/GameConstants.cs` | 청크 크기, 아이템 최소 간격 `0.25f`, 슬롯/타일 홉/델타타임 상한을 정의한다. |
 | `Assets/Scripts/Common/BuildingInputSlotUtility.cs` | 재료 목록의 요구량/최대 스택으로 건물 공통 품목 전용 입력 슬롯을 계산하고 실패 사유를 반환한다. Crafter 레시피 변경에서 사용한다. |
-| `Assets/Scripts/Common/IRequestComponent.cs` | 1회성 요청과 enableable 요청의 마커 계약을 정의한다. |
+| `Assets/Scripts/Common/BuildingConfigLookupUtility.cs` | 건물 통합/호환 런타임 설정 조회, footprint·해금·건설 자재 조회를 제공한다. |
+| `Assets/Scripts/Common/BuildingFootprintUtility.cs` | 점유 크기의 최소 1칸 정규화와 방향 회전을 계산하며 BuildingFootprint 확장 메서드도 제공한다. |
+| `Assets/Scripts/Common/BuildingTypeExtensions.cs` | 건물 종류의 Burst 호환 FixedString 변환을 제공한다. |
+| `Assets/Scripts/Common/ItemTypeExtensions.cs` | 아이템 종류의 Burst 호환 FixedString 변환을 제공한다. |
+| `Assets/Scripts/Common/PrefabLookupUtility.cs` | 건물·아이템·자원 프리팹 버퍼 조회를 제공하며 누락/Null 프리팹 실패 정책을 유지한다. |
+| `Assets/Scripts/Common/ResourceGenerationConfigLookupUtility.cs` | 품목별 자원 생성 설정 버퍼를 조회한다. |
+| `Assets/Scripts/Components/Belts/BeltComponents.cs` | `BeltComponent`, `BeltMovementState` 정의. |
+| `Assets/Scripts/Components/Belts/BeltDecisions.cs` | `BeltMovementDecision` 정의. |
+| `Assets/Scripts/Components/Belts/BeltSpatialIndex.cs` | `BeltInfo`, `BeltSpatialIndex`, `BeltSpatialIndexFence` 정의. |
+| `Assets/Scripts/Components/Buildings/BuildingComponents.cs` | `BuildingTypeEnum`, `BuildingType`, `BuildingFootprint`, `IndestructibleBuilding` 정의. |
+| `Assets/Scripts/Components/Buildings/BuildingConfigComponents.cs` | `BuildingConfig`, `BuildingConfigElement`, `BuildingConstructionMaterialElement` 정의. |
+| `Assets/Scripts/Components/Buildings/BuildingRequests.cs` | `SpawnBuildingRequest`, `DemolishBuildingRequest` 정의. |
+| `Assets/Scripts/Components/Buildings/BuildingRuntimeConfigComponents.cs` | `BuildingRuntimeConfig`, `BuildingRuntimeConfigElement` 정의. |
+| `Assets/Scripts/Components/Buildings/BuildingSpatialIndex.cs` | `BuildingInfo`, `BuildingSpatialIndex`, `BuildingSpatialIndexFence` 정의. |
+| `Assets/Scripts/Components/Buildings/PlacementStamp.cs` | `PlacementStamp` 정의. |
+| `Assets/Scripts/Components/Common/GridComponents.cs` | `DirectionEnum`, `GridPosition`, `Direction` 정의. |
+| `Assets/Scripts/Components/Common/IRequestComponent.cs` | `IRequestComponent`, `IEnableableRequest` 정의. |
+| `Assets/Scripts/Components/Construction/BuildingPlacementRequests.cs` | `BuildingPlacementRequest`, `PlacementRequestCandidateElement` 정의. |
+| `Assets/Scripts/Components/Construction/ConstructionComponents.cs` | `ConstructionSiteFlags`, `ConstructionSite`, `ConstructionMaterialRequirementElement` 정의. |
+| `Assets/Scripts/Components/Construction/ConstructionRequests.cs` | `SupplyConstructionMaterialRequest`, `CancelConstructionRequest` 정의. |
+| `Assets/Scripts/Components/Construction/PlacementComponents.cs` | `PlacementFlags`, `PlacementValidationCode`, `PlacementValidationResult`, `PlacementCandidate` 정의. |
+| `Assets/Scripts/Components/Items/ItemComponents.cs` | `ItemTypeEnum`, `ItemIdentity`, `ItemOwnership` 정의. |
+| `Assets/Scripts/Components/Items/ItemConfigComponents.cs` | `ItemDataBlob`, `ItemRegistryBlob`, `ItemRegistry` 정의. |
+| `Assets/Scripts/Components/Items/ItemRequests.cs` | `ItemSpawnDestination`, `SpawnItemRequest`, `DestroyItemRequest`, `TransferOwnershipRequest` 정의. |
+| `Assets/Scripts/Components/Items/ItemSpatialIndex.cs` | `ItemSpatialIndex`, `ItemSpatialIndexFence` 정의. |
+| `Assets/Scripts/Components/Prefabs/PrefabDatabaseComponents.cs` | `BuildingPrefabDatabase`, `BuildingPrefabElement`, `ItemPrefabDatabase`, `ItemPrefabElement`, `ResourcePrefabDatabase`, `ResourcePrefabElement`, `DronePrefabDatabase`, `DronePrefab` 정의. |
+| `Assets/Scripts/Components/Production/Crafting/CrafterComponents.cs` | `CrafterStatusEnum`, `CrafterState` 정의. |
+| `Assets/Scripts/Components/Production/Crafting/CrafterDecisions.cs` | `CrafterDecision`, `CrafterStateDecision` 정의. |
+| `Assets/Scripts/Components/Production/Crafting/CrafterRequests.cs` | `ChangeCrafterRecipeRequest` 정의. |
+| `Assets/Scripts/Components/Production/Crafting/RecipeConfigComponents.cs` | `RecipeIngredientBlob`, `RecipeOutputBlob`, `RecipeBlob`, `RecipeRegistryBlob`, `RecipeRegistry` 정의. |
+| `Assets/Scripts/Components/Production/Mining/MinerComponents.cs` | `MinerState` 정의. |
+| `Assets/Scripts/Components/Production/Mining/MinerDecisions.cs` | `MinerDecision` 정의. |
+| `Assets/Scripts/Components/Production/ProductComponents.cs` | `ProductItemElement` 정의. |
+| `Assets/Scripts/Components/Production/ProductResults.cs` | `ProductResult` 정의. |
+| `Assets/Scripts/Components/Resources/ResourceComponents.cs` | `ResourceNode` 정의. |
+| `Assets/Scripts/Components/Resources/ResourceConfigComponents.cs` | `ResourceConfig` 정의. |
+| `Assets/Scripts/Components/Resources/ResourceSpatialIndex.cs` | `ResourceSpatialIndex`, `ResourceSpatialIndexFence` 정의. |
+| `Assets/Scripts/Components/Routing/RoutingComponents.cs` | `SplitterRoutingState`, `MergerRoutingState` 정의. |
+| `Assets/Scripts/Components/Routing/RoutingDecisions.cs` | `RoutingTransferDecision` 정의. |
+| `Assets/Scripts/Components/Storage/BuildingInputSlotElement.cs` | `BuildingInputSlotElement` 정의. |
+| `Assets/Scripts/Components/Storage/BuildingItemDecisions.cs` | `BuildingItemInputDecision`, `BuildingItemOutputDecision` 정의. |
+| `Assets/Scripts/Components/Storage/StorageComponents.cs` | `Storage`, `StoredItemElement` 정의. |
+| `Assets/Scripts/Components/Storage/StorageFilterComponents.cs` | `StorageFilterMode`, `FixedBitSet`, `StorageFilter` 정의. |
+| `Assets/Scripts/Components/World/ChunkLifecycleComponents.cs` | `GeneratedChunkTracker`, `GeneratedChunkReadyElement`, `GeneratedChunkCompletedElement` 정의. |
+| `Assets/Scripts/Components/World/ChunkRequests.cs` | `ChunkLoadRequestQueue`, `ChunkLoadRequestElement` 정의. |
+| `Assets/Scripts/Components/World/FloorGenerationConfigComponents.cs` | `FloorGenerationSettings`, `FloorBiomeElement`, `FloorVariantElement` 정의. |
+| `Assets/Scripts/Components/World/ResourceGenerationConfigComponents.cs` | `ResourceGenerationConfigElement` 정의. |
+| `Assets/Scripts/Components/World/WorldGenerationConfigComponents.cs` | `ResourceGenerationSettings` 정의. |
 | `Assets/Scripts/Common/RoutingDirectionUtility.cs` | Splitter/Merger 포트 순서, 회전, 인접 방향, 연결 방향, 커서 갱신을 계산한다. |
-| `Assets/Scripts/Components/Belt/BeltComponents.cs` | 벨트 속도, 아이템의 실제 진행도, 프레임 이동 결정을 구분한다. |
-| `Assets/Scripts/Components/Belt/BeltSpatialIndex.cs` | 셀→`BeltInfo` 맵과 reader/writer fence를 정의한다. |
-| `Assets/Scripts/Components/Buildings/BuildingComponents.cs` | 건물 종류, 회전 footprint, 아이템 입고/출고 결정을 정의한다. |
-| `Assets/Scripts/Components/Buildings/BuildingSpatialIndex.cs` | 점유 셀→`BuildingInfo` 맵과 fence를 정의한다. |
-| `Assets/Scripts/Components/Buildings/CrafterComponents.cs` | 제작기 상태, 레시피 변경 요청, 실행/상태 결정을 정의한다. |
-| `Assets/Scripts/Components/Buildings/BuildingInputSlotElement.cs` | 건물 공통 입력 슬롯별 허용 품목 버퍼 요소. 인덱스가 보관 슬롯과 대응하며 Crafter 생성·레시피 변경·입고 예약에 연결된다. |
-| `Assets/Scripts/Components/Buildings/MinerComponents.cs` | 채굴 진행도와 대상 자원 결정을 정의한다. |
-| `Assets/Scripts/Components/Buildings/ProductComponent.cs` | 생산 의도인 `ProductResult` 버퍼 요소를 정의한다. |
-| `Assets/Scripts/Components/Buildings/RecipeConfigComponents.cs` | 재료/출력/레시피 Blob과 조회 함수, `RecipeRegistry` 싱글톤을 정의한다. |
-| `Assets/Scripts/Components/Buildings/RoutingComponents.cs` | Splitter/Merger의 벨트·방향·커서와 enableable 전송 결정을 정의한다. |
-| `Assets/Scripts/Components/GridComponents.cs` | 직교 방향과 격자 위치 데이터 계약을 정의한다. |
-| `Assets/Scripts/Components/Item/ItemComponents.cs` | 아이템 종류, 정체성, 월드/저장 소유권을 정의한다. |
-| `Assets/Scripts/Components/Item/ItemConfigComponents.cs` | 품목별 최대 스택 Blob과 `ItemRegistry` 싱글톤을 정의한다. |
-| `Assets/Scripts/Components/Item/ItemRequests.cs` | World/Storage/Product 스폰, 삭제, 소유권 이전 요청을 정의한다. |
-| `Assets/Scripts/Components/Item/ItemSpatialIndex.cs` | 셀→복수 월드 아이템 맵과 fence를 정의한다. |
-| `Assets/Scripts/Components/PlacementStamp.cs` | 배치 Tick/Order의 선후 관계를 정의한다. |
-| `Assets/Scripts/Components/Resources/ResourceComponents.cs` | 자원 품목·잔량과 무한 자원 설정을 정의한다. |
-| `Assets/Scripts/Components/Resources/ResourceSpatialIndex.cs` | 셀→자원 엔티티 맵과 fence를 정의한다. |
-| `Assets/Scripts/Components/Storage/StorageComponents.cs` | 128비트 품목 필터, 저장 슬롯 수, 저장/생산품 버퍼를 정의한다. |
 | `Assets/Scripts/Config/RecipeConfigLoader.cs` | JSON/Resources 레시피를 Blob으로 변환하고 기본 5개 레시피를 제공한다. |
 | `Assets/Scripts/Phases/CommandGroup.cs` | 명령 처리 그룹을 선언한다. |
 | `Assets/Scripts/Phases/DecisionGroup.cs` | Command 이후 판단 그룹을 선언한다. |
