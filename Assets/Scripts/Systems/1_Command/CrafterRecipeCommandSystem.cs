@@ -9,7 +9,7 @@ using Unity.Mathematics;
 /// - ChangeCrafterRecipeRequest 요청 엔티티를 감지하여 레시피 변경을 원자적으로 수행.
 /// - 1. 기존 진행도 리셋 (Progress = 0, IsCraftingActive = false)
 /// - 2. 잔여 StoredItemElement 재료를 ProductItemElement(출력 버퍼)로 부산물 배출(Byproduct, Slot 1+)
-/// - 3. StorageFilter를 새 레시피의 재료 Whitelist로 즉시 갱신 (0 이하면 Blacklist)
+/// - 3. 새 슬롯 계산 성공 후 Storage/BuildingInputSlotElement/StorageFilter를 함께 갱신 (해제 시 0슬롯/빈 Whitelist)
 /// - 4. SelectedRecipeId와 ActiveRecipeId를 새 레시피 ID로 갱신
 /// - 5. 상태 전환: ProductItemElement에 아이템이 남아있으면 WaitingForByproductOutput, 없으면 Idle (또는 NoRecipe)
 /// - 6. 처리 완료된 ChangeCrafterRecipeRequest 엔티티 파괴 (Consume-on-Apply)
@@ -19,7 +19,9 @@ public partial struct CrafterRecipeCommandSystem : ISystem
 {
     private EntityQuery _requestQuery;
     private ComponentLookup<CrafterState> _crafterStateLookup;
+    private ComponentLookup<Storage> _storageLookup;
     private ComponentLookup<StorageFilter> _filterLookup;
+    private BufferLookup<BuildingInputSlotElement> _inputSlotLookup;
     private BufferLookup<StoredItemElement> _storedBufferLookup;
     private BufferLookup<ProductItemElement> _productBufferLookup;
 
@@ -30,7 +32,9 @@ public partial struct CrafterRecipeCommandSystem : ISystem
             .Build();
 
         _crafterStateLookup = state.GetComponentLookup<CrafterState>(false);
+        _storageLookup = state.GetComponentLookup<Storage>(false);
         _filterLookup = state.GetComponentLookup<StorageFilter>(false);
+        _inputSlotLookup = state.GetBufferLookup<BuildingInputSlotElement>(false);
         _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(false);
         _productBufferLookup = state.GetBufferLookup<ProductItemElement>(false);
     }
@@ -46,18 +50,9 @@ public partial struct CrafterRecipeCommandSystem : ISystem
             return;
         }
 
-        if (!SystemAPI.HasSingleton<RecipeRegistry>())
-        {
-            return;
-        }
-
-        var recipeRegistry = SystemAPI.GetSingleton<RecipeRegistry>();
-        if (!recipeRegistry.Value.IsCreated)
-        {
-            return;
-        }
-
-        ref var registry = ref recipeRegistry.Value.Value;
+        state.Dependency.Complete();
+        SystemAPI.TryGetSingleton<RecipeRegistry>(out var recipeRegistry);
+        SystemAPI.TryGetSingleton<ItemRegistry>(out var itemRegistry);
 
         var ecbSystem = state.World.GetExistingSystemManaged<EndCommandEntityCommandBufferSystem>();
         EntityCommandBuffer ecb;
@@ -73,7 +68,9 @@ public partial struct CrafterRecipeCommandSystem : ISystem
         }
 
         _crafterStateLookup.Update(ref state);
+        _storageLookup.Update(ref state);
         _filterLookup.Update(ref state);
+        _inputSlotLookup.Update(ref state);
         _storedBufferLookup.Update(ref state);
         _productBufferLookup.Update(ref state);
 
@@ -85,10 +82,45 @@ public partial struct CrafterRecipeCommandSystem : ISystem
             var req = requests[i];
             var reqEntity = requestEntities[i];
             Entity crafter = req.TargetCrafter;
-            int newRecipeId = req.NewRecipeId;
+            int newRecipeId = math.max(0, req.NewRecipeId);
 
             if (state.EntityManager.Exists(crafter) && _crafterStateLookup.HasComponent(crafter))
             {
+                if (!HasInputConfiguration(crafter))
+                {
+                    UnityEngine.Debug.LogError("[CrafterRecipeCommandSystem] Missing Crafter input configuration. Recipe change rejected.");
+                    ecb.DestroyEntity(reqEntity);
+                    continue;
+                }
+
+                // 계산/검증 실패 시 기존 진행도, 슬롯, 필터, 소유 버퍼를 모두 보존한다.
+                FixedList512Bytes<BuildingInputSlotElement> slots = default;
+                if (newRecipeId > 0)
+                {
+                    if (!recipeRegistry.Value.IsCreated || !itemRegistry.Value.IsCreated)
+                    {
+                        // 설정 게시를 기다리는 요청은 소비하지 않는다. 해제는 설정 없이도 처리한다.
+                        continue;
+                    }
+
+                    ref var registry = ref recipeRegistry.Value.Value;
+                    if (!registry.TryGetRecipeIndex(newRecipeId, out int recipeIndex))
+                    {
+                        UnityEngine.Debug.LogError($"[CrafterRecipeCommandSystem] Unknown recipe {newRecipeId}. Recipe change rejected.");
+                        ecb.DestroyEntity(reqEntity);
+                        continue;
+                    }
+
+                    ref var recipe = ref registry.Recipes[recipeIndex];
+                    if (!BuildingInputSlotUtility.TryCalculate(
+                            ref recipe.Ingredients, ref itemRegistry.Value.Value, out slots, out var error))
+                    {
+                        UnityEngine.Debug.LogError($"[CrafterRecipeCommandSystem] Invalid input slots for recipe {newRecipeId}: {error}. Recipe change rejected.");
+                        ecb.DestroyEntity(reqEntity);
+                        continue;
+                    }
+                }
+
                 var crafterState = _crafterStateLookup[crafter];
 
                 // 1. 제작 진행도 리셋
@@ -113,28 +145,12 @@ public partial struct CrafterRecipeCommandSystem : ISystem
                         }
                         int baseSlot = math.max(1, maxExistingSlot + 1);
 
-                        var uniqueTypes = new FixedList32Bytes<byte>();
                         for (int s = 0; s < storedItems.Length; s++)
                         {
                             var item = storedItems[s];
-                            byte typeByte = (byte)item.ItemType;
-                            int typeIndex = -1;
-                            for (int u = 0; u < uniqueTypes.Length; u++)
-                            {
-                                if (uniqueTypes[u] == typeByte)
-                                {
-                                    typeIndex = u;
-                                    break;
-                                }
-                            }
-
-                            if (typeIndex < 0 && uniqueTypes.Length < uniqueTypes.Capacity)
-                            {
-                                typeIndex = uniqueTypes.Length;
-                                uniqueTypes.Add(typeByte);
-                            }
-
-                            int byproductSlot = baseSlot + math.max(0, typeIndex);
+                            // 같은 품목도 여러 입력 스택을 가질 수 있다. 기존 슬롯 구분을
+                            // 유지하여 잔여물 배출 슬롯의 MaxStack 초과를 방지한다.
+                            int byproductSlot = baseSlot + item.SlotIndex;
                             productItems.Add(new ProductItemElement(item.ItemEntity, item.ItemType, byproductSlot));
                         }
 
@@ -156,27 +172,17 @@ public partial struct CrafterRecipeCommandSystem : ISystem
                     crafterState.Status = newRecipeId > 0 ? CrafterStatusEnum.Idle : CrafterStatusEnum.NoRecipe;
                 }
 
-                // 3. StorageFilter 즉시 갱신
-                if (_filterLookup.HasComponent(crafter))
+                // 3. 입력 용량/품목별 슬롯/필터를 동일 Command 경계에서 갱신.
+                var inputSlots = _inputSlotLookup[crafter];
+                inputSlots.Clear();
+                var filter = new StorageFilter(StorageFilterMode.Whitelist);
+                for (int slot = 0; slot < slots.Length; slot++)
                 {
-                    var filter = _filterLookup[crafter];
-                    if (newRecipeId > 0 && registry.TryGetRecipeIndex(newRecipeId, out int newRecipeIdx))
-                    {
-                        filter.Mode = StorageFilterMode.Whitelist;
-                        filter.Mask.Clear();
-                        ref var newRecipe = ref registry.Recipes[newRecipeIdx];
-                        for (int ing = 0; ing < newRecipe.Ingredients.Length; ing++)
-                        {
-                            filter.Mask.Set((byte)newRecipe.Ingredients[ing].ItemType, true);
-                        }
-                    }
-                    else
-                    {
-                        filter.Mask.Clear();
-                        filter.Mode = StorageFilterMode.Blacklist;
-                    }
-                    _filterLookup[crafter] = filter;
+                    inputSlots.Add(slots[slot]);
+                    filter.Mask.Set((byte)slots[slot].ItemType, true);
                 }
+                _storageLookup[crafter] = new Storage(slots.Length);
+                _filterLookup[crafter] = filter;
 
                 // 4. 레시피 ID 갱신
                 crafterState.SelectedRecipeId = newRecipeId;
@@ -196,5 +202,12 @@ public partial struct CrafterRecipeCommandSystem : ISystem
             ecb.Playback(state.EntityManager);
             ecb.Dispose();
         }
+    }
+
+    private bool HasInputConfiguration(Entity crafter)
+    {
+        return _storageLookup.HasComponent(crafter) && _filterLookup.HasComponent(crafter) &&
+               _inputSlotLookup.HasBuffer(crafter) && _storedBufferLookup.HasBuffer(crafter) &&
+               _productBufferLookup.HasBuffer(crafter);
     }
 }

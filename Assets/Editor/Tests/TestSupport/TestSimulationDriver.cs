@@ -51,6 +51,56 @@ namespace PlanetMiner.Tests
             ecbSystem.Update();
         }
 
+        /// <summary>제작기 생성·물류 통합 검증. 각 그룹의 실제 정렬과 두 ECB 경계를 사용한다.</summary>
+        public GameSimulationGroup CreateCrafterPipeline()
+        {
+            var simulation = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
+            var command = _world.GetOrCreateSystemManaged<CommandGroup>();
+            var decision = _world.GetOrCreateSystemManaged<DecisionGroup>();
+            var reservation = _world.GetOrCreateSystemManaged<ReservationGroup>();
+            var execution = _world.GetOrCreateSystemManaged<ExecutionGroup>();
+            var apply = _world.GetOrCreateSystemManaged<StateApplyGroup>();
+            var sync = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
+            simulation.AddSystemToUpdateList(command);
+            simulation.AddSystemToUpdateList(decision);
+            simulation.AddSystemToUpdateList(reservation);
+            simulation.AddSystemToUpdateList(execution);
+            simulation.AddSystemToUpdateList(apply);
+            simulation.AddSystemToUpdateList(sync);
+
+            command.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterRecipeCommandSystem>());
+            command.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>());
+            decision.AddSystemToUpdateList(_world.GetOrCreateSystem<BeltMovementDecisionSystem>());
+            decision.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemInputDecisionSystem>());
+            decision.AddSystemToUpdateList(_world.GetOrCreateSystem<StorageItemOutputDecisionSystem>());
+            decision.AddSystemToUpdateList(_world.GetOrCreateSystem<ProductItemOutputDecisionSystem>());
+            decision.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterDecisionSystem>());
+            reservation.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingStorageInputReservationSystem>());
+            reservation.AddSystemToUpdateList(_world.GetOrCreateSystem<BeltDestinationReservationSystem>());
+            execution.AddSystemToUpdateList(_world.GetOrCreateSystem<BeltMovementExecutionSystem>());
+            execution.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterExecutionSystem>());
+            apply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
+            apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
+            apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemLifecycleApplySystem>());
+            apply.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterStateApplySystem>());
+            apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionLifecycleApplySystem>());
+            apply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingLifecycleApplySystem>());
+            apply.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>());
+            sync.AddSystemToUpdateList(_world.GetOrCreateSystem<BeltSpatialSyncSystem>());
+            sync.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingSpatialSyncSystem>());
+            sync.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemSpatialSyncSystem>());
+            sync.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<WorldInvariantValidationSystem>());
+
+            command.SortSystems();
+            decision.SortSystems();
+            reservation.SortSystems();
+            execution.SortSystems();
+            apply.SortSystems();
+            sync.SortSystems();
+            simulation.SortSystems();
+            return simulation;
+        }
+
         /// <summary>자원 생성/채굴 통합 테스트용 실제 6단계 실행 경계. 추가 Playback은 사용하지 않는다.</summary>
         public GameSimulationGroup CreateResourceGenerationPipeline(bool includeMining = false)
         {

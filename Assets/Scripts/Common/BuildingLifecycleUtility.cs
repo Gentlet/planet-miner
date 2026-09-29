@@ -139,6 +139,11 @@ public static class BuildingLifecycleUtility
                 ecb.AddComponent(building, new CrafterState(selectedRecipeId: 0, speed: speed > 0f ? speed : 1.0f));
                 ecb.AddComponent<CrafterDecision>(building);
                 ecb.SetComponentEnabled<CrafterDecision>(building, false);
+                ecb.AddComponent(building, new CrafterStateDecision(CrafterStatusEnum.NoRecipe));
+                ecb.SetComponentEnabled<CrafterStateDecision>(building, false);
+                ecb.AddComponent(building, new Storage(0));
+                ecb.AddComponent(building, new StorageFilter(StorageFilterMode.Whitelist));
+                ecb.AddBuffer<BuildingInputSlotElement>(building);
                 ecb.AddBuffer<StoredItemElement>(building);
                 ecb.AddBuffer<ProductItemElement>(building);
                 ecb.AddBuffer<ProductResult>(building);

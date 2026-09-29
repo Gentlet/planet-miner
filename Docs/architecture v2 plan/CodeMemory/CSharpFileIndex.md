@@ -8,6 +8,7 @@
 | --- | --- |
 | `Assets/Scripts/Common/DirectionExtensions.cs` | `DirectionEnum`을 인접 셀 오프셋으로 변환한다. |
 | `Assets/Scripts/Common/GameConstants.cs` | 청크 크기, 아이템 최소 간격 `0.25f`, 슬롯/타일 홉/델타타임 상한을 정의한다. |
+| `Assets/Scripts/Common/BuildingInputSlotUtility.cs` | 재료 목록의 요구량/최대 스택으로 건물 공통 품목 전용 입력 슬롯을 계산하고 실패 사유를 반환한다. Crafter 레시피 변경에서 사용한다. |
 | `Assets/Scripts/Common/IRequestComponent.cs` | 1회성 요청과 enableable 요청의 마커 계약을 정의한다. |
 | `Assets/Scripts/Common/RoutingDirectionUtility.cs` | Splitter/Merger 포트 순서, 회전, 인접 방향, 연결 방향, 커서 갱신을 계산한다. |
 | `Assets/Scripts/Components/Belt/BeltComponents.cs` | 벨트 속도, 아이템의 실제 진행도, 프레임 이동 결정을 구분한다. |
@@ -15,6 +16,7 @@
 | `Assets/Scripts/Components/Buildings/BuildingComponents.cs` | 건물 종류, 회전 footprint, 아이템 입고/출고 결정을 정의한다. |
 | `Assets/Scripts/Components/Buildings/BuildingSpatialIndex.cs` | 점유 셀→`BuildingInfo` 맵과 fence를 정의한다. |
 | `Assets/Scripts/Components/Buildings/CrafterComponents.cs` | 제작기 상태, 레시피 변경 요청, 실행/상태 결정을 정의한다. |
+| `Assets/Scripts/Components/Buildings/BuildingInputSlotElement.cs` | 건물 공통 입력 슬롯별 허용 품목 버퍼 요소. 인덱스가 보관 슬롯과 대응하며 Crafter 생성·레시피 변경·입고 예약에 연결된다. |
 | `Assets/Scripts/Components/Buildings/MinerComponents.cs` | 채굴 진행도와 대상 자원 결정을 정의한다. |
 | `Assets/Scripts/Components/Buildings/ProductComponent.cs` | 생산 의도인 `ProductResult` 버퍼 요소를 정의한다. |
 | `Assets/Scripts/Components/Buildings/RecipeConfigComponents.cs` | 재료/출력/레시피 Blob과 조회 함수, `RecipeRegistry` 싱글톤을 정의한다. |
@@ -43,7 +45,7 @@
 | --- | --- |
 | `Assets/Scripts/Systems/0_Initialization/ItemConfigInitSystem.cs` | StreamingAssets의 스택 설정을 읽어 `ItemRegistry`를 한 번 게시하고 Blob을 해제한다. |
 | `Assets/Scripts/Systems/0_Initialization/RecipeInitSystem.cs` | `RecipeRegistry`를 한 번 게시하고 소유 Blob을 해제한다. |
-| `Assets/Scripts/Systems/1_Command/CrafterRecipeCommandSystem.cs` | 레시피 변경 시 진행도를 초기화하고 잔여 재료를 Product 버퍼로 옮기며 필터를 갱신한다. 요청 엔티티를 ECB로 소비한다. |
+| `Assets/Scripts/Systems/1_Command/CrafterRecipeCommandSystem.cs` | 새 입력 슬롯 계산 검증 후 진행도·슬롯 수·품목 배정·필터를 갱신하고 잔여 재료를 스택 구분을 유지해 Product로 옮긴다. Decision 데이터는 수정하지 않는다. |
 | `Assets/Scripts/Systems/2_Decision/BeltMovementDecisionSystem.cs` | 벨트 속도, 프레임 시간, 같은/다음 타일의 아이템 간격을 이용해 `PlannedProgress`를 계산한다. |
 | `Assets/Scripts/Systems/2_Decision/BuildingItemInputDecisionSystem.cs` | 벨트 끝에서 다음 셀의 건물, Storage, 필터, 제작기 부산물 대기 상태를 검사한다. |
 | `Assets/Scripts/Systems/2_Decision/CrafterDecisionSystem.cs` | 레시피·재료·출력 슬롯을 검사해 제작 실행 결정과 다음 상태를 분리해 기록한다. |
@@ -88,9 +90,11 @@
 | `Assets/Editor/Tests/Phase4MinerPipelineTests.cs` | 자원 탐색·채굴·생산·출고, 무한/고갈, 다중 footprint, 스택과 시간 상한. |
 | `Assets/Editor/Tests/Phase5CrafterExecutionTests.cs` | 재료 선소비, 진행/완료, 출력 역압, 다중 부산물의 전체 용량 판정. |
 | `Assets/Editor/Tests/Phase5RecipeBlobTests.cs` | 레시피 JSON/기본값, 다중 재료/부산물, 조회와 Burst 접근. |
+| `Assets/Editor/Tests/Phase5CrafterInputSlotTests.cs` | F-037 1단계: 슬롯 계산의 올림, 중복 합산, 품목 구분, 상한/실패 및 Burst Job 호출. |
+| `Assets/Editor/Tests/Phase5CrafterInputPipelineTests.cs` | F-037: 개별 회귀 15개와 실제 정렬 6단계 통합 4개. 직접 Spawn/공사 완료 × ECS 테스트 프리팹/fallback, 미선택 차단·입고·선소비·생산·후속 출고·레시피 변경/해제 및 불변식. |
 | `Assets/Editor/Tests/Phase5RecipeChangePipelineTests.cs` | 레시피 변경 잔여물 배출, 입고 차단과 재개. |
 | `Assets/Editor/Tests/Phase6BeltDestinationReservationTests.cs` | 본선 우선, 배치 순서 경합, 외부 출고/라우팅 경합과 목표 공간. |
 | `Assets/Editor/Tests/Phase6RoutingContractTests.cs` | Splitter/Merger 방향·포트·커서·전송 결정·배치 순서 계약. |
 | `Assets/Editor/Tests/TestSupport/EcsWorldTestFixture.cs` | 독립 ECS World/EntityManager 생성과 정리. |
 | `Assets/Editor/Tests/TestSupport/TestEntityFactory.cs` | 자원, 벨트/아이템, 저장, 채굴기, 제작기, 일반 건물 테스트 엔티티 생성. |
-| `Assets/Editor/Tests/TestSupport/TestSimulationDriver.cs` | 테스트 시간 설정, 개별 시스템 갱신/완료, ECB 재생. |
+| `Assets/Editor/Tests/TestSupport/TestSimulationDriver.cs` | 시간·개별 시스템·ECB 경계 지원. 자원 생성/채굴 및 제작기 생성·물류의 실제 정렬 6단계 테스트 그룹을 구성한다. |

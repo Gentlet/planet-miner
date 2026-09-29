@@ -1,4 +1,5 @@
 using Unity.Entities;
+using Unity.Collections;
 using Unity.Mathematics;
 using Unity.Transforms;
 
@@ -168,9 +169,9 @@ namespace PlanetMiner.Tests
             int2 position,
             int recipeId = 1,
             float speed = 1.0f,
-            int slotCount = 4,
             StorageFilter? filter = null)
         {
+            var slots = CalculateCrafterInputSlots(recipeId);
             var entity = _entityManager.CreateEntity(
                 typeof(BuildingType),
                 typeof(BuildingFootprint),
@@ -179,6 +180,7 @@ namespace PlanetMiner.Tests
                 typeof(CrafterState),
                 typeof(CrafterDecision),
                 typeof(CrafterStateDecision),
+                typeof(BuildingItemOutputDecision),
                 typeof(Storage),
                 typeof(StorageFilter));
 
@@ -194,16 +196,61 @@ namespace PlanetMiner.Tests
                 new CrafterStateDecision(
                     recipeId > 0 ? CrafterStatusEnum.Idle : CrafterStatusEnum.NoRecipe));
             _entityManager.SetComponentEnabled<CrafterStateDecision>(entity, false);
-            _entityManager.SetComponentData(entity, new Storage(slotCount));
-            _entityManager.SetComponentData(
-                entity,
-                filter ?? new StorageFilter(StorageFilterMode.Whitelist));
+            _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(entity, false);
+            _entityManager.SetComponentData(entity, new Storage(slots.Length));
+            var recipeFilter = new StorageFilter(StorageFilterMode.Whitelist);
+            for (int i = 0; i < slots.Length; i++)
+            {
+                recipeFilter.Mask.Set((byte)slots[i].ItemType, true);
+            }
+            _entityManager.SetComponentData(entity, filter ?? recipeFilter);
 
             _entityManager.AddBuffer<StoredItemElement>(entity);
             _entityManager.AddBuffer<ProductItemElement>(entity);
             _entityManager.AddBuffer<ProductResult>(entity);
+            var inputSlots = _entityManager.AddBuffer<BuildingInputSlotElement>(entity);
+            for (int i = 0; i < slots.Length; i++)
+            {
+                inputSlots.Add(slots[i]);
+            }
 
             return entity;
+        }
+
+        private FixedList512Bytes<BuildingInputSlotElement> CalculateCrafterInputSlots(int recipeId)
+        {
+            if (recipeId <= 0)
+            {
+                return default;
+            }
+
+            using var recipeQuery = _entityManager.CreateEntityQuery(typeof(RecipeRegistry));
+            using var itemQuery = _entityManager.CreateEntityQuery(typeof(ItemRegistry));
+            if (recipeQuery.IsEmptyIgnoreFilter || itemQuery.IsEmptyIgnoreFilter)
+            {
+                throw new System.InvalidOperationException("Crafter fixtures require RecipeRegistry and ItemRegistry.");
+            }
+
+            var recipes = recipeQuery.GetSingleton<RecipeRegistry>();
+            var items = itemQuery.GetSingleton<ItemRegistry>();
+            if (!recipes.Value.IsCreated || !items.Value.IsCreated)
+            {
+                throw new System.InvalidOperationException("Crafter fixture registries must have valid blobs.");
+            }
+
+            ref var registry = ref recipes.Value.Value;
+            if (!registry.TryGetRecipeIndex(recipeId, out int recipeIndex))
+            {
+                throw new System.InvalidOperationException($"Unknown fixture recipe {recipeId}.");
+            }
+
+            if (!BuildingInputSlotUtility.TryCalculate(ref registry.Recipes[recipeIndex].Ingredients,
+                    ref items.Value.Value, out var slots, out var error))
+            {
+                throw new System.InvalidOperationException($"Invalid fixture input slots: {error}.");
+            }
+
+            return slots;
         }
 
         /// <summary>

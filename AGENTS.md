@@ -8,7 +8,7 @@
 
 `Assets/Scenes/V2 Test Scene.unity`는 `Assets/Scenes/V2 Test Scene/sub.unity`를 자동 로드하며, 이 SubScene에 건물·아이템·자원 프리팹 DB Authoring이 있다. 메인 장면의 `V2FloorBiomePreview`는 진단용 색상 텍스처를 표시한다. 한편 `ProjectSettings/EditorBuildSettings.asset`의 활성 빌드 장면은 아직 `Assets/Scenes/SampleScene.unity`다. V2 테스트 장면과 빌드 진입 장면이 같다고 가정하지 않는다.
 
-현재 C#에는 공사 완료 전환·취소·철거, 주 시설 자동 부트스트랩, 전력망, 드론 운송, 연구 진행, 게임 입력·카메라 제어·UI Toolkit 컨트롤러, 실제 바닥 청크 렌더링 시스템이 없다. enum·요청 필드·프리팹·JSON·계획이 존재하는 것과 해당 기능이 구현된 것은 구분한다.
+2026-09-29 F-037 검증에서 공사 완료의 완공 건물 생성과 제작기 입력·생산 연결을 확인했다. 주 시설 자동 부트스트랩, 전력망, 드론 운송, 연구 진행, 게임 입력·카메라 제어·UI Toolkit 컨트롤러, 실제 바닥 청크 렌더링 시스템은 이 지도의 기존 미구현 범위다. enum·요청 필드·프리팹·JSON·계획이 존재하는 것과 해당 기능이 구현된 것은 구분한다.
 
 현재 사용자 지시와 검증한 소스를 기억·문서보다 우선한다. `.agents/` 및 `Docs/architecture v2 plan/`의 계획은 설계 배경으로 참고하고, 현재 동작은 컴포넌트, 쿼리, 업데이트 순서, 실제 호출 관계로 확인한다. 코드 확인 결과와 실제 실행으로 검증한 결과를 구분해 보고한다.
 
@@ -62,6 +62,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 
 - 아이템 하나는 엔티티 하나다. `ItemIdentity.Type`이 종류, `ItemOwnership.Owner == Entity.Null`이면 월드 아이템이고 그 외에는 해당 소유자에 수납된 아이템이다. ECS `Disabled`를 소유권 표현으로 사용하지 않는다.
 - `StoredItemElement`는 저장품/제작 재료/공사 도착 자재, `ProductItemElement`는 생산품 출력 대기 버퍼다. 버퍼의 엔티티 참조와 `ItemOwnership`을 함께 유지한다. `Storage.SlotCount`와 `ItemRegistry`의 품목별 `MaxStack`은 서로 다른 제한이다.
+- `BuildingInputSlotElement`는 슬롯별 허용 품목을 정하고 버퍼 길이는 `Storage.SlotCount`와 같다. Crafter는 생성 시 0슬롯/빈 Whitelist로 시작하며, 레시피 변경 시 `BuildingInputSlotUtility`로 품목별 요구량을 합산하여 `ceil(요구량/MaxStack)`개의 전용 슬롯을 구성한다. 입고 예약은 해당 품목 슬롯만 사용한다. 버퍼가 없는 일반 창고에는 이 전용 슬롯 규칙을 적용하지 않는다.
 - 일반 입출고는 `BuildingItemStorageApplySystem`이 버퍼·위치·벨트 상태를 갱신하고 `TransferOwnershipRequest`를 발행한다. `ItemOwnershipApplySystem`이 소유권과 `DisableRendering`을 반영한다. 공사 자재 수령은 현재 `ConstructionMaterialApplySystem`이 별도로 ECB에 소유권·렌더 태그·현장 버퍼 변경을 기록하므로 함께 확인한다.
 - 아이템 생성/삭제는 `ItemLifecycleApplySystem`이 담당한다. 저장된 아이템을 소비할 때는 소유 버퍼에서 먼저 제거한 뒤 `DestroyItemRequest`를 활성화한다. `TransferOwnershipRequest`만으로 소유 버퍼의 추가/제거까지 이루어지지는 않는다.
 - `ProductResult`는 Execution이 기록하고 Item Lifecycle이 소비하는 임시 생산 결과 버퍼다. 생산량 `Count`는 실제 아이템 엔티티 수로 변환된다. 생산물의 슬롯 0은 주생산품이고 후속 슬롯은 부산물에 사용한다.
@@ -105,7 +106,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 - 한 배치 묶음은 기본 `StrictAllOrNothing` 또는 `AllowPartialPlacement` 정책을 사용한다. 유틸리티의 임시 `claimedCells`는 해당 묶음 내부의 선점 검사다. 여러 요청 엔티티 전체에 걸친 영속 예약으로 설명하지 않는다.
 - 승인된 현장은 `BuildingTypeEnum.ConstructionSite`, 위치·크기·방향·`PlacementStamp`, 자재 요구 버퍼와 보관 버퍼를 가지며 건물 공간 인덱스에 포함된다. 바닥 아이템은 배치를 막지 않고 `AwaitingItemClearance`를 표시한다. 기존 같은 타입 벨트 덮어쓰기는 새 현장 대신 방향 변경을 ECB에 기록한다.
 - `SupplyConstructionMaterialRequest` → `ConstructionMaterialApplySystem`은 현장·품목·잔여 요구량을 확인하고 도착량/예약량·보관 소유권을 갱신한다. 현재 `ConstructionSite.Progress`는 자재 수령 비율이다. 별도 건설 작업 시간이 누적된다고 설명하지 않는다.
-- `SpawnBuildingRequest` → `BuildingLifecycleApplySystem`은 완공 건물을 별도로 생성하고 타입별 컴포넌트를 주입한다. 현재 공사 현장에서 이 요청을 발행하는 완료 시스템은 없다. 현장 취소·철거·바닥 아이템 회수도 아직 연결되지 않았다.
+- 직접 생성은 `SpawnBuildingRequest` → `BuildingLifecycleApplySystem`, 공사 완료는 `ConstructionLifecycleApplySystem`에서 별도 Spawn 요청 없이 공통 `BuildingLifecycleUtility.SpawnBuilding`을 호출한다. 두 경로 모두 타입별 런타임 구성을 주입한다. F-037은 자재 요구가 충족된 현장에서 완공한 Crafter의 생성·제작 연결을 검증했으며 전체 배치·자재 배송이나 취소·철거를 검증한 것은 아니다.
 - `BuildingConfigElement.IsUnlocked`와 해금 변경 유틸리티는 있지만 연구 진행 시스템은 없다. 전력·드론·연구 건물 종류와 프리팹 등록도 해당 시뮬레이션 구현을 의미하지 않는다.
 
 ### 물류·생산
@@ -116,7 +117,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 - 분배/합류: `SplitterDecisionSystem`은 입력 벨트 기준 forward→right→left, `MergerDecisionSystem`은 출력 벨트 기준 back→left→right 순환 후보를 선택한다. 예약을 통과한 `RoutingTransferDecision`은 `RoutingApplySystem`이 실제 이동과 커서 갱신에 사용한다. 설치 우선순위는 `PlacementStamp`와 해당 비교 구현을 따른다.
 - 채굴: Decision이 footprint 아래 첫 유효 자원과 동일 품목 1스택 출력 여유를 검사한다. Execution은 진행도·자원량과 `ProductResult`를 갱신하며 유한 자원 고갈은 ECB로 삭제한다. `ResourceConfig` 부재 시 기본은 유한 자원이다.
 - 제작: `CrafterDecisionSystem`이 실행 결정과 `CrafterStateDecision`을 나누어 기록한다. Execution은 재료를 선소비하고 진행/출력 결과를 만들며, `CrafterStateApplySystem`이 상태를 반영한다. 출력은 주생산품과 모든 부산물 슬롯의 여유를 함께 검사한다.
-- 레시피 변경: `CrafterRecipeCommandSystem`이 진행을 초기화하고 남은 입력 재료를 생산물 버퍼로 옮기며 필터를 갱신한다. `WaitingForByproductOutput` 동안 입고와 새 제작을 막는다. 이 책임을 Execution 시스템의 오래된 주석만 보고 중복 구현하지 않는다.
+- 레시피 변경: `CrafterRecipeCommandSystem`이 새 입력 슬롯 계산을 검증한 뒤 진행을 초기화하고 슬롯 수·배정·필터를 함께 갱신한다. 남은 입력 재료는 기존 입력 슬롯 구분을 유지하여 생산물 버퍼의 빈 후속 슬롯으로 옮긴다. 설정 미게시 시 선택 요청을 대기시키고, 무효 레시피/계산 실패는 기존 상태를 보존한다. 해제는 0슬롯/빈 Whitelist이며 설정 없이도 처리한다. `WaitingForByproductOutput` 동안 입고와 새 제작을 막는다. 이 책임을 Execution 시스템의 오래된 주석만 보고 중복 구현하지 않는다.
 
 ## 주요 폴더와 테스트 탐색
 
@@ -143,7 +144,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 | 저장·입출고·공간·설정 | `Phase3Storage*`, `Phase3Building*`, `Phase3ItemConfigTests` |
 | 월드·청크·자원·바닥 생성 | `Phase4WorldGenerationConfigTests`, `Phase4ChunkLifecycleTests`, `Phase4ResourceGenerationTests`, `Phase4ResourceAuthoringAndSpawnTests`, `Phase4FloorBiomeGenerationTests` |
 | 채굴 통합 | `Phase4MinerComponentTests`, `Phase4MinerPipelineTests`, `Phase4EndToEndPipelineTests` |
-| 제작·레시피 | `Phase5RecipeBlobTests`, `Phase5CrafterExecutionTests`, `Phase5RecipeChangePipelineTests` |
+| 제작·레시피 | `Phase5RecipeBlobTests`, `Phase5CrafterExecutionTests`, `Phase5RecipeChangePipelineTests`, `Phase5CrafterInputSlotTests`, `Phase5CrafterInputPipelineTests` |
 | 분배·합류·목적지 예약 | `Phase6*` |
 | 배치·현장·자재·건물 스폰 | `Phase7ConstructionContractTests`, `Phase7PlacementCommandTests`, `Phase7ConstructionMaterialTests`, `Phase7BuildingLifecycleTests`, `Phase7BuildingAuthoringPrefabTests` |
 
