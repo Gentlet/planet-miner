@@ -8,7 +8,7 @@
 | --- | --- |
 | `Assets/Scripts/Common/DirectionExtensions.cs` | `DirectionEnum`을 인접 셀 오프셋으로 변환한다. |
 | `Assets/Scripts/Common/BeltEntryUtility.cs` | 출고·Routing·예약의 현재 벨트 입구 점유/간격 판정을 공유한다. 신규 후보 중재와 상태 반영은 수행하지 않는다. |
-| `Assets/Scripts/Common/GameConstants.cs` | 청크 크기, 아이템 최소 간격 `0.25f`, 슬롯/타일 홉/델타타임 상한을 정의한다. |
+| `Assets/Scripts/Common/GameConstants.cs` | 청크 크기, 아이템 최소 간격 `0.25f`, 간격·델타타임에서 파생한 벨트 속도 상한, 슬롯/타일 홉/델타타임 상한을 정의한다. |
 | `Assets/Scripts/Common/BuildingInputSlotUtility.cs` | 재료 목록의 요구량/최대 스택으로 건물 공통 품목 전용 입력 슬롯을 계산하고 실패 사유를 반환한다. Crafter 레시피 변경에서 사용한다. |
 | `Assets/Scripts/Common/BuildingConfigLookupUtility.cs` | 건물 통합/호환 런타임 설정 조회, footprint·해금·건설 자재 조회를 제공한다. |
 | `Assets/Scripts/Common/BuildingFootprintUtility.cs` | 점유 크기의 최소 1칸 정규화와 방향 회전을 계산하며 BuildingFootprint 확장 메서드도 제공한다. |

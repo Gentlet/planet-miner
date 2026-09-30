@@ -69,7 +69,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 - `ProductResult`는 Execution이 기록하고 Item Lifecycle이 소비하는 임시 생산 결과 버퍼다. 생산량 `Count`는 실제 아이템 엔티티 수로 변환된다. 생산물의 슬롯 0은 주생산품이고 후속 슬롯은 부산물에 사용한다.
 - `BeltMovementState`는 enableable 실제 이동 상태, `BeltMovementDecision`은 일반 컴포넌트인 프레임 이동 계획이다. 그 밖의 입출고·채굴·제작·라우팅 결정에는 enable 상태가 처리 대상 여부를 나타낸다. 컴포넌트 존재와 활성 상태를 구분하고, `IgnoreComponentEnabledState` 쿼리는 의도한 범위를 확인한다.
 - 일회성 요청은 처리 후 엔티티 삭제, enableable 요청은 비활성화, 임시 결과 버퍼는 Clear로 소비한다. 준비 대기 중인 청크 요청처럼 재시도가 필요한 데이터는 소비 조건이 충족될 때까지 유지한다. 프레임 결정과 `IRequestComponent`를 혼동하지 않는다.
-- `GameConstants`가 아이템 간격, 간격에서 파생한 타일 수용량, 저장 슬롯 상한, 시뮬레이션 delta time 상한을 제공한다. 벨트 수용량을 별도 고정 숫자로 정하지 않으며 각 시스템에 숫자 규칙을 복제하지 않는다.
+- `GameConstants`가 아이템 간격, 간격에서 파생한 타일 수용량과 벨트 속도 상한, 저장 슬롯 상한, 시뮬레이션 delta time 상한을 제공한다. 벨트 수용량과 속도 상한을 별도 고정 숫자로 정하지 않으며 각 시스템에 숫자 규칙을 복제하지 않는다.
 
 ### 베이킹·프리팹·코드 관례
 
@@ -117,6 +117,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 - 입고: `BuildingItemInputDecisionSystem`이 벨트 종단의 다음 셀, `Storage`, 필터, 제작기의 잔여물 대기를 확인한다. `BuildingStorageInputReservationSystem`이 슬롯을 확정하고, `BuildingItemStorageApplySystem` → `ItemOwnershipApplySystem`이 반영한다.
 - 출고: 일반 창고는 `StorageItemOutputDecisionSystem`이 첫 보관품을, 생산 건물은 `ProductItemOutputDecisionSystem`이 슬롯 0 우선으로 생산품을 선택한다. 외향 벨트의 입구 여유를 검사하고 공통 예약/반영 경로를 사용한다.
 - 벨트 이동: `BeltMovementDecisionSystem`이 현재/다음 셀의 간격과 수용량으로 이동량을 계산하고 `BeltMovementExecutionSystem`이 격자·진행도·시각 위치를 변경한 뒤 계획을 소비한다. 현재 `BeltDestinationReservationSystem`의 후보는 건물 출고와 라우팅 전달뿐이다. 일반 벨트 이동까지 통합 예약한다고 가정하지 않는다.
+- 2026-09-30 F-030 사용자 선택: 벨트 속도를 `GameConstants.MaxBeltSpeed = (1 - ItemSpacing) / MaxSimulationDeltaTime` 이하로 제한한다. 현재 상한은 초당 7.5칸이며 설정 속도도 7.5다. 설정 로더는 비유한 값과 상한 초과를 거부하고, 공통 완공 건물 생성 경로는 기존 기본속도 처리를 유지한 뒤 상한을 적용한다. 한 틱의 이동량은 최대 0.75칸이므로 유효한 progress 범위에서 다음 셀로 이동한 후에도 미조회 다다음 셀 입구까지 최소 간격을 남긴다. 기존 Decision/Execution과 Job/Fence 계약을 유지하며 전방 조회나 일반 이동 예약을 확장하지 않는다. 이 정책은 기존 겹침 복구나 일반 T형 직접 합류 중재를 보장하지 않는다.
 - 벨트 진입: 출고 두 Decision과 Splitter/Merger Decision, 목적지 예약은 `BeltEntryUtility.HasEntrySpace`로 현재 공간 스냅샷을 검사한다. 월드 소유권과 활성 `BeltMovementState`를 모두 가진 아이템만 점유에 포함하며, `ItemSpacing`과 `AlignmentEpsilon`, 간격에서 파생한 수용량을 사용한다. 공간 검사와 신규 후보 중재는 별개다. 예약은 출고·Routing 후보 중 목적지당 한 틱 최대 한 개를 기존 `PlacementStamp` 비교로 승인한다.
 - 2026-09-30 사용자 확정: 일반 벨트끼리의 T형 직접 합류는 자동 경합 중재·사전 대기·교착 해소 보장 대상에서 제외한다. 합류/분배 중재는 Merger/Splitter의 역할이며 이를 일반 벨트 예약으로 확장하지 않는다. 현재 외향 벨트의 바로 뒤 셀은 출처 건물 또는 라우터이므로, 해당 출력 셀에 추가 일반 벨트가 직접 진입하는 측면 합류도 통합 예약 구현의 근거로 삼지 않는다. 이 정책이 기존 겹침을 복구하거나 불변식 위반을 면제한다는 뜻은 아니다.
 - 분배/합류: `SplitterDecisionSystem`은 입력 벨트 기준 forward→right→left, `MergerDecisionSystem`은 출력 벨트 기준 back→left→right 순환 후보를 선택한다. 예약을 통과한 `RoutingTransferDecision`은 `RoutingApplySystem`이 실제 이동과 커서 갱신에 사용한다. 설치 우선순위는 `PlacementStamp`와 해당 비교 구현을 따른다.
@@ -190,10 +191,14 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 
 - Unity 버전은 `ProjectSettings/ProjectVersion.txt`, 패키지 버전은 `Packages/manifest.json`을 따른다.
 - C# 또는 에셋을 변경한 경우에는 변경 범위에 맞는 Unity CLI 컴파일/재컴파일 확인을 수행한다. C# 변경은 크기와 무관하게 항상 확인한다. 읽기 전용 분석이나 문서만의 변경에는 새 컴파일을 실행하지 않는다. 비동기 명령은 제출만으로 완료로 간주하지 말고 최종 상태를 확인한다.
-- 관련된 기존 EditMode 테스트가 있으면 전체 테스트보다 해당 테스트를 먼저 실행한다. 검증에서 문제가 발견되었을 때만 의존 시스템이나 더 넓은 테스트 범위로 확대한다.
-- 단순한 코드 변경은 컴파일 확인으로 충분할 수 있다. 단순하지 않은 게임 로직, 라이프사이클·소유권 규칙, 계산 로직, 회귀 가능성이 높은 동작을 변경한 경우에만 관련 테스트를 추가하거나 수정한다.
+- 새 테스트는 실제 발견한 버그의 재현·재발 방지 또는 기존 테스트가 다루지 않는 핵심 게임 흐름을 검증할 때만 추가한다. 코드의 복잡성이나 변경량만으로 테스트를 추가하지 않는다.
+- 새 테스트를 만들기 전에 관련된 기존 테스트를 확인한다. 같은 흐름의 기존 테스트에 필요한 assertion을 추가할 수 있으면 이를 우선하고, 동일한 실패를 잡는 테스트를 중복 생성하지 않는다.
+- 단순 대입·조회, 컴포넌트 존재 확인, 코드 이동·이름 변경만을 위한 테스트, 구현을 그대로 따라 쓰는 검사, 통합 테스트가 이미 검증하는 정상 경로의 별도 테스트는 만들지 않는다. 핵심 흐름 검증에 필요한 상태 확인은 해당 통합 테스트 안에서 수행한다.
+- 세부 단위 테스트는 소유권 손실·중복 생성·데이터 유실·계산 오류 등 중요한 실패를 통합 테스트로 재현하기 어려울 때만 예외적으로 작성한다. 정상·실패·경계 사례를 형식적으로 나열해 테스트를 늘리지 않는다.
+- 새 테스트를 추가할 때는 잡으려는 구체적인 실패와 기존 테스트만으로 부족한 이유를 작업 설명에 짧게 밝힌다. 이 기준 안의 테스트 추가에 별도 승인을 반복해서 요청하지 않는다.
+- 동작과 데이터 계약을 유지하는 이름 변경·파일 분리 등 단순 리팩터링은 기본적으로 컴파일만 확인한다. 동작·계약 변경이나 구체적인 회귀 위험이 있으면 영향을 받는 가장 작은 기존 EditMode 테스트 묶음을 실행한다. 관련성은 폴더·Phase 이름보다 실제 호출 관계와 데이터 계약으로 판단한다.
 - 실제 플레이 동작, UI·입력, 시각적 결과 등의 수동 작동 테스트는 사용자가 직접 수행한다. 명시적으로 요청받지 않은 경우 Play Mode 기반 작동 검증을 수행하지 않는다.
-- 명시적으로 요청받지 않은 경우 변경 내용과 무관한 테스트 범위나 검증 절차를 확장하지 않는다. 검증 중 문제가 발견된 경우에만 추가적인 코드 분석과 검증을 진행한다.
+- 관련 테스트 실패 또는 다른 시스템에 영향을 준다는 구체적인 근거가 있을 때만 검증 범위를 확대한다. 명시적인 요청 없이 변경과 무관한 검증을 추가하지 않으며, 전체 EditMode 테스트와 Play Mode 검증은 사용자가 명시적으로 요청한 경우에만 수행한다.
 - Unity CLI 명령 경로와 검증 순서는 아래 "Unity CLI 검증 절차"를 재사용한다.
 - 관련 시스템을 수정하면 해당 영역 문서의 "함께 확인할 영역"과 `Assets/Editor/`의 연관 테스트를 먼저 확인한다.
 - 컴파일/EditMode 테스트 성공은 Play Mode 입력, UI, 시각 결과, WebGL/브라우저 동작이나 persistence를 증명하지 않는다. 검증 보고에서 관련된 미수행 항목을 구분한다.
@@ -220,7 +225,7 @@ $planetMinerProject = 'C:\Projects\unity\PlanetMiner\planet miner'
 
 3. 상태 응답은 외부 JSON의 성공/오류부터 확인한다. `data.result`가 문자열이면 한 번 더 JSON으로 파싱하고, 객체이면 그대로 사용한다. null·파싱 실패·연결 오류는 완료로 간주하지 않는다. `completed` 또는 `up_to_date`라는 이름만으로 통과시키지 말고 `failed:false`, `errors:[]`, Editor가 준비되어 있고 컴파일/리로드 중이 아님을 확인한다. `up_to_date`이면 `Library/ScriptAssemblies/Assembly-CSharp.dll`이 최신 프로젝트 C# 소스보다 오래되지 않았는지 확인하고, 테스트 변경 시 테스트 어셈블리의 최신성도 확인한다.
 4. 비동기 작업은 polling하되 상태 변경·새 오류·최종 결과만 출력하고 동일한 전체 응답을 반복 출력하지 않는다. 짧은 연속 polling 대신 간격을 늘리며 기다리고, 한 번의 대기는 60초 이내로 제한한다. 예상 시간을 넘기면 연결/Editor 상태와 필요한 로그만 진단한다. 재연결 중 일시 오류는 상태 조회를 복구하며, 작업 상태가 불명확하다는 이유만으로 컴파일이나 테스트를 중복 제출하지 않는다.
-5. 컴파일 확인 후 관련 테스트 필터를 지정해 실행한다. `<관련 테스트 클래스 또는 필터>`는 실제 대상 이름으로 바꾼다.
+5. 위 기준에 따라 테스트 실행이 필요한 경우에만, 컴파일 확인 후 가장 작은 관련 테스트 필터를 지정해 실행한다. `<관련 테스트 클래스 또는 필터>`는 실제 대상 이름으로 바꾼다. 컴파일만으로 충분한 변경에는 이 단계를 생략한다.
 
    ```powershell
    & $unityCli command run_tests --mode editor --filter '<관련 테스트 클래스 또는 필터>' --async_tests true --project-path $planetMinerProject --format json
@@ -228,4 +233,4 @@ $planetMinerProject = 'C:\Projects\unity\PlanetMiner\planet miner'
    ```
 
 6. 테스트도 최종 완료를 확인한다. 성공 시 필터와 Total/Passed/Failed/Skipped/Inconclusive 등 제공된 통계만 보고하고 전체 통과 목록·원본 로그를 다시 넣지 않는다. 실패 시 해당 테스트의 메시지와 필요한 스택을 확인한다. 수정 전 assertion이 실행되었다면 테스트 어셈블리 반영 여부부터 확인한다.
-7. 추가 코드/에셋 변경, 검증 실패, 오래된 어셈블리 등 결과를 무효화하는 근거가 없다면 같은 컴파일·테스트를 반복하지 않는다. 새 변경이 있으면 그 변경 이후의 컴파일과 관련 테스트를 확인한다. 완료된 결과를 다시 보고하려는 목적만으로 재실행하거나 전체 테스트로 확대하지 않는다.
+7. 추가 코드/에셋 변경, 검증 실패, 오래된 어셈블리 등 결과를 무효화하는 근거가 없다면 같은 컴파일·테스트를 반복하지 않는다. 새 변경이 있으면 그 변경 이후의 컴파일을 확인하고, 테스트 재실행 여부와 범위는 위 기준으로 판단한다. 완료된 결과를 다시 보고하려는 목적만으로 재실행하거나 전체 테스트로 확대하지 않는다.

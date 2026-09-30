@@ -204,7 +204,8 @@ public partial struct BeltMovementDecisionJob : IJobEntity
 
         if (!hasNextItem)
         {
-            // 다음 타일이 완전히 비어 있으므로 원하는 만큼 이동 가능하되, 미검사 영역(2타일 이후) 침범 방지를 위해 최대 1.0f로 클램핑
+            // 다다음 셀과의 최소 간격은 생성 시 적용한 GameConstants.MaxBeltSpeed 상한으로 확보한다.
+            // 1.0f 클램프는 기존 이동 계획의 범위 방어이며, 단독으로 최소 간격을 보장하지 않는다.
             float planned = math.min(desiredMove, 1.0f);
             decision.PlannedProgress = planned;
             decision.IsBlocked = (planned < desiredMove - GameConstants.AlignmentEpsilon);

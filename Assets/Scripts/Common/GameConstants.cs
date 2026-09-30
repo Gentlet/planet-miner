@@ -38,5 +38,11 @@ public static class GameConstants
     /// 프레임 드랍(Spike/Hitch) 시 터널링·오버슈팅 완화.
     /// </summary>
     public const float MaxSimulationDeltaTime = 0.1f;
+
+    /// <summary>
+    /// 현재/다음 셀만 검사하는 벨트 이동에서 한 틱의 이동량이 1 - ItemSpacing을 넘지 않도록 하는 속도 상한.
+    /// 다음 셀로 이동한 뒤에도 미조회 다다음 셀 입구까지 최소 간격을 남긴다.
+    /// </summary>
+    public const float MaxBeltSpeed = (1.0f - ItemSpacing) / MaxSimulationDeltaTime;
 }
 
