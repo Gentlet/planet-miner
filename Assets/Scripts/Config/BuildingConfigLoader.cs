@@ -131,6 +131,15 @@ public static class BuildingConfigLoader
                 return false;
             }
 
+            if (buildingType == BuildingTypeEnum.Belt)
+            {
+                if (!math.isfinite(entry.speed) || entry.speed > GameConstants.MaxBeltSpeed)
+                {
+                    Debug.LogError($"[BuildingConfigLoader] Belt has invalid speed {entry.speed} (must be finite and between 0 and {GameConstants.MaxBeltSpeed}).");
+                    return false;
+                }
+            }
+
             // Footprint 검증
             int2 footprint = new int2(1, 1);
             if (entry.footprint != null)

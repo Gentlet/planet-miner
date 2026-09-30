@@ -2,7 +2,7 @@
   "buildings": [
     {
       "buildingType": "Belt",
-      "speed": 10.0,
+      "speed": 7.5,
       "storageCapacity": 0,
       "isUnlockedByDefault": true,
       "requiredResearch": "",

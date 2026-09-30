@@ -105,7 +105,8 @@ public static class BuildingLifecycleUtility
         switch (type)
         {
             case BuildingTypeEnum.Belt:
-                ecb.AddComponent(building, new BeltComponent(speed > 0f ? speed : 2.0f));
+                float beltSpeed = speed > 0f ? speed : 2.0f;
+                ecb.AddComponent(building, new BeltComponent(math.min(beltSpeed, GameConstants.MaxBeltSpeed)));
                 break;
 
             case BuildingTypeEnum.Miner:

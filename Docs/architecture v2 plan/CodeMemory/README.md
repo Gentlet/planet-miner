@@ -34,7 +34,7 @@ SimulationSystemGroup
 | `ProductItemElement` | 채굴기/제작기의 출력 대기 버퍼. `ItemLifecycleApplySystem`이 생산 결과를 추가하고 출고 반영이 제거 | 생산 가능량 판단, 생산품 출고, 불변식 검사 |
 | `ProductResult` | Miner/Crafter Execution의 생산 의도. `ItemLifecycleApplySystem`이 실제 아이템 엔티티로 바꾸고 비움 | Item Lifecycle Apply |
 | `BeltMovementState.Progress` | Execution의 타일 내 실제 진행도 | Decision, 입고 판단, 공간 검증 |
-| `BeltMovementDecision.PlannedProgress` | Decision의 프레임 계획, Reservation이 경합 시 제한, Execution이 소비 | Reservation, Execution, 불변식 검사 |
+| `BeltMovementDecision.PlannedProgress` | Decision의 프레임 계획, Execution이 소비. F-030 속도 상한은 설정·공통 생성 경계에서 적용 | Execution, 불변식 검사 |
 | 공간 인덱스 4종 | `*SpatialSyncSystem`이 각 인덱스를 `ClearJob` 후 populate. 아이템 인덱스는 월드 아이템만 포함 | 각 Decision/Execution/Reservation 시스템의 조회 및 검증 |
 
 `BeltSpatialIndex`, `BuildingSpatialIndex`, `ResourceSpatialIndex`는 셀당 하나의 값을 저장하고, `ItemSpatialIndex`는 여러 아이템을 저장한다. 각 인덱스는 별도 `*Fence`를 통해 reader/writer `JobHandle`을 연결한다. `Complete()`는 재할당·종료와 프레임 말의 메인 스레드 검증에서 호출된다. 공간 인덱스는 원본 ECS 컴포넌트로부터 만든 파생 상태이므로 구조 변경 직후의 조회 시점에 주의한다.
