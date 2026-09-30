@@ -315,7 +315,7 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
 
                     for (int q = 0; q < quantity; q++)
                     {
-                        SpawnRefundPrefabItem(prefabEntity, itemType, sitePos, worldPos);
+                        ItemLifecycleUtility.SpawnPrefabItem(ref ECB, prefabEntity, itemType, sitePos, worldPos, ItemOwnership.WorldItem);
                     }
 
                 }
@@ -329,24 +329,7 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
         ECB.DestroyEntity(requestEntity);
     }
 
-    private void SpawnRefundPrefabItem(Entity prefabEntity, ItemTypeEnum itemType, int2 gridPos, float3 worldPos)
-    {
-        Entity newItem = ECB.Instantiate(prefabEntity);
-        ECB.SetComponent(newItem, new ItemIdentity(itemType));
-        ECB.AddComponent(newItem, new GridPosition(gridPos));
-        ECB.SetComponent(newItem, LocalTransform.FromPosition(worldPos));
-        ECB.AddComponent(newItem, ItemOwnership.WorldItem);
 
-        ECB.AddComponent<DestroyItemRequest>(newItem);
-        ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
-        ECB.AddComponent<TransferOwnershipRequest>(newItem);
-        ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
-        ECB.AddComponent<BeltMovementState>(newItem);
-        ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
-        ECB.AddComponent<BeltMovementDecision>(newItem);
-        ECB.AddComponent<BuildingItemInputDecision>(newItem);
-        ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
-    }
 
 }
 

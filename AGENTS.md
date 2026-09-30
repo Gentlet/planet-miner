@@ -4,7 +4,7 @@
 
 `planet miner`는 격자 기반 2D 채굴·공장 시뮬레이션 Unity 프로젝트다. 현재 소스는 Architecture V2로 전환 중이며, Unity Entities의 unmanaged 컴포넌트와 `ISystem`/Burst Job을 중심으로 구성한다. 설정 로드 일부와 시스템 그룹, 개발용 검증에는 managed 시스템을 사용한다.
 
-이 지도는 2026-09-28의 `Assets/Scripts/`, `Assets/Editor/` 소스와 설정·장면 연결을 기준으로 갱신했다. 현재 구현 범위는 아이템 수명주기, 벨트·저장·채굴·제작·분배/합류, 청크 자원 생성과 바닥 선택, 프리팹 DB 베이킹, 건물 배치 검증·공사 현장 생성·자재 수령·완공 건물 직접 스폰이다.
+이 지도는 2026-09-28의 소스·설정·장면 연결을 기준으로 작성하고, 2026-09-30에 공사 수명주기와 관련 품질 개선 계약을 대조·갱신했다. 현재 구현 범위는 아이템 수명주기, 벨트·저장·채굴·제작·분배/합류, 청크 자원 생성과 바닥 선택, 프리팹 DB 베이킹, 건물 배치 검증·공사 현장 생성·자재 수령·완공 건물 직접 스폰이다.
 
 `Assets/Scenes/V2 Test Scene.unity`는 `Assets/Scenes/V2 Test Scene/sub.unity`를 자동 로드하며, 이 SubScene에 건물·아이템·자원 프리팹 DB Authoring이 있다. 메인 장면의 `V2FloorBiomePreview`는 진단용 색상 텍스처를 표시한다. 한편 `ProjectSettings/EditorBuildSettings.asset`의 활성 빌드 장면은 아직 `Assets/Scenes/SampleScene.unity`다. V2 테스트 장면과 빌드 진입 장면이 같다고 가정하지 않는다.
 
@@ -56,7 +56,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 - `BeltSpatialIndex`는 셀→`BeltInfo`, `BuildingSpatialIndex`는 점유 셀→`BuildingInfo`, `ResourceSpatialIndex`는 셀→자원 엔티티, `ItemSpatialIndex`는 셀→복수 월드 아이템을 저장한다. 소유자는 각 `*SpatialSyncSystem`이며 매 동기화 단계에서 Clear 후 재등록한다. `ChunkMapSystem`은 현재 소스에 없다.
 - 각 맵의 `*SpatialIndexFence`는 NativeContainer 읽기·쓰기 Job 의존성을 관리한다. Reader는 마지막 Writer에 의존하고 자신의 핸들을 등록하며, Writer는 이전 Writer와 모든 Reader를 기다린다. 메인 스레드 직접 접근·용량 변경·Dispose 때도 해당 Fence를 확인한다. ECS 컴포넌트 의존성만으로 맵 접근이 동기화된다고 가정하지 않는다.
 - 인덱스는 Synchronization 이전의 구조 변경을 즉시 반영하지 않는다. 동일 프레임 배치·입출고·스폰 경합은 해당 요청/예약 경계에서 처리하며, 인덱스만 조회하고 이미 반영됐다고 간주하지 않는다.
-- 청크 변환은 `Chunks/ChunkUtility`의 floor division, 방향 오프셋은 `DirectionExtensions`, 라우팅 회전·포트 계산은 `RoutingDirectionUtility`를 사용한다. Footprint 정규화·회전 계산은 `Common/BuildingFootprintUtility.GetEffectiveSize`를 사용한다. `BuildingFootprint`의 동명 확장 메서드도 같은 계산을 호출한다. 크기 변경은 요청→생성→인덱스의 회전 적용 횟수까지 추적한다.
+- 청크 변환은 `Chunks/ChunkUtility`의 floor division, 방향 오프셋은 `DirectionExtensions`, 라우팅 회전·포트 계산은 `RoutingDirectionUtility`를 사용한다. Footprint 정규화·회전 계산은 `Common/BuildingFootprintUtility.GetEffectiveSize`를 사용한다. `BuildingFootprint.Size`는 현장과 완공 건물 모두 방향 적용 전 기본 크기다. 동명 확장 메서드도 같은 계산을 호출하며 각 Reader가 한 번 회전한다. 크기 변경은 요청→생성→인덱스의 회전 적용 횟수까지 추적한다.
 - 구조 변경은 2-Sync Point 모델로 분리 관리한다. Phase 1 명령의 구조적 변경은 `EndCommandEntityCommandBufferSystem`에 기록하여 Command 종료 시점에 재생되며, Phase 4~5의 고갈 자원 파괴·수명주기 전이·철거·아이템 스폰/소멸은 `EndStateApplyEntityCommandBufferSystem`에 기록하여 StateApply 종료 시점에 재생된다. 실제 엔티티 생성·삭제 및 렌더 태그 변경은 각 Playback 시점에 확정된다. 구조 변경 전후에 `DynamicBuffer`를 계속 보관하지 말고, 필요하면 `ToNativeArray` 등으로 복사한 뒤 버퍼를 다시 얻는다. 기존 문서의 `DynamicBufferCopyUtility`는 현재 소스에 없다.
 
 ### 아이템·결정·요청
@@ -64,8 +64,9 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 - 아이템 하나는 엔티티 하나다. `ItemIdentity.Type`이 종류, `ItemOwnership.Owner == Entity.Null`이면 월드 아이템이고 그 외에는 해당 소유자에 수납된 아이템이다. ECS `Disabled`를 소유권 표현으로 사용하지 않는다.
 - `StoredItemElement`는 저장품/제작 재료/공사 도착 자재, `ProductItemElement`는 생산품 출력 대기 버퍼다. 버퍼의 엔티티 참조와 `ItemOwnership`을 함께 유지한다. `Storage.SlotCount`와 `ItemRegistry`의 품목별 `MaxStack`은 서로 다른 제한이다.
 - `BuildingInputSlotElement`는 슬롯별 허용 품목을 정하고 버퍼 길이는 `Storage.SlotCount`와 같다. Crafter는 생성 시 0슬롯/빈 Whitelist로 시작하며, 레시피 변경 시 `BuildingInputSlotUtility`로 품목별 요구량을 합산하여 `ceil(요구량/MaxStack)`개의 전용 슬롯을 구성한다. 입고 예약은 해당 품목 슬롯만 사용한다. 버퍼가 없는 일반 창고에는 이 전용 슬롯 규칙을 적용하지 않는다.
-- 일반 입출고는 `BuildingItemStorageApplySystem`이 버퍼·위치·벨트 상태를 갱신하고 `TransferOwnershipRequest`를 발행한다. `ItemOwnershipApplySystem`이 소유권과 `DisableRendering`을 반영한다. 공사 자재 수령은 `ConstructionLifecycleApplySystem` 내부 `ConstructionMaterialApplyJob`이 별도로 ECB에 소유권·렌더 태그·현장 버퍼 변경을 기록하므로 함께 확인한다.
+- 일반 입출고는 `BuildingItemStorageApplySystem`이 버퍼·위치·벨트 상태를 갱신하고 `TransferOwnershipRequest`를 발행한다. `ItemOwnershipApplySystem`이 소유권과 `DisableRendering`을 반영한다. 공사 자재 수령은 `ConstructionLifecycleApplySystem` 내부 `ConstructionMaterialApplyJob`이 도착량/예약량·현장 진행도·Stored 버퍼를 Job에서 직접 갱신하고, 소유권·렌더 태그·요청 삭제는 EndStateApply ECB에 기록한다. 버퍼와 Owner의 최종 일치는 Playback 이후 확인한다.
 - 아이템 생성/삭제는 `ItemLifecycleApplySystem`이 담당한다. 저장된 아이템을 소비할 때는 소유 버퍼에서 먼저 제거한 뒤 `DestroyItemRequest`를 활성화한다. `TransferOwnershipRequest`만으로 소유 버퍼의 추가/제거까지 이루어지지는 않는다.
+- 일반 Spawn·생산물 생성과 건물 철거 비용 환급의 프리팹 초기화는 `Common/ItemLifecycleUtility.SpawnPrefabItem`을 공유한다. 호출자가 DB 조회·실패 정책·버퍼 등록·ECB 시점을 소유하며, 유틸리티는 런타임 구성만 같은 ECB에 기록한다. 취소/철거의 기존 실물 반환은 신규 생성과 구분한다.
 - `ProductResult`는 Execution이 기록하고 Item Lifecycle이 소비하는 임시 생산 결과 버퍼다. 생산량 `Count`는 실제 아이템 엔티티 수로 변환된다. 생산물의 슬롯 0은 주생산품이고 후속 슬롯은 부산물에 사용한다.
 - `BeltMovementState`는 enableable 실제 이동 상태, `BeltMovementDecision`은 일반 컴포넌트인 프레임 이동 계획이다. 그 밖의 입출고·채굴·제작·라우팅 결정에는 enable 상태가 처리 대상 여부를 나타낸다. 컴포넌트 존재와 활성 상태를 구분하고, `IgnoreComponentEnabledState` 쿼리는 의도한 범위를 확인한다.
 - 일회성 요청은 처리 후 엔티티 삭제, enableable 요청은 비활성화, 임시 결과 버퍼는 Clear로 소비한다. 준비 대기 중인 청크 요청처럼 재시도가 필요한 데이터는 소비 조건이 충족될 때까지 유지한다. 프레임 결정과 `IRequestComponent`를 혼동하지 않는다.
@@ -95,10 +96,12 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 
 `BuildingConfigLoadSystem.cs`에는 실제 로더인 managed `BuildingConfigInitSystem`과, `BuildingConfig`를 요구하고 한 번 실행 후 비활성화되는 `BuildingConfigLoadSystem`이 함께 있다. 이름만 보고 로드 책임을 잘못 배정하지 않는다. 기존 전력·드론·연구·시작 아이템 JSON의 존재는 현재 로더가 사용한다는 증거가 아니다.
 
+`BuildingConfigLoader`는 `requiredResearch` 변환 전에 UTF-8 길이가 기존 `FixedString32Bytes.Capacity`(29)를 넘는지 검사한다. 초과하면 파싱을 실패시키고 두 out 목록을 null로 유지하여 게시하지 않는다.
+
 1. `InitialChunkLoadBootstrapSystem`이 월드 설정의 `InitialChunkSize`로 원점 주변 N×N 청크를 `ChunkLoadRequestQueue`에 한 번 넣는다.
 2. `ChunkLoadCommandSystem`이 `GeneratedChunkTracker.Map`(완료)과 `Pending`(접수/반영 대기)으로 중복을 제거하고 `GeneratedChunkReadyElement`로 넘긴다. 이 Tracker는 생성 수명주기이며 공간 점유 인덱스가 아니다.
 3. `ResourceGenerationCommandSystem`은 활성 자원 설정의 프리팹 전체가 유효할 때 `ResourceGenerationUtility`로 자원을 생성한다. 월드 시드·후보 청크·품목을 사용하며, 이웃 청크에서 시작된 광맥 중 대상 청크의 셀만 생성한다.
-4. 자원 스폰과 `GeneratedChunkCompletedElement`를 같은 EndStateApply ECB에 기록한다. 다음 Command가 완료 알림을 받아야 Pending에서 Map으로 이동한다. 정상적인 빈 청크도 이 완료 절차를 거친다.
+4. 자원 스폰과 `GeneratedChunkCompletedElement`를 같은 EndCommand ECB에 순서대로 기록하고 Command 끝에 재생한다. 엔티티는 같은 프레임 Decision 전에 존재하지만 공간 인덱스 등록은 Synchronization에서 이루어진다. 다음 Command가 완료 알림을 받아야 Pending에서 Map으로 이동한다. 정상적인 빈 청크도 이 완료 절차를 거친다.
 5. `ResourceSpatialSyncSystem`이 생성된 자원을 등록한다. 다음 프레임의 채굴 판단이 이 인덱스를 읽는다.
 
 `FloorBiomeSampler`는 같은 `WorldSeed`와 월드 셀 좌표로 바이옴·전이·변형 Sprite 경로를 선택하는 순수 계산이다. `V2FloorBiomePreview`는 결과를 진단용 텍스처로 보여 주며, 실제 Sprite 청크 메시·표시 수명주기는 구현하지 않는다.
@@ -106,15 +109,17 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 ### 배치·공사·완공 건물 스폰
 
 - 현재 연결된 흐름은 `BuildingPlacementRequest` + `PlacementRequestCandidateElement` → `BuildingPlacementCommandSystem` → `ConstructionSite` 생성이다. 검증은 `BuildingPlacementValidationUtility`가 건물/공사 점유, 채굴기 하부 자원, 해금, 바닥 아이템을 확인한다.
+- 배치 Command는 Building/Resource/Item 공간 Fence를 요구하고 직접 Map 조회 전에 세 마지막 Writer를 완료한다. 다른 Reader 전체나 World 전체를 완료하지 않으며 Validator의 동기화 부수효과에 의존하지 않는다.
 - 한 배치 묶음은 기본 `StrictAllOrNothing` 또는 `AllowPartialPlacement` 정책을 사용한다. 유틸리티의 임시 `claimedCells`는 해당 묶음 내부의 선점 검사다. 여러 요청 엔티티 전체에 걸친 영속 예약으로 설명하지 않는다.
 - 승인된 현장은 `BuildingTypeEnum.ConstructionSite`, 위치·크기·방향·`PlacementStamp`, 자재 요구 버퍼와 보관 버퍼를 가지며 건물 공간 인덱스에 포함된다. 바닥 아이템은 배치를 막지 않고 `AwaitingItemClearance`를 표시한다. 기존 같은 타입 벨트 덮어쓰기는 새 현장 대신 방향 변경을 ECB에 기록한다.
 - `ConstructionLifecycleApplySystem`은 취소(`CancelConstructionApplyJob`)→자재 수령(`ConstructionMaterialApplyJob`)→완공(`ConstructionCompletionApplyJob`) 순서로 Job을 연결한다. `SupplyConstructionMaterialRequest`는 자재 수령 Job이 현장·품목·잔여 요구량을 확인하여 도착량/예약량·보관 소유권을 갱신한다. 현재 `ConstructionSite.Progress`는 자재 수령 비율이다. 별도 건설 작업 시간이 누적된다고 설명하지 않는다.
 - 직접 생성은 `SpawnBuildingRequest` → `BuildingLifecycleApplySystem`, 공사 완료는 `ConstructionLifecycleApplySystem`에서 별도 Spawn 요청 없이 공통 `BuildingLifecycleUtility.SpawnBuilding`을 호출한다. 두 경로 모두 타입별 런타임 구성을 주입한다. F-037은 자재 요구가 충족된 현장에서 완공한 Crafter의 생성·제작 연결을 검증했으며 전체 배치·자재 배송이나 취소·철거를 검증한 것은 아니다.
+- 공사 취소는 Cancel Job이 `Cancelled`를 즉시 설정하여 뒤의 수령·완공을 막고, 보관된 실물을 현장 위치의 월드 아이템으로 반환하며 현장/요청 삭제를 EndStateApply에 기록한다. 완료는 취소·바닥 정리 대기를 제외하고 모든 요구량 충족을 확인한 뒤 공통 Spawn 성공 시에만 자재와 현장 삭제를 기록한다. 건물 철거의 Command 검증·기존 실물 반환·건축 비용 환급은 앞의 철거 계약을 따른다. 이 설명은 중복 실물 수령(F-003)이나 동시 입고·철거(F-004)가 해결됐다는 의미가 아니다.
 - `BuildingConfigElement.IsUnlocked`와 해금 변경 유틸리티는 있지만 연구 진행 시스템은 없다. 전력·드론·연구 건물 종류와 프리팹 등록도 해당 시뮬레이션 구현을 의미하지 않는다.
 
 ### 물류·생산
 
-- 입고: `BuildingItemInputDecisionSystem`이 벨트 종단의 다음 셀, `Storage`, 필터, 제작기의 잔여물 대기를 확인한다. `BuildingStorageInputReservationSystem`이 슬롯을 확정하고, `BuildingItemStorageApplySystem` → `ItemOwnershipApplySystem`이 반영한다.
+- 입고: `BuildingItemInputDecisionSystem`이 벨트 종단의 다음 셀, `Storage`, 필터, 제작기의 잔여물 대기를 확인한다. `BuildingStorageInputReservationSystem`이 프레임 임시 맵에 예약 품목·수량을 함께 기록하여 일반 창고의 새 슬롯도 같은 품목의 MaxStack까지 재사용하고 제작기 전용 슬롯 제한을 유지한 채 슬롯을 확정한다. 이후 `BuildingItemStorageApplySystem` → `ItemOwnershipApplySystem`이 반영한다.
 - 출고: 일반 창고는 `StorageItemOutputDecisionSystem`이 첫 보관품을, 생산 건물은 `ProductItemOutputDecisionSystem`이 슬롯 0 우선으로 생산품을 선택한다. 외향 벨트의 입구 여유를 검사하고 공통 예약/반영 경로를 사용한다.
 - 벨트 이동: `BeltMovementDecisionSystem`이 현재/다음 셀의 간격과 수용량으로 이동량을 계산하고 `BeltMovementExecutionSystem`이 격자·진행도·시각 위치를 변경한 뒤 계획을 소비한다. 현재 `BeltDestinationReservationSystem`의 후보는 건물 출고와 라우팅 전달뿐이다. 일반 벨트 이동까지 통합 예약한다고 가정하지 않는다.
 - 2026-09-30 F-030 사용자 선택: 벨트 속도를 `GameConstants.MaxBeltSpeed = (1 - ItemSpacing) / MaxSimulationDeltaTime` 이하로 제한한다. 현재 상한은 초당 7.5칸이며 설정 속도도 7.5다. 설정 로더는 비유한 값과 상한 초과를 거부하고, 공통 완공 건물 생성 경로는 기존 기본속도 처리를 유지한 뒤 상한을 적용한다. 한 틱의 이동량은 최대 0.75칸이므로 유효한 progress 범위에서 다음 셀로 이동한 후에도 미조회 다다음 셀 입구까지 최소 간격을 남긴다. 기존 Decision/Execution과 Job/Fence 계약을 유지하며 전방 조회나 일반 이동 예약을 확장하지 않는다. 이 정책은 기존 겹침 복구나 일반 T형 직접 합류 중재를 보장하지 않는다.
@@ -123,9 +128,11 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 - 분배/합류: `SplitterDecisionSystem`은 입력 벨트 기준 forward→right→left, `MergerDecisionSystem`은 출력 벨트 기준 back→left→right 순환 후보를 선택한다. 예약을 통과한 `RoutingTransferDecision`은 `RoutingApplySystem`이 실제 이동과 커서 갱신에 사용한다. 설치 우선순위는 `PlacementStamp`와 해당 비교 구현을 따른다.
 - 채굴: Decision이 footprint 아래 첫 유효 자원과 동일 품목 1스택 출력 여유를 검사한다. Execution은 진행도·자원량과 `ProductResult`를 갱신하며 유한 자원 고갈은 ECB로 삭제한다. `ResourceConfig` 부재 시 기본은 유한 자원이다.
 - 제작: `CrafterDecisionSystem`이 실행 결정과 `CrafterStateDecision`을 나누어 기록한다. Execution은 재료를 선소비하고 진행/출력 결과를 만들며, `CrafterStateApplySystem`이 상태를 반영한다. 출력은 주생산품과 모든 부산물 슬롯의 여유를 함께 검사한다.
-- 레시피 변경: `CrafterRecipeCommandSystem`이 새 입력 슬롯 계산을 검증한 뒤 진행을 초기화하고 슬롯 수·배정·필터를 함께 갱신한다. 남은 입력 재료는 기존 입력 슬롯 구분을 유지하여 생산물 버퍼의 빈 후속 슬롯으로 옮긴다. 설정 미게시 시 선택 요청을 대기시키고, 무효 레시피/계산 실패는 기존 상태를 보존한다. 해제는 0슬롯/빈 Whitelist이며 설정 없이도 처리한다. `WaitingForByproductOutput` 동안 입고와 새 제작을 막는다. 이 책임을 Execution 시스템의 오래된 주석만 보고 중복 구현하지 않는다.
+- 레시피 변경: `CrafterRecipeCommandSystem`이 새 입력 슬롯 계산을 검증한 뒤 진행을 초기화하고 슬롯 수·배정·필터를 함께 갱신한다. 남은 입력 재료는 기존 입력 슬롯 구분을 유지하여 생산물 버퍼의 빈 후속 슬롯으로 옮긴다. 설정 미게시 시 선택 요청을 대기시키고, 무효 레시피/계산 실패는 기존 상태를 보존한다. 해제는 0슬롯/빈 Whitelist이며 설정 없이도 처리한다. `WaitingForByproductOutput` 동안 입고와 새 제작을 막는다. Execution은 이 변경을 다시 처리하지 않고 확정된 레시피와 실행 결정으로 선소비·진행·생산 결과를 기록한다.
 
 ## 주요 폴더와 테스트 탐색
+
+개발용 `WorldInvariantValidationSystem`은 Storage 용량 검사와 독립적으로 모든 Stored/Product 버퍼의 실존·Identity·Owner·참조 유일성을 검사한다. Storage 없는 공사 현장도 포함하며 진단을 위해 상태를 수정하지 않는다. 보고 파일은 World별 세션 ID와 보고 순번을 사용하고 CreateNew로 기록한다. 쓰기 실패는 위반 수를 유지하고 디버그 출력으로 남기며 파일 보존까지 보장하지 않는다.
 
 | 경로 | 역할 |
 | --- | --- |

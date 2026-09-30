@@ -89,16 +89,16 @@ EndStateApply ECB 재생 → Synchronization에서 요청 잔류 검사
 
 ### 4.2 준비 대기와 다음 프레임 완료 알림
 
-실제 정의는 [WorldGenerationComponents.cs](../../Assets/Scripts/Components/World/WorldGenerationComponents.cs), 처리 경로는 `ChunkLoadCommandSystem` → `ResourceGenerationCommandSystem`이다.
+실제 정의는 [ChunkLifecycleComponents.cs](../../Assets/Scripts/Components/World/ChunkLifecycleComponents.cs), 처리 경로는 `ChunkLoadCommandSystem` → `ResourceGenerationCommandSystem`이다.
 
 ```text
 Command N: ChunkLoadCommandSystem
   외부 청크 요청 소비 → Map/Pending으로 중복 제거 → Pending 및 Ready에 접수
 Command N: ResourceGenerationCommandSystem
   필수 설정·프리팹 준비 전이면 Ready/Pending 유지
-  준비되면 스폰 명령 뒤에 Completed 알림을 같은 EndStateApply ECB에 기록
+  준비되면 스폰 명령 뒤에 Completed 알림을 같은 EndCommand ECB에 기록
   Ready 소비, Pending 유지
-EndStateApply N: 스폰 및 Completed 알림 반영
+EndCommand N: 스폰 및 Completed 알림 반영 (Decision 전 실체화)
 Synchronization N: 생성된 자원의 공간 인덱스 반영
 Command N+1: ChunkLoadCommandSystem
   Completed 소비 → Pending에서 Map으로 이전
@@ -111,7 +111,7 @@ Command N+1: ChunkLoadCommandSystem
 ## 5. Structural Change & ECB 경계
 
 1. 단순 값 변경·Enableable 토글은 일반 컴포넌트 쓰기를 사용한다. 구조 변경이 없어도, 실제 스폰 뒤의 완료 알림처럼 명령 순서가 필요한 경우에는 같은 ECB에 값·버퍼 변경을 기록할 수 있다.
-2. 현재 GameSimulation의 생성·파괴 등은 `EndStateApplyEntityCommandBufferSystem`에서 재생해 Synchronization 전에 반영한다. `EndSimulationEntityCommandBufferSystem`으로 임의 교체하면 검사·공간 동기화보다 늦어질 수 있다.
+2. Command의 배치·자원 스폰 등은 `EndCommandEntityCommandBufferSystem`에서, Execution/StateApply의 생성·파괴 등은 `EndStateApplyEntityCommandBufferSystem`에서 재생한다. 두 경계 모두 Synchronization보다 앞서지만 인덱스 재구축은 Synchronization의 책임이다. `EndSimulationEntityCommandBufferSystem`으로 임의 교체하면 검사·공간 동기화보다 늦어질 수 있다.
 3. `ecb.DestroyEntity` 호출은 즉시 삭제가 아니다. 재생 전 요청이 존재하는 동안 중복 처리되지 않도록 소비자 실행 순서·소비 표시·Pending 인계 등 해당 경로의 보장을 명시한다.
 4. 같은 ECB에서 스폰 뒤에 완료 알림을 기록하는 것은 반영 순서를 보장하기 위한 방식이며, 자동 롤백 트랜잭션을 뜻하지 않는다. 필수 참조는 기록 전에 검증하고 ECB 실패를 완료로 보고하지 않는다.
 5. Producer/Consumer가 같은 Group에 있으면 필요한 순서를 명시한다. Group 이름, 폴더 번호, 테스트의 수동 호출 순서만으로 런타임 순서를 보장하지 않는다.
@@ -119,6 +119,6 @@ Command N+1: ChunkLoadCommandSystem
 ## 6. 변경 시 검증
 
 - 같은 프레임 처리, 최종 거부, 준비 지연 후 처리, 같은 작업의 중복 접수, 실제 반영 후 결과 소비 중 해당 경로에 적용되는 사례를 검증한다.
-- 프레임 경계 테스트는 실제 `GameSimulationGroup`과 `EndStateApplyEntityCommandBufferSystem`을 사용한다. 임의의 추가 Playback으로 정상 실행보다 일찍 요청을 노출하거나 제거하지 않는다.
+- 프레임 경계 테스트는 실제 `GameSimulationGroup`의 `EndCommandEntityCommandBufferSystem`과 `EndStateApplyEntityCommandBufferSystem`을 해당 경로에 맞게 사용한다. 임의의 추가 Playback으로 정상 실행보다 일찍 요청을 노출하거나 제거하지 않는다.
 - 프레임 말 검사에는 해당 프레임에 소비가 끝나야 하는 타입만 포함한다. 다음 프레임 결과·준비 대기에는 각자의 수명주기 검증을 적용한다.
 - 문서 정리만으로 런타임·테스트 변경을 요구하지 않는다. 실제 동작이 확인된 계약과 어긋날 때 관련 범위를 수정하고 프로젝트의 Unity CLI 검증 절차를 따른다.

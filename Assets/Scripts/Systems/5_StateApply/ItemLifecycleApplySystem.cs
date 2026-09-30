@@ -203,24 +203,9 @@ public partial struct ProductResultApplyJob : IJobEntity
 
             for (int countIndex = 0; countIndex < result.Count; countIndex++)
             {
-                Entity newItem = ECB.Instantiate(prefabEntity);
-                ECB.SetComponent(newItem, new ItemIdentity(result.ItemType));
-                ECB.AddComponent(newItem, new GridPosition(int2.zero));
-                ECB.SetComponent(newItem, LocalTransform.FromPosition(float3.zero));
-                ECB.AddComponent(newItem, ItemOwnership.Stored(producerEntity));
-
-                ECB.AddComponent<DestroyItemRequest>(newItem);
-                ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
-                ECB.AddComponent<TransferOwnershipRequest>(newItem);
-                ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
-                ECB.AddComponent<BeltMovementState>(newItem);
-                ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
-                ECB.AddComponent<BeltMovementDecision>(newItem);
-                ECB.AddComponent<BuildingItemInputDecision>(newItem);
-                ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
-
-                // 생산 시설 내부 보관 아이템이므로 렌더링 비활성화
-                ECB.AddComponent<DisableRendering>(newItem);
+                Entity newItem = ItemLifecycleUtility.SpawnPrefabItem(
+                    ref ECB, prefabEntity, result.ItemType, int2.zero, float3.zero,
+                    ItemOwnership.Stored(producerEntity));
 
                 ECB.AppendToBuffer(
                     producerEntity,
@@ -325,27 +310,8 @@ public partial struct SpawnItemApplyJob : IJobEntity
             }
             else
             {
-                Entity newItem = ECB.Instantiate(prefabEntity);
-                ECB.SetComponent(newItem, new ItemIdentity(request.ItemType));
-                ECB.AddComponent(newItem, new GridPosition(request.Position));
-                ECB.SetComponent(newItem, LocalTransform.FromPosition(spawnPos));
-                ECB.AddComponent(newItem, ownership);
-
-                ECB.AddComponent<DestroyItemRequest>(newItem);
-                ECB.SetComponentEnabled<DestroyItemRequest>(newItem, false);
-                ECB.AddComponent<TransferOwnershipRequest>(newItem);
-                ECB.SetComponentEnabled<TransferOwnershipRequest>(newItem, false);
-                ECB.AddComponent<BeltMovementState>(newItem);
-                ECB.SetComponentEnabled<BeltMovementState>(newItem, false);
-                ECB.AddComponent<BeltMovementDecision>(newItem);
-                ECB.AddComponent<BuildingItemInputDecision>(newItem);
-                ECB.SetComponentEnabled<BuildingItemInputDecision>(newItem, false);
-
-                // 수납 아이템의 경우 렌더링 비활성화
-                if (!isWorld)
-                {
-                    ECB.AddComponent<DisableRendering>(newItem);
-                }
+                Entity newItem = ItemLifecycleUtility.SpawnPrefabItem(
+                    ref ECB, prefabEntity, request.ItemType, request.Position, spawnPos, ownership);
 
                 if (request.Destination == ItemSpawnDestination.Product)
                 {

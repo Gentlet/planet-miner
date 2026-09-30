@@ -270,7 +270,7 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test09_SpawnBuilding_FootprintRotation_AppliesEffectiveSize()
+    public void Test09_SpawnBuilding_FootprintRotation_PreservesBaseSize()
     {
         // 1. 가로 2, 세로 3인 비대칭 크기를 지정하여 90도 회전(Right) 스폰
         var reqEntity = _entityManager.CreateEntity();
@@ -285,7 +285,7 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
 
         var query = _entityManager.CreateEntityQuery(typeof(BuildingFootprint));
         var building = query.GetSingletonEntity();
-        Assert.AreEqual(new int2(3, 2), _entityManager.GetComponentData<BuildingFootprint>(building).Size, "Right 회전 시 가로/세로가 반전되어 3x2가 되어야 함");
+        Assert.AreEqual(new int2(2, 3), _entityManager.GetComponentData<BuildingFootprint>(building).Size, "방향은 점유 조회 시 적용하고 컴포넌트에는 기본 크기 2x3을 유지해야 함");
     }
 
     [Test]

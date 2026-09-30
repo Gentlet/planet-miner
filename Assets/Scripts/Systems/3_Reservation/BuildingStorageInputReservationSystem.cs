@@ -59,8 +59,8 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
         int requestCount = _inputQuery.CalculateEntityCount();
         int initialCapacity = math.max(64, requestCount);
 
-        // 이번 프레임 내 동일 건물/슬롯에 추가 배정된 수량을 추적하는 맵 (단일 워커 스레드 Job 내에서 순차 갱신)
-        var pendingAdditions = new NativeParallelHashMap<int2, int>(initialCapacity, Allocator.TempJob);
+        // 프레임 내 예약 품목과 수량을 함께 유지하여 새 슬롯의 잔여 용량도 재사용한다.
+        var pendingAdditions = new NativeParallelHashMap<int2, BuildingStorageInputReservationJob.PendingSlot>(initialCapacity, Allocator.TempJob);
 
         var job = new BuildingStorageInputReservationJob
         {
@@ -85,6 +85,12 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
 [BurstCompile]
 public partial struct BuildingStorageInputReservationJob : IJobEntity
 {
+    public struct PendingSlot
+    {
+        public ItemTypeEnum ItemType;
+        public int Count;
+    }
+
     [ReadOnly]
     public ComponentLookup<Storage> StorageLookup;
 
@@ -97,7 +103,7 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
     [ReadOnly]
     public ItemRegistry ItemRegistry;
 
-    public NativeParallelHashMap<int2, int> PendingAdditions;
+    public NativeParallelHashMap<int2, PendingSlot> PendingAdditions;
 
     public void Execute(
         ref BuildingItemInputDecision inputDecision,
@@ -175,9 +181,10 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
 
         for (int s = 0; s < safeSlotCount; s++)
         {
-            if (PendingAdditions.TryGetValue(new int2(building.Index, s), out int pendingCount))
+            if (PendingAdditions.TryGetValue(new int2(building.Index, s), out var pending))
             {
-                slotOccupancy[s] = slotOccupancy[s] + pendingCount;
+                slotOccupancy[s] = slotOccupancy[s] + pending.Count;
+                slotTypes[s] = pending.ItemType;
             }
         }
 
@@ -213,9 +220,13 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
             // 배정 성공
             inputDecision.TargetSlotIndex = targetSlot;
 
-            int currentPending = 0;
-            PendingAdditions.TryGetValue(new int2(building.Index, targetSlot), out currentPending);
-            PendingAdditions[new int2(building.Index, targetSlot)] = currentPending + 1;
+            var slotKey = new int2(building.Index, targetSlot);
+            PendingAdditions.TryGetValue(slotKey, out var pending);
+            PendingAdditions[slotKey] = new PendingSlot
+            {
+                ItemType = itemType,
+                Count = pending.Count + 1
+            };
         }
         else
         {
