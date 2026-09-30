@@ -1,13 +1,16 @@
+using System.Collections.Generic;
 using NUnit.Framework;
 using PlanetMiner.Tests;
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Rendering;
+using Unity.Transforms;
 
 /// <summary>
 /// Task 6.2: 벨트 목적지 예약 시스템(BeltDestinationReservationSystem) 단위 및 파이프라인 테스트.
 /// - 외부 건물 출고 및 분배기/합류기 라우팅 후보들의 공유 대상 벨트 경합 조율 검증
 /// - PlacementStamp(Tick, Order) 기반 1개 후보 승인 및 탈락 후보 비활성화 검증
-/// - 대상 벨트 여유 공간(ItemSpacing 0.25f) 및 수용량에 따른 승인/거부 검증
+/// - 실제 출고/Routing 후보 생성부터 예약·반영까지 공통 점유/간격 정책 검증
 /// </summary>
 public class Phase6BeltDestinationReservationTests : EcsWorldTestFixture
 {
@@ -71,30 +74,36 @@ public class Phase6BeltDestinationReservationTests : EcsWorldTestFixture
         Assert.IsFalse(_entityManager.IsComponentEnabled<BuildingItemOutputDecision>(storage2));
     }
 
-    [Test]
-    public void Test03_BuildingOutput_Vs_RoutingTransfer_PlacementStampArbitration()
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Test03_BuildingOutput_Vs_RoutingTransfer_PlacementStampArbitration(bool routingWins)
     {
         // Arrange: 대상 벨트 (0,0)로 Splitter와 창고가 동시 진입 시도
         var targetBelt = Entities.CreateBelt(new int2(0, 0), DirectionEnum.Right);
+        var sourceBelt = Entities.CreateBelt(new int2(-2, 0), DirectionEnum.Right);
 
-        // 라우팅 엔티티 (Tick=10, Splitter)
+        // 출고와 Routing의 승패를 각각 검증한다.
         var routerEntity = _entityManager.CreateEntity(
             typeof(BuildingType),
             typeof(GridPosition),
+            typeof(SplitterRoutingState),
             typeof(RoutingTransferDecision),
             typeof(PlacementStamp));
         _entityManager.SetComponentData(routerEntity, new BuildingType(BuildingTypeEnum.Splitter));
         _entityManager.SetComponentData(routerEntity, new GridPosition(new int2(-1, 0)));
-        _entityManager.SetComponentData(routerEntity, new PlacementStamp(tick: 10, order: 0));
+        _entityManager.SetComponentData(routerEntity, new PlacementStamp(tick: routingWins ? 10UL : 20UL, order: 0));
+        _entityManager.SetComponentData(routerEntity, new SplitterRoutingState(sourceBelt, DirectionEnum.Right));
 
-        var routeItem = Entities.CreateBeltItem(new int2(-1, 0), DirectionEnum.Right, progress: 1.0f);
-        _entityManager.SetComponentData(routerEntity, new RoutingTransferDecision(routeItem, Entity.Null, targetBelt));
+        var routeItem = Entities.CreateBeltItem(new int2(-2, 0), DirectionEnum.Right, progress: 1.0f);
+        _entityManager.SetComponentData(routerEntity, new RoutingTransferDecision(routeItem, sourceBelt, targetBelt));
         _entityManager.SetComponentEnabled<RoutingTransferDecision>(routerEntity, true);
 
-        // 창고 엔티티 (Tick=20)
+        // 실제 소유 버퍼를 구성해 거절 후 원본 보존과 승인 후 소유권 전환을 확인한다.
         var storage = Entities.CreateStorage(new int2(0, 1), new int2(1, 1));
-        _entityManager.AddComponentData(storage, new PlacementStamp(tick: 20, order: 0));
-        var storageItem = Entities.CreateBeltItem(new int2(0, 1), DirectionEnum.Down, progress: 0.0f);
+        _entityManager.AddComponentData(storage, new PlacementStamp(tick: routingWins ? 20UL : 10UL, order: 0));
+        var storageItem = Entities.CreateStoredItem(storage, ItemTypeEnum.Iron_Ore);
+        _entityManager.SetComponentData(storageItem, new GridPosition(new int2(0, 1)));
+        _entityManager.AddComponent<DisableRendering>(storageItem);
         _entityManager.SetComponentData(storage, new BuildingItemOutputDecision(canOutput: true, storageItem, new int2(0, 0)));
         _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(storage, true);
 
@@ -103,12 +112,34 @@ public class Phase6BeltDestinationReservationTests : EcsWorldTestFixture
         // Act
         RunReservation();
 
-        // Assert: 라우팅 엔티티(Tick 10) 승인, 창고(Tick 20) 탈락
-        Assert.IsTrue(_entityManager.IsComponentEnabled<RoutingTransferDecision>(routerEntity));
+        // 후보를 직접 주입하여 예약/반영 계약을 검증한다. 배치·포트 탐색 검증은 Test07에서 수행한다.
+        Assert.AreEqual(routingWins, _entityManager.IsComponentEnabled<RoutingTransferDecision>(routerEntity));
 
         var storageOut = _entityManager.GetComponentData<BuildingItemOutputDecision>(storage);
-        Assert.IsFalse(storageOut.CanOutput);
-        Assert.IsFalse(_entityManager.IsComponentEnabled<BuildingItemOutputDecision>(storage));
+        Assert.AreEqual(!routingWins, storageOut.CanOutput);
+        Assert.AreEqual(!routingWins, _entityManager.IsComponentEnabled<BuildingItemOutputDecision>(storage));
+
+        ApplyEntriesAndSync();
+
+        Assert.AreEqual(routingWins, IsItemAtTarget(routeItem, int2.zero));
+        Assert.AreEqual(!routingWins, IsItemAtTarget(storageItem, int2.zero));
+        Assert.AreEqual(routingWins ? int2.zero : new int2(-2, 0),
+            _entityManager.GetComponentData<GridPosition>(routeItem).Value);
+        Assert.AreEqual(routingWins ? new int2(0, 1) : int2.zero,
+            _entityManager.GetComponentData<GridPosition>(storageItem).Value);
+        Assert.AreEqual(routingWins ? 0f : 1f,
+            _entityManager.GetComponentData<BeltMovementState>(routeItem).Progress);
+        Assert.AreEqual(0f, _entityManager.GetComponentData<BeltMovementState>(storageItem).Progress);
+        Assert.AreEqual(Entity.Null, _entityManager.GetComponentData<ItemOwnership>(routeItem).Owner);
+        Assert.AreEqual(routingWins ? storage : Entity.Null,
+            _entityManager.GetComponentData<ItemOwnership>(storageItem).Owner);
+        Assert.AreEqual(routingWins ? 1 : 0, _entityManager.GetBuffer<StoredItemElement>(storage).Length);
+        Assert.AreEqual(routingWins ? 1 : 0,
+            _entityManager.GetComponentData<SplitterRoutingState>(routerEntity).OutputCursor);
+        Assert.AreEqual(routingWins, _entityManager.HasComponent<DisableRendering>(storageItem));
+        Assert.IsFalse(IsEntryDecisionEnabled(storage));
+        Assert.IsFalse(IsEntryDecisionEnabled(routerEntity));
+        Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(storageItem));
     }
 
     [Test]
@@ -168,5 +199,212 @@ public class Phase6BeltDestinationReservationTests : EcsWorldTestFixture
 
         // Act & Assert: 에러 없이 정상 조기 반환
         Assert.DoesNotThrow(() => RunReservation());
+    }
+
+    public enum TargetOccupancy
+    {
+        EnabledWorld,
+        DisabledWorld,
+        WorldWithoutMovement,
+        Stored
+    }
+
+    private static IEnumerable<TestCaseData> EntryPolicyCases()
+    {
+        var sourceTypes = new[]
+        {
+            BuildingTypeEnum.Storage, BuildingTypeEnum.Miner,
+            BuildingTypeEnum.Splitter, BuildingTypeEnum.Merger
+        };
+
+        float spacing = GameConstants.ItemSpacing;
+        float epsilon = GameConstants.AlignmentEpsilon;
+        int capacity = GameConstants.MaxItemsPerBeltTile;
+
+        foreach (var sourceType in sourceTypes)
+        {
+            yield return new TestCaseData(sourceType, TargetOccupancy.EnabledWorld, 0f, 1, false);
+            yield return new TestCaseData(sourceType, TargetOccupancy.EnabledWorld, spacing - 2f * epsilon, 1, false);
+            yield return new TestCaseData(sourceType, TargetOccupancy.EnabledWorld, spacing - epsilon, 1, true);
+            yield return new TestCaseData(sourceType, TargetOccupancy.EnabledWorld, spacing - 0.5f * epsilon, 1, true);
+            yield return new TestCaseData(sourceType, TargetOccupancy.EnabledWorld, spacing, 1, true);
+            yield return new TestCaseData(sourceType, TargetOccupancy.EnabledWorld, spacing, capacity - 1, true);
+            yield return new TestCaseData(sourceType, TargetOccupancy.EnabledWorld, spacing, capacity, false);
+            yield return new TestCaseData(sourceType, TargetOccupancy.DisabledWorld, 0f, capacity, true);
+            yield return new TestCaseData(sourceType, TargetOccupancy.WorldWithoutMovement, 0f, capacity, true);
+            yield return new TestCaseData(sourceType, TargetOccupancy.Stored, 0f, capacity, true);
+        }
+    }
+
+    [TestCaseSource(nameof(EntryPolicyCases))]
+    public void Test07_EntryPolicy_DecisionReservationAndApplyAgree(
+        BuildingTypeEnum sourceType,
+        TargetOccupancy occupancy,
+        float firstProgress,
+        int occupyingItemCount,
+        bool shouldEnter)
+    {
+        int2 targetPosition = new int2(1, 0);
+        Entity targetBelt = Entities.CreateBelt(targetPosition, DirectionEnum.Right);
+        var source = CreateEntrySource(sourceType, targetBelt);
+        CreateTargetOccupants(occupancy, targetPosition, firstProgress, occupyingItemCount);
+
+        int2 originalPosition = _entityManager.GetComponentData<GridPosition>(source.Item).Value;
+        float originalProgress = _entityManager.GetComponentData<BeltMovementState>(source.Item).Progress;
+        Entity originalOwner = _entityManager.GetComponentData<ItemOwnership>(source.Item).Owner;
+        float3 originalVisualPosition = _entityManager.GetComponentData<LocalTransform>(source.Item).Position;
+
+        SyncSpatialIndices();
+        Simulation.UpdateAndComplete(source.DecisionSystem);
+        Assert.AreEqual(shouldEnter, IsEntryDecisionEnabled(source.Source), "Decision must use the shared entry policy.");
+
+        Simulation.UpdateAndComplete(_reservationHandle);
+        Assert.AreEqual(shouldEnter, IsEntryDecisionEnabled(source.Source), "Reservation must agree with the single candidate's precheck.");
+
+        ApplyEntriesAndSync();
+
+        Assert.IsFalse(IsEntryDecisionEnabled(source.Source), "A rejected or applied frame decision must be disabled.");
+        Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(source.Item));
+        Assert.AreEqual(0f, _entityManager.GetComponentData<BeltMovementDecision>(source.Item).PlannedProgress);
+        Assert.AreEqual(shouldEnter ? targetPosition : originalPosition,
+            _entityManager.GetComponentData<GridPosition>(source.Item).Value);
+        Assert.AreEqual(shouldEnter ? 0f : originalProgress,
+            _entityManager.GetComponentData<BeltMovementState>(source.Item).Progress);
+        Assert.AreEqual(shouldEnter ? Entity.Null : originalOwner,
+            _entityManager.GetComponentData<ItemOwnership>(source.Item).Owner);
+        Assert.AreEqual(shouldEnter, IsItemAtTarget(source.Item, targetPosition));
+
+        bool isRouter = sourceType == BuildingTypeEnum.Splitter || sourceType == BuildingTypeEnum.Merger;
+        Assert.AreEqual(shouldEnter || isRouter, _entityManager.IsComponentEnabled<BeltMovementState>(source.Item));
+        if (!shouldEnter)
+        {
+            Assert.AreEqual(originalVisualPosition, _entityManager.GetComponentData<LocalTransform>(source.Item).Position);
+        }
+
+        if (sourceType == BuildingTypeEnum.Splitter)
+        {
+            Assert.AreEqual(shouldEnter ? 1 : 0, _entityManager.GetComponentData<SplitterRoutingState>(source.Source).OutputCursor);
+        }
+        else if (sourceType == BuildingTypeEnum.Merger)
+        {
+            Assert.AreEqual(shouldEnter ? 1 : 0, _entityManager.GetComponentData<MergerRoutingState>(source.Source).InputCursor);
+        }
+        else
+        {
+            int remainingCount = sourceType == BuildingTypeEnum.Storage
+                ? _entityManager.GetBuffer<StoredItemElement>(source.Source).Length
+                : _entityManager.GetBuffer<ProductItemElement>(source.Source).Length;
+            Assert.AreEqual(shouldEnter ? 0 : 1, remainingCount);
+            Assert.AreEqual(!shouldEnter, _entityManager.HasComponent<DisableRendering>(source.Item));
+        }
+    }
+
+    private (Entity Source, Entity Item, SystemHandle DecisionSystem) CreateEntrySource(
+        BuildingTypeEnum sourceType, Entity targetBelt)
+    {
+        if (sourceType == BuildingTypeEnum.Storage || sourceType == BuildingTypeEnum.Miner)
+        {
+            Entity source = Entities.CreateStorage(int2.zero, new int2(1, 1), DirectionEnum.Right);
+            Entity item = Entities.CreateStoredItem(source, ItemTypeEnum.Iron_Ore);
+            _entityManager.AddComponent<DisableRendering>(item);
+
+            if (sourceType == BuildingTypeEnum.Storage)
+            {
+                return (source, item, _world.GetOrCreateSystem<StorageItemOutputDecisionSystem>());
+            }
+
+            _entityManager.SetComponentData(source, new BuildingType(sourceType));
+            _entityManager.GetBuffer<StoredItemElement>(source).Clear();
+            _entityManager.AddBuffer<ProductItemElement>(source)
+                .Add(new ProductItemElement(item, ItemTypeEnum.Iron_Ore));
+            return (source, item, _world.GetOrCreateSystem<ProductItemOutputDecisionSystem>());
+        }
+
+        Entity inputBelt = Entities.CreateBelt(new int2(-1, 0), DirectionEnum.Right);
+        Entity router = Entities.CreateBuilding(sourceType, int2.zero, new int2(1, 1), DirectionEnum.Right);
+        Entity routedItem = Entities.CreateBeltItem(new int2(-1, 0), DirectionEnum.Right, 1f);
+        _entityManager.AddComponentData(router, new RoutingTransferDecision(Entity.Null, Entity.Null, Entity.Null));
+        _entityManager.SetComponentEnabled<RoutingTransferDecision>(router, false);
+
+        if (sourceType == BuildingTypeEnum.Splitter)
+        {
+            _entityManager.AddComponentData(router, new SplitterRoutingState(inputBelt, DirectionEnum.Right));
+            return (router, routedItem, _world.GetOrCreateSystem<SplitterDecisionSystem>());
+        }
+
+        _entityManager.AddComponentData(router, new MergerRoutingState(targetBelt, DirectionEnum.Right));
+        return (router, routedItem, _world.GetOrCreateSystem<MergerDecisionSystem>());
+    }
+
+    private void CreateTargetOccupants(TargetOccupancy occupancy, int2 position, float firstProgress, int count)
+    {
+        Entity storedOwner = Entity.Null;
+        if (occupancy == TargetOccupancy.Stored)
+        {
+            storedOwner = Entities.CreateStorage(new int2(10, 10), new int2(1, 1));
+        }
+
+        for (int i = 0; i < count; i++)
+        {
+            if (occupancy == TargetOccupancy.Stored)
+            {
+                Entity storedItem = Entities.CreateStoredItem(storedOwner, ItemTypeEnum.Iron_Ore);
+                _entityManager.SetComponentData(storedItem, new GridPosition(position));
+                _entityManager.SetComponentData(storedItem, new BeltMovementState(firstProgress));
+                _entityManager.SetComponentEnabled<BeltMovementState>(storedItem, true);
+                continue;
+            }
+
+            Entity item = Entities.CreateBeltItem(position, DirectionEnum.Right,
+                firstProgress + i * GameConstants.ItemSpacing);
+            if (occupancy == TargetOccupancy.DisabledWorld)
+            {
+                _entityManager.SetComponentEnabled<BeltMovementState>(item, false);
+            }
+            else if (occupancy == TargetOccupancy.WorldWithoutMovement)
+            {
+                _entityManager.RemoveComponent<BeltMovementState>(item);
+            }
+        }
+    }
+
+    private bool IsEntryDecisionEnabled(Entity source)
+    {
+        if (_entityManager.HasComponent<RoutingTransferDecision>(source))
+        {
+            return _entityManager.IsComponentEnabled<RoutingTransferDecision>(source);
+        }
+
+        return _entityManager.IsComponentEnabled<BuildingItemOutputDecision>(source);
+    }
+
+    private void ApplyEntriesAndSync()
+    {
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<RoutingApplySystem>());
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
+        Simulation.Playback(_world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>());
+        Simulation.UpdateAndComplete(_itemSpatialSyncHandle);
+    }
+
+    private bool IsItemAtTarget(Entity expectedItem, int2 targetPosition)
+    {
+        using var query = _entityManager.CreateEntityQuery(typeof(ItemSpatialIndex));
+        var index = query.GetSingleton<ItemSpatialIndex>();
+        if (!index.TryGetFirstItem(targetPosition, out Entity item, out var iterator))
+        {
+            return false;
+        }
+
+        do
+        {
+            if (item == expectedItem)
+            {
+                return true;
+            }
+        }
+        while (index.TryGetNextItem(out item, ref iterator));
+
+        return false;
     }
 }

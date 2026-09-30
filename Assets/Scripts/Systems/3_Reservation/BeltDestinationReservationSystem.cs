@@ -313,42 +313,8 @@ public struct BeltDestinationReservationJob : Unity.Jobs.IJob
 
     private bool CheckTargetSpace(int2 targetPos)
     {
-        // 대상 타일에 기존 아이템이 없으면 공간 충분
-        if (!ItemMap.TryGetFirstValue(targetPos, out Entity itemEntity, out var it))
-        {
-            return true;
-        }
-
-        float minProgress = float.MaxValue;
-        int itemCount = 0;
-
-        // 대상 타일의 아이템 수 및 입구에서 가장 가까운 아이템의 진행도 확인
-        do
-        {
-            if (ItemOwnershipLookup.HasComponent(itemEntity) &&
-                ItemOwnershipLookup[itemEntity].IsWorldItem &&
-                BeltMovementStateLookup.HasComponent(itemEntity) &&
-                BeltMovementStateLookup.IsComponentEnabled(itemEntity))
-            {
-                float prog = BeltMovementStateLookup[itemEntity].Progress;
-                minProgress = math.min(minProgress, prog);
-                itemCount++;
-            }
-        } while (ItemMap.TryGetNextValue(out itemEntity, ref it));
-
-        // 타일 수용량(GameConstants.MaxItemsPerBeltTile) 초과 시 진입 불가
-        if (itemCount >= GameConstants.MaxItemsPerBeltTile)
-        {
-            return false;
-        }
-
-        // 입구로부터 첫 번째 아이템까지의 간격이 최소 간격(ItemSpacing) 미만이면 진입 불가
-        if (itemCount > 0 && minProgress < GameConstants.ItemSpacing - GameConstants.AlignmentEpsilon)
-        {
-            return false;
-        }
-
-        return true;
+        return BeltEntryUtility.HasEntrySpace(
+            targetPos, ItemMap, ItemOwnershipLookup, BeltMovementStateLookup);
     }
 
     /// <summary>

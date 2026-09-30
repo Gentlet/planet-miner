@@ -360,11 +360,13 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 - [x] **Task 6.2: 공유 목적지 경합 해결**
   - 선행 조건: Task 6.1.
   - 구현 범위·상태 소유자: `ReservationGroup` (Phase 3)에서 실행되는 `BeltDestinationReservationSystem` 구현. 외부 건물 출고(`BuildingItemOutputDecision`)와 분배기/합류기 라우팅(`RoutingTransferDecision`)의 공유 대상 벨트 입구(`Progress = 0.0f`) 진입 경합을 단일 원자적으로 조율.
-  - 경합 규칙: (1) 벨트 자체 이동은 `BeltMovement` 파이프라인에 전담시켜 전체 벨트 풀 스캔 제거 및 O(외부 후보 수)의 초경량화 달성, (2) 대상 벨트 입구에 `ItemSpacing(0.25f)` 여유 공간 및 정원(4개) 여유가 확인된 경우에만 진입 허용, (3) 동일 대상 벨트를 노리는 외부 후보들 간에는 `PlacementStamp(Tick, Order)` 순서로 단 1개만 승인.
-  - 승인·거부 계약: 거부된 후보는 `IEnableableComponent` 비활성화(`SetComponentEnabled=false`) 및 `CanOutput = false`로 즉시 처리하여 `StateApplyGroup` 실행 및 미소비 결정을 원천 차단. `WorldInvariantValidationSystem`에 `RoutingTransferDecision` 활성 잔류 감시 불변식 추가.
+  - 경합 규칙: (1) 일반 벨트 이동은 기존 `BeltMovement` 파이프라인이 담당하며 이 예약의 후보에 포함하지 않는다. (2) 출고·Routing 선검사와 최종 예약은 `BeltEntryUtility.HasEntrySpace`로 월드 소유권과 활성 `BeltMovementState`를 모두 가진 목적지 점유만 계산한다. 간격은 `GameConstants.ItemSpacing`과 `AlignmentEpsilon`, 수용량은 `MaxItemsPerBeltTile = (int)(1f / ItemSpacing)`의 파생 관계를 사용하고 별도 숫자로 고정하지 않는다. (3) 공간이 있을 때만 동일 목적지의 외부 후보 중 한 틱 최대 한 개를 기존 `PlacementStamp` 비교로 승인한다. Stamp 중복·동률 계약의 남은 문제는 F-041로 구분한다.
+  - 승인·거부 계약: 거절된 후보의 결정을 비활성화하고 건물 출고에는 `CanOutput = false`도 기록한다. 거절 시 원본 아이템·소유 버퍼·라우터 커서를 보존하며, 승인된 결정의 실제 위치·소유권·커서 반영과 소비는 기존 StateApply가 담당한다. 승인 이후 원본 상태가 달라지는 무효 승인 방어는 F-033의 별도 범위다.
+  - 지원 범위 (2026-09-30 사용자 확정): 일반 벨트끼리의 T형 직접 합류와 출력 셀로의 추가 측면 직접 진입은 자동 경합 중재·사전 대기·교착 해소 보장 대상에서 제외한다. 합류/분배 중재는 Merger/Splitter의 역할이다. 현재 스냅샷 공간 검사와 외부 후보 중재의 보장을 모든 벨트 이동의 간격 보장으로 확대하지 않는다. 공통 정책은 [AGENTS.md](../../AGENTS.md)의 물류·생산 계약을 따른다.
   - 후속 연결: Splitter·Merger의 구체적인 후보 선택 및 cursor 갱신은 Task 6.3~6.4에서 연결.
-  - 검증: `Phase6BeltDestinationReservationTests` 6개 단위 테스트 전수 통과 (빈 벨트 단일 출고 승인, 다중 건물 출고 PlacementStamp 경합, 건물 출고 vs 라우팅 전달 경합, 공간 부족 시 거부, 공간 충분 시 정상 승인, 무요청 시 조기 반환). 전체 EditMode 130/130 Pass.
-  - 완료 기준: 승인된 이동만 반영되며 기존 물류와 함께 최소 간격을 완벽히 유지.
+  - 당시 검증 기록: `Phase6BeltDestinationReservationTests` 6개 단위 테스트 전수 통과 (빈 벨트 단일 출고 승인, 다중 건물 출고 PlacementStamp 경합, 건물 출고 vs 라우팅 전달 경합, 공간 부족 시 거부, 공간 충분 시 정상 승인, 무요청 시 조기 반환). 전체 EditMode 130/130 Pass. 이는 당시 기록이며 현재 테스트 구성·최신 통과 건수를 뜻하지 않는다.
+  - 후속 검증 (2026-09-30): F-029 지원 범위 재정의·F-034 공통 판정 구현에서 Unity 컴파일 및 관련 EditMode 61/61 통과. 예약 46개, Splitter 4개, Merger 4개, Storage Decision 4개, 기존 EndToEnd 3개다. [검증 로그](../../Logs/QualityImprovement/F029-F034/verification-recovered.json)와 [개선 Tasks의 범위·제한](<V2 Quality Evaluation Plan/V2 Quality Improvement Tasks.md>)을 따른다. 이번 문서 정리에서는 새 컴파일·테스트를 실행하지 않았다.
+  - 완료 기준: 지원하는 외부 진입의 선검사와 최종 공간 판정이 일치하고, 목적지당 한 개 승인·예약 거절 시 원본 보존·승인 후 진행도/소유권/결정 소비가 일관된다. 일반 T형 직접 합류, F-030의 미조회 전방 간격, F-033의 무효 승인까지 해결한 것으로 해석하지 않는다.
 
 - [x] **Task 6.3: Splitter 분배 구현**
   - 선행 조건: Task 6.1~6.2.

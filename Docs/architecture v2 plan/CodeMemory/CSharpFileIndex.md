@@ -7,6 +7,7 @@
 | 파일 | 현재 역할 |
 | --- | --- |
 | `Assets/Scripts/Common/DirectionExtensions.cs` | `DirectionEnum`을 인접 셀 오프셋으로 변환한다. |
+| `Assets/Scripts/Common/BeltEntryUtility.cs` | 출고·Routing·예약의 현재 벨트 입구 점유/간격 판정을 공유한다. 신규 후보 중재와 상태 반영은 수행하지 않는다. |
 | `Assets/Scripts/Common/GameConstants.cs` | 청크 크기, 아이템 최소 간격 `0.25f`, 슬롯/타일 홉/델타타임 상한을 정의한다. |
 | `Assets/Scripts/Common/BuildingInputSlotUtility.cs` | 재료 목록의 요구량/최대 스택으로 건물 공통 품목 전용 입력 슬롯을 계산하고 실패 사유를 반환한다. Crafter 레시피 변경에서 사용한다. |
 | `Assets/Scripts/Common/BuildingConfigLookupUtility.cs` | 건물 통합/호환 런타임 설정 조회, footprint·해금·건설 자재 조회를 제공한다. |
@@ -83,7 +84,7 @@
 | `Assets/Scripts/Systems/2_Decision/MinerDecisionSystem.cs` | footprint 아래 유효 자원, 품목 일치, 출력 스택 공간을 검사한다. |
 | `Assets/Scripts/Systems/2_Decision/ProductItemOutputDecisionSystem.cs` | 생산 건물의 Product 버퍼에서 Slot 0을 우선해 외향 벨트 출고를 결정한다. |
 | `Assets/Scripts/Systems/2_Decision/StorageItemOutputDecisionSystem.cs` | Product 버퍼가 없는 일반 저장 건물의 첫 Stored 아이템 출고를 결정한다. |
-| `Assets/Scripts/Systems/3_Reservation/BeltDestinationReservationSystem.cs` | 본선·건물 출고·라우팅 결정이 같은 목표 벨트를 요구할 때 공간과 우선순위를 판정한다. |
+| `Assets/Scripts/Systems/3_Reservation/BeltDestinationReservationSystem.cs` | 건물 출고·라우팅 후보의 공통 공간 검사 후 목표별 한 개를 승인한다. 일반 벨트 이동은 중재하지 않는다. |
 | `Assets/Scripts/Systems/3_Reservation/BuildingStorageInputReservationSystem.cs` | 현재 버퍼와 프레임 내 예약 수를 합산하여 품목별 저장 슬롯을 하나씩 확정한다. |
 | `Assets/Scripts/Systems/4_Execution/BeltMovementExecutionSystem.cs` | 계획된 타일 내 진행도, 경계 횡단, 격자 위치와 시각 위치를 반영하고 계획을 소비한다. |
 | `Assets/Scripts/Systems/4_Execution/CrafterExecutionSystem.cs` | 재료 선소비 및 삭제 요청, 진행도 누적, 주생산품/부산물 `ProductResult` 기록을 수행한다. |
@@ -116,7 +117,7 @@
 | `Assets/Editor/Tests/Phase5CrafterInputSlotTests.cs` | F-037 1단계: 슬롯 계산의 올림, 중복 합산, 품목 구분, 상한/실패 및 Burst Job 호출. |
 | `Assets/Editor/Tests/Phase5CrafterInputPipelineTests.cs` | F-037: 개별 회귀 15개와 실제 정렬 6단계 통합 4개. 직접 Spawn/공사 완료 × 기본/사용자 지정 ECS 테스트 프리팹, 미선택 차단·입고·선소비·생산·후속 출고·레시피 변경/해제 및 불변식. |
 | `Assets/Editor/Tests/Phase5RecipeChangePipelineTests.cs` | 레시피 변경 잔여물 배출, 입고 차단과 재개. |
-| `Assets/Editor/Tests/Phase6BeltDestinationReservationTests.cs` | 본선 우선, 배치 순서 경합, 외부 출고/라우팅 경합과 목표 공간. |
+| `Assets/Editor/Tests/Phase6BeltDestinationReservationTests.cs` | 외부 후보 한 개 승인/패자 보존과 출고·Routing Decision→예약→반영의 점유·간격·소유권·결정 소비를 검증한다. |
 | `Assets/Editor/Tests/TestSupport/EcsWorldTestFixture.cs` | 독립 ECS World/EntityManager 생성과 정리. |
 | `Assets/Editor/Tests/TestSupport/TestEntityFactory.cs` | 자원, 벨트/아이템, 저장, 채굴기, 제작기, 일반 건물 테스트 엔티티 생성. |
 | `Assets/Editor/Tests/TestSupport/TestSimulationDriver.cs` | 시간·개별 시스템·ECB 경계 지원. 자원 생성/채굴 및 제작기 생성·물류의 실제 정렬 6단계 테스트 그룹을 구성한다. |
