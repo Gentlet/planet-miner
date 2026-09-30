@@ -1,5 +1,6 @@
 #if UNITY_EDITOR || DEVELOPMENT_BUILD
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 using Unity.Collections;
@@ -22,6 +23,8 @@ public partial class WorldInvariantValidationSystem : SystemBase
     private int _frameCounter;
 
     private string _logDirectory;
+    private string _reportSessionId;
+    private long _reportSequence;
 
     /// <summary>
     /// 무결성 위반 누적 횟수 (테스트 단언 및 진단용).
@@ -41,6 +44,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
         base.OnCreate();
         // Logs/InvariantErrors/ 경로 설정 (프로젝트 루트 기준)
         _logDirectory = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Logs", "InvariantErrors"));
+        _reportSessionId = Guid.NewGuid().ToString("N");
     }
 
     protected override void OnUpdate()
@@ -433,13 +437,83 @@ public partial class WorldInvariantValidationSystem : SystemBase
     }
 
     /// <summary>
-    /// Phase 3 창고(Storage) 버퍼 및 아이템 소유권(ItemOwnership) 양방향 무결성을 검증.
-    /// - 1. Stored Item -> Storage Buffer 정방향 검증 (소유자 실존, 버퍼 보유, 버퍼 내 아이템 엔티티 등록 및 타입 일치, 월드 컴포넌트 비활성화)
-    /// - 2. Storage Buffer -> Stored Item 역방향 검증 (버퍼 내 아이템 엔티티 실존, Owner 일치, 공간 인덱스 미등록)
-    /// - 3. 슬롯 범위(0 <= SlotIndex < SlotCount), 단일 품목 규칙, MaxStack 한도, StorageFilter 준수 검증
+    /// Storage 없는 현장을 포함한 소유 버퍼의 참조 유일성·실존·타입·Owner를 검증한다.
+    /// </summary>
+    private void ValidateOwnedBufferReferences()
+    {
+        // Entity(Index, Version) 전체를 키로 사용하고 두 버퍼 종류/모든 소유자가 공유한다.
+        var referencedItems = new HashSet<Entity>();
+        foreach (var (buffer, owner) in SystemAPI.Query<DynamicBuffer<StoredItemElement>>().WithEntityAccess())
+        {
+            for (int i = 0; i < buffer.Length; i++)
+            {
+                var element = buffer[i];
+                ValidateOwnedItemReference(owner, element.ItemEntity, element.ItemType, "Stored", referencedItems);
+            }
+        }
+
+        foreach (var (buffer, owner) in SystemAPI.Query<DynamicBuffer<ProductItemElement>>().WithEntityAccess())
+        {
+            for (int i = 0; i < buffer.Length; i++)
+            {
+                var element = buffer[i];
+                ValidateOwnedItemReference(owner, element.ItemEntity, element.ItemType, "Product", referencedItems);
+            }
+        }
+    }
+
+    private void ValidateOwnedItemReference(
+        Entity owner, Entity item, ItemTypeEnum recordedType, string bufferKind, HashSet<Entity> referencedItems)
+    {
+        if (!referencedItems.Add(item))
+        {
+            ReportOwnedBufferViolation(owner, item, bufferKind, "Duplicate owned item reference");
+        }
+
+        if (!EntityManager.Exists(item))
+        {
+            ReportOwnedBufferViolation(owner, item, bufferKind, "Non-existent or destroyed item");
+            return;
+        }
+
+        if (!EntityManager.HasComponent<ItemIdentity>(item))
+        {
+            ReportOwnedBufferViolation(owner, item, bufferKind, "Missing ItemIdentity");
+        }
+        else if (EntityManager.GetComponentData<ItemIdentity>(item).Type != recordedType)
+        {
+            ReportOwnedBufferViolation(owner, item, bufferKind, $"ItemIdentity differs from recorded type {recordedType}");
+        }
+
+        if (!EntityManager.HasComponent<ItemOwnership>(item))
+        {
+            ReportOwnedBufferViolation(owner, item, bufferKind, "Missing ItemOwnership");
+            return;
+        }
+
+        Entity actualOwner = EntityManager.GetComponentData<ItemOwnership>(item).Owner;
+        if (actualOwner != owner)
+        {
+            ReportOwnedBufferViolation(owner, item, bufferKind, $"Ownership mismatch, actual owner ({actualOwner.Index}:{actualOwner.Version})");
+        }
+    }
+
+    private void ReportOwnedBufferViolation(Entity owner, Entity item, string bufferKind, string reason)
+    {
+        // 정상 아이템을 검사할 때는 항목별 진단 문자열을 만들지 않는다.
+        ReportViolation("StorageInvariant",
+            $"{reason}: {bufferKind} buffer of ({owner.Index}:{owner.Version}), item ({item.Index}:{item.Version}).", owner);
+    }
+
+    /// <summary>
+    /// 소유권 양방향 무결성 및 월드 상태 비활성화를 검사하고,
+    /// Storage에만 슬롯 범위·품목·정원·필터 규칙을 적용한다.
     /// </summary>
     private void ValidateStorageInvariants()
     {
+        // 참조 무결성은 Storage 용량과 독립적이다. 공사 현장의 보관 버퍼도 검사한다.
+        ValidateOwnedBufferReferences();
+
         // 1. [정방향 검증] Stored Item -> Storage Buffer
         var itemIdentityLookup = SystemAPI.GetComponentLookup<ItemIdentity>(true);
         var beltMovementLookup = SystemAPI.GetComponentLookup<BeltMovementState>(true);
@@ -570,7 +644,6 @@ public partial class WorldInvariantValidationSystem : SystemBase
         }
 
         bool hasSpatialIndex = SystemAPI.TryGetSingleton<ItemSpatialIndex>(out var itemSpatialIndex);
-        var itemOwnershipLookup = SystemAPI.GetComponentLookup<ItemOwnership>(true);
         var storageFilterLookup = SystemAPI.GetComponentLookup<StorageFilter>(true);
         var inputSlotLookup = SystemAPI.GetBufferLookup<BuildingInputSlotElement>(true);
 
@@ -614,37 +687,10 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 StoredItemElement element = buffer[i];
                 Entity itemEntity = element.ItemEntity;
 
-                // A. 버퍼 내 아이템 엔티티 실존 여부 확인
+                // 참조 오류는 공통 검사에서 보고했다. 죽은 엔티티의 추가 조회는 생략한다.
                 if (!SystemAPI.Exists(itemEntity))
                 {
-                    ReportViolation(
-                        "StorageInvariant",
-                        $"Storage ({storageEntity.Index}:{storageEntity.Version}) buffer contains non-existent or destroyed ItemEntity ({itemEntity.Index}:{itemEntity.Version}).",
-                        storageEntity
-                    );
                     continue;
-                }
-
-                // B. 아이템의 ItemOwnership 보유 및 Owner 일치 확인
-                if (!itemOwnershipLookup.HasComponent(itemEntity))
-                {
-                    ReportViolation(
-                        "StorageInvariant",
-                        $"ItemEntity ({itemEntity.Index}:{itemEntity.Version}) in Storage ({storageEntity.Index}:{storageEntity.Version}) lacks ItemOwnership component.",
-                        storageEntity
-                    );
-                }
-                else
-                {
-                    var itemOwnership = itemOwnershipLookup[itemEntity];
-                    if (itemOwnership.IsWorldItem || itemOwnership.Owner != storageEntity)
-                    {
-                        ReportViolation(
-                            "StorageInvariant",
-                            $"Ownership mismatch: Item ({itemEntity.Index}:{itemEntity.Version}) in Storage ({storageEntity.Index}:{storageEntity.Version}) has Owner ({itemOwnership.Owner.Index}:{itemOwnership.Owner.Version}, IsWorldItem={itemOwnership.IsWorldItem}).",
-                            storageEntity
-                        );
-                    }
                 }
 
                 // C. 보관된 아이템이 ItemSpatialIndex에 잘못 등록되어 있는지 확인
@@ -757,37 +803,10 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 ProductItemElement element = prodBuffer[i];
                 Entity itemEntity = element.ItemEntity;
 
-                // A. 버퍼 내 아이템 엔티티 실존 여부 확인
+                // 참조 오류는 공통 검사에서 보고했다. 죽은 엔티티의 추가 조회는 생략한다.
                 if (!SystemAPI.Exists(itemEntity))
                 {
-                    ReportViolation(
-                        "StorageInvariant",
-                        $"Producer ({producerEntity.Index}:{producerEntity.Version}) product buffer contains non-existent or destroyed ItemEntity ({itemEntity.Index}:{itemEntity.Version}).",
-                        producerEntity
-                    );
                     continue;
-                }
-
-                // B. 아이템의 ItemOwnership 보유 및 Owner 일치 확인
-                if (!itemOwnershipLookup.HasComponent(itemEntity))
-                {
-                    ReportViolation(
-                        "StorageInvariant",
-                        $"ItemEntity ({itemEntity.Index}:{itemEntity.Version}) in Producer ({producerEntity.Index}:{producerEntity.Version}) product buffer lacks ItemOwnership component.",
-                        producerEntity
-                    );
-                }
-                else
-                {
-                    var itemOwnership = itemOwnershipLookup[itemEntity];
-                    if (itemOwnership.IsWorldItem || itemOwnership.Owner != producerEntity)
-                    {
-                        ReportViolation(
-                            "StorageInvariant",
-                            $"Ownership mismatch: Item ({itemEntity.Index}:{itemEntity.Version}) in Producer ({producerEntity.Index}:{producerEntity.Version}) product buffer has Owner ({itemOwnership.Owner.Index}:{itemOwnership.Owner.Version}, IsWorldItem={itemOwnership.IsWorldItem}).",
-                            producerEntity
-                        );
-                    }
                 }
 
                 // C. 보관된 아이템이 ItemSpatialIndex에 잘못 등록되어 있는지 확인
@@ -1052,6 +1071,8 @@ public partial class WorldInvariantValidationSystem : SystemBase
     public void ReportViolation(string category, string message, Entity entity = default)
     {
         TotalViolationCount++;
+        // ResetViolationCount와 독립적인 순번이며 세션 ID는 같은 이름의 World도 구분한다.
+        string reportId = $"{_reportSessionId}_{++_reportSequence}";
 
         try
         {
@@ -1061,12 +1082,14 @@ public partial class WorldInvariantValidationSystem : SystemBase
             }
 
             string timestamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
-            string fileName = $"invariant_error_{timestamp}.txt";
+            string fileName = $"invariant_error_{timestamp}_{reportId}.txt";
             string filePath = Path.Combine(_logDirectory, fileName);
 
             var sb = new StringBuilder();
             sb.AppendLine("=== PlanetMiner Invariant Violation Report ===");
             sb.AppendLine($"Timestamp: {DateTime.Now:yyyy-MM-dd HH:mm:ss.fff}");
+            sb.AppendLine($"World: {World.Name}");
+            sb.AppendLine($"Report ID: {reportId}");
             sb.AppendLine($"Frame Count: {UnityEngine.Time.frameCount}");
             sb.AppendLine($"Category: {category}");
             if (entity != Entity.Null)
@@ -1077,12 +1100,16 @@ public partial class WorldInvariantValidationSystem : SystemBase
             sb.AppendLine(message);
             sb.AppendLine("==============================================");
 
-            File.WriteAllText(filePath, sb.ToString(), Encoding.UTF8);
+            using (var stream = new FileStream(filePath, FileMode.CreateNew, FileAccess.Write, FileShare.Read))
+            using (var writer = new StreamWriter(stream, Encoding.UTF8))
+            {
+                writer.Write(sb.ToString());
+            }
         }
         catch (Exception ex)
         {
             // 파일 쓰기 예외 발생 시 최소한의 디버그 정보 보존을 위한 처리
-            System.Diagnostics.Debug.WriteLine($"[InvariantReport Error] Failed to write log file: {ex.Message}");
+            System.Diagnostics.Debug.WriteLine($"[InvariantReport Error] World={World.Name}, Report={reportId}, Category={category}, Entity={entity}, Message={message}. Failed to write log file: {ex.Message}");
         }
 
         // 에디터 일시정지

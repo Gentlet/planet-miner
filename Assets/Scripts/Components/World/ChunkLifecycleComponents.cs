@@ -14,7 +14,7 @@ public struct GeneratedChunkTracker : IComponentData
 
 /// <summary>
 /// Producer: ChunkLoadCommandSystem / Consumer: ResourceGenerationCommandSystem (Command).
-/// 준비되지 않으면 유지하고, 스폰 및 완료 알림을 EndStateApply ECB에 기록한 뒤 소비한다.
+/// 준비되지 않으면 유지하고, 스폰 및 완료 알림을 EndCommand ECB에 기록한 뒤 소비한다.
 /// </summary>
 public struct GeneratedChunkReadyElement : IBufferElementData
 {

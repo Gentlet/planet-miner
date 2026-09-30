@@ -4,16 +4,13 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 제작기(Crafter)의 재료 소모, 제작 진행도 누적, 완성품/부산품 생산 결과 기록,
-/// 레시피 변경 시 잔여 재료 배출(Byproduct to Output) 및 입력 필터 자동 동기화를 수행하는 실행 시스템.
+/// 제작기(Crafter)의 재료 선소비, 제작 진행도 누적, 완성품/부산품 생산 결과를 기록하는 실행 시스템.
 /// 
 /// [책임]
 /// - ExecutionGroup(Phase 4)에서 실행.
 /// - 활성화된 CrafterDecision만 실행 대상으로 처리.
-/// - 레시피 변경 감지:
-///   - SelectedRecipeId != ActiveRecipeId 감지 시 진행 중이던 제작을 취소하고,
-///     StoredItemElement에 있던 잔여 재료들을 ProductItemElement(출력 버퍼)로 이관하여 외부 벨트로 자동 배출되도록 .
-///   - 새 레시피의 재료 목록을 기반으로 StorageFilter(Whitelist)를 자동으로 갱신.
+/// - 레시피 변경·해제, 작업 취소, 잔여 입력의 출력 이관, 입력 슬롯/필터 갱신은 CrafterRecipeCommandSystem 책임.
+///   이 시스템은 Command가 확정한 레시피와 Decision의 실행 결정을 사용한다.
 /// - [재료 선소비]:
 ///   - 신규 제작 착수(CanStartCraft == true && !IsCraftingActive) 시, StoredItemElement에서 레시피 재료를
 ///     RemoveAt으로 즉시 제거 후 DestroyItemRequest 발행, Storage Buffer 정합성 유지.
@@ -21,7 +18,7 @@ using Unity.Mathematics;
 ///   - (DeltaTime * Speed) / CraftTime 비율로 Progress를 누적.
 /// - [출력 대기 및 배출]:
 ///   - Progress >= 1.0f 도달 후 출력 버퍼에 공간이 확보되면(CanProduceOutput == true),
-///     ProductResult(Slot 0 주생산품, Slot 1 부산품)를 기록하고 IsCraftingActive = false 및 Progress = 0.0f로 리셋.
+///     ProductResult(Slot 0 주생산품, Slot 1 이상 부산품)를 기록하고 IsCraftingActive = false 및 Progress = 0.0f로 리셋.
 ///   - ProductResult는 같은 프레임 StateApply의 ItemLifecycleApplySystem이 실제 Item Entity와 ProductItemElement로 변환.
 /// </summary>
 [UpdateInGroup(typeof(ExecutionGroup))]
@@ -81,7 +78,7 @@ public partial struct CrafterExecutionSystem : ISystem
 }
 
 /// <summary>
-/// 각 제작기의 재료 소모, 진행도 누적, 생산 결과 기록 및 레시피 롤백을 처리하는 단일 워커 Burst Job.
+/// 각 제작기의 재료 선소비, 진행도 누적, 생산 결과 기록을 처리하는 단일 워커 Burst Job.
 /// </summary>
 [BurstCompile]
 public partial struct CrafterExecutionJob : IJobEntity

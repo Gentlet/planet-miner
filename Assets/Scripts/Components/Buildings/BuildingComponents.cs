@@ -39,7 +39,8 @@ public struct BuildingType : IComponentData
 }
 
 /// <summary>
-/// 건물이 차지하는 기본 그리드 타일 크기 컴포넌트.
+/// 건물이 차지하는 방향 적용 전 기본 그리드 타일 크기 컴포넌트.
+/// 현장과 완공 건물 모두 같은 표현을 저장하며, 점유를 읽을 때 GetEffectiveSize로 한 번 회전한다.
 /// </summary>
 public struct BuildingFootprint : IComponentData
 {

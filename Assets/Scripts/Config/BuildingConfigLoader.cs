@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Text;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -155,6 +156,12 @@ public static class BuildingConfigLoader
             FixedString32Bytes reqResearch = default;
             if (!string.IsNullOrEmpty(entry.requiredResearch))
             {
+                if (Encoding.UTF8.GetByteCount(entry.requiredResearch) > reqResearch.Capacity)
+                {
+                    Debug.LogError($"[BuildingConfigLoader] {buildingType} requiredResearch exceeds {reqResearch.Capacity} UTF-8 bytes at index {i}.");
+                    return false;
+                }
+
                 reqResearch = new FixedString32Bytes(entry.requiredResearch);
             }
 

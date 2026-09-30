@@ -55,8 +55,6 @@ public static class BuildingLifecycleUtility
             baseFootprint = GetDefaultFootprint(targetType);
         }
 
-        BuildingFootprint footprint = new BuildingFootprint(baseFootprint);
-        int2 effectiveSize = footprint.GetEffectiveSize(direction);
         float3 spawnPosition = new float3(position.x, position.y, 0f);
 
         Entity newBuilding;
@@ -83,7 +81,7 @@ public static class BuildingLifecycleUtility
         newBuilding = ecb.Instantiate(prefabEntity);
 
         ecb.AddComponent(newBuilding, new BuildingType(targetType));
-        ecb.AddComponent(newBuilding, new BuildingFootprint(effectiveSize));
+        ecb.AddComponent(newBuilding, new BuildingFootprint(baseFootprint));
         ecb.AddComponent(newBuilding, new GridPosition(position));
         ecb.AddComponent(newBuilding, new Direction(direction));
         ecb.AddComponent(newBuilding, stamp);

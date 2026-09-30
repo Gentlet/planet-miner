@@ -1,5 +1,6 @@
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.Transforms;
 
@@ -23,6 +24,9 @@ public partial struct BuildingPlacementCommandSystem : ISystem
     public void OnCreate(ref SystemState state)
     {
         _currentTick = 1;
+        state.RequireForUpdate<BuildingSpatialIndexFence>();
+        state.RequireForUpdate<ResourceSpatialIndexFence>();
+        state.RequireForUpdate<ItemSpatialIndexFence>();
     }
 
     public void OnUpdate(ref SystemState state)
@@ -33,6 +37,13 @@ public partial struct BuildingPlacementCommandSystem : ISystem
         {
             return;
         }
+
+        // 직접 읽기가 끝날 때까지 새 Job을 발행하지 않는다. 선행 Writer만 기다리고
+        // 다른 Reader의 완료나 Validator의 부수 효과에는 의존하지 않는다.
+        JobHandle.CombineDependencies(
+            SystemAPI.GetSingleton<BuildingSpatialIndexFence>().GetReaderDependency(),
+            SystemAPI.GetSingleton<ResourceSpatialIndexFence>().GetReaderDependency(),
+            SystemAPI.GetSingleton<ItemSpatialIndexFence>().GetReaderDependency()).Complete();
 
         var buildingMap = SystemAPI.GetSingleton<BuildingSpatialIndex>().Map;
         var resourceMap = SystemAPI.GetSingleton<ResourceSpatialIndex>().Map;
@@ -133,8 +144,9 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                     var siteEntity = ecb.CreateEntity();
                     ecb.AddComponent(siteEntity, new BuildingType(BuildingTypeEnum.ConstructionSite));
 
-                    int2 effectiveSize = BuildingFootprintUtility.GetEffectiveSize(candidate.FootprintSize, candidate.Direction);
-                    ecb.AddComponent(siteEntity, new BuildingFootprint(effectiveSize));
+                    // Size에는 방향 적용 전 크기를 저장한다. 점유 조회 시에만 회전한다.
+                    int2 baseSize = math.max(candidate.FootprintSize, new int2(1, 1));
+                    ecb.AddComponent(siteEntity, new BuildingFootprint(baseSize));
                     ecb.AddComponent(siteEntity, new GridPosition(candidate.OriginPosition));
                     ecb.AddComponent(siteEntity, new Direction(candidate.Direction));
 

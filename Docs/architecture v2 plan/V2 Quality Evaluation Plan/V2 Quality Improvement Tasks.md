@@ -11,12 +11,12 @@
 | 분류 | 전체 | 완료 | 미완료 |
 | --- | ---: | ---: | ---: |
 | P1 | 5 | 5 | 0 |
-| P2 | 33 | 2 | 31 |
-| P3 | 2 | 0 | 2 |
-| 판단 보류 | 4 | 0 | 4 |
-| 합계 | 44 | 7 | 37 |
+| P2 | 33 | 11 | 22 |
+| P3 | 2 | 2 | 0 |
+| 판단 보류 | 4 | 3 | 1 |
+| 합계 | 44 | 21 | 23 |
 
-- 2026-09-30 기준 **F-037·F-005·F-024·F-019·F-029·F-030·F-034 완료**, 나머지 37개 항목은 미완료다. F-019는 구현·에셋 수정을 완료하고 남은 실제 Baker 검증을 F-021로 이관해 종료했다. F-029는 사용자 정책에 따른 지원 범위 재정의와 기존 외부 진입 계약 검증으로 종료했으며 일반 벨트 합류 중재를 구현했다는 뜻은 아니다. F-030은 사용자 선택에 따른 벨트 속도 상한을 적용하고 코드 분석·컴파일로 종료했으며 실행 간격 검증은 수행하지 않았다. 항목별 변경·검증 근거와 제한을 확인한다.
+- 2026-09-30 기준 **44 개 중 21 개 완료**, 23 개 미완료다. 현황은 아래 실제 체크 상태를 집계한다. F-019의 실제 Baker 검증은 F-021에 남아 있고, F-029의 일반 T형 합류 제외 및 F-030의 속도 상한 정책을 유지한다. 항목별 변경·검증 근거와 제한을 확인한다.
 - 항목 하나를 선택해 원본 평가와 현재 소스를 확인하고, 해당 문제의 개선·검증까지 작은 단위로 진행한다. 아래 나열 순서는 강제 의존 순서가 아니다.
 - 각 항목의 설명은 평가 당시 근거를 요약했다. 코드 확인, 조건부 영향 추정, 실행 미확인을 원본에서 구분한다. 특히 P1 5건의 실패 반례는 평가에서 실행 재현하지 않았다.
 - `결정 필요`는 아직 채택하지 않은 정책이다. 현재 소스·최신 사용자 지시로 해결되지 않는 해당 항목의 선택만 사용자에게 확인한다. 다른 항목의 결정을 모두 기다릴 필요는 없다.
@@ -154,6 +154,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 
 - [ ] 완료 — **P2** · [최초 평가: Q02](Results/Q02.md) · [수령 평가: Q24](Results/Q24.md)
 - 문제: 같은 아이템을 다시 공급하거나 기존 Owner가 있는 아이템을 넘길 때 실물 유일성과 이전 소유 버퍼 정리를 보장하지 않는다.
+- F-044 영향 (2026-09-30 코드 확인): 모든 Stored/Product 버퍼의 중복·실존·Identity·Owner 진단은 보완됐다. 이는 잘못된 수령 결과의 일부를 검출하는 경계이며 공급 승인 전에 중복이나 기존 소유 상태를 차단하지 않는다. 남은 구현은 ConstructionMaterialApplyJob의 수령 승인·소유 버퍼 인계 계약에 집중한다. F-042의 필수 버퍼 검증과 같은 수령 경계에서 검토하되 진단 기능을 다시 구현하거나 두 이슈의 완료 기준을 합치지 않는다.
 - 작업: 수령 전 동일 실물 중복과 현재 소유 상태를 확인하고, 공급 승인과 소유 버퍼 인계를 하나의 명확한 계약으로 맞춘다.
 - 완료 기준: 동일 아이템 중복 요청, 재공급, 다른 Owner의 아이템, 정상 공급에서 Delivered/Reserved·버퍼·Owner·렌더 태그·요청 소비가 일치한다. 한 실물이 여러 소유 버퍼에 남지 않는다.
 - 결정 필요: 다른 소유자의 아이템을 공급할 수 있는지와 인계 책임, 중복·거부 시 예약 해제 책임.
@@ -172,6 +173,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 - [ ] 완료 — **P2** · [최초 평가: Q04](Results/Q04.md)
 - 문제: 개별 MaxStack의 0·음수 값을 게시할 수 있어 생산은 막히지만 빈 슬롯에는 입고를 승인하는 등 의미가 엇갈린다. 현재 제공 JSON의 정상 품목은 양수다.
 - F-037 영향 (2026-09-30 코드 확인): `BuildingInputSlotUtility`는 재료의 MaxStack이 0 이하이면 슬롯 계산을 거부하고, 레시피 Command는 기존 입력 구성을 보존한다. 제작기 레시피 선택 경계의 방어는 반영됐지만 무효 설정의 게시 자체와 일반 창고 등 다른 소비자의 용량 판단은 해결하지 않았다.
+- F-031 영향 (2026-09-30 코드 확인): 일반 창고의 예약 품목·수량 누락과 정상 양수 MaxStack에서 새 슬롯의 잔여 용량을 재사용하지 못하던 문제는 해결했다. 해당 구현은 재작업 대상에서 제외한다. 현재 빈 슬롯 선택은 MaxStack의 양수 여부를 따로 확인하지 않으므로 0·음수 등 무효 설정의 게시 정책과 소비자 판단 일치는 여전히 남는다. 정상 예약의 실행 검증 범위는 F-031 기록을 따르며 무효 값의 실행 검증으로 확대하지 않는다.
 - 작업: None과 실제 품목의 유효 범위를 입력 경계에서 검증하고 생산·예약·불변식 검사가 같은 의미를 사용하게 한다.
 - 완료 기준: 0·음수·누락 값, None 재정의, 잘못된 이름·중복 입력과 빈 슬롯 예약을 검증한다. 무효 값이 정책 없이 게시되지 않는다.
 - 결정 필요: 0의 비활성화 의미 여부와 무효 입력의 거부·기본값·대체 정책.
@@ -204,16 +206,18 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 - [ ] 완료 — **P2** · [최초 평가: Q05](Results/Q05.md)
 - 문제: 건물 Config 검증 실패 후 무설정 fallback으로 배치가 진행돼 해금·자재 비용 제한을 건너뛸 수 있다.
 - F-030 영향 (2026-09-30 코드 확인): `BuildingConfigLoader`가 벨트 속도의 상한 초과·비유한 값을 거부하므로 이 입력도 건물 설정 전체의 게시 실패로 이어진다. `BuildingConfigInitSystem`은 실패 시 오류만 기록하고, 배치는 설정 부재 시 해금을 허용하며 자재 요구량을 채우지 않는 기존 경로를 유지한다. 공통 Spawn의 벨트 속도 상한은 이동 속도를 보호하지만 설정 실패 후 해금·비용 처리 정책은 해결하지 않으므로 F-011은 미완료다. 현재 정상 속도 7.5에서 실패를 재현한 결과가 아니라 잘못된 입력에 대한 코드 분석이다.
+- F-012 영향 (2026-09-30 코드 확인): UTF-8 29바이트를 넘는 requiredResearch도 이제 예외 탈출이나 잘림 대신 정상 파싱 실패(false 및 두 out=null)로 반환한다. Init의 실패 후 미게시와 배치의 무설정 허용 경로는 그대로이므로 이 입력도 설정 실패→배치→완료 확인 조건에 포함한다. 문자열 길이 검사를 다시 구현하는 범위가 아니며, 해당 연쇄 동작은 아직 실행 미검증이다.
 - 작업: 실패와 의도적 미구성 상태를 공개 준비 계약으로 구분하고 배치·완료·Spawn이 같은 정책을 사용하게 한다.
-- 완료 기준: 잘못된 설정(벨트 속도 상한 초과·비유한 값 포함)/리소스 누락→Init→배치→완료의 결과가 선택한 정책과 일치한다. 의도적 테스트 fallback과 실제 설정 실패가 구별된다.
+- 완료 기준: 잘못된 설정(벨트 속도 상한 초과·비유한 값, UTF-8 29바이트 초과 requiredResearch 포함)/리소스 누락→Init→배치→완료의 결과가 선택한 정책과 일치한다. 의도적 테스트 fallback과 실제 설정 실패가 구별된다.
 - 결정 필요: 실패 시 초기화 중단, 기능 제한, 명시적 fallback 중 정책.
 
 ### F-012 — 긴 requiredResearch의 파싱 실패 경계 이탈
 
-- [ ] 완료 — **P2** · [최초 평가: Q05](Results/Q05.md)
+- [x] 완료 — **P2** · [최초 평가: Q05](Results/Q05.md)
 - 문제: UTF-8 29바이트를 넘는 키를 FixedString32Bytes로 변환할 때 검사 환경에서는 예외가 탈출하고 다른 환경에서는 잘림이 발생할 수 있다.
 - 작업: 변환 전에 표현 가능한 길이를 검증해 파싱 실패 계약으로 반환한다. 더 긴 키가 필요하면 표현 변경을 별도로 결정한다.
 - 완료 기준: ASCII 29/30바이트, 다바이트 경계, 후반 항목 오류에서 반환값·out 값·게시 상태가 일관되고 잘린 식별자를 성공 처리하지 않는다. 실행 환경별 확인 범위를 기록한다.
+- 2026-09-30 처리 결과: BuildingConfigLoader.TryParseJson에서 FixedString32Bytes 변환 전에 Encoding.UTF8.GetByteCount와 기존 Capacity(29)를 비교한다. ASCII 29/30 및 다바이트 29/30 경계는 바이트 수 조건으로 구분하며, 후반 항목 실패도 지역 목록만 폐기하고 configs/materials=null 및 false를 반환한다. Init는 성공 시에만 PublishConfig를 호출한다(코드 확인). 문자열 표현·허용 길이는 유지했다. 컴파일 completed/failed:false/errors:[] 및 Editor ready를 확인했다([로그](../../../Logs/QualityImprovement/Selected14/F012-status.json)). 래퍼 모드 오류로 개별 CLI를 사용했다. 경계 입력 실행·검사 define별 빌드·EditMode/Play Mode는 미실행이다.
 
 ### F-013 — 무효 레시피 품목 게시
 
@@ -237,6 +241,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 
 - [ ] 완료 — **P2** · [최초 평가: Q06](Results/Q06.md)
 - 문제: 누락·0·음수 ID 또는 중복 양수 ID를 허용해 선택 불가능한 레시피나 입력 순서에 가려지는 정의를 게시한다.
+- F-040과의 경계 (2026-09-30 코드 확인): 레시피 Command는 준비된 Registry에 없는 양수 ID 요청을 거부하고 기존 상태를 보존하며, 0 이하 요청은 명시적 해제로 처리한다. 요청 처리 정책은 다시 결정하지 않는다. Loader는 여전히 입력 ID를 게시하고 Registry 조회는 첫 일치를 반환하므로, 남은 범위는 정의 ID의 허용 범위·중복 게시·행 순서 의미다. 무효 변경 요청의 거부를 Registry 게시 검증으로 간주하지 않는다.
 - 작업: 선택 가능한 ID와 유일성 계약을 검증하고 중복 처리 결과를 명시한다.
 - 완료 기준: 누락·0·음수·중복·행 순서 교환과 실패 시 기존 Registry 보존을 검증한다. 서로 다른 ID가 같은 생산품을 가지는 경우와 구분한다.
 - 결정 필요: 중복 ID 거부 또는 명시적 우선순위 지원.
@@ -259,11 +264,12 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 
 ### F-018 — DB 등록과 singleton 유일성 검증 누락
 
-- [ ] 완료 — **P2** · [최초 평가: Q08](Results/Q08.md) · [Building 추가 근거: Q09](Results/Q09.md)
+- [x] 완료 — **P2** · [최초 평가: Q08](Results/Q08.md) · [Building 추가 근거: Q09](Results/Q09.md)
 - 최초 문제: 중복 타입 등록과 복수 DB의 정책·검증이 없어 첫 일치와 singleton 전제에 의존했다.
 - F-024에서 구현 해결 (2026-09-30): `PrefabDatabaseInitializationSystem.TryGetDatabase`가 도메인별 DB와 매핑 버퍼를 정확히 하나로 제한하고, 각 도메인 검증이 중복 타입을 거부한다. 정책은 **중복·복수 DB 거부 및 게임 시작 차단**으로 확정됐으며 병합·우선순위를 다시 결정하지 않는다. Ready 이후 DB 불변 계약을 따른다.
 - 확인 근거: 현재 소스와 `PrefabDatabaseInitializationTests.DuplicateDatabase_Stops`, `DuplicateMapping_Stops`를 확인했다. F-024 구현 당시 해당 테스트를 포함한 초기화 검증이 통과했다. 두 중복 사례는 수동 ECS 건물 DB를 구성하며 실제 수동 Authoring/자동 수집·모든 도메인의 실행 증거로 확대하지 않는다.
 - 남은 작업·완료 기준: 수동 목록·자동 수집에서 생성된 중복, 행 순서 변경, 두 DB 구성에서 확정된 거부 정책과 진단·시작 차단이 일치하는지 확인한다. 확인 방법은 상단 검증 원칙을 따르며 새 테스트 작성을 일괄 요구하지 않는다. 검증 결과와 실행 미확인 범위를 남긴 후 종료한다. 별도 유일성 시스템이나 새 정책 설계는 필요하지 않다.
+- 2026-09-30 처리 결과: 기존 해결 확인: 세 Authoring의 수동 목록과 ResourcesAutoLoad는 유효 후보마다 동일 매핑 버퍼에 Add하므로 중복을 먼저 숨기지 않는다. PrefabDatabaseInitializationSystem은 각 도메인의 태그/매핑 버퍼 개수를 각각 정확히 1로 제한하고 같은 엔티티의 버퍼를 요구한다. 세 도메인 모두 HashSet.Add 실패를 거부하므로 중복 행 순서가 바뀌어도 시작을 허용하지 않는다(여러 결함이면 첫 오류의 종류는 달라질 수 있음). 실패는 오류+SimulationFatalError, Ready 미게시, 재시도 비활성화이며 GameSimulationGroup이 Ready/오류를 확인한다. Ready 이후 불변 계약·F-024 정책을 유지하고 새 시스템은 만들지 않았다. 코드 확인으로 잔여 경로 검토를 완료했고 기존 DuplicateDatabase_Stops/DuplicateMapping_Stops 및 F-024 기록을 대조했다. 소스 변경이 없어 새 컴파일·테스트는 실행하지 않았다. 실제 Baker/자동 수집 자산의 중복·전 도메인 행 순서 실행은 미검증이며 실제 베이킹은 F-021 범위다.
 
 ### F-019 — prefab 식별·필수 구성 검증 부족
 
@@ -275,17 +281,19 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 
 ### F-020 — 철거 환급의 Item 초기화 규칙 복제
 
-- [ ] 완료 — **P2** · [최초 평가: Q08](Results/Q08.md) · [환급 평가: Q28](Results/Q28.md)
+- [x] 완료 — **P2** · [최초 평가: Q08](Results/Q08.md) · [환급 평가: Q28](Results/Q28.md)
 - 문제: 일반 Item 생성과 철거 환급이 초기화 규칙을 따로 유지해 한쪽 변경이 다른 경로의 회귀로 이어질 수 있다. 현재 주요 초기값의 불일치를 확인한 것은 아니다.
 - F-005의 영향 (2026-09-30): `Phase7ItemCreationDemolitionTests`의 기존 실물 반환·건축 비용 환급·World Spawn 유지 사례를 공통화 시 회귀 검증에 활용할 수 있다. 해당 테스트가 초기화 코드 중복 제거 또는 모든 필수 컴포넌트·enable 상태의 동등성을 증명하는 것은 아니다. `SpawnRefundPrefabItem`과 일반 Spawn·Product의 초기화는 현재 별도 경로다.
 - 작업: 생성 책임을 공유하는 공개 계약이나 공통 초기화 경계를 마련하되 환급 시점·ECB·누락 정책을 보존한다.
 - 완료 기준: 일반 Spawn·Product·환급의 명시적 prefab DB 경로에서 필수 구성, enable, Owner, 태그가 각 목적에 맞게 일치한다. 정상/실패 환급의 동작이 바뀌지 않는다. F-024에서 DB 부재 fallback을 제거했으므로 fallback 복원·검증은 제외하고, DB/항목 누락 시의 기존 시작 차단·Spawn 거부 및 중단 진단 계약을 보존한다.
+- 2026-09-30 처리 결과: 기존 공통 아이템 초기화 함수가 없어 Common/ItemLifecycleUtility.SpawnPrefabItem을 추가하고 ProductResult·SpawnItemRequest·철거 환급의 중복 구성을 통합했다. 호출자가 DB 조회/누락 중단·반복 수량·버퍼 등록·요청/결과 소비를 계속 소유하며 전달된 기존 EndStateApply ECB에 즉시 기록한다. Identity, Grid/Transform, Owner, 비활성 요청/이동/입고 결정, 저장품 DisableRendering을 기존 값으로 유지한다. 새 시스템·요청 경로나 fallback은 없다. 컴파일 completed/failed:false/errors:[], Editor ready 및 최신 어셈블리 확인([로그](../../../Logs/QualityImprovement/Selected14/F020-status.json)). 공용 로그 삭제가 없는 fixture를 확인 후 기존 Phase7ItemCreationDemolitionTests 15/15 통과, 실패/생략/미결정 0([결과](../../../Logs/QualityImprovement/Selected14/F020-tests.json)). 실제 Baker·Play Mode·모든 구성 동등성의 실행 증거로 확대하지 않는다.
 
 ### F-021 — 실제 Baker를 실행하지 않는 계약 테스트
 
 - [ ] 완료 — **P2** · [최초 평가: Q08](Results/Q08.md)
 - 문제: Authoring/Baker 계약 테스트가 수동 ECS 구성이나 목록 수집만 확인해 실제 Baker 회귀를 놓친다.
 - F-037과의 경계: 실제 생성 요청과 정렬된 제작·물류 그룹을 검증했지만 프리팹은 수동 ECS 테스트 구성이었다. 생성·입고·생산 연결의 통과를 실제 SubScene Baker 검증으로 확대하지 않으며, 이 이슈의 베이킹 검증은 남아 있다.
+- F-018·F-020 영향 (2026-09-30 코드 확인): 중복·복수 DB 거부/시작 차단과 일반 Spawn·생산물·철거 환급의 공통 초기화는 기존 구현으로 확인했다. 이를 다시 구현하는 작업은 제외하고, 실제 Baker의 출력이 DB 검증 및 런타임 초기화의 입력 계약을 만족하는지 확인하는 범위로 유지한다. F-020의 모의 ECS 철거·환급 테스트 통과는 실제 Bake 근거가 아니며, F-019에서 이관된 검증은 유지한다.
 - 작업: 모의 런타임 테스트의 이름·범위를 명확히 하고 실제 Baker를 실행하는 최소 계약 검증을 보강한다.
 - 완료 기준: ItemIdentity와 정적 정보, 불필요한 런타임 상태 미포함, DB 실제 매핑·중복·누락 진단을 bake 결과로 검증한다. 모의 Spawn 통과와 실제 Bake 통과를 구분해 기록한다.
 - F-019에서 이관 (2026-09-30): 실제 Baker 경로에서 Authoring 없음, 등록 key/식별 타입 불일치, None/범위 밖 값, 정상 prefab의 결과를 확인한다. 베이킹 결과를 시작 검증에 전달했을 때 거부·진단 또는 정상 시작이 현재 계약과 일치하는지도 구분해 기록한다. 등록 시 조용히 제외되는 입력은 제외 사실과 최종 DB 검증 결과를 함께 확인한다.
@@ -295,16 +303,18 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 
 - [ ] 완료 — **P2** · [최초 평가: Q09](Results/Q09.md)
 - 문제: Inspector/DB의 FootprintSize가 Spawn 크기 선택에 사용되지 않아 사용자가 편집한 값이 생성 결과에 반영되지 않는다.
+- F-023 영향 (2026-09-30 코드 확인): 현장·완공의 BuildingFootprint.Size는 방향 적용 전 기본 크기로 통일했고 각 점유 Reader가 한 번 회전한다. 이중 회전 수정은 완료 범위로 제외한다. 현재 Spawn의 크기 선택은 request→Config→기본 규격이며 조회한 dbFootprint는 여전히 사용하지 않는다. 남은 결정은 크기 출처의 권위와 DB Size의 의미다. 출처를 변경할 때 기존 기본 크기 표현과 회전 계약은 유지한다.
 - 작업: request·Config·DB 크기의 권위를 확정하고 선택 로직과 편집 UI/문서의 의미를 맞춘다.
 - 완료 기준: 서로 다른 세 입력, 각 입력 부재/무효, 회전 조건에서 실제 Baker→Spawn의 크기가 명시한 우선순위와 일치한다. 의도적 미사용 필드는 오해 없이 표시한다.
 - 결정 필요: 각 크기 출처의 우선순위와 DB Size의 유지 목적. F-023의 이중 회전은 별도 문제다.
 
 ### F-023 — footprint의 기본 크기·회전 크기 혼용
 
-- [ ] 완료 — **P2** · [최초 평가: Q09](Results/Q09.md)
+- [x] 완료 — **P2** · [최초 평가: Q09](Results/Q09.md)
 - 문제: 이미 회전한 크기를 저장한 뒤 Spatial Sync가 다시 회전해 비정사각형의 검증·현장·완공 점유가 달라질 수 있다.
 - 작업: `BuildingFootprint.Size`의 표현 계약을 일관되게 적용하고 모든 Writer/Reader에서 회전이 한 번만 반영되게 한다.
 - 완료 기준: 비정사각형 4방향의 직접 Spawn→Sync와 Placement→현장 Sync→완료→Sync가 정확히 같은 기대 셀 집합을 점유한다. 생산자별 임시 보정에 의존하지 않는다.
+- 2026-09-30 처리 결과: BuildingFootprint.Size를 방향 적용 전 기본 크기로 통일했다. Placement는 축별 최소 1 정규화만 저장하고 공통 Spawn은 기존 request→Config→기본 규격 선택값을 회전 없이 저장한다. Completion은 현장 Size를 그대로 전달하고 Validator/Sync/Miner/두 Output Reader가 GetEffectiveSize로 한 번 회전한다. (2,3)은 Up/Down=(2,3), Right/Left=(3,2)이며 원점+각 축 범위의 셀 집합이 배치 검증·현장·완공·직접 Spawn에 동일함을 코드 추적했다. F-022의 크기 출처 권위는 유지한다. 기존 Test09의 결함을 기대하던 값/이름만 기본 크기 계약으로 수정했으며 assertion 추가는 없다. 컴파일 및 Editor ready, 테스트 어셈블리 최신성 확인([컴파일](../../../Logs/QualityImprovement/Selected14/F023-status.json)); 기존 Test09 1/1 통과([결과](../../../Logs/QualityImprovement/Selected14/F023-tests.json)). 실제 4방향 전체 셀·Placement→Completion 통합 실행은 미검증이다.
 
 ### F-025 — 활성 빌드 장면 DB의 오래된 직렬화 연결
 
@@ -316,15 +326,17 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 
 ### F-026 — 배치의 직접 공간 조회에 Writer 완료 경계 누락
 
-- [ ] 완료 — **P2** · [최초 평가: Q12](Results/Q12.md)
+- [x] 완료 — **P2** · [최초 평가: Q12](Results/Q12.md)
 - 문제: 배치가 세 공간 Map을 메인 스레드에서 읽기 전에 해당 Fence의 Writer 완료를 명시하지 않는다. Validator의 완료 동작이 조건을 가릴 수 있다.
 - 작업: 공간 조회 전 필요한 인덱스의 준비·완료 계약을 적용한다.
 - 완료 기준: 각 Fence에 미완료 Writer를 둔 배치 조회와 Validator 없는 실행에서 안전성을 검증한다. 다른 시스템의 완료 부수효과나 강제 Map 재구축에 의존하지 않는다.
+- 2026-09-30 처리 결과: BuildingPlacementCommandSystem이 세 SpatialIndexFence를 준비 조건으로 요구하고 Map 접근 전에 GetReaderDependency의 세 Writer 핸들을 결합해 Complete한다. 메인 스레드 조회 완료 뒤에 후속 Writer가 스케줄되므로 별도 Reader Job 등록은 필요 없다. 다른 Reader 전체 완료·World 완료·Map 재구축·Validator 순서 의존을 추가하지 않았다. Writer의 실제 미완료 여부와 무관하게 호출하는 경계를 코드 확인했다. 컴파일 completed/failed:false/errors:[], Editor ready 및 최신 Assembly-CSharp 확인([로그](../../../Logs/QualityImprovement/Selected14/F026-status.json)). 지연 Writer 주입/Validator 없는 배치 실행은 미실행이다.
 
 ### F-027 — 별도 배치 요청 간 같은 셀 중복 승인
 
 - [ ] 완료 — **P2** · [최초 평가: Q12](Results/Q12.md) · [배치 평가: Q23](Results/Q23.md)
 - 문제: 요청 내부 claimedCells만 있어 같은 프레임의 별도 요청이 동일 셀을 각각 승인하고 Sync에서 한 현장이 가려질 수 있다.
+- F-026·F-023 영향 (2026-09-30 코드 확인): 배치의 세 인덱스 Writer 완료와 기본 크기 저장 계약은 반영됐다. Fence 완료는 같은 Command에서 아직 Playback되지 않은 다른 요청의 승인 점유를 Map에 추가하지 않는다. claimedCells는 여전히 각 ValidateBatchPlacement 호출 안에서 생성·해제되므로, 남은 범위는 요청 간 공유할 승인 대기 점유와 Strict/Partial 처리다. F-041의 요청 간 순서와 함께 검토하되 동기화·회전 문제를 다시 구현하지 않는다.
 - 작업: Command 처리 전체에서 승인 대기 점유를 공유하고 요청 단위 Strict/Partial 정책과 결합한다.
 - 완료 기준: 별도 요청의 동일 셀·부분 footprint 겹침과 Strict/Partial 조합에서 ECB 후 현장 수와 Sync의 셀→Entity가 일치하며 중복 점유가 없다.
 - 결정 필요: 요청 간 우선순위. F-041의 설치 순서와 함께 검토하되 공간 인덱스를 제2 원본 상태로 만들지 않는다.
@@ -333,17 +345,19 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 
 - [ ] 완료 — **P2** · [최초 평가: Q12](Results/Q12.md)
 - 문제: Fence 핸들 등록용 RW singleton 선언이 Map Reader Job들 사이에도 추가 ECS 의존을 만든다. 실제 성능 병목이나 잘못된 게임 결과는 확인되지 않았다.
+- F-026 영향 (2026-09-30 코드 확인): 배치의 메인 스레드 조회는 세 Fence의 마지막 Writer를 직접 완료하여 안전성 경계를 갖췄다. 이 안전성 수정은 완료 범위로 제외한다. 다른 Decision Reader들의 GetSingletonRW 및 AddReader 등록은 유지되므로, F-028은 독립 Reader 사이의 추가 직렬화와 실제 비용을 평가하는 개선 과제로 남는다. 성능 측정 없이 병목이나 변경 필요성을 확정하지 않으며 필요한 Writer 대기를 제거하지 않는다.
 - 작업: 독립 Reader의 실제 dependency와 비용을 확인하고 메타데이터 갱신·게임 데이터 추적을 분리할 필요를 판단한다.
 - 완료 기준: 독립 Reader 사례의 의존 관계와 필요한 측정 근거를 기록한다. 변경한다면 Reader 등록·Writer 대기·World 수명·Dispose 안전성을 유지한다. 현 구조를 유지한다면 비용과 판단 근거를 명시한다.
 - 결정 필요: 목표 병렬성과 변경 필요성. 필요한 ECS 의존을 제거해 겉으로만 병렬화하지 않는다.
 
 ### F-031 — 새 슬롯 예약의 품목 정보 누락
 
-- [ ] 완료 — **P2** · [최초 평가: Q14](Results/Q14.md)
+- [x] 완료 — **P2** · [최초 평가: Q14](Results/Q14.md)
 - 문제: 빈 슬롯 선점 후 pending 수량만 기록해 같은 품목의 후속 입고가 다른 슬롯으로 분산되거나 거절된다.
 - F-037 영향 (2026-09-30 코드 확인): `BuildingInputSlotElement`가 있는 제작기는 비어 있는 슬롯에도 허용 품목이 정해져 있어 같은 품목의 프레임 내 복수 예약을 같은 스택에 합칠 수 있다. 해당 경로의 회귀 검증은 F-037에 포함됐다. 버퍼가 없는 일반 창고는 pending 수량만 기록하므로 기존 문제가 남아 있다.
 - 남은 작업: 일반 창고에서도 예약 중 슬롯의 품목과 수량을 함께 반영해 같은 품목의 잔여 용량을 재사용한다. 제작기의 전용 슬롯 제한은 유지한다.
 - 완료 기준: 빈 1/2슬롯의 같은 품목 복수 입고, MaxStack 1/2/50, 기존 max-1 스택과 혼합 품목에서 병합·정원·거부·Owner·다음 프레임 재시도가 일치한다.
+- 2026-09-30 처리 결과: BuildingStorageInputReservationJob의 기존 프레임 임시 맵 값을 PendingSlot(ItemType, Count)로 확장했다. 새 슬롯도 예약 품목을 복원하여 동일 품목은 MaxStack까지 합산하고 혼합 품목은 다른 빈 슬롯만 사용한다. 기존 max-1 스택은 한 개만 추가 승인되며 MaxStack 1/2/50에 같은 조건이 적용된다. 전용 입력 슬롯 필터와 실패 시 결정 비활성화, 다음 Decision 재시도, StateApply/Owner 변경 경로는 유지했다(코드 확인). 새 ECS 상태나 시스템을 만들지 않았다. 컴파일 completed/failed:false/errors:[] 및 Editor ready 확인([로그](../../../Logs/QualityImprovement/Selected14/F031-status.json)). 경계별 실행·Owner 통합 회귀는 미실행이다.
 
 ### F-032 — 건물 입고·Routing의 비활성 원본 아이템 선택
 
@@ -375,17 +389,19 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 
 ### F-039 — 레시피 Command의 메인 스레드 Lookup 완료 경계 누락
 
-- [ ] 완료 — **P2** · [최초 평가: Q22](Results/Q22.md)
+- [x] 완료 — **P2** · [최초 평가: Q22](Results/Q22.md)
 - 평가 당시 문제: 관련 상태·버퍼 Job의 완료를 명시하지 않은 채 Lookup을 직접 읽고 썼다. 실제 정상 그룹에서의 경쟁 오류 발생은 미확인이었다.
 - F-037 반영 상태 (2026-09-30 코드 확인): `CrafterRecipeCommandSystem`은 Lookup 직접 접근 전에 `state.Dependency.Complete()`를 호출한다. 완료 경계가 없다는 원인 설명은 현재 코드에 그대로 적용되지 않는다. 정상 정렬 그룹의 레시피 변경은 F-037 통합 검증에 포함됐다.
 - 남은 작업: 관련 Reader/Writer Job이 아직 진행 중인 조건에서 필요한 의존성이 이 완료 경계에 포함되는지 검증한다. 전용 검증 근거가 아직 없어 완료 체크는 유지한다. 같은 완료 호출을 중복 추가하거나 전체 World 완료로 확대하지 않는다.
 - 완료 기준: 관련 Reader/Writer Job이 남은 상태에서 요청을 처리하는 사례와 정상 그룹을 검증한다. Lookup.Update나 요청 배열 추출을 대상 데이터 완료 보장으로 간주하지 않고 불필요한 전체 World 완료를 추가하지 않는다.
+- 2026-09-30 처리 결과: 기존 해결 확인: CrafterRecipeCommandSystem.OnCreate에서 CrafterState/Storage/StorageFilter 및 BuildingInputSlotElement/StoredItemElement/ProductItemElement 여섯 Lookup을 모두 RW로 생성한다. 현재 Entities 소스 SystemState.GetComponentLookup/GetBufferLookup은 AddReaderWriter로 타입을 등록하고, Dependency getter는 등록된 타입의 외부 핸들을 가져온다. ComponentDependencyManager.GetDependency의 writerTypes 경로는 마지막 Writer와 모든 Reader를 결합한다. 관련 Decision/Reservation/Execution/StateApply는 최종 JobHandle을 state.Dependency로 게시한다. 따라서 직접 접근 전 기존 state.Dependency.Complete는 이 여섯 타입의 미완료 Reader/Writer를 포함한다(패키지·생산 소스 확인). Lookup.Update/요청 배열 추출의 부수효과를 근거로 삼지 않았고 중복 Complete·World 완료는 추가하지 않았다. 소스 변경이 없어 새 컴파일/테스트는 미실행; pending Job 강제 주입은 미검증이며 정상 정렬 그룹 실행은 F-037 기록 범위만 재사용한다.
 
 ### F-041 — 별도 요청의 PlacementStamp 중복과 서로 다른 동률 규칙
 
 - [ ] 완료 — **P2** · [최초 평가: Q23](Results/Q23.md)
 - 문제: 같은 tick의 별도 요청이 같은 Order를 발급하고, 목적지 예약과 Routing 연결 선택이 서로 다른 동률 처리에 의존한다.
 - F-029 영향 (2026-09-30): 출고·Routing의 기존 설치 순서 우선정책 유지는 확정했다. 새 후보 종류 우선권이나 라운드로빈을 이 항목에서 다시 설계하지 않는다. 다만 이번 Test03은 서로 다른 Tick의 양쪽 승패를 확인한 것이며 Stamp 동률·누락·Entity 재사용 검증은 아니다.
+- F-026·F-023 영향 (2026-09-30 코드 확인): 배치의 Writer 대기와 footprint 표현 수정은 Stamp 발급 규칙을 변경하지 않았다. Order는 여전히 각 요청의 후보 인덱스 i로 발급되므로 같은 tick의 별도 요청에서 중복될 수 있다. F-027과 같은 요청 처리 경계를 검토하되, 이 항목은 비중첩 요청에서도 필요한 Stamp 유일성/동순위 의미와 후속 소비자의 tie 규칙에 집중한다.
 - 현재 남은 차이: 목적지 예약은 Stamp 동률에서 `SourceEntity.Index`를 비교하고, Routing 기준 연결 선택은 방향 순회 중 먼저 선택한 후보를 유지한다. `BuildingPlacementCommandSystem`의 요청별 후보 인덱스 기반 Order 발급도 그대로여서 F-041은 미완료다.
 - 남은 작업: tick 내 중복 Stamp 발급과 동일 Stamp의 의미·tie key를 공개 계약으로 정하고 발급·보존·소비를 일치시킨다. 기본 설치 순서 정책은 유지한다.
 - 완료 기준: 별도 비중첩 요청, tick 조합, 후보 수 변경, Entity 재사용 이력에서 site→completion의 Stamp와 후속 경합 결과가 선택한 정책과 일치한다.
@@ -395,83 +411,93 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 
 - [ ] 완료 — **P2** · [최초 평가: Q24](Results/Q24.md)
 - 문제: 불완전 현장에 Stored 버퍼가 없어도 Delivered/Reserved·Owner·렌더 태그를 변경해 실물 보관 목록과 분리된다. 정상 Placement는 해당 버퍼를 생성한다.
+- F-044·F-003과의 경계 (2026-09-30 코드 확인): F-044는 소유 버퍼 진단을 보완했으며 수령 승인의 필수 구성 검사는 변경하지 않았다. 현재 수령 Job은 Delivered/Reserved를 변경한 뒤 StoredBufferLookup.HasBuffer일 때만 실물을 등록한다. 남은 구현은 변경 전 필수 버퍼 확인과 선택한 거부/복구 계약이다. F-003의 중복·현재 Owner 검증과 같은 승인 경계에서 검토할 수 있지만, Validator 통과를 위해 현장에 Storage를 추가하거나 진단을 수령 승인으로 대신하지 않는다.
 - 작업: 수령 변경 전에 필수 구성을 확인하거나, 복구를 지원한다면 수량·실물·Owner를 함께 반영한다.
 - 완료 기준: Stored 없는 현장과 정상 현장의 공급 후 Delivered/Reserved/Progress·Owner·태그·버퍼·요청 소비를 검증한다. 거부 시 원본을 보존하고 복구 시 실물을 정확히 한 번 등록한다.
 - 결정 필요: 불완전 현장 거부 또는 복구 지원.
 
 ### F-044 — 소유 버퍼 중복·공사 현장 역방향 검사 누락
 
-- [ ] 완료 — **P2** · [최초 평가: Q29](Results/Q29.md)
+- [x] 완료 — **P2** · [최초 평가: Q29](Results/Q29.md)
 - 문제: Validator가 동일 실물의 중복 참조와 Storage 없는 현장 버퍼의 죽은/다른 Owner 참조를 놓칠 수 있다.
 - 작업: 버퍼 참조의 실존·Identity·Owner·유일성 검사를 Storage 용량 검사와 분리한다.
 - 완료 기준: Stored 중복, Product 중복, 두 버퍼 교차 중복, Storage 없는 현장의 dead/wrong-owner 참조를 검출하고 정상 현장은 통과한다. 검사에 맞추려고 현장에 Storage를 억지로 추가하지 않는다.
 - 연계: F-003은 잘못된 참조를 만드는 경계, 이 항목은 검사 누락이다. F-046의 로그 격리도 확인한다.
+- 2026-09-30 처리 결과: WorldInvariantValidationSystem에 Storage 보유 여부와 무관한 Stored/Product 참조 검사를 분리했다. 한 검사에서 모든 소유자와 두 버퍼가 Entity(Index,Version) HashSet을 공유하므로 각 버퍼 내부·교차·소유자 간 중복을 검출한다. 실존 여부를 먼저 확인하고 Identity 존재/타입 및 Owner 존재/일치를 각각 검사한다. 정상 현장에는 Storage를 요구하지 않으며 슬롯/용량 정책과 게임 상태는 바꾸지 않는다. 기존 용량 루프의 중복 실존/Owner 진단은 공통 경계로 이동했다(코드 확인). 컴파일 completed/failed:false/errors:[], Editor ready 및 최신 어셈블리 확인([로그](../../../Logs/QualityImprovement/Selected14/F044-status.json)). F-046의 공용 로그 삭제가 확인된 Validator 테스트는 실행하지 않았다. 의도적 불변식 위반·정상 현장의 실행 결과와 성능은 미검증이다. 최종 점검에서는 정상 항목별 진단 문자열 할당을 제거하고 위반 시에만 문맥을 생성하도록 정리했다. 이후 최종 컴파일 completed/failed:false/errors:[], Editor ready·최신 런타임 어셈블리를 확인했다([최종 로그](../../../Logs/QualityImprovement/Selected14/Final-status.json)).
 
 ### F-045 — 같은 초의 진단 로그 덮어쓰기
 
-- [ ] 완료 — **P2** · [최초 평가: Q29](Results/Q29.md)
+- [x] 완료 — **P2** · [최초 평가: Q29](Results/Q29.md)
 - 문제: 초 단위 파일명과 WriteAllText로 같은 초의 후속 위반이 기존 상세 기록을 덮어쓴다.
 - 작업: 보고 식별자나 누적 기록 방식으로 위반별 근거를 보존하고 World 간 충돌을 피한다.
 - 완료 기준: 같은 시각의 연속 위반, 서로 다른 World, 기록 실패 조건에서 위반 수와 보존된 보고 내용을 검증한다. 테스트는 격리된 경로를 사용한다.
+- 2026-09-30 처리 결과: WorldInvariantValidationSystem이 생성마다 고유 세션 GUID와 ResetViolationCount와 독립적인 보고 순번을 갖는다. 파일명에 세션/순번을 포함하고 FileMode.CreateNew로 기록하여 같은 초·같은 이름의 World·카운터 초기화 후에도 기존 보고를 덮어쓰지 않는다. 본문에는 World 이름과 Report ID를 남긴다. 파일 기록 예외에서도 위반 count와 순번은 증가하며 기존 Debug 출력에 보고 ID/원문/예외를 함께 남긴다(코드 확인). 실패한 파일의 완전한 보존/재시도까지 보장하지 않는다. 컴파일 completed/failed:false/errors:[], Editor ready 및 최신 어셈블리 확인([로그](../../../Logs/QualityImprovement/Selected14/F045-status.json)). 같은 시각·다중 World·쓰기 실패 실행은 미검증이며 F-046 공용 삭제 테스트는 실행하지 않았다.
 
 ### F-046 — 테스트가 공용 진단 로그를 삭제
 
 - [ ] 완료 — **P2** · [최초 평가: Q29](Results/Q29.md)
-- 문제: 일부 테스트 SetUp/TearDown이 공용 `Logs/InvariantErrors/invariant_error_*.txt` 전체를 삭제해 다른 실행의 근거를 지울 수 있다. 실제 기존 파일 삭제 여부는 조사하지 않았다.
-- 작업: 테스트별 출력 경로/진단 sink 또는 생성 파일 소유권을 분리하고 자기 산출물만 정리한다.
-- 완료 기준: 임시 경로의 기존 sentinel, 두 fixture의 독립 로그, 실패 시 진단 자료가 보존된다. 해당 기존 테스트를 재실행하기 전에 공용 삭제 경로의 격리부터 확인한다.
+- 문제: 현재 Phase2BeltIntegrationTests의 SetUp/TearDown이 공용 `Logs/InvariantErrors/invariant_error_*.txt` 전체를 삭제해 다른 실행의 근거를 지울 수 있다. 실제 기존 파일 삭제 여부는 조사하지 않았다.
+- F-045 영향 및 현재 대상 (2026-09-30 코드 확인): 보고 파일명은 World별 세션 ID·순번으로 고유해졌지만 여전히 invariant_error_*.txt 패턴에 포함된다. 따라서 공용 패턴 삭제 위험은 남는다. 과거 Q29가 지목한 Phase3StorageInvariantTests.cs는 현재 없고, 현재 Assets/Editor/Tests에서 해당 공용 패턴 삭제는 Phase2BeltIntegrationTests.CleanLogDirectory에 남아 있다. Q29의 과거 기록은 보존하고 현행 수정 대상을 이 테스트로 좁힌다. 실제 기존 로그 삭제 여부는 확인하지 않았다.
+- 작업: 현재 남은 Phase2BeltIntegrationTests의 출력 경로/진단 sink 또는 생성 파일 소유권을 격리하고 자기 산출물만 정리한다. F-045의 고유 파일명·CreateNew 기록은 유지하며 다시 구현하지 않는다.
+- 완료 기준: 임시 경로의 기존 sentinel, 서로 다른 테스트 실행의 독립 로그, 실패 시 진단 자료가 보존된다. 해당 기존 테스트를 재실행하기 전에 공용 삭제 경로의 격리부터 확인한다.
 
 ## P3 — 설명 개선
 
 ### F-036 — 채굴 Progress 0~1 설명과 잔여 작업량 불일치
 
-- [ ] 완료 — **P3** · [최초 평가: Q20](Results/Q20.md)
+- [x] 완료 — **P3** · [최초 평가: Q20](Results/Q20.md)
 - 문제: 고속 채굴에서 다음 tick으로 넘기는 잔여 Progress가 1 이상일 수 있지만 주석은 0~1로 설명한다.
 - 작업: 현재 동작이 의도라면 Progress의 의미를 미처리 작업량으로 정확히 설명한다. 동작 변경이 필요하면 별도 정책으로 결정한다.
 - 완료 기준: 주석·계약이 실제 누적/소비와 일치한다. 동작을 바꾼 경우 고속 입력, 자원량, 결과 Count, 출력 막힘·재개를 함께 검증한다.
 - 결정 필요: 정규화 진행도만 지원하려는 의도가 있는 경우 속도·처리량 정책. 임의 clamp나 반복 생산을 추가하지 않는다.
+- 2026-09-30 처리 결과: MinerState와 MinerExecutionSystem 주석을 현재 실행에 맞췄다. Progress는 실행 가능한 틱마다 누적되는 미처리 작업량이며 최대 한 번 1을 차감하므로 1 이상 남을 수 있다. 출력/자원 조건에 막히면 기존 값이 유지된다. speed=30, dt=0.1, Progress=0의 산술은 결과 1개/잔여 약 2이며 실행 증거가 아닌 코드 추적이다. 실행문·clamp·반복 생산·속도/처리량 정책은 변경하지 않았다. 주석만 수정하여 새 컴파일·테스트는 실행하지 않았다.
 
 ### F-038 — CrafterExecution의 오래된 책임 설명
 
-- [ ] 완료 — **P3** · [최초 평가: Q21](Results/Q21.md)
+- [x] 완료 — **P3** · [최초 평가: Q21](Results/Q21.md)
 - 문제: Execution 주석이 현재 Command에서 처리하는 레시피 변경·필터 동기화를 자신의 책임으로 안내한다.
 - F-037 영향: 레시피·입력 구성 변경은 Command, 실행·상태 전이 판단은 Decision, 선소비·진행·생산 결과 기록은 Execution, 상태 전이 반영은 StateApply라는 책임 경계를 구현·검증했다. Command의 Decision 초기화도 제거했다. 그러나 `CrafterExecutionSystem.cs` 상단의 레시피 변경 감지·잔여물 이동·필터 동기화 설명은 여전히 남아 있다.
 - 남은 작업: 오래된 C# 주석을 확인된 책임과 인계 위치에 맞추고 컴파일을 확인한다. 이 설명 정리에 새 게임 동작 변경은 필요하지 않다.
 - 완료 기준: 관련 주석이 현재 호출·Writer 관계와 일치하고 중복 구현을 유도하지 않는다. 문서·주석만의 수정에서 동작 변경을 섞지 않는다. C# 주석 파일을 변경했다면 프로젝트 규칙대로 컴파일을 확인한다.
 
 ## 판단 보류 — 의도·정책 확정 후 처리
+- 2026-09-30 처리 결과: CrafterExecutionSystem summary의 존재하지 않는 레시피 변경 감지/필터 갱신 책임을 제거했다. 해당 책임은 CrafterRecipeCommandSystem이며 Execution은 확정된 레시피와 활성 Decision으로 재료 선소비·진행·ProductResult를 기록한다고 명시했다. 부산물 슬롯도 실제 outIdx 반복에 맞춰 1 이상으로 표기했다. Command/Execution 호출 관계와 쓰기 대상을 코드 대조했으며 실행문은 그대로다. 주석만 변경하여 새 컴파일·테스트는 실행하지 않았다.
 
 ### F-001 — 공사 구현 유무와 책임 위치의 문서 불일치
 
-- [ ] 완료 — **판단 보류 / 문서 불일치** · [최초 평가: Q00](Results/Q00.md)
+- [x] 완료 — **판단 보류 / 문서 불일치** · [최초 평가: Q00](Results/Q00.md)
 - 평가 당시 문제: 문서는 완료·취소·철거 미구현과 독립 Material 시스템을 설명했지만 소스에는 통합 ConstructionLifecycle의 Job들과 철거 구현이 있었다.
 - F-037 반영 상태: 공사 완료 → `BuildingLifecycleUtility.SpawnBuilding` → Crafter 구성·제작 연결을 검증했고 AGENTS의 완료 경로 설명을 갱신했다. 이 부분은 다시 미구현으로 설명하지 않는다.
 - F-005의 영향 (2026-09-30): 철거는 `BuildingDemolitionCommandSystem`의 검증과 `BuildingLifecycleApplySystem`의 적용으로 책임이 분리됐고, 아이템 생성 차단은 `ItemLifecycleApplySystem`이 같은 검증된 요청을 읽어 처리한다. 철거 미구현 또는 StateApply에서 최초 승인하는 것으로 설명하지 않는다.
 - 부분 정리 (2026-09-30): AGENTS의 독립 `ConstructionMaterialApplySystem` 설명을 `ConstructionLifecycleApplySystem` 내부 `ConstructionMaterialApplyJob`으로 수정했다. 현재 소스에서 취소→자재 수령→완공 Job 연결과 `ConstructionCompletionApplyJob`→`BuildingLifecycleUtility.SpawnBuilding` 호출도 확인했다. 문서 확인을 새 런타임 검증 결과로 간주하지 않는다.
 - 남은 작업: 원본 Q00에서 지목한 현행 문서의 관련 절과 코드 지도에 완료·취소·자재 수령·철거 설명이 일치하는지 대조하고 필요한 부분만 갱신한다. 원본 평가의 과거 기록은 보존한다. F-037·F-005 완료나 위 부분 수정만으로 F-001 전체를 완료 처리하지 않는다.
 - 완료 기준: 완료·취소·자재 수령·철거의 구현 여부와 담당 시스템, Completion→공통 Spawn의 실제 경로를 정확히 안내한다. 이 항목을 런타임 결함으로 승격하지 않는다.
+- 2026-09-30 처리 결과: Q00이 지목한 AGENTS와 CodeMemory를 현재 ConstructionLifecycle/BuildingLifecycle/BuildingDemolition 및 공통 Spawn 호출과 대조했다. 취소→수령→완공은 하나의 시스템 내부 Job 연결이며 취소는 즉시 Cancelled/실물 반환, 수령은 수량·진행·Stored 직접 갱신과 Owner/렌더 ECB 반영, 완료는 Spawn non-Null 이후 자재/현장 삭제임을 명시했다. 철거의 Command 승인·StateApply 적용·아이템 생성 차단과 기존 실물/신규 비용 환급도 구분했다. CodeMemory의 건설 미구현 설명을 수정하고 Architecture V2 Tasks의 해당 Task 7.3~7.7 담당 위치/직접 호출/fallback 제거를 갱신했다. 과거 검증 수치는 당시 기록임을 명시하고 유지했다. 이번 F-012/031/026/020/023/044/045 및 레시피/자원 계약도 AGENTS·CodeMemory·파일 색인에 반영했다. 원본 Results·F-029/F-030 지원 정책은 보존했다. 문서 정합성 완료이며 새 컴파일/테스트나 전체 공사 런타임 보장을 추가하지 않는다.
 
 ### F-002 — 자원 스폰·완료 알림의 ECB 설명 불일치
 
-- [ ] 완료 — **판단 보류 / 문서 불일치** · [최초 평가: Q00](Results/Q00.md)
+- [x] 완료 — **판단 보류 / 문서 불일치** · [최초 평가: Q00](Results/Q00.md)
 - 문제: AGENTS/코드 지도/주석은 EndStateApply를 설명하지만 평가 시점 코드는 EndCommand에 자원 생성과 완료 알림을 기록한다.
 - 작업: 현재 기록·Playback·완료 소비 시점을 재확인하고 해당 문서·주석을 맞춘다.
 - 완료 기준: 자원 생성의 가시 시점과 다음 Command의 완료 소비를 일관되게 설명한다. 문서 차이를 이유로 ECB 동작을 임의 변경하지 않는다.
+- 2026-09-30 처리 결과: ResourceGenerationCommandSystem이 EndCommand ECB를 얻어 GenerateChunkResources 뒤에 Completed를 Append하고 Ready만 Clear하는 현재 소스를 확인했다. Command OrderLast Playback 뒤 엔티티가 존재하고 Synchronization에서 인덱스에 등록되며, 다음 ChunkLoadCommand가 Completed를 소비하여 Pending→Map으로 확정한다. AGENTS, CodeMemory/README, Command Event Standard와 ResourceGeneration/ChunkLoad/ChunkLifecycle 주석을 이 경계로 맞췄다. 정상 빈 청크도 동일하다. 실행문·ECB 기록/재생 시점은 변경하지 않았다. Q00 등 원본 평가 기록은 보존했다. 문서·주석만 변경하여 새 컴파일·테스트는 미실행이다.
 
 ### F-006 — 치명적 오류로 중단된 월드의 ProductResult 보존 정책
 
 - [ ] 완료 — **판단 보류 / 정책 미확정** · [최초 평가: Q03](Results/Q03.md) · [Config/DB 추가 근거: Q11](Results/Q11.md)
 - F-005로 확정된 범위 (2026-09-30): 정상적으로 승인된 철거와 겹친 완료 생산 결과는 생성 없이 폐기하며 선소비 재료·광물을 보상하지 않는다. 이 의도적 폐기 정책은 F-006의 미확정 선택에서 제외한다. 철거 승인과 무관한 치명적 생성 실패·부분 생성 시의 결과 보존은 여전히 별도 문제다.
 - F-024의 영향: 필수 DB 검증과 검증 후 DB 불변 계약으로 정상 게임 시작 시의 prefab 누락/Null을 차단했다. DB 부재 fallback도 제거했다. 실행 중 예상 밖 프리팹 누락은 `SimulationFatalError`를 게시하여 다음 틱을 차단한다.
+- F-020과의 경계 (2026-09-30 코드 확인): ItemLifecycleUtility는 전달된 프리팹의 초기화만 공통화하며 DB 조회·실패 처리·ProductResult 소비는 호출자가 계속 소유한다. ItemLifecycleApplySystem의 프리팹 누락 분기와 마지막 productResults.Clear도 유지됐다. 따라서 남은 범위는 치명적 생성 실패 후 결과의 보존/소비 정책이며 초기화 공통화나 환급 시점 변경은 재작업 대상이 아니다.
 - 남은 문제: `ItemLifecycleApplySystem`은 실패를 기록해도 마지막에 `ProductResult`를 Clear한다. 시작 차단·다음 틱 중단은 생산 결과 보존이나 현재 틱 rollback이 아니다. F-024의 현장·실물 자재 보존을 이미 소비된 재료/자원의 생산 결과에 적용했다고 보지 않는다.
 - 결정 필요: **치명적 오류로 중단된 월드에서도 미실체화 생산 결과를 보존해야 하는가**, 또는 해당 월드는 계속 사용하지 않는다는 전제에서 현재 소비를 허용할 것인가. 이 선택은 아직 확정하지 않는다. 자동 재시도·복구·보상은 요청된 기능으로 간주하지 않는다.
 - 남은 작업·완료 기준: 선택한 계약에 따라 정상 생성과 예상 밖 누락/Null 실패의 결과 버퍼·실제 아이템 수·소유 버퍼·중단 진단을 확인한다. 여러 출력 중 일부만 실패한 경우도 구분한다. 보존을 선택하면 생성 완료분과 미실체화분의 경계를 명시하고, 현재 소비를 허용하면 근거·제한을 문서화한다. 기존 fallback 복원이나 다른 도메인의 실패 정책 통합은 범위에 포함하지 않는다.
 
 ### F-040 — 무효 양수 레시피 요청도 기존 작업 취소
 
-- [ ] 완료 — **판단 보류 / 현재 동작 구현·경계 검증 잔여** · [최초 평가: Q22](Results/Q22.md)
+- [x] 완료 — **판단 보류 분류 / 현행 계약 확인 완료** · [최초 평가: Q22](Results/Q22.md)
 - 평가 당시 문제: 존재하지 않는 양수 ID 요청도 기존 Progress/Active를 초기화하고 재료를 출력으로 옮긴 뒤 요청을 소비해 명시적 해제와 구분되지 않았다.
 - F-037 반영 상태 (2026-09-30 코드 확인): 현재 Command는 존재하지 않는 양수 ID를 상태 변경 전에 오류와 함께 거부하고 요청만 소비한다. 기존 진행도·Active·입력/출력 버퍼·필터를 보존한다. 0 이하 ID는 0으로 정규화해 명시적 해제로 처리한다. 따라서 기존 작업을 취소한다는 문제 설명은 현재 코드와 다르다.
 - 남은 작업: 없는 양수 ID, 0·음수 해제, 유효 변경을 진행 중 작업·잔여 재료·기존 Product가 있는 조건에서 비교 검증한다. 기존 슬롯 계산 실패 시 상태 보존 테스트와 유효 변경/0 해제 검증만으로 모든 경계를 검증했다고 보지 않는다.
 - 완료 기준: 무효 양수, 0/음수 해제, 유효 변경을 active 작업·잔여물·기존 Product 조건에서 비교한다. 상태·필터·버퍼·소유권·요청 소비가 결정한 정책과 일치한다.
 - 계약 확인 범위: 현재 구현은 무효 요청의 거부·기존 작업 보존이며, 유효 변경/해제는 기존 취소 동작을 따른다. 이미 선소비한 재료는 잔여 입력 이동 대상이 아니다. 이번 문서 갱신은 환급·보상 규칙을 추가하거나 무효 요청을 해제로 수용하도록 바꾸는 결정이 아니다.
+- 2026-09-30 처리 결과: 기존 해결 확인: 요청 ID는 math.max(0, NewRecipeId)로 정규화한다. 양수 ID는 Registry 준비를 기다리며, 준비된 Registry에 없거나 슬롯 계산이 실패하면 상태 변경 전에 오류를 남기고 요청만 소비한다. active/부분 진행, 기존 Stored/Product와 필터/슬롯/Owner는 이 거부 분기에서 쓰지 않는다. 0/음수 해제와 유효 변경은 기존 취소 경로로 Progress=0/Active=false, 남은 Stored를 기존 Product 최대 슬롯 뒤에 원래 슬롯별로 이동, Stored Clear 후 입력 슬롯/Whitelist 및 두 Recipe ID를 갱신한다. Product가 남으면 배출 대기하며 실물 Owner는 같은 Crafter로 유지한다. 이미 선소비한 재료는 이동 대상이 아니며 환급/보상 정책은 추가하지 않았다(분기별 코드 확인). F-037의 유효 변경/해제 기록과 기존 테스트 범위를 대조했다. 수정 불필요로 새 컴파일·테스트를 하지 않았으며 없는 양수/음수와 active·잔여물·기존 Product의 조합 실행은 미검증이다.
