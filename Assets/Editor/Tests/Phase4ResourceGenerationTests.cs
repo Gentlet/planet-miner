@@ -66,26 +66,6 @@ public class Phase4ResourceGenerationTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test01_ChunkUtility_IsInsideChunk_HandlesBoundaryCellsCorrectly()
-    {
-        int2 chunkZero = new int2(0, 0);
-        Assert.IsTrue(ChunkUtility.IsInsideChunk(new int2(0, 0), chunkZero));
-        Assert.IsTrue(ChunkUtility.IsInsideChunk(new int2(15, 15), chunkZero));
-        Assert.IsTrue(ChunkUtility.IsInsideChunk(new int2(5, 10), chunkZero));
-        Assert.IsFalse(ChunkUtility.IsInsideChunk(new int2(-1, 0), chunkZero));
-        Assert.IsFalse(ChunkUtility.IsInsideChunk(new int2(16, 0), chunkZero));
-        Assert.IsFalse(ChunkUtility.IsInsideChunk(new int2(0, -1), chunkZero));
-        Assert.IsFalse(ChunkUtility.IsInsideChunk(new int2(0, 16), chunkZero));
-
-        int2 chunkNegOne = new int2(-1, -1);
-        Assert.IsTrue(ChunkUtility.IsInsideChunk(new int2(-16, -16), chunkNegOne));
-        Assert.IsTrue(ChunkUtility.IsInsideChunk(new int2(-1, -1), chunkNegOne));
-        Assert.IsFalse(ChunkUtility.IsInsideChunk(new int2(0, 0), chunkNegOne));
-        Assert.IsFalse(ChunkUtility.IsInsideChunk(new int2(-17, -1), chunkNegOne));
-        Assert.IsFalse(ChunkUtility.IsInsideChunk(new int2(-1, 0), chunkNegOne));
-    }
-
-    [Test]
     public void Test02_ResourceGenerationUtility_DeterministicGeneration_SameSeedProducesIdenticalResources()
     {
         uint seed = 424242u;
@@ -269,78 +249,6 @@ public class Phase4ResourceGenerationTests : EcsWorldTestFixture
         }
 
         entities.Dispose();
-    }
-
-    [Test]
-    public void Test06_ResourceGenerationCommandSystem_ExecutesWithPipeline_AndRegistersToSpatialIndex()
-    {
-        // 1. 설정 생성 (3x3 초기 청크)
-        SetupDefaultConfig(worldSeed: 8888u, initialChunkSize: 3);
-
-        // 2. 파이프라인 시스템 준비
-        var bootstrapSystem = _world.GetOrCreateSystem(typeof(InitialChunkLoadBootstrapSystem));
-        var simulation = Simulation.CreateResourceGenerationPipeline();
-
-        // 3. 파이프라인 1회 업데이트
-        // Bootstrap: 9개 청크 요청 큐잉
-        bootstrapSystem.Update(_world.Unmanaged);
-
-        simulation.Update();
-        var fence = _world.EntityManager.CreateEntityQuery(typeof(ResourceSpatialIndexFence)).GetSingletonRW<ResourceSpatialIndexFence>();
-        fence.ValueRW.Complete();
-
-        // 4. 검증: 자원 엔티티가 생성되었고 ResourceSpatialIndex에 등록되었는지 확인
-        var resQuery = _entityManager.CreateEntityQuery(typeof(GridPosition), typeof(ResourceNode));
-        int totalResources = resQuery.CalculateEntityCount();
-        Assert.Greater(totalResources, 0, "초기 3x3 청크 로드 시 자원이 생성되어야 합니다.");
-
-        var spatialIndex = _entityManager.CreateEntityQuery(typeof(ResourceSpatialIndex)).GetSingleton<ResourceSpatialIndex>();
-        Assert.AreEqual(totalResources, spatialIndex.Map.Count(), "모든 자원 노드가 ResourceSpatialIndex에 동기화되어야 합니다.");
-
-        // 5. 멱등성 검증: 동일 파이프라인 다시 실행 시 자원 중복 생성 없음
-        simulation.Update();
-        fence = _world.EntityManager.CreateEntityQuery(typeof(ResourceSpatialIndexFence)).GetSingletonRW<ResourceSpatialIndexFence>();
-        fence.ValueRW.Complete();
-
-        Assert.AreEqual(totalResources, resQuery.CalculateEntityCount(), "이미 로드된 청크에 대해서는 자원이 중복 생성되지 않아야 합니다.");
-        Assert.AreEqual(totalResources, spatialIndex.Map.Count(), "ResourceSpatialIndex 엔트리 수도 일정하게 유지되어야 합니다.");
-        var tracker = _entityManager.CreateEntityQuery(typeof(GeneratedChunkTracker)).GetSingleton<GeneratedChunkTracker>();
-        Assert.AreEqual(9, tracker.Map.Count());
-        Assert.AreEqual(0, tracker.Pending.Count());
-    }
-
-    [Test]
-    public void Test07_ResourceGenerationCommandSystem_GracefulEarlyReturnWhenNoConfigs()
-    {
-        // ResourceGenerationSettings만 있고 ConfigBuffer가 없는 경우
-        Entity settingsEntity = _entityManager.CreateEntity(typeof(ResourceGenerationSettings));
-        _entityManager.SetComponentData(settingsEntity, new ResourceGenerationSettings(worldSeed: 1, initialChunkSize: 3));
-
-        var chunkLoadSystem = _world.GetOrCreateSystem(typeof(ChunkLoadCommandSystem));
-        var resourceGenSystem = _world.GetOrCreateSystem(typeof(ResourceGenerationCommandSystem));
-
-        chunkLoadSystem.Update(_world.Unmanaged);
-
-        // 에러 없이 통과해야 함
-        Assert.DoesNotThrow(() => resourceGenSystem.Update(_world.Unmanaged));
-
-        var resQuery = _entityManager.CreateEntityQuery(typeof(GridPosition), typeof(ResourceNode));
-        Assert.AreEqual(0, resQuery.CalculateEntityCount());
-    }
-
-    [Test]
-    public void Test08_GetMaxPatchRadius_IgnoresInactiveResourcesWithZeroWeight()
-    {
-        Entity entity = _entityManager.CreateEntity();
-        var buffer = _entityManager.AddBuffer<ResourceGenerationConfigElement>(entity);
-
-        // 활성 자원: 반경 4
-        buffer.Add(new ResourceGenerationConfigElement(ItemTypeEnum.Iron_Ore, weight: 0.5f, 1, 4, 0.5f, 10, 50));
-        // 비활성 자원 (Weight = 0): 반경 1024
-        buffer.Add(new ResourceGenerationConfigElement(ItemTypeEnum.Copper_Ore, weight: 0.0f, 100, 1024, 0.5f, 10, 50));
-
-        int maxRadius = ResourceGenerationUtility.GetMaxPatchRadius(buffer);
-        Assert.AreEqual(4, maxRadius, "Weight가 0인 비활성 자원의 반경(1024)은 무시되고 활성 자원의 반경(4)이 반환되어야 함");
     }
 
     [Test]

@@ -2,6 +2,7 @@ using NUnit.Framework;
 using PlanetMiner.Tests;
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Rendering;
 
 public class Phase1ItemIntegrationTests : EcsWorldTestFixture
 {
@@ -65,31 +66,11 @@ public class Phase1ItemIntegrationTests : EcsWorldTestFixture
         Assert.IsTrue(_entityManager.GetComponentData<ItemOwnership>(item).IsWorldItem);
         Assert.IsFalse(_entityManager.IsComponentEnabled<DestroyItemRequest>(item));
         Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item));
-    }
+        Assert.IsFalse(_entityManager.HasComponent<DisableRendering>(item));
 
-    [Test]
-    public void Test02_SpatialSync_IndexesWorldItemAtGridPosition()
-    {
-        // Arrange: 스폰
-        var reqEntity = _entityManager.CreateEntity(typeof(SpawnItemRequest));
-        _entityManager.SetComponentData(reqEntity, new SpawnItemRequest
-        {
-            ItemType = ItemTypeEnum.Copper_Ore,
-            Position = new int2(5, 7),
-            TargetOwner = Entity.Null
-        });
-        UpdateStateApplyPhase();
-
-        // Act: 공간 동기화
-        UpdateSynchronizationPhase();
-
-        // Assert: ItemSpatialIndex에서 O(1) 조회 확인
         var spatialIndex = _entityManager.CreateEntityQuery(typeof(ItemSpatialIndex)).GetSingleton<ItemSpatialIndex>();
-        Assert.IsTrue(spatialIndex.HasItemAt(new int2(5, 7)));
-        Assert.AreEqual(1, spatialIndex.CountItemsAt(new int2(5, 7)));
-
-        Assert.IsTrue(spatialIndex.TryGetFirstItem(new int2(5, 7), out Entity indexedItem, out var it));
-        var item = _entityManager.CreateEntityQuery(typeof(ItemIdentity)).GetSingletonEntity();
+        Assert.AreEqual(1, spatialIndex.CountItemsAt(new int2(10, 20)));
+        Assert.IsTrue(spatialIndex.TryGetFirstItem(new int2(10, 20), out var indexedItem, out _));
         Assert.AreEqual(item, indexedItem);
     }
 
@@ -148,6 +129,7 @@ public class Phase1ItemIntegrationTests : EcsWorldTestFixture
         var ownership = _entityManager.GetComponentData<ItemOwnership>(item);
         Assert.IsFalse(ownership.IsWorldItem);
         Assert.AreEqual(mockStorage, ownership.Owner);
+        Assert.IsTrue(_entityManager.HasComponent<DisableRendering>(item));
         Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item), "Request must be disabled (Consume-on-Apply).");
 
         // Assert: 보관 아이템은 공간 인덱스에서 자동 배제 확인
@@ -186,6 +168,8 @@ public class Phase1ItemIntegrationTests : EcsWorldTestFixture
         var ownership = _entityManager.GetComponentData<ItemOwnership>(item);
         Assert.IsTrue(ownership.IsWorldItem);
         Assert.IsTrue(spatialIndex.HasItemAt(new int2(15, 25)), "Released world item must be restored in spatial index.");
+        Assert.IsFalse(_entityManager.HasComponent<DisableRendering>(item));
+        Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item));
     }
 
     [Test]
@@ -274,6 +258,9 @@ public class Phase1ItemIntegrationTests : EcsWorldTestFixture
         Assert.AreEqual(ItemTypeEnum.Iron_Ore, storedBuffer[0].ItemType);
         Assert.AreEqual(2, storedBuffer[0].SlotIndex);
         Assert.AreEqual(0, productBuffer.Length, "ProductItemElement must remain empty.");
+        var storedItem = storedBuffer[0].ItemEntity;
+        Assert.AreEqual(building, _entityManager.GetComponentData<ItemOwnership>(storedItem).Owner);
+        Assert.IsTrue(_entityManager.HasComponent<DisableRendering>(storedItem));
     }
 
     [Test]

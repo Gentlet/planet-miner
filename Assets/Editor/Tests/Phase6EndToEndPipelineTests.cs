@@ -290,34 +290,4 @@ public class Phase6EndToEndPipelineTests : EcsWorldTestFixture
         Assert.AreEqual(0, _invariantValidationSystem.TotalViolationCount, "정체 및 복구 전 과정에서 불변식 위반이 없어야 함.");
     }
 
-    [Test]
-    public void Test04_MultiTickSimulation_PreservesAllWorldInvariants()
-    {
-        // 1. 복합 생산·물류 라인 구성:
-        // Miner at (10, 10) Up (자원 5개)
-        CreateResourceNode(new int2(10, 10), ItemTypeEnum.Iron_Ore, 5);
-        CreateMiner(new int2(10, 10), new int2(1, 1), DirectionEnum.Up, miningSpeed: 3.0f);
-
-        // 벨트: (10, 11) Up
-        CreateBelt(new int2(10, 11), DirectionEnum.Up);
-
-        // Splitter at (10, 12), Forward = Up
-        CreateSplitter(new int2(10, 12), DirectionEnum.Up, outputCursor: 0);
-
-        // 분배기 Forward 출력 벨트: (10, 13) Up
-        CreateBelt(new int2(10, 13), DirectionEnum.Up);
-
-        // 분배기 Right 출력 벨트: (11, 12) Right
-        CreateBelt(new int2(11, 12), DirectionEnum.Right);
-
-        // 최종 수납 창고 2개
-        CreateStorage(new int2(10, 14), new int2(1, 1), DirectionEnum.Up);
-        CreateStorage(new int2(12, 12), new int2(1, 1), DirectionEnum.Right);
-
-        // 2. 100틱 연속 시뮬레이션 구동
-        RunSimulationTicks(100);
-
-        // 3. 검증: 100틱 동안 매 프레임 WorldInvariantValidationSystem이 검증을 수행하였으며 위반 0건
-        Assert.AreEqual(0, _invariantValidationSystem.TotalViolationCount, "100틱 연속 복합 시뮬레이션 동안 모든 불변식이 엄격히 준수되어야 함.");
-    }
 }

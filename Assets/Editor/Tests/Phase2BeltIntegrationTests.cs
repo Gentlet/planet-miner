@@ -113,6 +113,9 @@ public class Phase2BeltIntegrationTests : EcsWorldTestFixture
                 var firstState = _entityManager.GetComponentData<BeltMovementState>(item);
                 Assert.AreEqual(0.1f, firstState.Progress, 0.0001f);
                 Assert.AreEqual(0.0f, firstDecision.PlannedProgress, 0.0001f);
+                var firstTransform = _entityManager.GetComponentData<LocalTransform>(item);
+                Assert.AreEqual(-0.4f, firstTransform.Position.x, 0.0001f);
+                Assert.AreEqual(0.0f, firstTransform.Position.y, 0.0001f);
             }
         }
 
@@ -124,6 +127,9 @@ public class Phase2BeltIntegrationTests : EcsWorldTestFixture
         // 1. 새 위치 (1,0) 및 Progress 0.0f 검증
         Assert.AreEqual(new int2(1, 0), pos.Value);
         Assert.AreEqual(0.0f, state.Progress, 0.001f);
+        var transform = _entityManager.GetComponentData<LocalTransform>(item);
+        Assert.AreEqual(0.5f, transform.Position.x, 0.001f);
+        Assert.AreEqual(0.0f, transform.Position.y, 0.001f);
 
         // 2. ItemSpatialIndex 동기화 무결성 검증: (0,0)에는 없고 (1,0)에 존재
         Assert.IsFalse(spatialIndex.HasItemAt(new int2(0, 0)), "Old tile (0,0) must not contain item.");

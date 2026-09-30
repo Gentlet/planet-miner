@@ -45,11 +45,6 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         Simulation.Playback(_endCommand);
     }
 
-    private void RunSpatialSyncPhase()
-    {
-        Simulation.UpdateAndComplete(_spatialSyncSystem);
-    }
-
     private Entity CreateBuilding(
         BuildingTypeEnum type,
         int2 pos,
@@ -126,21 +121,6 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         materialBuffer.Add(new BuildingConstructionMaterialElement(type, materialType, quantity));
 
         return configEntity;
-    }
-
-    [Test]
-    public void Test01_DemolishBuilding_EmptyBuilding_DestroysBuildingAndConsumesRequest()
-    {
-        // 1. 내용물 없는 Storage 건물 생성
-        var building = CreateBuilding(BuildingTypeEnum.Storage, new int2(5, 5));
-        var req = RequestDemolish(building);
-
-        // 2. 철거 Phase 실행
-        RunDemolishPhase();
-
-        // 3. 건물 파괴 및 요청 소비 확인
-        Assert.IsFalse(_entityManager.Exists(building), "철거된 건물 엔티티는 파괴되어야 함");
-        Assert.IsFalse(_entityManager.Exists(req), "철거 요청 엔티티는 소비되어야 함");
     }
 
     [Test]
@@ -269,28 +249,6 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test07_DemolishBuilding_SpatialIndex_ReleaseOnDemolish()
-    {
-        // 1. 건물 생성 및 공간 인덱스 등록
-        int2 pos = new int2(15, 15);
-        var building = CreateBuilding(BuildingTypeEnum.Storage, pos);
-
-        RunSpatialSyncPhase();
-
-        var spatialMap = _entityManager.CreateEntityQuery(ComponentType.ReadOnly<BuildingSpatialIndex>()).GetSingleton<BuildingSpatialIndex>();
-        Assert.IsTrue(spatialMap.HasBuildingAt(pos), "철거 전에는 공간이 점유되어 있어야 함");
-
-        // 2. 철거 요청 및 실행
-        RequestDemolish(building);
-        RunDemolishPhase();
-
-        // 3. 공간 동기화 실행 후 점유 해제 확인
-        RunSpatialSyncPhase();
-
-        Assert.IsFalse(spatialMap.HasBuildingAt(pos), "철거 후 공간 점유가 정상 해제되어야 함");
-    }
-
-    [Test]
     public void Test08_DemolishBelt_WithItemOnBelt_PreservesItemAsStaticWorldItem()
     {
         // 1. ItemSpatialIndex 초기화
@@ -322,49 +280,6 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         bool isBeltMoving = _entityManager.IsComponentEnabled<BeltMovementState>(item);
         Assert.IsFalse(isBeltMoving, "벨트가 철거되었으므로 BeltMovementState는 비활성화되어 정적 WorldItem으로 유지되어야 함");
         Assert.AreEqual(ItemOwnership.WorldItem.Owner, _entityManager.GetComponentData<ItemOwnership>(item).Owner);
-    }
-
-    [Test]
-    public void Test09_DemolishBuilding_WithPrefabDb_RefundsPrefabItems()
-    {
-        // 1. 프리팹 및 ItemPrefabDatabase 등록
-        var mockPrefab = _entityManager.CreateEntity(typeof(Prefab), typeof(ItemIdentity), typeof(LocalTransform));
-        _entityManager.SetComponentData(mockPrefab, new ItemIdentity(ItemTypeEnum.Iron));
-
-        TestPrefabDatabaseFactory.RemoveDatabase<ItemPrefabDatabase>(_entityManager);
-
-        var dbEntity = _entityManager.CreateEntity(typeof(ItemPrefabDatabase));
-        var prefabBuffer = _entityManager.AddBuffer<ItemPrefabElement>(dbEntity);
-        prefabBuffer.Add(new ItemPrefabElement(ItemTypeEnum.Iron, mockPrefab));
-
-        // 2. Iron 2개가 소모되는 Belt 건물 생성
-        int2 pos = new int2(5, 5);
-        SetupBuildingConfigWithMaterials(BuildingTypeEnum.Belt, ItemTypeEnum.Iron, 2);
-        var belt = CreateBuilding(BuildingTypeEnum.Belt, pos);
-
-        // 3. 철거 실행
-        RequestDemolish(belt);
-        RunDemolishPhase();
-
-        // 4. 프리팹 인스턴스로 환급된 2개의 WorldItem 확인
-        var query = _entityManager.CreateEntityQuery(
-            ComponentType.ReadOnly<ItemIdentity>(),
-            ComponentType.ReadOnly<ItemOwnership>(),
-            ComponentType.ReadOnly<GridPosition>(),
-            ComponentType.Exclude<Prefab>()
-        );
-
-        Assert.AreEqual(2, query.CalculateEntityCount(), "프리팹 DB 환경에서 2개의 아이템이 정상 환급 스폰되어야 함");
-        using (var items = query.ToEntityArray(Allocator.Temp))
-        {
-            for (int i = 0; i < items.Length; i++)
-            {
-                Assert.AreEqual(ItemTypeEnum.Iron, _entityManager.GetComponentData<ItemIdentity>(items[i]).Type);
-                Assert.AreEqual(pos, _entityManager.GetComponentData<GridPosition>(items[i]).Value);
-                Assert.AreEqual(ItemOwnership.WorldItem.Owner, _entityManager.GetComponentData<ItemOwnership>(items[i]).Owner);
-            }
-        }
-        query.Dispose();
     }
 
     [TestCase(false)]

@@ -11,7 +11,6 @@ using Unity.Transforms;
 public class Phase7ConstructionCancelTests : EcsWorldTestFixture
 {
     private SystemHandle _lifecycleApplySystem;
-    private SystemHandle _spatialSyncSystem;
     private EndStateApplyEntityCommandBufferSystem _ecbSystem;
 
     [SetUp]
@@ -20,29 +19,10 @@ public class Phase7ConstructionCancelTests : EcsWorldTestFixture
         base.SetUp();
         CreateGameplayPrefabDatabases();
         _lifecycleApplySystem = _world.GetOrCreateSystem<ConstructionLifecycleApplySystem>();
-        _spatialSyncSystem = _world.GetOrCreateSystem<BuildingSpatialSyncSystem>();
         _ecbSystem = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
     }
 
     private void RunCancelPhase()
-    {
-        Simulation.UpdateAndComplete(_lifecycleApplySystem);
-        Simulation.Playback(_ecbSystem);
-    }
-
-    private void RunMaterialApplyPhase()
-    {
-        Simulation.UpdateAndComplete(_lifecycleApplySystem);
-        Simulation.Playback(_ecbSystem);
-    }
-
-    private void RunCancelAndCompletionPhase()
-    {
-        Simulation.UpdateAndComplete(_lifecycleApplySystem);
-        Simulation.Playback(_ecbSystem);
-    }
-
-    private void RunFullPipelinePhase()
     {
         Simulation.UpdateAndComplete(_lifecycleApplySystem);
         Simulation.Playback(_ecbSystem);
@@ -112,65 +92,6 @@ public class Phase7ConstructionCancelTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test01_CancelConstruction_EmptySite_DestroysSiteAndConsumesRequest()
-    {
-        // 1. 자재가 없는 빈 공사 현장 생성
-        var site = CreateSite(BuildingTypeEnum.Miner, new int2(3, 4));
-        var reqEntity = RequestCancel(site);
-
-        Assert.IsTrue(_entityManager.Exists(site));
-        Assert.IsTrue(_entityManager.Exists(reqEntity));
-
-        // 2. 취소 Phase 실행
-        RunCancelPhase();
-
-        // 3. 현장 및 요청 엔티티 파괴 검증
-        Assert.IsFalse(_entityManager.Exists(reqEntity), "취소 요청은 단일 프레임 내에 소비되어야 함");
-        Assert.IsFalse(_entityManager.Exists(site), "취소된 공사 현장은 파괴되어야 함");
-    }
-
-    [Test]
-    public void Test02_CancelConstruction_WithMaterials_EjectsMaterialsAsWorldItems()
-    {
-        // 1. 자재가 보관된 현장 생성
-        int2 sitePos = new int2(10, 20);
-        var site = CreateSite(BuildingTypeEnum.Crafter, sitePos, DirectionEnum.Right, new int2(2, 2));
-        var item1 = StoreMaterialItem(site, ItemTypeEnum.Iron);
-        var item2 = StoreMaterialItem(site, ItemTypeEnum.Copper);
-
-        Assert.IsTrue(_entityManager.HasComponent<DisableRendering>(item1));
-        Assert.IsTrue(_entityManager.HasComponent<DisableRendering>(item2));
-
-        // 2. 취소 요청 발행 및 실행
-        var reqEntity = RequestCancel(site);
-        RunCancelPhase();
-
-        // 3. 현장 파괴 확인
-        Assert.IsFalse(_entityManager.Exists(reqEntity));
-        Assert.IsFalse(_entityManager.Exists(site));
-
-        // 4. 자재 소유권 및 렌더링/위치 복구 검증
-        Assert.IsTrue(_entityManager.Exists(item1));
-        Assert.IsTrue(_entityManager.Exists(item2));
-
-        var ownership1 = _entityManager.GetComponentData<ItemOwnership>(item1);
-        var ownership2 = _entityManager.GetComponentData<ItemOwnership>(item2);
-        Assert.AreEqual(Entity.Null, ownership1.Owner, "아이템 1의 소유권은 WorldItem이어야 함");
-        Assert.AreEqual(Entity.Null, ownership2.Owner, "아이템 2의 소유권은 WorldItem이어야 함");
-
-        Assert.IsFalse(_entityManager.HasComponent<DisableRendering>(item1), "아이템 1의 DisableRendering은 제거되어야 함");
-        Assert.IsFalse(_entityManager.HasComponent<DisableRendering>(item2), "아이템 2의 DisableRendering은 제거되어야 함");
-
-        var pos1 = _entityManager.GetComponentData<GridPosition>(item1);
-        var pos2 = _entityManager.GetComponentData<GridPosition>(item2);
-        Assert.AreEqual(sitePos, pos1.Value, "아이템 1의 그리드 위치는 현장 좌표와 일치해야 함");
-        Assert.AreEqual(sitePos, pos2.Value, "아이템 2의 그리드 위치는 현장 좌표와 일치해야 함");
-
-        var transform1 = _entityManager.GetComponentData<LocalTransform>(item1);
-        Assert.AreEqual(new float3(sitePos.x, sitePos.y, 0f), transform1.Position);
-    }
-
-    [Test]
     public void Test03_CancelConstruction_FullySatisfiedSite_BeforeCompletion_ReturnsMaterialsAndCancels()
     {
         // 1. 자재가 100% 충족된 공사 현장
@@ -184,7 +105,7 @@ public class Phase7ConstructionCancelTests : EcsWorldTestFixture
 
         // 2. 취소 요청 발행 및 [취소 + 완공] 동시 평가 파이프라인 실행
         RequestCancel(site);
-        RunCancelAndCompletionPhase();
+        RunCancelPhase();
 
         // 3. 완공되지 않고 취소 및 자재 반환 검증
         Assert.IsFalse(_entityManager.Exists(site), "공사 현장은 파괴되어야 함");
@@ -212,7 +133,7 @@ public class Phase7ConstructionCancelTests : EcsWorldTestFixture
 
         // 3. Full Pipeline 1회 실행:
         // MaterialApply (자재 수령 버퍼 추가) -> CancelApply (취소 플래그 마킹, 자재 반환, 현장 파괴) -> CompletionApply (취소 감지하여 완공 스킵)
-        RunFullPipelinePhase();
+        RunCancelPhase();
 
         // 4. 취소 우선(Cancel Wins) 검증
         Assert.IsFalse(_entityManager.Exists(supplyReq));
@@ -268,26 +189,4 @@ public class Phase7ConstructionCancelTests : EcsWorldTestFixture
         Assert.IsTrue(_entityManager.Exists(building), "완공된 건물은 취소 요청으로 파괴되어서는 안 됨");
     }
 
-    [Test]
-    public void Test07_SpatialIndex_ReleaseOnCancel()
-    {
-        // 1. 공사 현장 생성 후 공간 인덱스 동기화
-        int2 pos = new int2(15, 15);
-        var site = CreateSite(BuildingTypeEnum.Storage, pos, DirectionEnum.Up, new int2(1, 1));
-        Simulation.UpdateAndComplete(_spatialSyncSystem);
-
-        var index = _entityManager.CreateEntityQuery(ComponentType.ReadOnly<BuildingSpatialIndex>())
-            .GetSingleton<BuildingSpatialIndex>();
-
-        Assert.IsTrue(index.Map.TryGetValue(pos, out var siteInfo));
-        Assert.AreEqual(BuildingTypeEnum.ConstructionSite, siteInfo.Type);
-
-        // 2. 현장 취소 및 공간 인덱스 재동기화
-        RequestCancel(site);
-        RunCancelPhase();
-        Simulation.UpdateAndComplete(_spatialSyncSystem);
-
-        // 3. 공간 인덱스에서 점유가 완전히 해제되었는지 검증
-        Assert.IsFalse(index.Map.TryGetValue(pos, out _), "취소된 공사 현장은 공간 인덱스에서 완전히 제거되어야 함");
-    }
 }

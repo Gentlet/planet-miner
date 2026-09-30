@@ -148,14 +148,16 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 
 | 변경 영역 | 우선 확인할 테스트 클래스/파일 묶음 |
 | --- | --- |
-| 베이킹·아이템 생성·소유권 | `Phase0AuthoringPrefabContractTests`, `Phase1ItemIntegrationTests`, `Phase1ItemAuthoringPrefabTests` |
-| 벨트 이동 | `Phase2BeltDecisionTests`, `Phase2BeltExecutionTests`, `Phase2BeltIntegrationTests` |
+| 베이킹·아이템 생성·소유권 | `PrefabDatabaseInitializationTests`, `Phase1ItemIntegrationTests`, `Phase1ItemAuthoringPrefabTests` |
+| 벨트 이동 | `Phase2BeltExecutionTests`, `Phase2BeltIntegrationTests` |
 | 저장·입출고·공간·설정 | `Phase3Storage*`, `Phase3Building*`, `Phase3ItemConfigTests` |
 | 월드·청크·자원·바닥 생성 | `Phase4WorldGenerationConfigTests`, `Phase4ChunkLifecycleTests`, `Phase4ResourceGenerationTests`, `Phase4ResourceAuthoringAndSpawnTests`, `Phase4FloorBiomeGenerationTests` |
-| 채굴 통합 | `Phase4MinerComponentTests`, `Phase4MinerPipelineTests`, `Phase4EndToEndPipelineTests` |
+| 채굴 통합 | `Phase4MinerPipelineTests`, `Phase4EndToEndPipelineTests` |
 | 제작·레시피 | `Phase5RecipeBlobTests`, `Phase5CrafterExecutionTests`, `Phase5RecipeChangePipelineTests`, `Phase5CrafterInputSlotTests`, `Phase5CrafterInputPipelineTests` |
 | 분배·합류·목적지 예약 | `Phase6*` |
-| 배치·현장·자재·건물 스폰 | `Phase7ConstructionContractTests`, `Phase7PlacementCommandTests`, `Phase7ConstructionMaterialTests`, `Phase7BuildingLifecycleTests`, `Phase7BuildingAuthoringPrefabTests` |
+| 배치·현장·자재·건물 스폰 | `Phase7PlacementCommandTests`, `Phase7ConstructionMaterialTests`, `Phase7ConstructionCompletionTests`, `Phase7BuildingLifecycleTests`, `Phase7BuildingAuthoringPrefabTests`, `Phase7EndToEndConstructionPipelineTests` |
+
+2026-09-30 사용자 선택에 따라 핵심 통합 흐름과 실제 결함 회귀 중심으로 테스트를 축소했다. 개별 컴포넌트·조회·방향 계산·불변식 검사기 및 반복 정상 경로의 독립 검증 일부는 제거했다. 아이템 렌더 태그·공간 등록과 벨트 시각 위치 검사는 기존 통합 테스트에 흡수했다. F-037 제작기 입력, F-005 생성/철거 경합, F-024 완공 실패 보존 및 프리팹 초기화 검증을 유지한다. 과거 문서의 삭제된 테스트 이름과 실행 건수는 당시 기록이며 현재 검증 범위로 사용하지 않는다.
 
 `TestSupport/EcsWorldTestFixture`가 독립 World를, `TestEntityFactory`가 테스트용 엔티티를, `TestSimulationDriver`가 시간·시스템 실행·ECB 경계를 제공한다. Factory 구성과 실제 Spawn/Baker 구성이 같은지 확인한다. 개별 시스템 직접 호출 테스트와 실제 정렬된 그룹 테스트, 테스트용 ECS 프리팹과 실제 SubScene 베이킹 결과를 구분한다.
 

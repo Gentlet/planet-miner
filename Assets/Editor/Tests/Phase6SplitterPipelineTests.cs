@@ -122,36 +122,6 @@ public class Phase6SplitterPipelineTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test03_Splitter_AllOutputsBlocked_RetainsItemAndCursor()
-    {
-        // Arrange: (0,0) Splitter (Forward = Right, Cursor = 0)
-        var inputBelt = Entities.CreateBelt(new int2(-1, 0), DirectionEnum.Right);
-        var splitter = CreateSplitter(new int2(0, 0), DirectionEnum.Right, inputBelt, outputCursor: 0);
-
-        // Forward, Right, Left 모든 출구가 차단 상태
-        var beltForward = Entities.CreateBelt(new int2(1, 0), DirectionEnum.Right);
-        Entities.CreateBeltItem(new int2(1, 0), DirectionEnum.Right, progress: 0.1f);
-
-        var beltRight = Entities.CreateBelt(new int2(0, -1), DirectionEnum.Down);
-        Entities.CreateBeltItem(new int2(0, -1), DirectionEnum.Down, progress: 0.1f);
-
-        var beltLeft = Entities.CreateBelt(new int2(0, 1), DirectionEnum.Up);
-        Entities.CreateBeltItem(new int2(0, 1), DirectionEnum.Up, progress: 0.1f);
-
-        // 입력 아이템 도착
-        var inputItem = Entities.CreateBeltItem(new int2(-1, 0), DirectionEnum.Right, progress: 1.0f);
-
-        // Act
-        RunPipeline();
-
-        // Assert: 아이템은 입력 벨트(-1, 0)에 대기 상태 유지, 커서 동결(0), 결정 비활성화
-        Assert.AreEqual(new int2(-1, 0), _entityManager.GetComponentData<GridPosition>(inputItem).Value);
-        Assert.AreEqual(1.0f, _entityManager.GetComponentData<BeltMovementState>(inputItem).Progress);
-        Assert.AreEqual(0, _entityManager.GetComponentData<SplitterRoutingState>(splitter).OutputCursor);
-        Assert.IsFalse(_entityManager.IsComponentEnabled<RoutingTransferDecision>(splitter));
-    }
-
-    [Test]
     public void Test04_Splitter_BlockedOutputCleared_ResumesRouting()
     {
         // Arrange: Forward 벨트만 연결된 Splitter에서 출구가 차단된 상태
@@ -167,6 +137,7 @@ public class Phase6SplitterPipelineTests : EcsWorldTestFixture
         Assert.AreEqual(new int2(-1, 0), _entityManager.GetComponentData<GridPosition>(inputItem).Value);
 
         // 2. 장애물 아이템 전진(공간 확보)
+        Assert.AreEqual(0, _entityManager.GetComponentData<SplitterRoutingState>(splitter).OutputCursor);
         _entityManager.SetComponentData(obstacleItem, new BeltMovementState(0.9f));
 
         // Act: 재실행

@@ -37,28 +37,6 @@ public class Phase6BeltDestinationReservationTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test01_SingleBuildingOutput_ApprovedWhenBeltEmpty()
-    {
-        // Arrange: 빈 벨트 (0,0)를 향한 창고 출고 요청
-        var belt = Entities.CreateBelt(new int2(0, 0), DirectionEnum.Right);
-
-        var storage = Entities.CreateStorage(new int2(0, 1), new int2(1, 1));
-        var item = Entities.CreateBeltItem(new int2(0, 1), DirectionEnum.Down, progress: 0.0f);
-        _entityManager.SetComponentData(storage, new BuildingItemOutputDecision(canOutput: true, item, new int2(0, 0)));
-        _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(storage, true);
-
-        SyncSpatialIndices();
-
-        // Act
-        RunReservation();
-
-        // Assert: 대상 벨트가 비어있으므로 정상 승인
-        var outputDec = _entityManager.GetComponentData<BuildingItemOutputDecision>(storage);
-        Assert.IsTrue(outputDec.CanOutput);
-        Assert.IsTrue(_entityManager.IsComponentEnabled<BuildingItemOutputDecision>(storage));
-    }
-
-    [Test]
     public void Test02_MultipleBuildingOutputs_PlacementStampArbitration()
     {
         // Arrange: 대상 벨트 (0,0)로 두 창고가 동시 출고 시도

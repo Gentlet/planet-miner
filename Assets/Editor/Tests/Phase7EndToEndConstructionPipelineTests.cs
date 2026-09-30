@@ -436,39 +436,4 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         siteQuery.Dispose();
     }
 
-    [Test]
-    public void Test05_MultiTickContinuousSimulation_StressAndWorldInvariantZeroViolation()
-    {
-        // 1. Arrange: 복합 환경 셋업
-        // - (50, 50): 채굴기 및 자원 노드
-        Entities.CreateResourceNode(new int2(50, 50), ItemTypeEnum.Iron_Ore, 500);
-        Entities.CreateMiner(new int2(50, 50), new int2(2, 2), DirectionEnum.Up, miningSpeed: 2.0f);
-
-        // - (50, 52) ~ (50, 54): 벨트 수송 라인
-        Entities.CreateBelt(new int2(50, 52), DirectionEnum.Up, speed: 2.0f);
-        Entities.CreateBelt(new int2(50, 53), DirectionEnum.Up, speed: 2.0f);
-        Entities.CreateBelt(new int2(50, 54), DirectionEnum.Up, speed: 2.0f);
-
-        // - (50, 55): 창고
-        Entities.CreateStorage(new int2(50, 55), new int2(1, 1), DirectionEnum.Up, slotCount: 4);
-
-        // - 별도 영역 (60, 60): 건설 현장 배치 및 자재 공급 중
-        int2 sitePos = new int2(60, 60);
-        RequestPlacement(BuildingTypeEnum.Storage, sitePos, DirectionEnum.Up, new int2(1, 1));
-
-        RunSimulationTicks(1);
-
-        var siteQuery = _entityManager.CreateEntityQuery(typeof(ConstructionSite));
-        var siteEntity = siteQuery.GetSingletonEntity();
-        var mat = CreateWorldItem(ItemTypeEnum.Iron, sitePos - new int2(1, 0));
-        RequestSupply(siteEntity, mat, ItemTypeEnum.Iron);
-
-        // 2. Act: 100틱 연속 시뮬레이션 구동 (채굴 -> 벨트 이동 -> 저장 및 건설 자재 처리 복합 실행)
-        RunSimulationTicks(100);
-
-        // 3. Assert: 100틱 동안 매 프레임 WorldInvariantValidationSystem이 검증을 수행하였으며 위반 0건 확인
-        Assert.AreEqual(0, _invariantValidationSystem.TotalViolationCount, "100틱 복합 시뮬레이션 중 World Invariant 위반이 없어야 함");
-
-        siteQuery.Dispose();
-    }
 }

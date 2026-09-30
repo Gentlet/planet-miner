@@ -49,61 +49,6 @@ public class Phase4ChunkLifecycleTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test02_InitialChunkLoadBootstrapSystem_EnqueuesConfiguredNxNChunks()
-    {
-        // 3×3 초기 청크 설정
-        Entity settingsEntity = _entityManager.CreateEntity(typeof(ResourceGenerationSettings));
-        _entityManager.SetComponentData(settingsEntity, new ResourceGenerationSettings(worldSeed: 1, initialChunkSize: 3));
-
-        var bootstrapSystem = _world.GetOrCreateSystem(typeof(InitialChunkLoadBootstrapSystem));
-        bootstrapSystem.Update(_world.Unmanaged);
-
-        // 요청 큐 싱글톤 및 버퍼 검증
-        Assert.IsTrue(_entityManager.CreateEntityQuery(typeof(ChunkLoadRequestQueue)).CalculateEntityCount() == 1);
-        Entity queueEntity = _entityManager.CreateEntityQuery(typeof(ChunkLoadRequestQueue)).GetSingletonEntity();
-        var requestBuffer = _entityManager.GetBuffer<ChunkLoadRequestElement>(queueEntity);
-
-        // 3×3 = 9개 청크 검증
-        Assert.AreEqual(9, requestBuffer.Length);
-
-        // (-1, -1)부터 (1, 1)까지 9개 좌표가 모두 인큐되었는지 확인
-        for (int y = -1; y <= 1; y++)
-        {
-            for (int x = -1; x <= 1; x++)
-            {
-                int2 target = new int2(x, y);
-                bool found = false;
-                for (int i = 0; i < requestBuffer.Length; i++)
-                {
-                    if (requestBuffer[i].ChunkCoord.Equals(target))
-                    {
-                        found = true;
-                        break;
-                    }
-                }
-                Assert.IsTrue(found, $"좌표 {target} 청크 요청이 인큐되어야 함");
-            }
-        }
-    }
-
-    [Test]
-    public void Test03_InitialChunkLoadBootstrapSystem_SingleChunkSize_EnqueuesOnlyOrigin()
-    {
-        // 1×1 초기 청크 설정
-        Entity settingsEntity = _entityManager.CreateEntity(typeof(ResourceGenerationSettings));
-        _entityManager.SetComponentData(settingsEntity, new ResourceGenerationSettings(worldSeed: 1, initialChunkSize: 1));
-
-        var bootstrapSystem = _world.GetOrCreateSystem(typeof(InitialChunkLoadBootstrapSystem));
-        bootstrapSystem.Update(_world.Unmanaged);
-
-        Entity queueEntity = _entityManager.CreateEntityQuery(typeof(ChunkLoadRequestQueue)).GetSingletonEntity();
-        var requestBuffer = _entityManager.GetBuffer<ChunkLoadRequestElement>(queueEntity);
-
-        Assert.AreEqual(1, requestBuffer.Length);
-        Assert.AreEqual(new int2(0, 0), requestBuffer[0].ChunkCoord);
-    }
-
-    [Test]
     public void Test04_ChunkLoadCommandSystem_DeduplicatesPendingChunksWithoutCompletingThem()
     {
         var loadSystem = _world.GetOrCreateSystem(typeof(ChunkLoadCommandSystem));

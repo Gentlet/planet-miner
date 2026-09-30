@@ -99,33 +99,24 @@
 | `Assets/Scripts/Systems/6_Synchronization/ResourceSpatialSyncSystem.cs` | 자원 노드 셀 인덱스를 재구축한다. |
 | `Assets/Scripts/Validation/WorldInvariantValidationSystem.cs` | Editor/개발 빌드에서 프레임 말 정합성을 검사하고 위반 보고서를 `Logs/InvariantErrors`에 기록한다. |
 
-## EditMode 테스트와 공통 도우미 (24개)
+## 주요 EditMode 테스트와 공통 도우미
 
 | 파일 | 검증 대상으로 작성된 범위 |
 | --- | --- |
 | `Assets/Editor/Tests/Phase1ItemIntegrationTests.cs` | 스폰, 소유권 이전, 공간 반영, 삭제, 잘못된 목적지/버퍼 정합성. |
-| `Assets/Editor/Tests/Phase2BeltDecisionTests.cs` | 자유 이동, 벨트 끝, 같은/다음 타일 간격, 판단 단계의 무변경. |
-| `Assets/Editor/Tests/Phase2BeltExecutionTests.cs` | 타일 이동/회전, 연속 홉, 경계 정지, 계획 소비, 큰 delta time. |
+| `Assets/Editor/Tests/Phase2BeltExecutionTests.cs` | 회전, 연속 홉, 큰 이동량의 종단 정지와 delta time 제한. |
 | `Assets/Editor/Tests/Phase2BeltIntegrationTests.cs` | 다중 타일 흐름, 후방 정체, 4개 수용, 간격 위반 탐지. |
-| `Assets/Editor/Tests/Phase3BuildingDecisionComponentTests.cs` | 건물 입출고 결정의 데이터와 enable 상태. |
-| `Assets/Editor/Tests/Phase3BuildingInputDecisionTests.cs` | 벨트 끝 입고, 필터, 비저장 건물, 다중 타일 건물. |
-| `Assets/Editor/Tests/Phase3BuildingOutputDecisionTests.cs` | 외향 벨트와 진입 공간, 다중 벨트 선택. |
-| `Assets/Editor/Tests/Phase3BuildingSpatialIndexTests.cs` | 단일/다중 타일, 회전, 삭제 후 재구축, 용량 증가. |
-| `Assets/Editor/Tests/Phase3ItemConfigTests.cs` | 스택 설정 로드, 기본값/커스텀 JSON, Blob 조회, Burst 접근. |
-| `Assets/Editor/Tests/Phase3StorageComponentTests.cs` | 비트셋/필터, 저장 슬롯 경계와 위반 탐지. |
+| `Assets/Editor/Tests/Phase3ItemConfigTests.cs` | 시스템 초기화와 커스텀 JSON 스택 설정 게시. |
 | `Assets/Editor/Tests/Phase3StorageDecisionTests.cs` | 입출고 결정 통합, 복수 벨트, 혼잡 후 재개. |
-| `Assets/Editor/Tests/Phase3StorageInvariantTests.cs` | 고아 저장품, 버퍼 참조, 슬롯/스택/필터, 미소비 결정. |
 | `Assets/Editor/Tests/Phase3StorageOwnershipTests.cs` | 입출고 소유권과 단일 남은 슬롯 경합, 스택 병합/새 슬롯. |
 | `Assets/Editor/Tests/Phase4EndToEndPipelineTests.cs` | 채굴→벨트→저장 루프와 연속 생산/역압. |
-| `Assets/Editor/Tests/Phase4MinerComponentTests.cs` | 자원 컴포넌트/공간 인덱스, 채굴 결정 데이터, 고갈 후 갱신. |
-| `Assets/Editor/Tests/Phase4MinerPipelineTests.cs` | 자원 탐색·채굴·생산·출고, 무한/고갈, 다중 footprint, 스택과 시간 상한. |
-| `Assets/Editor/Tests/Phase5CrafterExecutionTests.cs` | 재료 선소비, 진행/완료, 출력 역압, 다중 부산물의 전체 용량 판정. |
-| `Assets/Editor/Tests/Phase5RecipeBlobTests.cs` | 레시피 JSON/기본값, 다중 재료/부산물, 조회와 Burst 접근. |
+| `Assets/Editor/Tests/Phase4MinerPipelineTests.cs` | 자원/출력 여유가 없는 경우의 차단, 무한 자원, 품목 불일치, 스택과 시간 상한. |
+| `Assets/Editor/Tests/Phase5CrafterExecutionTests.cs` | 비활성 결정의 실행 제외, 다중 부산물 생성과 전체 용량 판정. |
+| `Assets/Editor/Tests/Phase5RecipeBlobTests.cs` | 실제 레시피 설정 로드와 부산물 1개/2개의 JSON 출력 구성. |
 | `Assets/Editor/Tests/Phase5CrafterInputSlotTests.cs` | F-037 1단계: 슬롯 계산의 올림, 중복 합산, 품목 구분, 상한/실패 및 Burst Job 호출. |
-| `Assets/Editor/Tests/Phase5CrafterInputPipelineTests.cs` | F-037: 개별 회귀 15개와 실제 정렬 6단계 통합 4개. 직접 Spawn/공사 완료 × ECS 테스트 프리팹/fallback, 미선택 차단·입고·선소비·생산·후속 출고·레시피 변경/해제 및 불변식. |
+| `Assets/Editor/Tests/Phase5CrafterInputPipelineTests.cs` | F-037: 개별 회귀 15개와 실제 정렬 6단계 통합 4개. 직접 Spawn/공사 완료 × 기본/사용자 지정 ECS 테스트 프리팹, 미선택 차단·입고·선소비·생산·후속 출고·레시피 변경/해제 및 불변식. |
 | `Assets/Editor/Tests/Phase5RecipeChangePipelineTests.cs` | 레시피 변경 잔여물 배출, 입고 차단과 재개. |
 | `Assets/Editor/Tests/Phase6BeltDestinationReservationTests.cs` | 본선 우선, 배치 순서 경합, 외부 출고/라우팅 경합과 목표 공간. |
-| `Assets/Editor/Tests/Phase6RoutingContractTests.cs` | Splitter/Merger 방향·포트·커서·전송 결정·배치 순서 계약. |
 | `Assets/Editor/Tests/TestSupport/EcsWorldTestFixture.cs` | 독립 ECS World/EntityManager 생성과 정리. |
 | `Assets/Editor/Tests/TestSupport/TestEntityFactory.cs` | 자원, 벨트/아이템, 저장, 채굴기, 제작기, 일반 건물 테스트 엔티티 생성. |
 | `Assets/Editor/Tests/TestSupport/TestSimulationDriver.cs` | 시간·개별 시스템·ECB 경계 지원. 자원 생성/채굴 및 제작기 생성·물류의 실제 정렬 6단계 테스트 그룹을 구성한다. |

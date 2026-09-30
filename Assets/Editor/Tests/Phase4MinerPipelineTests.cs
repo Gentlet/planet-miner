@@ -16,7 +16,6 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
     private SystemHandle _itemSpatialSyncHandle;
     private SystemHandle _minerDecisionHandle;
     private SystemHandle _minerExecutionHandle;
-    private SystemHandle _outputDecisionHandle;
     private SystemHandle _storageApplyHandle;
     private SystemHandle _lifecycleHandle;
     private SystemHandle _ownershipHandle;
@@ -33,7 +32,6 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         _itemSpatialSyncHandle = _world.GetOrCreateSystem(typeof(ItemSpatialSyncSystem));
         _minerDecisionHandle = _world.GetOrCreateSystem(typeof(MinerDecisionSystem));
         _minerExecutionHandle = _world.GetOrCreateSystem(typeof(MinerExecutionSystem));
-        _outputDecisionHandle = _world.GetOrCreateSystem(typeof(ProductItemOutputDecisionSystem));
         _storageApplyHandle = _world.GetOrCreateSystem(typeof(BuildingItemStorageApplySystem));
         _lifecycleHandle = _world.GetOrCreateSystem(typeof(ItemLifecycleApplySystem));
         _ownershipHandle = _world.GetOrCreateSystem(typeof(ItemOwnershipApplySystem));
@@ -84,22 +82,6 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test01_MinerDecision_DetectsUnderlyingResourceAndHasSpace()
-    {
-        // 1x1 채굴기 (10, 10), 바로 아래 철광석, 버퍼 비어있음
-        var resEntity = CreateResourceNode(new int2(10, 10), ItemTypeEnum.Iron_Ore, 100);
-        var minerEntity = CreateMiner(new int2(10, 10), new int2(1, 1), DirectionEnum.Up, 1.0f);
-
-        SyncAllSpatialIndices();
-        _minerDecisionHandle.Update(_world.Unmanaged);
-
-        Assert.IsTrue(_entityManager.IsComponentEnabled<MinerDecision>(minerEntity), "MinerDecision should be enabled when resource exists and buffer has space.");
-        var decision = _entityManager.GetComponentData<MinerDecision>(minerEntity);
-        Assert.IsTrue(decision.CanMine, "CanMine should be true.");
-        Assert.AreEqual(resEntity, decision.TargetResource, "TargetResource should match underlying resource.");
-    }
-
-    [Test]
     public void Test02_MinerDecision_NoResourceOrFullBuffer_DisablesDecision()
     {
         // Case A: 자원이 없음
@@ -130,95 +112,6 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test03_MinerExecution_SpawnsItemToMinerBufferAndDecrementsAmount()
-    {
-        // 채굴기 (10, 10), 철광석 Amount = 10, Progress = 0.95f
-        var resEntity = CreateResourceNode(new int2(10, 10), ItemTypeEnum.Iron_Ore, 10);
-        var minerEntity = CreateMiner(new int2(10, 10), new int2(1, 1), DirectionEnum.Up, miningSpeed: 1.0f, progress: 0.95f);
-
-        SyncAllSpatialIndices();
-        _minerDecisionHandle.Update(_world.Unmanaged);
-
-        // Phase 4: Execution 실행 (deltaTime = 0.1f -> 0.95 + 0.1 = 1.05f -> 채굴 완료 및 0.05f 리셋)
-        _world.SetTime(new Unity.Core.TimeData(0.1, 0.1f));
-        _minerExecutionHandle.Update(_world.Unmanaged);
-
-        // 1. 진행도 확인: 초과 진행도 0.05f 보존
-        var minerState = _entityManager.GetComponentData<MinerState>(minerEntity);
-        Assert.AreEqual(0.05f, minerState.Progress, 0.001f, "Progress should be reset preserving excess progress.");
-
-        // 2. 자원 매장량 확인: 10에서 9로 차감
-        var resNode = _entityManager.GetComponentData<ResourceNode>(resEntity);
-        Assert.AreEqual(9, resNode.Amount, "Resource amount should be decremented by 1.");
-
-        // 3. Execution 결과는 SpawnItemRequest Entity가 아니라 ProductResult Buffer에 즉시 기록되어야 함
-        var productResults = _entityManager.GetBuffer<ProductResult>(minerEntity);
-        Assert.AreEqual(1, productResults.Length, "Miner should record exactly one production result before StateApply.");
-        Assert.AreEqual(ItemTypeEnum.Iron_Ore, productResults[0].ItemType);
-        Assert.AreEqual(1, productResults[0].Count);
-        Assert.AreEqual(0, productResults[0].SlotIndex);
-
-        // 4. Phase 5 StateApply 단계 연계: ProductResult가 실제 Item + ProductItemElement로 변환되는지 검증
-        RunStateApplyPhase();
-
-        productResults = _entityManager.GetBuffer<ProductResult>(minerEntity);
-        Assert.AreEqual(0, productResults.Length, "ProductResult should be consumed in the same StateApply phase.");
-
-        var buffer = _entityManager.GetBuffer<ProductItemElement>(minerEntity);
-        Assert.AreEqual(1, buffer.Length, "Miner buffer should contain 1 product item.");
-        Assert.AreEqual(ItemTypeEnum.Iron_Ore, buffer[0].ItemType);
-
-        var storedItem = buffer[0].ItemEntity;
-        Assert.IsTrue(_entityManager.Exists(storedItem), "Stored item entity should exist.");
-        var ownership = _entityManager.GetComponentData<ItemOwnership>(storedItem);
-        Assert.IsTrue(ownership.IsStored);
-        Assert.AreEqual(minerEntity, ownership.Owner);
-    }
-
-    [Test]
-    public void Test04_FullMiningAndOutputToBeltPipeline()
-    {
-        // 채굴기 (10, 10), 철광석 Amount = 10, 외향 벨트 (10, 11) (Dir = Up)
-        var resEntity = CreateResourceNode(new int2(10, 10), ItemTypeEnum.Iron_Ore, 10);
-        var minerEntity = CreateMiner(new int2(10, 10), new int2(1, 1), DirectionEnum.Up, miningSpeed: 1.0f, progress: 0.95f);
-        CreateBelt(new int2(10, 11), DirectionEnum.Up);
-
-        // [프레임 1]: 채굴 및 버퍼 적재
-        SyncAllSpatialIndices();
-        _minerDecisionHandle.Update(_world.Unmanaged);
-
-        _world.SetTime(new Unity.Core.TimeData(0.1, 0.1f));
-        _minerExecutionHandle.Update(_world.Unmanaged);
-
-        RunStateApplyPhase();
-
-        var buffer = _entityManager.GetBuffer<ProductItemElement>(minerEntity);
-        Assert.AreEqual(1, buffer.Length, "Item should be loaded in miner buffer.");
-        Entity minedItem = buffer[0].ItemEntity;
-
-        // [프레임 2]: 외향 벨트 감지 및 벨트로 방출
-        SyncAllSpatialIndices();
-        _outputDecisionHandle.Update(_world.Unmanaged);
-
-        Assert.IsTrue(_entityManager.IsComponentEnabled<BuildingItemOutputDecision>(minerEntity), "BuildingItemOutputDecision should be enabled.");
-        var outputDecision = _entityManager.GetComponentData<BuildingItemOutputDecision>(minerEntity);
-        Assert.IsTrue(outputDecision.CanOutput);
-        Assert.AreEqual(minedItem, outputDecision.ItemToOutput);
-        Assert.AreEqual(new int2(10, 11), outputDecision.TargetBeltPosition);
-
-        // 방출 실행 (StateApply)
-        RunStateApplyPhase();
-
-        // 검증: 버퍼에서 제거되었고 월드 벨트 아이템으로 전환됨
-        buffer = _entityManager.GetBuffer<ProductItemElement>(minerEntity);
-        Assert.AreEqual(0, buffer.Length, "Miner buffer should now be empty after output.");
-        var itemOwnership = _entityManager.GetComponentData<ItemOwnership>(minedItem);
-        Assert.IsTrue(itemOwnership.IsWorldItem, "Item should now be a WorldItem on belt.");
-        var itemPos = _entityManager.GetComponentData<GridPosition>(minedItem);
-        Assert.AreEqual(new int2(10, 11), itemPos.Value, "Item should be at target belt position.");
-    }
-
-    [Test]
     public void Test05_InfiniteResourceMode_DoesNotDecrementAmount()
     {
         var configEntity = _entityManager.CreateEntity(typeof(ResourceConfig));
@@ -236,43 +129,6 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
 
         var resNode = _entityManager.GetComponentData<ResourceNode>(resEntity);
         Assert.AreEqual(5, resNode.Amount, "Resource amount should NOT be decremented in infinite mode.");
-    }
-
-    [Test]
-    public void Test06_ResourceDepletion_DestroysResourceEntity()
-    {
-        var resEntity = CreateResourceNode(new int2(10, 10), ItemTypeEnum.Iron_Ore, 1);
-        var minerEntity = CreateMiner(new int2(10, 10), new int2(1, 1), DirectionEnum.Up, miningSpeed: 1.0f, progress: 0.95f);
-
-        SyncAllSpatialIndices();
-        _minerDecisionHandle.Update(_world.Unmanaged);
-
-        _world.SetTime(new Unity.Core.TimeData(0.1, 0.1f));
-        _minerExecutionHandle.Update(_world.Unmanaged);
-        RunStateApplyPhase();
-
-        Assert.IsFalse(_entityManager.Exists(resEntity), "Depleted resource entity should be destroyed.");
-
-        SyncAllSpatialIndices();
-        _minerDecisionHandle.Update(_world.Unmanaged);
-
-        Assert.IsFalse(_entityManager.IsComponentEnabled<MinerDecision>(minerEntity), "MinerDecision should be disabled after resource depletion.");
-    }
-
-    [Test]
-    public void Test07_MultiTileMiner_PicksFirstResource()
-    {
-        var copperEntity = CreateResourceNode(new int2(10, 10), ItemTypeEnum.Copper_Ore, 50);
-        var ironEntity = CreateResourceNode(new int2(11, 11), ItemTypeEnum.Iron_Ore, 50);
-        var minerEntity = CreateMiner(new int2(10, 10), new int2(2, 2), DirectionEnum.Up, 1.0f);
-
-        SyncAllSpatialIndices();
-        _minerDecisionHandle.Update(_world.Unmanaged);
-
-        Assert.IsTrue(_entityManager.IsComponentEnabled<MinerDecision>(minerEntity));
-        var decision = _entityManager.GetComponentData<MinerDecision>(minerEntity);
-        Assert.IsTrue(decision.CanMine);
-        Assert.AreEqual(copperEntity, decision.TargetResource, "Multi-tile miner should pick the first resource (anchor corner).");
     }
 
     [Test]
