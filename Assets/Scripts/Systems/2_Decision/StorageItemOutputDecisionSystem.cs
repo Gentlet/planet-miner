@@ -191,36 +191,14 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
             return;
         }
 
-        // 벨트 시작점 여유 공간(ItemSpacing) 및 최대 수용량(4개) 판정
-        bool spaceAvailable = true;
-        if (ItemMap.TryGetFirstValue(cell, out Entity itemEntity, out var it))
+        if (!BeltEntryUtility.HasEntrySpace(
+                cell, ItemMap, ItemOwnershipLookup, BeltMovementStateLookup))
         {
-            float minProgress = float.MaxValue;
-            int cellItemCount = 0;
-            do
-            {
-                if (ItemOwnershipLookup.HasComponent(itemEntity) &&
-                    ItemOwnershipLookup[itemEntity].IsWorldItem &&
-                    BeltMovementStateLookup.HasComponent(itemEntity) &&
-                    BeltMovementStateLookup.IsComponentEnabled(itemEntity))
-                {
-                    float prog = BeltMovementStateLookup[itemEntity].Progress;
-                    minProgress = math.min(minProgress, prog);
-                    cellItemCount++;
-                }
-            } while (ItemMap.TryGetNextValue(out itemEntity, ref it));
-
-            if (cellItemCount >= GameConstants.MaxItemsPerBeltTile || minProgress < GameConstants.ItemSpacing - GameConstants.AlignmentEpsilon)
-            {
-                spaceAvailable = false;
-            }
+            return;
         }
 
-        if (spaceAvailable)
-        {
-            foundBeltPos = cell;
-            foundBelt = true;
-        }
+        foundBeltPos = cell;
+        foundBelt = true;
     }
 
     private static bool IsInsideBuilding(int2 pos, int2 anchor, int2 size)

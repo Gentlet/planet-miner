@@ -264,37 +264,7 @@ public partial struct MergerDecisionJob : IJobEntity
 
     private bool IsTargetBeltAvailable(int2 targetPos)
     {
-        int itemCount = 0;
-        float minProgress = 1.0f;
-
-        if (ItemMap.TryGetFirstValue(targetPos, out Entity item, out var iterator))
-        {
-            do
-            {
-                if (ItemOwnershipLookup.TryGetComponent(item, out var ownership) && ownership.IsWorldItem)
-                {
-                    itemCount++;
-                    if (BeltMovementStateLookup.TryGetComponent(item, out var movement))
-                    {
-                        if (movement.Progress < minProgress)
-                        {
-                            minProgress = movement.Progress;
-                        }
-                    }
-                }
-            } while (ItemMap.TryGetNextValue(out item, ref iterator));
-        }
-
-        if (itemCount >= GameConstants.MaxItemsPerBeltTile)
-        {
-            return false;
-        }
-
-        if (itemCount > 0 && minProgress < GameConstants.ItemSpacing)
-        {
-            return false;
-        }
-
-        return true;
+        return BeltEntryUtility.HasEntrySpace(
+            targetPos, ItemMap, ItemOwnershipLookup, BeltMovementStateLookup);
     }
 }

@@ -18,7 +18,7 @@ SimulationSystemGroup
 
 - `CommandGroup`: `ChangeCrafterRecipeRequest`를 처리하고 제작기의 레시피·재료/배출 버퍼·필터를 갱신한다.
 - `DecisionGroup`: 벨트 이동량, 건물 입출고, 채굴, 제작 가능 여부를 결정 컴포넌트에 기록한다. `CrafterDecisionSystem`은 상태 변경을 `CrafterStateDecision`으로 넘긴다.
-- `ReservationGroup`: 건물 입고의 슬롯 경합과 벨트 목적지 경합을 처리한다. `BeltDestinationReservationSystem`은 같은 목표 셀로 들어오는 본선 벨트 이동을 외부 출고보다 우선하고, 같은 부류 내에서는 `PlacementStamp`와 엔티티 인덱스를 사용한다.
+- `ReservationGroup`: 건물 입고의 슬롯 경합과 외부 벨트 진입 경합을 처리한다. `BeltDestinationReservationSystem`은 건물 출고·Routing 후보 중 목적지당 최대 한 개를 `PlacementStamp`와 엔티티 인덱스로 승인한다. 일반 벨트 이동은 후보에 포함하지 않는다. T형 직접 합류의 지원 범위와 공통 진입 판정은 [AGENTS.md](../../../AGENTS.md)의 물류·생산 계약을 따른다.
 - `ExecutionGroup`: 승인된 벨트 이동을 `BeltMovementState`·`GridPosition`·`LocalTransform`에 반영한다. 채굴/제작은 진행도를 누적하고 `ProductResult`를 기록한다. 제작 시작 시 재료 버퍼에서 아이템을 즉시 제거하고 `DestroyItemRequest`를 활성화한다.
 - `StateApplyGroup`: 건물 입출고 버퍼와 소유권 요청, 제작기 상태, 아이템 생성/삭제를 반영한다. `BuildingItemStorageApplySystem`은 `ItemOwnershipApplySystem`보다 먼저 실행하도록 지정되어 있다. `EndStateApplyEntityCommandBufferSystem`은 그룹 마지막에 구조 변경을 재생한다.
 - `SynchronizationGroup`: 벨트·건물·아이템·자원 공간 인덱스를 재구축한다. `WorldInvariantValidationSystem`은 개발 빌드/Editor에서 그룹 마지막에 검증한다.
@@ -43,7 +43,7 @@ SimulationSystemGroup
 
 1. `ItemConfigInitSystem`은 `StreamingAssets/ItemConfig.json` 또는 기본값을 `ItemRegistryBlob`으로 만든다. `RecipeInitSystem`은 `Resources/Config/CrafterRecipeConfig` 또는 기본 레시피를 `RecipeRegistryBlob`으로 만든다.
 2. 월드 아이템 생성 요청과 Miner/Crafter의 `ProductResult`는 `ItemLifecycleApplySystem`에서 아이템 엔티티가 된다. 요청의 Storage/Product 목적지에 대상 버퍼가 없으면 아이템을 만들지 않고 요청을 소비한다. F-005의 Command 철거 검증·StateApply 생성 폐기 계약은 [AGENTS.md](../../../AGENTS.md)의 실행 단계 규칙을 따른다.
-3. `BeltMovementDecisionSystem`은 벨트 속도와 앞 아이템 간격으로 이동량을 계산한다. `BeltDestinationReservationSystem`은 같은 목표 셀에 대한 진입/출고 경합을 줄이고, `BeltMovementExecutionSystem`이 이동과 위치를 확정한다.
+3. `BeltMovementDecisionSystem`은 벨트 속도와 앞 아이템 간격으로 이동량을 계산하고 `BeltMovementExecutionSystem`이 이동과 위치를 확정한다. 별도로 출고·Routing Decision과 `BeltDestinationReservationSystem`은 `BeltEntryUtility`의 같은 공간 판정을 사용하며, 예약은 외부 진입 후보 사이의 경합을 중재한다.
 4. 벨트 끝 아이템의 입고는 `BuildingItemInputDecisionSystem` → `BuildingStorageInputReservationSystem` → `BuildingItemStorageApplySystem` → `ItemOwnershipApplySystem` 순서로 처리한다. 일반 저장품 및 생산품 출고는 서로 다른 Decision 시스템이 작성하고 공통 Apply 시스템이 처리한다.
 5. `MinerDecisionSystem`은 footprint 아래의 자원과 출력 용량을 확인한다. `MinerExecutionSystem`은 자원량과 진행도를 갱신하고 결과를 기록한다. `CrafterDecisionSystem`은 재료와 모든 출력 슬롯을 검사하고, `CrafterExecutionSystem`은 재료 선소비·진행·결과 기록을 한다. `CrafterStateApplySystem`은 결정된 상태를 반영한다.
 6. StateApply의 ECB 재생 후 공간 인덱스가 갱신된다. 개발용 `WorldInvariantValidationSystem`은 아이템·공간·요청·벨트 간격·저장 버퍼·결정 소비·자원 인덱스 정합성을 확인한다.
@@ -83,6 +83,6 @@ SimulationSystemGroup
 
 아래 항목은 이 문서 최초 작성 시점의 범위 기록이며, 월드 생성은 위 갱신 절을 우선한다.
 
-- 현재 `Assets/Scripts`에는 아이템, 벨트, 건물 입출고, 채굴기, 제작기의 코어와 Splitter/Merger의 데이터/방향 유틸리티가 있다. `RoutingTransferDecision`을 생성해 실제 전송을 적용하는 런타임 시스템은 이 54개 파일에 없다. `BeltDestinationReservationSystem`은 이미 활성화된 라우팅 결정의 목적지 경합만 처리한다.
+- Routing 갱신(2026-09-30): `SplitterDecisionSystem`/`MergerDecisionSystem`이 전달 후보를 만들고, `BeltDestinationReservationSystem`이 외부 진입을 승인하며, `RoutingApplySystem`이 이동·커서를 반영하고 결정을 소비한다. 최초 작성 당시의 Routing 런타임 미구현 설명은 현재 적용하지 않는다.
 - 현재 C# 집합에는 건설, 전력, 드론, 연구, UI, 월드 로딩/렌더링 구현이 없다. `BuildingTypeEnum`에 종류가 정의되어 있는 사실은 해당 기능의 런타임 구현을 뜻하지 않는다. 후속 계획은 상위 `Architecture V2 Tasks.md`를 참조한다.
 - `Assets/Editor/Tests`의 24개 파일은 Phase 1~6 코어와 일부 연결/불변식을 테스트하도록 작성되어 있다. 이번 작업은 소스 읽기와 문서화이며 Unity 컴파일, EditMode, Play Mode 테스트를 새로 실행하지 않았다. 테스트 메서드가 존재한다는 사실은 현재 통과 증거가 아니다.

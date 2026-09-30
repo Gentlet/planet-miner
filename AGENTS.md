@@ -64,12 +64,12 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 - 아이템 하나는 엔티티 하나다. `ItemIdentity.Type`이 종류, `ItemOwnership.Owner == Entity.Null`이면 월드 아이템이고 그 외에는 해당 소유자에 수납된 아이템이다. ECS `Disabled`를 소유권 표현으로 사용하지 않는다.
 - `StoredItemElement`는 저장품/제작 재료/공사 도착 자재, `ProductItemElement`는 생산품 출력 대기 버퍼다. 버퍼의 엔티티 참조와 `ItemOwnership`을 함께 유지한다. `Storage.SlotCount`와 `ItemRegistry`의 품목별 `MaxStack`은 서로 다른 제한이다.
 - `BuildingInputSlotElement`는 슬롯별 허용 품목을 정하고 버퍼 길이는 `Storage.SlotCount`와 같다. Crafter는 생성 시 0슬롯/빈 Whitelist로 시작하며, 레시피 변경 시 `BuildingInputSlotUtility`로 품목별 요구량을 합산하여 `ceil(요구량/MaxStack)`개의 전용 슬롯을 구성한다. 입고 예약은 해당 품목 슬롯만 사용한다. 버퍼가 없는 일반 창고에는 이 전용 슬롯 규칙을 적용하지 않는다.
-- 일반 입출고는 `BuildingItemStorageApplySystem`이 버퍼·위치·벨트 상태를 갱신하고 `TransferOwnershipRequest`를 발행한다. `ItemOwnershipApplySystem`이 소유권과 `DisableRendering`을 반영한다. 공사 자재 수령은 현재 `ConstructionMaterialApplySystem`이 별도로 ECB에 소유권·렌더 태그·현장 버퍼 변경을 기록하므로 함께 확인한다.
+- 일반 입출고는 `BuildingItemStorageApplySystem`이 버퍼·위치·벨트 상태를 갱신하고 `TransferOwnershipRequest`를 발행한다. `ItemOwnershipApplySystem`이 소유권과 `DisableRendering`을 반영한다. 공사 자재 수령은 `ConstructionLifecycleApplySystem` 내부 `ConstructionMaterialApplyJob`이 별도로 ECB에 소유권·렌더 태그·현장 버퍼 변경을 기록하므로 함께 확인한다.
 - 아이템 생성/삭제는 `ItemLifecycleApplySystem`이 담당한다. 저장된 아이템을 소비할 때는 소유 버퍼에서 먼저 제거한 뒤 `DestroyItemRequest`를 활성화한다. `TransferOwnershipRequest`만으로 소유 버퍼의 추가/제거까지 이루어지지는 않는다.
 - `ProductResult`는 Execution이 기록하고 Item Lifecycle이 소비하는 임시 생산 결과 버퍼다. 생산량 `Count`는 실제 아이템 엔티티 수로 변환된다. 생산물의 슬롯 0은 주생산품이고 후속 슬롯은 부산물에 사용한다.
 - `BeltMovementState`는 enableable 실제 이동 상태, `BeltMovementDecision`은 일반 컴포넌트인 프레임 이동 계획이다. 그 밖의 입출고·채굴·제작·라우팅 결정에는 enable 상태가 처리 대상 여부를 나타낸다. 컴포넌트 존재와 활성 상태를 구분하고, `IgnoreComponentEnabledState` 쿼리는 의도한 범위를 확인한다.
 - 일회성 요청은 처리 후 엔티티 삭제, enableable 요청은 비활성화, 임시 결과 버퍼는 Clear로 소비한다. 준비 대기 중인 청크 요청처럼 재시도가 필요한 데이터는 소비 조건이 충족될 때까지 유지한다. 프레임 결정과 `IRequestComponent`를 혼동하지 않는다.
-- `GameConstants`가 아이템 간격, 타일 수용량, 저장 슬롯 상한, 시뮬레이션 delta time 상한을 제공한다. 각 시스템에 별도 숫자 규칙을 복제하지 않는다.
+- `GameConstants`가 아이템 간격, 간격에서 파생한 타일 수용량, 저장 슬롯 상한, 시뮬레이션 delta time 상한을 제공한다. 벨트 수용량을 별도 고정 숫자로 정하지 않으며 각 시스템에 숫자 규칙을 복제하지 않는다.
 
 ### 베이킹·프리팹·코드 관례
 
@@ -108,7 +108,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 - 현재 연결된 흐름은 `BuildingPlacementRequest` + `PlacementRequestCandidateElement` → `BuildingPlacementCommandSystem` → `ConstructionSite` 생성이다. 검증은 `BuildingPlacementValidationUtility`가 건물/공사 점유, 채굴기 하부 자원, 해금, 바닥 아이템을 확인한다.
 - 한 배치 묶음은 기본 `StrictAllOrNothing` 또는 `AllowPartialPlacement` 정책을 사용한다. 유틸리티의 임시 `claimedCells`는 해당 묶음 내부의 선점 검사다. 여러 요청 엔티티 전체에 걸친 영속 예약으로 설명하지 않는다.
 - 승인된 현장은 `BuildingTypeEnum.ConstructionSite`, 위치·크기·방향·`PlacementStamp`, 자재 요구 버퍼와 보관 버퍼를 가지며 건물 공간 인덱스에 포함된다. 바닥 아이템은 배치를 막지 않고 `AwaitingItemClearance`를 표시한다. 기존 같은 타입 벨트 덮어쓰기는 새 현장 대신 방향 변경을 ECB에 기록한다.
-- `SupplyConstructionMaterialRequest` → `ConstructionMaterialApplySystem`은 현장·품목·잔여 요구량을 확인하고 도착량/예약량·보관 소유권을 갱신한다. 현재 `ConstructionSite.Progress`는 자재 수령 비율이다. 별도 건설 작업 시간이 누적된다고 설명하지 않는다.
+- `ConstructionLifecycleApplySystem`은 취소(`CancelConstructionApplyJob`)→자재 수령(`ConstructionMaterialApplyJob`)→완공(`ConstructionCompletionApplyJob`) 순서로 Job을 연결한다. `SupplyConstructionMaterialRequest`는 자재 수령 Job이 현장·품목·잔여 요구량을 확인하여 도착량/예약량·보관 소유권을 갱신한다. 현재 `ConstructionSite.Progress`는 자재 수령 비율이다. 별도 건설 작업 시간이 누적된다고 설명하지 않는다.
 - 직접 생성은 `SpawnBuildingRequest` → `BuildingLifecycleApplySystem`, 공사 완료는 `ConstructionLifecycleApplySystem`에서 별도 Spawn 요청 없이 공통 `BuildingLifecycleUtility.SpawnBuilding`을 호출한다. 두 경로 모두 타입별 런타임 구성을 주입한다. F-037은 자재 요구가 충족된 현장에서 완공한 Crafter의 생성·제작 연결을 검증했으며 전체 배치·자재 배송이나 취소·철거를 검증한 것은 아니다.
 - `BuildingConfigElement.IsUnlocked`와 해금 변경 유틸리티는 있지만 연구 진행 시스템은 없다. 전력·드론·연구 건물 종류와 프리팹 등록도 해당 시뮬레이션 구현을 의미하지 않는다.
 
@@ -117,6 +117,8 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 - 입고: `BuildingItemInputDecisionSystem`이 벨트 종단의 다음 셀, `Storage`, 필터, 제작기의 잔여물 대기를 확인한다. `BuildingStorageInputReservationSystem`이 슬롯을 확정하고, `BuildingItemStorageApplySystem` → `ItemOwnershipApplySystem`이 반영한다.
 - 출고: 일반 창고는 `StorageItemOutputDecisionSystem`이 첫 보관품을, 생산 건물은 `ProductItemOutputDecisionSystem`이 슬롯 0 우선으로 생산품을 선택한다. 외향 벨트의 입구 여유를 검사하고 공통 예약/반영 경로를 사용한다.
 - 벨트 이동: `BeltMovementDecisionSystem`이 현재/다음 셀의 간격과 수용량으로 이동량을 계산하고 `BeltMovementExecutionSystem`이 격자·진행도·시각 위치를 변경한 뒤 계획을 소비한다. 현재 `BeltDestinationReservationSystem`의 후보는 건물 출고와 라우팅 전달뿐이다. 일반 벨트 이동까지 통합 예약한다고 가정하지 않는다.
+- 벨트 진입: 출고 두 Decision과 Splitter/Merger Decision, 목적지 예약은 `BeltEntryUtility.HasEntrySpace`로 현재 공간 스냅샷을 검사한다. 월드 소유권과 활성 `BeltMovementState`를 모두 가진 아이템만 점유에 포함하며, `ItemSpacing`과 `AlignmentEpsilon`, 간격에서 파생한 수용량을 사용한다. 공간 검사와 신규 후보 중재는 별개다. 예약은 출고·Routing 후보 중 목적지당 한 틱 최대 한 개를 기존 `PlacementStamp` 비교로 승인한다.
+- 2026-09-30 사용자 확정: 일반 벨트끼리의 T형 직접 합류는 자동 경합 중재·사전 대기·교착 해소 보장 대상에서 제외한다. 합류/분배 중재는 Merger/Splitter의 역할이며 이를 일반 벨트 예약으로 확장하지 않는다. 현재 외향 벨트의 바로 뒤 셀은 출처 건물 또는 라우터이므로, 해당 출력 셀에 추가 일반 벨트가 직접 진입하는 측면 합류도 통합 예약 구현의 근거로 삼지 않는다. 이 정책이 기존 겹침을 복구하거나 불변식 위반을 면제한다는 뜻은 아니다.
 - 분배/합류: `SplitterDecisionSystem`은 입력 벨트 기준 forward→right→left, `MergerDecisionSystem`은 출력 벨트 기준 back→left→right 순환 후보를 선택한다. 예약을 통과한 `RoutingTransferDecision`은 `RoutingApplySystem`이 실제 이동과 커서 갱신에 사용한다. 설치 우선순위는 `PlacementStamp`와 해당 비교 구현을 따른다.
 - 채굴: Decision이 footprint 아래 첫 유효 자원과 동일 품목 1스택 출력 여유를 검사한다. Execution은 진행도·자원량과 `ProductResult`를 갱신하며 유한 자원 고갈은 ECB로 삭제한다. `ResourceConfig` 부재 시 기본은 유한 자원이다.
 - 제작: `CrafterDecisionSystem`이 실행 결정과 `CrafterStateDecision`을 나누어 기록한다. Execution은 재료를 선소비하고 진행/출력 결과를 만들며, `CrafterStateApplySystem`이 상태를 반영한다. 출력은 주생산품과 모든 부산물 슬롯의 여유를 함께 검사한다.
