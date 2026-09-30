@@ -8,13 +8,13 @@
 
 | 분류 | 전체 | 완료 | 미완료 |
 | --- | ---: | ---: | ---: |
-| P1 | 5 | 1 | 4 |
+| P1 | 5 | 3 | 2 |
 | P2 | 34 | 0 | 34 |
 | P3 | 5 | 0 | 5 |
 | 판단 보류 | 4 | 0 | 4 |
-| 합계 | 48 | 1 | 47 |
+| 합계 | 48 | 3 | 45 |
 
-- 2026-09-29 기준 **F-037 완료**, 나머지 47개 항목은 미완료다. 항목별 변경·검증 근거와 제한을 확인한다.
+- 2026-09-30 기준 **F-037·F-005·F-024 완료**, 나머지 45개 항목은 미완료다. 항목별 변경·검증 근거와 제한을 확인한다.
 - 항목 하나를 선택해 원본 평가와 현재 소스를 확인하고, 해당 문제의 개선·검증까지 작은 단위로 진행한다. 아래 나열 순서는 강제 의존 순서가 아니다.
 - 각 항목의 설명은 평가 당시 근거를 요약했다. 코드 확인, 조건부 영향 추정, 실행 미확인을 원본에서 구분한다. 특히 P1 5건의 실패 반례는 평가에서 실행 재현하지 않았다.
 - `결정 필요`는 아직 채택하지 않은 정책이다. 현재 소스·최신 사용자 지시로 해결되지 않는 해당 항목의 선택만 사용자에게 확인한다. 다른 항목의 결정을 모두 기다릴 필요는 없다.
@@ -24,69 +24,73 @@
 
 ## 이슈별 추천 모델
 
-추천 작성일: 2026-09-29. **수정 전 쟁점 정리부터 구현·관련 회귀 검증까지** 해당 이슈를 맡길 기본 설정이다. 사용자가 아직 구현을 지시하지 않았다면 기존의 읽기 전용 확인 단계에서 멈춘다.
+추천 갱신일: 2026-09-30. **해결 범위가 명확한 구현·검증에는 GPT-6.1 Sol, 여러 시스템의 정책·소유권·수명 설계가 필요한 작업에는 GPT-6 Astra**를 추천한다. 아래 설정은 수정 전 쟁점 정리부터 구현·관련 회귀 검증까지 해당 이슈의 전체 범위를 맡길 때의 시작점이다. 사용자가 아직 구현을 지시하지 않았다면 읽기 전용 확인 단계에서 멈춘다.
 
-OpenAI의 [모델 선택 안내](https://developers.openai.com/api/docs/guides/model-selection)는 작업의 판단 난이도와 품질·시간·비용을 함께 고려하도록 안내한다. 아래의 이슈별 배정과 추론 수준은 현재 Task 범위를 바탕으로 한 프로젝트용 추천이며, 이 프로젝트에서 모델별 성공률을 비교한 벤치마크 결과는 아니다. High와 XHigh는 추론 수준이며 XHigh는 Extra high를 뜻한다.
+OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/models/gpt-6.1-sol)는 복잡한 코딩 등에서 Astra에 가까운 성능을 제공하며 실제 작업에서 두 모델을 비교하도록 안내한다. 이 설명만으로 모든 Astra 작업을 Sol로 대체할 수 있다고 판단하지 않는다. 아래 모델·추론 수준은 문서에 기록된 Task 범위와 설계 쟁점에 대한 프로젝트용 추천이며, 이 프로젝트에서 모델별 성공률을 비교한 벤치마크 결과는 아니다. High와 XHigh는 추론 수준이며 XHigh는 Extra high를 뜻한다.
 
-- **GPT-6 Sol · Medium:** 동작을 유지하는 문서·주석 정리.
-- **GPT-6 Sol · High:** 범위가 명확한 입력 검증, 국소 수정, 테스트 격리·assertion 보강.
-- **GPT-6 Astra · High:** 여러 생성·소비 경로의 계약과 변경 영향을 함께 맞추는 작업.
-- **GPT-6 Astra · XHigh:** 소유권·실패 복구·ECB·Job/Fence 또는 복수 이동 후보가 얽힌 설계와 검증.
-- 이슈 심각도와 추론 난이도는 별개다. F-037은 P1이지만 확인된 생성 구성과 검증 경계가 비교적 명확해 Astra · High를 기본으로 잡았다.
-- 정책 질문이 없는 작은 변경으로 범위가 확정되면 설정을 낮출 수 있다. 반대로 동작 정책·수명·실행 순서까지 변경하거나 원인 불명 실패가 나타나면 Astra · XHigh로 재검토한다. 특히 F-036에서 고속 채굴 동작까지 변경한다면 Sol · Medium의 문서 정리 범위를 벗어난다.
-- 함께 처리하는 이슈는 더 높은 추천 설정을 기준으로 삼되, 각각의 완료 기준과 결과를 구분한다. 모델 선택이 사용자 결정을 대신하거나 테스트를 생략할 근거가 되지는 않는다.
-- 이 표 추가만으로 기존 대화의 모델을 변경하거나 새 작업을 지시하지 않는다.
+- **GPT-6.1 Sol · Medium:** 동작을 유지하는 문서·주석 정리, 국소 입력 검증, 테스트 격리·assertion 보강.
+- **GPT-6.1 Sol · High:** 기존 계약을 기준으로 여러 생성·소비 경로를 맞추는 구현, 경계 사례 검증, 공통화와 통합 테스트. 관련 시스템이 여러 개라는 이유만으로 Astra를 배정하지 않는다.
+- **GPT-6 Astra · High:** 여러 시스템에서 공유할 준비 상태·권위·우선순위·실패 처리·동기화 계약을 결정하거나, 서로 다른 해석을 조정해야 하는 작업.
+- **GPT-6 Astra · XHigh:** 복수 Writer와 ECB 경합, 비동기 자원 수명, 원자적인 소유권 인계·실패 복구, 이동 후보 간 경합과 간격 불변식처럼 여러 조건을 함께 증명해야 하는 설계.
+- Astra 항목도 사용자와 정책·소유권·공개 계약·검증 기준을 확정한 뒤 구현만 남았다면 **GPT-6.1 Sol · High**로 분리할 수 있다. 복잡한 실행 순서 검증까지 남은 경우 Sol · XHigh도 후보지만, 모델 변경만으로 설계가 검증됐다고 보지 않는다.
+- 작은 정책 질문이 있다는 이유만으로 Astra가 필요한 것은 아니다. 국소 입력의 거부·합산 같은 선택은 사용자가 정한 뒤 Sol로 구현할 수 있다. 여러 시스템의 책임이나 정상·실패 경로를 바꾸는 선택과 구분한다.
+- 이슈 심각도와 추론 난이도는 별개다. F-037처럼 생성 구성과 검증 경계가 명확한 작업은 P1이어도 Sol · High로 시작할 수 있다.
+- 표는 원래 Task의 전체 범위를 기준으로 하며, 이번 갱신은 현재 소스의 재평가나 완료 여부 판정이 아니다. 완료된 항목을 다시 열지 않는다. F-005·F-024처럼 다른 대화에서 정책·구현이 진행된 항목은 최신 합의와 현재 소스를 확인하고 남은 범위에 맞춰 모델을 선택한다.
+- Medium 작업에서 여러 시스템의 계약 변경이 필요해지면 추천을 재검토한다. F-036에서 고속 채굴 동작까지 변경한다면 Medium의 문서 정리 범위를 벗어난다. 함께 처리하는 항목은 가장 어려운 미해결 설계 쟁점을 기준으로 선택하며 각 완료 기준과 결과는 구분한다.
+- 모든 모델에 동일하게 V2의 단계별 책임·상태 소유권·공개 계약과 시스템 간 의존성 축소를 요구한다. 새 시스템·컴포넌트·Utility를 제안하기 전에 기존 구현의 재사용·확장 가능성을 먼저 확인한다.
+- 사용자 결정이 필요한 내용은 표 대신 **주제 → 현재 상태 → 선택지 → 영향 → 추천과 이유** 순서로 정리한다.
+- 모델 선택은 사용자 결정을 대신하거나 테스트를 생략할 근거가 되지 않는다. 이 문서 갱신만으로 기존 대화의 모델을 변경하거나 새 작업을 지시하지 않는다.
 
 | 이슈 | 작업 | 추천 모델 | 추론 수준 | 추천 이유 |
 | --- | --- | --- | --- | --- |
-| F-001 | 공사 구현 문서 정합성 | GPT-6 Sol | Medium | 확인된 구현 범위와 문서 설명을 대조·갱신 |
-| F-002 | 자원 ECB 설명 정합성 | GPT-6 Sol | Medium | 기록·재생·소비 시점의 문서/주석 정리 |
-| F-003 | 공사 자재 중복·소유 인계 | GPT-6 Astra | XHigh | 중복 실물·예약·이전 소유 버퍼를 함께 조정 |
-| F-004 | 입고·철거 렌더 태그 경합 | GPT-6 Astra | XHigh | 복수 Writer와 ECB 순서의 최종 상태 조정 |
-| F-005 | 생성 대기·철거 경합 | GPT-6 Astra | XHigh | deferred 생성과 폐기의 수명 계약 설계 |
-| F-006 | 생산물 실체화 실패 정책 | GPT-6 Astra | XHigh | 실패·재시도·결과 소비·중복 생성 경계 설계 |
-| F-007 | MaxStack 계약 | GPT-6 Sol | High | 입력 범위 검증과 생산·예약 경계 사례 확인 |
-| F-008 | Blob 교체 수명 | GPT-6 Astra | XHigh | 소유권·Reader 종료·해제의 비동기 수명 조정 |
-| F-009 | fallback 테스트 격리 | GPT-6 Sol | High | 실제 파일 의존 제거와 실패 입력 주입 |
-| F-010 | 중복 공사 자재 행 | GPT-6 Sol | High | 정책 확정 후 게시·수령 총량 계약 검증 |
-| F-011 | 설정 실패와 무설정 구분 | GPT-6 Astra | High | 초기화·배치·완료의 공개 준비 계약 변경 |
-| F-012 | 긴 연구 키 파싱 | GPT-6 Sol | High | UTF-8 경계와 오류 반환의 국소 수정 |
-| F-013 | 무효 레시피 품목 | GPT-6 Sol | High | 품목 검증과 실패 시 게시·소비 범위 확인 |
-| F-014 | 중복 재료 비용 | GPT-6 Astra | High | Decision 승인과 Execution 선소비의 원자성 검토 |
-| F-015 | 레시피 ID 유효성 | GPT-6 Sol | High | 양의 고유 ID와 게시 실패 회귀 검증 |
-| F-016 | 부분 게시·Ready 의미 | GPT-6 Astra | High | 공개 overload·singleton·Bootstrap 계약 조정 |
-| F-017 | 설정 범위·산술 한계 | GPT-6 Sol | High | 설정 경계와 소비자 overflow의 집중 검증 |
-| F-018 | DB 유일성 | GPT-6 Astra | High | 등록 순서·복수 DB·Baker 정책의 영향 확인 |
-| F-019 | prefab 필수 구성 | GPT-6 Astra | High | 실제 자산·Baker 결과·Spawn 전제 대조 |
-| F-020 | Item 초기화 복제 | GPT-6 Astra | High | 공통화 시 생성·환급의 ECB와 실패 정책 보존 |
-| F-021 | 실제 Baker 테스트 | GPT-6 Astra | High | 베이킹 fixture와 실제 생성 계약 검증 |
-| F-022 | footprint 크기 출처 | GPT-6 Astra | High | request·Config·DB 우선순위와 편집 의미 통일 |
-| F-023 | footprint 이중 회전 | GPT-6 Astra | High | 배치·Spawn·완공·Sync의 표현 계약 통일 |
-| F-024 | 완공 Spawn 실패 손실 | GPT-6 Astra | XHigh | 성공 판정·자재 소비·현장 폐기·실패 보존 조정 |
-| F-025 | 빌드 장면 DB 이관 | GPT-6 Astra | High | GUID·직렬화 필드·enum·실제 Bake를 함께 검증 |
-| F-026 | 배치 공간 조회 동기화 | GPT-6 Astra | XHigh | NativeContainer Fence와 메인 스레드 접근 검증 |
-| F-027 | 별도 요청 중복 배치 | GPT-6 Astra | High | 프레임 전체 점유 승인과 Strict/Partial 의미 조정 |
-| F-028 | Fence의 추가 Reader 의존 | GPT-6 Astra | XHigh | ECS 의존 추적과 수동 Fence 안전성·병렬성 분석 |
-| F-029 | 일반 이동 목적지 경합 | GPT-6 Astra | XHigh | 이동·출고·Routing의 승인 범위와 우선순위 통합 |
-| F-030 | 전방 간격 침범 | GPT-6 Astra | XHigh | 여러 셀·속도·회전의 최종 간격 불변식 설계 |
-| F-031 | 예약 슬롯 품목 누락 | GPT-6 Sol | High | 품목·수량 누적과 MaxStack 경계 회귀 |
-| F-032 | 비활성 아이템 입고 | GPT-6 Astra | High | enable 의미와 철거·재설치 전환 계약 구분 |
-| F-033 | 원본 제거 실패 출고 | GPT-6 Astra | High | 오래된 승인·현재 Owner·실패 상태 보존 조정 |
-| F-034 | Routing 진입 기준 | GPT-6 Astra | High | 선검사와 공통 예약의 점유·간격 계약 통일 |
-| F-035 | 청크 난수 검증 공백 | GPT-6 Astra | High | 구현을 복제하지 않는 독립 기대값·경계 검증 설계 |
-| F-036 | 채굴 Progress 설명 | GPT-6 Sol | Medium | 현재 동작을 유지하는 주석·계약 정리 |
-| F-037 | Crafter 생성 구성 | GPT-6 Astra | High | 실제 Spawn·완공과 소비자 필수 구성·통합 회귀 |
-| F-038 | CrafterExecution 주석 | GPT-6 Sol | Medium | 기존 Command/Execution 책임에 맞춘 설명 정리 |
-| F-039 | 레시피 Lookup 동기화 | GPT-6 Astra | XHigh | 관련 Job 의존과 main-thread 접근의 완료 경계 검증 |
-| F-040 | 무효 레시피 변경 정책 | GPT-6 Astra | High | 진행 작업·선소비·잔여물·필터 보존 정책 검토 |
-| F-041 | PlacementStamp 동률 | GPT-6 Astra | High | 발급 범위와 여러 소비자의 공통 순서 계약 정리 |
-| F-042 | 불완전 현장 수령 | GPT-6 Sol | High | 필수 구성 검사와 부분 변경 방지 회귀 |
-| F-043 | 취소·공급 assertion | GPT-6 Sol | High | 기존 반환품과 새 공급 거부의 상태 구분 |
-| F-044 | 소유 버퍼 검사 누락 | GPT-6 Astra | High | 여러 버퍼·Owner·현장의 공통 유일성 검증 |
-| F-045 | 로그 덮어쓰기 | GPT-6 Sol | High | 고유 보고 식별·World 구분·격리 테스트 |
-| F-046 | 공용 로그 삭제 | GPT-6 Sol | High | 테스트 산출물 소유권과 기존 로그 보존 |
-| F-047 | 총합 assertion 공백 | GPT-6 Sol | High | 목표 위반별 assertion과 정상 대조군 보강 |
-| F-048 | 생산·분배 통합 assertion | GPT-6 Astra | High | 실제 생성·가공·분기별 물량·후속 출고 연결 검증 |
+| F-001 | 공사 구현 문서 정합성 | GPT-6.1 Sol | Medium | 확인된 구현 범위와 문서 설명을 대조·갱신 |
+| F-002 | 자원 ECB 설명 정합성 | GPT-6.1 Sol | Medium | 기록·재생·소비 시점의 문서/주석 정리 |
+| F-003 | 공사 자재 중복·소유 인계 | GPT-6 Astra | XHigh | 중복·거부·인계 시 예약과 이전 소유 버퍼의 책임을 함께 설계 |
+| F-004 | 입고·철거 렌더 태그 경합 | GPT-6 Astra | XHigh | 입고·철거의 복수 Writer와 ECB 순서에 독립적인 최종 상태 설계 |
+| F-005 | 생성 대기·철거 경합 | GPT-6 Astra | XHigh | 생성·철거가 겹칠 때 실체화·폐기·보상 수명 계약 결정 |
+| F-006 | 생산물 실체화 실패 정책 | GPT-6 Astra | XHigh | 실체화 실패의 재시도·보상·폐기와 중복 생성 방지 계약 결정 |
+| F-007 | MaxStack 계약 | GPT-6.1 Sol | High | 입력 범위 검증과 생산·예약 경계 사례 확인 |
+| F-008 | Blob 교체 수명 | GPT-6 Astra | XHigh | 런타임 교체 정책과 Blob 소유권·Reader 종료·해제 수명 설계 |
+| F-009 | fallback 테스트 격리 | GPT-6.1 Sol | Medium | 실제 파일 의존 제거와 실패 입력 주입 |
+| F-010 | 중복 공사 자재 행 | GPT-6.1 Sol | High | 정책 확정 후 게시·수령 총량 계약 검증 |
+| F-011 | 설정 실패와 무설정 구분 | GPT-6 Astra | High | 설정 실패 시 초기화·배치·완료가 공유할 준비 상태와 동작 정책 결정 |
+| F-012 | 긴 연구 키 파싱 | GPT-6.1 Sol | Medium | UTF-8 경계와 오류 반환의 국소 수정 |
+| F-013 | 무효 레시피 품목 | GPT-6.1 Sol | Medium | 품목 검증과 실패 시 게시·소비 범위 확인 |
+| F-014 | 중복 재료 비용 | GPT-6 Astra | High | 중복 재료 정책을 Decision 승인과 Execution 선소비의 원자성에 연결 |
+| F-015 | 레시피 ID 유효성 | GPT-6.1 Sol | Medium | 양의 고유 ID와 게시 실패 회귀 검증 |
+| F-016 | 부분 게시·Ready 의미 | GPT-6 Astra | High | 자원 전용 API와 전체 설정의 게시·Ready·Bootstrap 계약 결정 |
+| F-017 | 설정 범위·산술 한계 | GPT-6.1 Sol | High | 설정 경계와 소비자 overflow의 집중 검증 |
+| F-018 | DB 유일성 | GPT-6 Astra | High | 복수 DB 허용·병합·우선순위와 singleton 소비 계약 결정 |
+| F-019 | prefab 필수 구성 | GPT-6.1 Sol | High | 실제 자산·Baker 결과·Spawn 전제 대조 |
+| F-020 | Item 초기화 복제 | GPT-6.1 Sol | High | 공통화 시 생성·환급의 ECB와 실패 정책 보존 |
+| F-021 | 실제 Baker 테스트 | GPT-6.1 Sol | High | 베이킹 fixture와 실제 생성 계약 검증 |
+| F-022 | footprint 크기 출처 | GPT-6 Astra | High | request·Config·DB 사이 크기 정보의 권위와 편집 의미 결정 |
+| F-023 | footprint 이중 회전 | GPT-6 Astra | High | 배치·Spawn·완공·Sync가 공유할 기본 크기·회전 크기 표현 통일 |
+| F-024 | 완공 Spawn 실패 손실 | GPT-6 Astra | XHigh | Spawn 성공·실패와 자재 소비·현장 폐기를 원자적으로 연결하는 정책 설계 |
+| F-025 | 빌드 장면 DB 이관 | GPT-6.1 Sol | High | GUID·직렬화 필드·enum·실제 Bake를 함께 검증 |
+| F-026 | 배치 공간 조회 동기화 | GPT-6 Astra | High | 메인 스레드 공간 조회와 Writer Fence의 동기화 계약·영향 검토 |
+| F-027 | 별도 요청 중복 배치 | GPT-6 Astra | High | 요청 간 우선순위와 프레임 전체 점유 승인·Strict/Partial 계약 설계 |
+| F-028 | Fence의 추가 Reader 의존 | GPT-6 Astra | XHigh | ECS 의존 추적과 수동 Fence의 안전성·실제 병렬성을 함께 분석 |
+| F-029 | 일반 이동 목적지 경합 | GPT-6 Astra | XHigh | 이동·출고·Routing 후보의 승인 범위·우선순위·공정성 통합 설계 |
+| F-030 | 전방 간격 침범 | GPT-6 Astra | XHigh | 여러 셀·속도·회전에 걸친 이동 후 간격 불변식과 판단 범위 설계 |
+| F-031 | 예약 슬롯 품목 누락 | GPT-6.1 Sol | High | 품목·수량 누적과 MaxStack 경계 회귀 |
+| F-032 | 비활성 아이템 입고 | GPT-6 Astra | High | enable 의미와 철거·재설치 시 자동 수거 정책의 충돌 조정 |
+| F-033 | 원본 제거 실패 출고 | GPT-6 Astra | High | 오래된 승인·현재 Owner·원본 제거 실패에 대한 원자적 출고 계약 결정 |
+| F-034 | Routing 진입 기준 | GPT-6 Astra | High | Routing 선검사와 공통 예약의 바닥 점유·간격 허용 계약 통일 |
+| F-035 | 청크 난수 검증 공백 | GPT-6.1 Sol | High | 구현을 복제하지 않는 독립 기대값·경계 검증 설계 |
+| F-036 | 채굴 Progress 설명 | GPT-6.1 Sol | Medium | 현재 동작을 유지하는 주석·계약 정리 |
+| F-037 | Crafter 생성 구성 | GPT-6.1 Sol | High | 실제 Spawn·완공과 소비자 필수 구성·통합 회귀 |
+| F-038 | CrafterExecution 주석 | GPT-6.1 Sol | Medium | 기존 Command/Execution 책임에 맞춘 설명 정리 |
+| F-039 | 레시피 Lookup 동기화 | GPT-6 Astra | High | 레시피 Command의 Lookup 접근과 관련 Job 완료 경계·영향 검토 |
+| F-040 | 무효 레시피 변경 정책 | GPT-6 Astra | High | 무효 요청 시 기존 작업·선소비·잔여물·필터의 보존 정책 결정 |
+| F-041 | PlacementStamp 동률 | GPT-6 Astra | High | 별도 요청의 발급 순서와 여러 소비자가 공유할 동률 계약 결정 |
+| F-042 | 불완전 현장 수령 | GPT-6.1 Sol | Medium | 필수 구성 검사와 부분 변경 방지 회귀 |
+| F-043 | 취소·공급 assertion | GPT-6.1 Sol | Medium | 기존 반환품과 새 공급 거부의 상태 구분 |
+| F-044 | 소유 버퍼 검사 누락 | GPT-6.1 Sol | High | 여러 버퍼·Owner·현장의 공통 유일성 검증 |
+| F-045 | 로그 덮어쓰기 | GPT-6.1 Sol | Medium | 고유 보고 식별·World 구분·격리 테스트 |
+| F-046 | 공용 로그 삭제 | GPT-6.1 Sol | Medium | 테스트 산출물 소유권과 기존 로그 보존 |
+| F-047 | 총합 assertion 공백 | GPT-6.1 Sol | Medium | 목표 위반별 assertion과 정상 대조군 보강 |
+| F-048 | 생산·분배 통합 assertion | GPT-6.1 Sol | High | 실제 생성·가공·분기별 물량·후속 출고 연결 검증 |
 
 ## P1 — 우선 개선할 핵심 동작
 
@@ -103,12 +107,15 @@ OpenAI의 [모델 선택 안내](https://developers.openai.com/api/docs/guides/m
 
 ### F-024 — 공사 완료 Spawn 실패 후 자재·현장 삭제
 
-- [ ] 완료 — **P1** · [최초 평가: Q09](Results/Q09.md) · [완료 경로 평가: Q25](Results/Q25.md)
+- [x] 완료 — **P1** · [최초 평가: Q09](Results/Q09.md) · [완료 경로 평가: Q25](Results/Q25.md)
 - 문제: 활성 Building DB의 prefab 누락/Null로 Spawn이 거부돼도 자재와 현장 삭제를 기록한다.
 - 작업: 거부 가능한 조건을 자재 소비 전에 확인하고, Spawn의 성공·실패 결과에 맞춰 자재와 현장을 처리한다.
 - 완료 기준: 충족 현장과 실제 도착 자재를 준비한 prefab 누락/Null 사례에서 건물 수·현장 생존·자재 참조가 선택한 정책과 일치한다. 정상 완료를 유지하고 DB 부재는 시작 차단/Spawn 거부로 검증한다(2026-09-30 사용자 결정으로 fallback 제거). non-Null 반환을 ECB 전체 rollback 보장으로 간주하지 않는다.
 - 확정 정책 (2026-09-30): 시작 전 필수 DB 검증 실패 시 게임 시뮬레이션을 시작하지 않는다. 런타임 완공 Spawn 거부는 현장·도착 자재를 보존하고 다음 틱을 차단한다. 자동 재시도·자동 취소·보상 경로는 추가하지 않는다. 모든 프리팹 DB fallback을 제거하고 테스트 DB를 명시적으로 구성한다.
-- 구현·검증 (2026-09-30): 시작 관문·완공 실패 보존·프리팹 fallback 제거 반영. 컴파일 및 관련 EditMode 161/161 통과(재실행 중복 제외). Drone 아이템 프리팹 등록과 기존 8개 아이템 Authoring을 보완하고 Editor에서 DB 11/9/4개 등록·참조·아이템 타입 일치를 확인했다. 실제 SubScene 런타임 베이킹·Play Mode·시각 결과는 미검증이며 완료 체크는 유지한다.
+- 완료 구현 (2026-09-30): `PrefabDatabaseInitializationSystem`이 요청된 SubScene 로딩 후 필수 DB를 검증하고 `PrefabDatabaseReady`를 게시한다. `GameSimulationGroup`은 준비 전이나 `SimulationFatalError` 게시 후 실행을 차단한다. 건물·아이템 생성과 철거 환급의 프리팹 DB fallback을 제거했다. 공사 완료는 공통 Spawn의 non-Null 반환 이후에만 자재·현장 삭제를 기록하며, 거부 시 같은 틱 정상 수령 결과를 포함한 현장·자재를 보존하고 다음 게임 틱을 차단한다.
+- 검증 기록: 구현 당시 Unity 컴파일 성공 및 관련 EditMode **161/161 통과**(재실행 중복 제외). `PrefabDatabaseInitializationTests`에서 시작 차단·정상 시작·DB 누락/Null·잘못된 프리팹·런타임 오류 후 틱 차단을, `Phase7ConstructionCompletionTests.SpawnRejected_PreservesSiteAndMaterials_AndStopsNextTick`에서 DB 부재·등록 누락·Null 및 마지막 자재 수령과 실패가 겹치는 경우의 건물 수·현장 생존·실물·Owner·보관 참조 보존을 검증했다. 161건은 후속 테스트 축소 전 실행 기록이며 현재 테스트 수나 후속 변경 전체의 최신 통과 결과를 뜻하지 않는다.
+- 에셋 확인: 기존 Drone 외형을 사용한 아이템 프리팹을 등록하고 기존 아이템 8개의 `ItemAuthoring`을 보완했다. 당시 Unity Editor에서 건물/아이템/자원 DB **11/9/4개**의 등록·참조·아이템 타입 일치를 확인했다.
+- 완료 범위와 제한: 즉시 Spawn 거부에 대한 F-024 원본 보존과 시작 차단을 완료했다. non-Null 반환은 ECB 기록 결과이며 전체 Playback rollback 보장이 아니다. 실제 SubScene 런타임 베이킹·Play Mode·시각 결과와 다른 도메인의 생산 결과 Clear·환급 실패 보상은 검증·구현 범위에 포함하지 않는다. 이번 완료 정보 정리에서는 현재 소스와 핵심 회귀 테스트의 존치를 읽기 전용으로 확인하고 문서만 변경했으며 컴파일·테스트를 재실행하지 않았다.
 
 ### F-005 — 생성 대기 아이템과 건물 철거의 경합
 
@@ -117,7 +124,10 @@ OpenAI의 [모델 선택 안내](https://developers.openai.com/api/docs/guides/m
 - 작업: 생성 대기 결과와 소유 건물 폐기를 함께 조정하는 수명 계약을 마련한다. F-004의 최종 소유권·렌더 태그 처리와 함께 확인한다.
 - 완료 기준: 같은 틱 생산/저장 Spawn+철거를 실제 정렬 그룹과 두 ECB 경계에서 검증한다. 아이템 수·Owner·버퍼·렌더 태그가 일치하고 죽은 소유자 참조나 deferred Append 오류가 없다.
 - 확정 정책: 같은 틱 Command에서 철거가 승인된 건물의 완료 생산물은 생성 없이 폐기하고 Storage/Product Spawn 요청은 거부·소비한다. 선소비 제작 재료·광물은 보상하지 않는다. 기존 실물 반환·건축 비용 환급·철거 거부 대상의 정상 처리·World Spawn은 유지한다. `UpdateAfter` 추가만으로 해결됐다고 판단하지 않는다.
-- 완료 확인 (2026-09-30): Command에서 철거 가능 여부 검증·중복 제거 후, 두 StateApply 시스템이 요청을 읽기 전용으로 사용한다. 철거 승인 전달용 `UpdateAfter` 없이 양쪽 실행 순서를 검증했다. Unity 컴파일 성공 및 관련 EditMode 45/45 통과(생성·철거 경합 15, 건물 철거 13, 건설 통합 5, 아이템 통합 12). 이후 소스 변경이 없어 완료 검토에서는 기존 실행 결과와 어셈블리 최신성을 확인했다. 요청은 Command 검증 전에 생성하며 이후 대상·철거 조건을 유지한다. Play Mode 동작 검증과 F-004 기존 실물 입고·철거 렌더 경합 해결은 포함하지 않는다.
+- 완료 구현 (2026-09-30): `BuildingDemolitionCommandSystem`이 철거 가능 여부를 검증하고 중복을 제거한다. 거부·중복 요청은 EndCommand에서 삭제하며, `BuildingLifecycleApplySystem`과 `ItemLifecycleApplySystem`은 남은 `DemolishBuildingRequest`를 읽기 전용으로 사용한다. 별도 승인 버퍼와 철거 승인 전달용 `UpdateAfter`는 제거했다. 유효 요청은 EndStateApply에서 삭제한다.
+- 검증 기록: 완료 당시 Unity 컴파일 성공 및 관련 EditMode **45/45 통과**. `Phase7ItemCreationDemolitionTests` 15개, `Phase7BuildingDemolishTests` 13개, `Phase7EndToEndConstructionPipelineTests` 5개, `Phase1ItemIntegrationTests` 12개다. 실제 정렬 그룹·두 ECB 경계와 두 StateApply 시스템의 양쪽 실행 순서를 확인했다. 이는 F-005 구현 완료 당시의 실행 결과이며 후속 변경 전체의 최신 검증 결과를 뜻하지 않는다.
+- 처리 계약: 요청은 Command 검증 전에 생성하며 이후 대상·철거 가능 조건을 유지한다. 완료 생산물 폐기, Storage/Product Spawn 거부, 기존 실물 반환·건축 비용 환급·World Spawn 유지 정책을 적용한다.
+- 검증 제외: Play Mode 동작·시각 결과 및 F-004 기존 실물 입고·철거 렌더 경합 해결. 이번 완료 정보 정리에서는 문서만 변경했으며 컴파일·테스트를 재실행하지 않았다.
 
 ### F-029 — 일반 벨트 이동의 목적지 경합 미중재
 

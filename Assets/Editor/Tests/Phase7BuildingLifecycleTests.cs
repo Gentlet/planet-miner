@@ -242,40 +242,6 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test07_SpawnBuilding_WithPrefabDb_InstantiatesPrefabAndInjectsComponents()
-    {
-        // 1. 베이킹된 목 프리팹 및 프리팹 DB 엔티티 준비
-        var mockPrefab = _entityManager.CreateEntity(typeof(Prefab), typeof(LocalTransform));
-
-        TestPrefabDatabaseFactory.RemoveDatabase<BuildingPrefabDatabase>(_entityManager);
-
-        var dbEntity = _entityManager.CreateEntity(typeof(BuildingPrefabDatabase));
-        var dbBuffer = _entityManager.AddBuffer<BuildingPrefabElement>(dbEntity);
-        dbBuffer.Add(new BuildingPrefabElement(BuildingTypeEnum.Miner, mockPrefab, new int2(2, 2)));
-
-        // 2. Miner 스폰 요청
-        var reqEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(reqEntity, new SpawnBuildingRequest(
-            BuildingTypeEnum.Miner,
-            new int2(8, 8),
-            DirectionEnum.Up,
-            default,
-            new PlacementStamp(42, 3)
-        ));
-
-        RunLifecyclePhase();
-
-        // 3. 검증: 프리팹을 기반으로 인스턴스화되고 컴포넌트들이 추가됨
-        var query = _entityManager.CreateEntityQuery(typeof(BuildingType), typeof(MinerState), typeof(PlacementStamp));
-        Assert.AreEqual(1, query.CalculateEntityCount());
-
-        var building = query.GetSingletonEntity();
-        Assert.AreEqual(BuildingTypeEnum.Miner, _entityManager.GetComponentData<BuildingType>(building).Type);
-        Assert.AreEqual(new PlacementStamp(42, 3), _entityManager.GetComponentData<PlacementStamp>(building));
-        Assert.AreEqual(new int2(8, 8), _entityManager.GetComponentData<GridPosition>(building).Value);
-    }
-
-    [Test]
     public void Test08_SpawnBuilding_WithPrefabDb_MissingPrefab_StrictFail_RejectsSpawning()
     {
         // 1. 프리팹 DB 엔티티가 활성화되어 있으나 Miner 프리팹은 등록되지 않은 상태

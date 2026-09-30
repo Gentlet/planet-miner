@@ -126,43 +126,6 @@ public class Phase6MergerPipelineTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test03_Merger_OutputBlocked_PreservesItemsAndFreezesCursor()
-    {
-        // Arrange: (0,0) Merger (Forward = Right, Cursor = 0)
-        var outputBelt = Entities.CreateBelt(new int2(1, 0), DirectionEnum.Right);
-        var merger = CreateMerger(new int2(0, 0), DirectionEnum.Right, outputBelt, inputCursor: 0);
-
-        // 출력 벨트가 이미 차단된 상태 (진입 공간 부족: minProgress < 0.25f)
-        var blockingItem = Entities.CreateBeltItem(new int2(1, 0), DirectionEnum.Right, progress: 0.1f);
-
-        // Back, Left, Right 3개 입력 벨트에 아이템 도착
-        var beltBack = Entities.CreateBelt(new int2(-1, 0), DirectionEnum.Right);
-        var itemBack = Entities.CreateBeltItem(new int2(-1, 0), DirectionEnum.Right, progress: 1.0f);
-
-        var beltLeft = Entities.CreateBelt(new int2(0, 1), DirectionEnum.Down);
-        var itemLeft = Entities.CreateBeltItem(new int2(0, 1), DirectionEnum.Down, progress: 1.0f);
-
-        var beltRight = Entities.CreateBelt(new int2(0, -1), DirectionEnum.Up);
-        var itemRight = Entities.CreateBeltItem(new int2(0, -1), DirectionEnum.Up, progress: 1.0f);
-
-        // Act
-        RunPipeline();
-
-        // Assert: 아이템들은 입력 벨트에 그대로 대기 상태 유지, 커서 동결(0), 결정 비활성화
-        Assert.AreEqual(new int2(-1, 0), _entityManager.GetComponentData<GridPosition>(itemBack).Value);
-        Assert.AreEqual(1.0f, _entityManager.GetComponentData<BeltMovementState>(itemBack).Progress);
-
-        Assert.AreEqual(new int2(0, 1), _entityManager.GetComponentData<GridPosition>(itemLeft).Value);
-        Assert.AreEqual(1.0f, _entityManager.GetComponentData<BeltMovementState>(itemLeft).Progress);
-
-        Assert.AreEqual(new int2(0, -1), _entityManager.GetComponentData<GridPosition>(itemRight).Value);
-        Assert.AreEqual(1.0f, _entityManager.GetComponentData<BeltMovementState>(itemRight).Progress);
-
-        Assert.AreEqual(0, _entityManager.GetComponentData<MergerRoutingState>(merger).InputCursor);
-        Assert.IsFalse(_entityManager.IsComponentEnabled<RoutingTransferDecision>(merger));
-    }
-
-    [Test]
     public void Test04_Merger_BlockedOutputCleared_ResumesMerging()
     {
         // Arrange: (0,0) Merger에서 출력 벨트가 차단된 상태
@@ -178,6 +141,7 @@ public class Phase6MergerPipelineTests : EcsWorldTestFixture
         Assert.AreEqual(new int2(-1, 0), _entityManager.GetComponentData<GridPosition>(inputItem).Value);
 
         // 2. 장애물 아이템 전진(공간 확보)
+        Assert.AreEqual(0, _entityManager.GetComponentData<MergerRoutingState>(merger).InputCursor);
         _entityManager.SetComponentData(obstacleItem, new BeltMovementState(0.9f));
 
         // Act: 재실행

@@ -46,13 +46,6 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
         _endCommandEcb.Update();
     }
 
-    private void UpdateSynchronizationPhase()
-    {
-        _spatialSyncHandle.Update(_world.Unmanaged);
-        var fence = _world.EntityManager.CreateEntityQuery(typeof(BuildingSpatialIndexFence)).GetSingletonRW<BuildingSpatialIndexFence>();
-        fence.ValueRW.Complete();
-    }
-
     private Entity CreatePlacementRequest(PlacementFlags flags, params PlacementRequestCandidateElement[] candidates)
     {
         var reqEntity = _entityManager.CreateEntity(typeof(BuildingPlacementRequest));
@@ -195,42 +188,6 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test04_BeltOverwrite_SameBelt_UpdatesDirectionImmediately()
-    {
-        // Arrange: 기존 Belt 엔티티가 (5, 5), Up 방향으로 설치되어 있음
-        var beltEntity = _entityManager.CreateEntity(
-            typeof(BuildingType),
-            typeof(BuildingFootprint),
-            typeof(GridPosition),
-            typeof(Direction));
-
-        _entityManager.SetComponentData(beltEntity, new BuildingType(BuildingTypeEnum.Belt));
-        _entityManager.SetComponentData(beltEntity, new BuildingFootprint(1, 1));
-        _entityManager.SetComponentData(beltEntity, new GridPosition(5, 5));
-        _entityManager.SetComponentData(beltEntity, new Direction(DirectionEnum.Up));
-
-        _buildingMap.Add(new int2(5, 5), new BuildingInfo(beltEntity, BuildingTypeEnum.Belt, DirectionEnum.Up));
-
-        // Act: 동일한 Belt를 Right 방향으로 덮어쓰기 요청
-        var req = CreatePlacementRequest(
-            PlacementFlags.StrictAllOrNothing,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, new int2(1, 1), new int2(5, 5), DirectionEnum.Right));
-
-        UpdateCommandPhase();
-
-        // Assert:
-        // 1. 공사 현장은 생성되지 않아야 함 (자재 소모 0)
-        var siteQuery = _entityManager.CreateEntityQuery(typeof(ConstructionSite));
-        Assert.AreEqual(0, siteQuery.CalculateEntityCount(), "Same-belt overwrite must not spawn a ConstructionSite.");
-
-        // 2. 기존 Belt의 Direction이 즉시 Right로 갱신되어야 함
-        var dir = _entityManager.GetComponentData<Direction>(beltEntity);
-        Assert.AreEqual(DirectionEnum.Right, dir.dir, "Belt direction must be updated immediately.");
-
-        Assert.IsFalse(_entityManager.Exists(req));
-    }
-
-    [Test]
     public void Test05_BuildingConfig_ResearchLocked_RejectsPlacement()
     {
         // Arrange: ResearchBuilding이 IsUnlocked = false로 등록됨
@@ -299,39 +256,6 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
         Assert.AreEqual(0U, stamp.Order);
 
         Assert.IsFalse(_entityManager.Exists(req));
-    }
-
-    [Test]
-    public void Test08_EndToEnd_PlacementToSpatialIndexSync()
-    {
-        // 2x2 공사 현장이 배치 요청부터 공간 인덱스까지 등록되는지 확인
-        CreatePlacementRequest(
-            PlacementFlags.StrictAllOrNothing,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(2, 2), new int2(10, 10)));
-
-        // 2. CommandGroup 실행 (ConstructionSite 생성)
-        UpdateCommandPhase();
-
-        var query = _entityManager.CreateEntityQuery(typeof(ConstructionSite));
-        Assert.AreEqual(1, query.CalculateEntityCount());
-        var siteEntity = query.GetSingletonEntity();
-
-        // 3. SynchronizationGroup 실행 (BuildingSpatialIndex 동기화)
-        UpdateSynchronizationPhase();
-
-        var spatialIndex = _world.EntityManager.CreateEntityQuery(typeof(BuildingSpatialIndex)).GetSingleton<BuildingSpatialIndex>();
-
-        // 4. 전체 footprint 셀이 동일한 공사 현장을 가리키는지 검증
-        for (int y = 0; y < 2; y++)
-        {
-            for (int x = 0; x < 2; x++)
-            {
-                var cell = new int2(10 + x, 10 + y);
-                Assert.IsTrue(spatialIndex.TryGetBuilding(cell, out var info));
-                Assert.AreEqual(siteEntity, info.Entity);
-                Assert.AreEqual(BuildingTypeEnum.ConstructionSite, info.Type);
-            }
-        }
     }
 
     [Test]

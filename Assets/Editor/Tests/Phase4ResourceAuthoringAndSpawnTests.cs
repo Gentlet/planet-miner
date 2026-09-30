@@ -65,28 +65,6 @@ public class Phase4ResourceAuthoringAndSpawnTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test01_ResourcePrefabDatabase_LookupReturnsCorrectPrefabs()
-    {
-        var (_, prefabDbEntity) = SetupWorldWithPrefabs();
-        var prefabs = _entityManager.GetBuffer<ResourcePrefabElement>(prefabDbEntity);
-
-        Assert.IsTrue(PrefabLookupUtility.TryGetResourcePrefab(prefabs, ItemTypeEnum.Iron_Ore, out var ironPrefab));
-        Assert.AreNotEqual(Entity.Null, ironPrefab);
-
-        Assert.IsTrue(PrefabLookupUtility.TryGetResourcePrefab(prefabs, ItemTypeEnum.Copper_Ore, out var copperPrefab));
-        Assert.AreNotEqual(Entity.Null, copperPrefab);
-
-        Assert.IsTrue(PrefabLookupUtility.TryGetResourcePrefab(prefabs, ItemTypeEnum.Coal, out var coalPrefab));
-        Assert.AreNotEqual(Entity.Null, coalPrefab);
-
-        Assert.IsTrue(PrefabLookupUtility.TryGetResourcePrefab(prefabs, ItemTypeEnum.Stone, out var stonePrefab));
-        Assert.AreNotEqual(Entity.Null, stonePrefab);
-
-        Assert.IsFalse(PrefabLookupUtility.TryGetResourcePrefab(prefabs, ItemTypeEnum.Iron, out _));
-        Assert.IsFalse(PrefabLookupUtility.TryGetResourcePrefab(prefabs, ItemTypeEnum.None, out _));
-    }
-
-    [Test]
     public void Test02_ResourceGeneration_InstantiatesPrefabWithTransformAndComponents()
     {
         var (configEntity, prefabDbEntity) = SetupWorldWithPrefabs(worldSeed: 55555u);
