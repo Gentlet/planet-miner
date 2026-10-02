@@ -4,7 +4,6 @@ using PlanetMiner.Tests;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
-using Unity.Transforms;
 
 /// <summary>
 /// Task 7.8 건설 코어 수명주기 전체 파이프라인 통합 검증 테스트.
@@ -170,22 +169,11 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         return reqEntity;
     }
 
-    private Entity CreateWorldItem(ItemTypeEnum type, int2 pos = default)
+    private Entity RequestSupply(Entity site, Entity source, Entity item, ItemTypeEnum type)
     {
-        var item = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(item, new ItemIdentity(type));
-        _entityManager.AddComponentData(item, ItemOwnership.WorldItem);
-        _entityManager.AddComponentData(item, new GridPosition(pos));
-        _entityManager.AddComponentData(item, LocalTransform.FromPosition(new float3(pos.x, pos.y, 0f)));
-        return item;
-    }
-
-    private Entity RequestSupply(Entity site, Entity item, ItemTypeEnum type)
-    {
-        Entity delivery = Entities.CreateConstructionMaterialDelivery(site, item, type);
-        Entity owner = _entityManager.GetComponentData<ItemOwnership>(item).Owner;
+        Entity delivery = Entities.CreateConstructionMaterialDelivery(site, source, item, type);
         var request = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(delivery, owner));
+        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(delivery, source));
         return request;
     }
 
@@ -245,10 +233,12 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         }
 
         // 3. Act: 자재 공급 (Miner 자재 요구량: Iron 2개)
-        var mat1 = CreateWorldItem(ItemTypeEnum.Iron, minerPos - new int2(1, 0));
-        var mat2 = CreateWorldItem(ItemTypeEnum.Iron, minerPos - new int2(1, 1));
-        RequestSupply(siteEntity, mat1, ItemTypeEnum.Iron);
-        RequestSupply(siteEntity, mat2, ItemTypeEnum.Iron);
+        Entity firstSource = Entities.CreateConstructionMaterialSource();
+        Entity secondSource = Entities.CreateConstructionMaterialSource();
+        Entity mat1 = Entities.CreateStoredConstructionMaterial(firstSource, ItemTypeEnum.Iron, minerPos - new int2(1, 0));
+        Entity mat2 = Entities.CreateStoredConstructionMaterial(secondSource, ItemTypeEnum.Iron, minerPos - new int2(1, 1));
+        RequestSupply(siteEntity, firstSource, mat1, ItemTypeEnum.Iron);
+        RequestSupply(siteEntity, secondSource, mat2, ItemTypeEnum.Iron);
 
         // 1틱 실행 -> 자재 수령 및 완공 전환 (점유 공백 없이 Miner 스폰)
         RunSimulationTicks(1);
@@ -315,8 +305,9 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         var siteEntity = siteQuery.GetSingletonEntity();
 
         // 2. Act: 자재 1개만 공급
-        var mat1 = CreateWorldItem(ItemTypeEnum.Iron, storagePos);
-        RequestSupply(siteEntity, mat1, ItemTypeEnum.Iron);
+        Entity firstSource = Entities.CreateConstructionMaterialSource();
+        Entity mat1 = Entities.CreateStoredConstructionMaterial(firstSource, ItemTypeEnum.Iron, storagePos);
+        RequestSupply(siteEntity, firstSource, mat1, ItemTypeEnum.Iron);
         RunSimulationTicks(1);
 
         // 자재 1개가 보관 상태로 들어갔는지 확인
@@ -325,10 +316,10 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         Assert.AreEqual(ItemOwnership.Stored(siteEntity), _entityManager.GetComponentData<ItemOwnership>(mat1));
 
         // 3. Act: 동일 틱에 [추가 자재 공급 요청]과 [취소 요청]을 동시에 인큐
-        var mat2 = CreateWorldItem(ItemTypeEnum.Iron, storagePos);
-        RequestSupply(siteEntity, mat2, ItemTypeEnum.Iron);
+        Entity rejectedSource = Entities.CreateConstructionMaterialSource();
+        Entity mat2 = Entities.CreateStoredConstructionMaterial(rejectedSource, ItemTypeEnum.Iron, storagePos);
+        RequestSupply(siteEntity, rejectedSource, mat2, ItemTypeEnum.Iron);
         RequestCancel(siteEntity);
-        Entity rejectedSource = _entityManager.GetComponentData<ItemOwnership>(mat2).Owner;
 
         // 1틱 실행 -> Cancel Wins 정책 적용
         RunSimulationTicks(1);
@@ -427,8 +418,9 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         Assert.AreEqual(ConstructionSiteFlags.None, _entityManager.GetComponentData<ConstructionSite>(siteEntity).Flags, "바닥이 정리되었으므로 AwaitingItemClearance 플래그가 없어야 함");
 
         // 4. Act: 신규 Belt 자재 공급 및 완공
-        var mat = CreateWorldItem(ItemTypeEnum.Iron, tilePos - new int2(1, 0));
-        RequestSupply(siteEntity, mat, ItemTypeEnum.Iron);
+        Entity source = Entities.CreateConstructionMaterialSource();
+        Entity mat = Entities.CreateStoredConstructionMaterial(source, ItemTypeEnum.Iron, tilePos - new int2(1, 0));
+        RequestSupply(siteEntity, source, mat, ItemTypeEnum.Iron);
         RunSimulationTicks(1);
 
         // Assert: 완공된 Belt가 타일을 정상 점유

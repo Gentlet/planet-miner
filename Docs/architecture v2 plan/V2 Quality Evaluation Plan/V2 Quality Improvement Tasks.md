@@ -177,6 +177,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 - 구현: 기존 `DemolishBuildingRequestLookup`을 Common으로 이동·확장했다. Ownership은 철거 반환 실물의 Transfer만 소비하고 철거가 최종 Owner·위치·태그를 기록한다. 공사 수령은 Storage Apply 후 버퍼를 읽어 충돌을 승인 전에 거부한다. Destroy 대상은 물류·소유권·공사 수령/취소 반환·철거 반환/벨트 정지에서 제외한다. 새 시스템·컴포넌트·영속 승인 목록과 Ownership→Building Lifecycle 순서 지정은 없다.
 - 최초 검증: Unity 6000.4.11f1 재컴파일 `completed`, `failed:false`, 오류 0, Editor ready/컴파일·리로드 중 아님, 최신 Assembly-CSharp.dll 확인. `git diff --check` 통과. 이 최초 검증에서는 새 테스트·assertion 보강과 테스트 실행을 수행하지 않았다. 완료 표시는 승인된 구현 및 컴파일 완료를 뜻한다.
 - F-003 후속 검증 (2026-10-02): `Phase7ConstructionMaterialTests`의 철거/Destroy 충돌 공급 거부·요청 소비·활성 예약 보존·명시적 취소 시 예약 해제와, Item Lifecycle/Ownership의 두 실행 순서에서 Destroy 실물 삭제·공사 예약 보존을 확인했다. 이 사례들을 포함한 자재 테스트는 F-003 정리 후 26/26 통과했다. 일반 입고+철거를 실제 정렬 그룹으로 실행한 최종 Owner·버퍼·위치·DisableRendering 검증은 여전히 미수행이다. 최초 기록을 보존하고 [F-004 기록](Results/F004-Verification.md)에 후속 근거와 한계를 연결했다.
+- 선호 반영 후속 검증 (2026-10-02): 실제 Storage 입고 후 Ownership/Building Lifecycle을 두 상대 순서로 수동 실행하는 회귀 테스트 **2/2**를 추가 확인했다. 동일 실물의 World Owner·건물 원점 반환·렌더/이동/Transfer 상태와 EndStateApply 이후 처리 표시 정리를 검증했다. 공사 테스트 준비 명시화와 제작기 중복 분기 정리를 포함한 관련 EditMode는 **47/47**, 컴파일 오류 0이다. 자동 정렬 전체 그룹·Play Mode는 이번 검증 범위가 아니며 [F-004 기록](Results/F004-Verification.md)의 실행 범위를 따른다. 기존 완료 개수는 변경하지 않았다.
 
 ### F-007 — MaxStack 검증과 소비자 용량 판단 불일치
 

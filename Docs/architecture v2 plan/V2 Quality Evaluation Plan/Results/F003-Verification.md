@@ -79,6 +79,13 @@ F-044 진단은 변경하지 않았다. F-004 원본 기록의 당시 컴파일/
 - 최초 샌드박스 실행은 Editor 연결 파일 읽기 권한 오류로 컴파일/테스트 시작 전에 종료됐다. 사용자 실행 환경에서 같은 검증을 완료했다. [최초 시도](../../../../Logs/QualityImprovement/F003/cleanup/verification.json)
 - 변경 파일의 `git diff --check`를 통과했다. 기존 Git 줄바꿈 변환 안내는 로그에 보존했다. [diff 검사](../../../../Logs/QualityImprovement/F003/cleanup/diff-check.txt)
 
+## 테스트 준비 책임 정리 (2026-10-02)
+
+- `TestEntityFactory.CreateConstructionMaterialDelivery`는 명시적인 `sourceBuilding`을 받아 운송 기록만 생성한다. 기존 실물의 Owner·렌더 태그 변경과 암묵적인 공급원 생성은 제거했다.
+- 공사 수령·취소·완공·연결 테스트는 `CreateConstructionMaterialSource`와 `CreateStoredConstructionMaterial`로 공급원과 보관 자재를 먼저 준비한다. 요청 생성 함수에도 공급원을 전달한다. 등록 후 실제 월드/운반자 인계를 검사하는 사례는 해당 소유권 전환을 테스트 본문에 명시한다.
+- 공사 4개 클래스는 **43/43**(수령 26, 취소 4, 완공 9, 연결 4), 실패/Skipped/Inconclusive 0. 런타임 운송 계약과 기존 검증 시나리오는 유지했고 helper 정리만을 위한 테스트는 추가하지 않았다. 같은 검증 묶음의 입고·철거 신규 회귀 2건과 레시피 변경 2건을 포함하면 **47/47**이다. 이전 후속 리뷰의 47건과는 구성과 실행 기록이 다르다.
+- Unity 재컴파일 및 런타임·Editor 어셈블리 최신성을 확인했다. [이번 검증 결과](../../../../Logs/QualityImprovement/StyleAlignment/verification-wrapper.json) · [컴파일](../../../../Logs/QualityImprovement/StyleAlignment/recompile-status.json) · [어셈블리 최신성](../../../../Logs/QualityImprovement/StyleAlignment/assembly-freshness.json). 새 입고·철거 테스트의 세부 범위와 한계는 [F-004 기록](F004-Verification.md)에 남긴다.
+
 ## 실행 미검증
 
 실제 드론 운송/작업 배정, 결과 소비자의 런타임 연동, 실제 SubScene 베이킹, Play Mode, 화면 렌더링, 입력, 성능은 검증하지 않았다. 테스트에서 사용하는 비건물 보관자는 운반자 계약을 나타내는 ECS fixture이며 드론 구현의 증거가 아니다. 잘못된 외부 Producer가 활성 운송 기록을 직접 삭제하거나 입력 필드를 변경하는 경우의 전역 복구도 제공하지 않는다.
