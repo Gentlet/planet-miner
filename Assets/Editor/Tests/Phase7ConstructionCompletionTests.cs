@@ -77,8 +77,10 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
 
     private Entity RequestSupply(Entity site, Entity item, ItemTypeEnum type)
     {
+        Entity delivery = Entities.CreateConstructionMaterialDelivery(site, item, type);
+        Entity owner = _entityManager.GetComponentData<ItemOwnership>(item).Owner;
         var request = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(site, item, type));
+        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(delivery, owner));
         return request;
     }
 

@@ -91,7 +91,7 @@
     {
       "buildingType": "DroneStation",
       "speed": 0.0,
-      "storageCapacity": 0,
+      "storageCapacity": 20,
       "isUnlockedByDefault": false,
       "requiredResearch": "drone_logistics",
       "footprint": [3, 3],

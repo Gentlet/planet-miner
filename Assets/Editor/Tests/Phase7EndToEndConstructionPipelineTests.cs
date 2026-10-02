@@ -182,8 +182,10 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
 
     private Entity RequestSupply(Entity site, Entity item, ItemTypeEnum type)
     {
+        Entity delivery = Entities.CreateConstructionMaterialDelivery(site, item, type);
+        Entity owner = _entityManager.GetComponentData<ItemOwnership>(item).Owner;
         var request = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(site, item, type));
+        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(delivery, owner));
         return request;
     }
 
@@ -326,6 +328,7 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         var mat2 = CreateWorldItem(ItemTypeEnum.Iron, storagePos);
         RequestSupply(siteEntity, mat2, ItemTypeEnum.Iron);
         RequestCancel(siteEntity);
+        Entity rejectedSource = _entityManager.GetComponentData<ItemOwnership>(mat2).Owner;
 
         // 1틱 실행 -> Cancel Wins 정책 적용
         RunSimulationTicks(1);
@@ -333,7 +336,8 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         // Assert: 현장 엔티티 파괴, 기납입 자재는 WorldItem으로 방출
         Assert.IsFalse(_entityManager.Exists(siteEntity), "취소된 현장은 파괴되어야 함");
         Assert.AreEqual(ItemOwnership.WorldItem, _entityManager.GetComponentData<ItemOwnership>(mat1), "기납입 자재는 WorldItem으로 바닥에 방출되어야 함");
-        Assert.AreEqual(ItemOwnership.WorldItem, _entityManager.GetComponentData<ItemOwnership>(mat2), "취소된 현장으로 배달된 자재는 안전하게 거부되어 WorldItem을 유지해야 함");
+        Assert.AreEqual(rejectedSource, _entityManager.GetComponentData<ItemOwnership>(mat2).Owner,
+            "취소된 현장으로 공급한 실물은 공급원에 보존되어야 함");
 
         // 공간 인덱스 점유 해제 확인
         var buildingMap = _entityManager.CreateEntityQuery(typeof(BuildingSpatialIndex)).GetSingleton<BuildingSpatialIndex>().Map;

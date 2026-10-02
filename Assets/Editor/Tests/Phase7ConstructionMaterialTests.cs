@@ -46,8 +46,10 @@ public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
 
     private Entity RequestSupply(Entity site, Entity item, ItemTypeEnum type)
     {
+        Entity delivery = Entities.CreateConstructionMaterialDelivery(site, item, type);
+        Entity owner = _entityManager.GetComponentData<ItemOwnership>(item).Owner;
         var request = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(site, item, type));
+        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(delivery, owner));
         return request;
     }
 
@@ -55,12 +57,16 @@ public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
     public void Test03_SupplyMaterial_WithExistingReservation_DecrementsReservedQuantity()
     {
         // 1. 운송 예약이 2개 걸려 있는 현장 준비 (요구 3, 조달 0, 예약 2)
-        var siteEntity = CreateSite(BuildingTypeEnum.Storage, required: 3, reserved: 2);
+        var siteEntity = CreateSite(BuildingTypeEnum.Storage, required: 3);
 
         // 2. Iron 아이템 전달
         var itemEntity = CreateWorldItem(ItemTypeEnum.Iron);
 
-        RequestSupply(siteEntity, itemEntity, ItemTypeEnum.Iron);
+        Entity delivery = Entities.CreateConstructionMaterialDelivery(siteEntity, itemEntity, ItemTypeEnum.Iron, true);
+        Entities.CreateConstructionMaterialDelivery(siteEntity, CreateWorldItem(ItemTypeEnum.Iron), ItemTypeEnum.Iron, true);
+        Entity request = _entityManager.CreateEntity();
+        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(
+            delivery, _entityManager.GetComponentData<ItemOwnership>(itemEntity).Owner));
 
         RunMaterialApplyPhase();
 
@@ -81,17 +87,18 @@ public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
         var itemEntity = CreateWorldItem(ItemTypeEnum.Copper);
 
         var reqEntity = RequestSupply(siteEntity, itemEntity, ItemTypeEnum.Copper);
+        Entity source = _entityManager.GetComponentData<ItemOwnership>(itemEntity).Owner;
 
         RunMaterialApplyPhase();
 
-        // 3. 검증: 수령 거부 (현장 조달량 변화 없음, 아이템 소유권 월드 유지, 요청 엔티티는 파괴)
+        // 3. 검증: 수령 거부 (집계 변화 없음, 공급원 소유권 유지, 요청 소비)
         Assert.IsFalse(_entityManager.Exists(reqEntity));
         var updatedReqBuffer = _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(siteEntity);
         Assert.AreEqual(0, updatedReqBuffer[0].DeliveredQuantity, "잘못된 품목은 수령되지 않아야 함");
 
         var ownership = _entityManager.GetComponentData<ItemOwnership>(itemEntity);
-        Assert.IsTrue(ownership.IsWorldItem, "수령 거부된 아이템은 원래 소유권을 유지해야 함");
-        Assert.IsFalse(_entityManager.HasComponent<DisableRendering>(itemEntity));
+        Assert.AreEqual(source, ownership.Owner, "수령 거부된 아이템은 공급원의 소유권을 유지해야 함");
+        Assert.IsTrue(_entityManager.HasComponent<DisableRendering>(itemEntity));
 
         var storedBuffer = _entityManager.GetBuffer<StoredItemElement>(siteEntity);
         Assert.AreEqual(0, storedBuffer.Length, "현장 보관 버퍼에 등록되지 않아야 함");
@@ -107,6 +114,7 @@ public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
         var itemEntity = CreateWorldItem(ItemTypeEnum.Iron);
 
         RequestSupply(siteEntity, itemEntity, ItemTypeEnum.Iron);
+        Entity source = _entityManager.GetComponentData<ItemOwnership>(itemEntity).Owner;
 
         RunMaterialApplyPhase();
 
@@ -115,7 +123,7 @@ public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
         Assert.AreEqual(1, updatedReqBuffer[0].DeliveredQuantity, "초과 전달 시 조달량이 증가하지 않아야 함");
 
         var ownership = _entityManager.GetComponentData<ItemOwnership>(itemEntity);
-        Assert.IsTrue(ownership.IsWorldItem, "거부된 아이템은 원래 소유권을 유지해야 함");
+        Assert.AreEqual(source, ownership.Owner, "거부된 아이템은 원래 소유권을 유지해야 함");
     }
 
     [Test]
@@ -128,12 +136,389 @@ public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
         var itemEntity = CreateWorldItem(ItemTypeEnum.Iron);
 
         var reqEntity = RequestSupply(deadSite, itemEntity, ItemTypeEnum.Iron);
+        Entity source = _entityManager.GetComponentData<ItemOwnership>(itemEntity).Owner;
 
         RunMaterialApplyPhase();
 
         // 2. 검증: 안전하게 거부 및 요청 엔티티 파괴
         Assert.IsFalse(_entityManager.Exists(reqEntity));
-        Assert.IsTrue(_entityManager.GetComponentData<ItemOwnership>(itemEntity).IsWorldItem);
+        Assert.AreEqual(source, _entityManager.GetComponentData<ItemOwnership>(itemEntity).Owner);
+    }
+
+    private Entity RequestDelivery(Entity delivery, Entity expectedOwner)
+    {
+        Entity request = _entityManager.CreateEntity();
+        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(delivery, expectedOwner));
+        return request;
+    }
+
+    private void CancelDelivery(Entity delivery)
+    {
+        Entity request = _entityManager.CreateEntity();
+        _entityManager.AddComponentData(request, new CancelConstructionMaterialDeliveryRequest(delivery));
+    }
+
+    [TestCase(BuildingTypeEnum.Storage)]
+    [TestCase(BuildingTypeEnum.DroneStation)]
+    [TestCase(BuildingTypeEnum.MainFacility)]
+    public void DuplicateRequestsAndCompetingSites_TransferOnePhysicalItemOnce(BuildingTypeEnum sourceType)
+    {
+        Entity firstSite = CreateSite(BuildingTypeEnum.Storage, 3);
+        Entity secondSite = CreateSite(BuildingTypeEnum.Storage, 3);
+        Entity config = _entityManager.CreateEntity(typeof(BuildingConfig));
+        _entityManager.AddBuffer<BuildingConfigElement>(config).Add(new BuildingConfigElement(
+            sourceType, 0, 0, true, default, new Unity.Mathematics.int2(1, 1)));
+        Entity spawn = _entityManager.CreateEntity();
+        _entityManager.AddComponentData(spawn, new SpawnBuildingRequest(
+            sourceType, new Unity.Mathematics.int2(100, 100), DirectionEnum.Up, default, default));
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<BuildingLifecycleApplySystem>());
+        Simulation.Playback(_ecbSystem);
+        using var sourceQuery = _entityManager.CreateEntityQuery(typeof(BuildingType), typeof(Storage), typeof(GridPosition));
+        Entity source = sourceQuery.GetSingletonEntity();
+        Entity item = CreateWorldItem(ItemTypeEnum.Iron);
+        _entityManager.SetComponentData(item, ItemOwnership.Stored(source));
+        _entityManager.AddComponent<DisableRendering>(item);
+        _entityManager.GetBuffer<StoredItemElement>(source).Add(new StoredItemElement(item, ItemTypeEnum.Iron, 0));
+        Entity first = Entities.CreateConstructionMaterialDelivery(firstSite, item, ItemTypeEnum.Iron, true);
+        Entity second = Entities.CreateConstructionMaterialDelivery(secondSite, item, ItemTypeEnum.Iron, true);
+        Entity third = Entities.CreateConstructionMaterialDelivery(firstSite, item, ItemTypeEnum.Iron, true);
+        RunMaterialApplyPhase();
+
+        RequestDelivery(first, source);
+        RequestDelivery(first, source);
+        RequestDelivery(second, source);
+        RequestDelivery(third, source);
+        Simulation.UpdateAndComplete(_lifecycleApplySystem);
+        Assert.AreEqual(source, _entityManager.GetComponentData<ItemOwnership>(item).Owner,
+            "Owner 변경은 아직 ECB 반영 전이어야 한다.");
+        Assert.AreEqual(ConstructionMaterialDeliveryOutcomeEnum.Registered,
+            _entityManager.GetComponentData<ConstructionMaterialDeliveryResult>(first).Outcome,
+            "외부 완료 결과를 Playback 전에 게시하지 않는다.");
+        Simulation.Playback(_ecbSystem);
+
+        Entity winner = _entityManager.GetComponentData<ItemOwnership>(item).Owner;
+        Assert.That(winner == firstSite || winner == secondSite);
+        Assert.AreEqual(0, _entityManager.GetBuffer<StoredItemElement>(source).Length);
+        Assert.AreEqual(1, _entityManager.GetBuffer<StoredItemElement>(firstSite).Length +
+            _entityManager.GetBuffer<StoredItemElement>(secondSite).Length);
+        Assert.AreEqual(1, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(firstSite)[0].DeliveredQuantity +
+            _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(secondSite)[0].DeliveredQuantity);
+        Assert.AreEqual(0, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(firstSite)[0].ReservedQuantity +
+            _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(secondSite)[0].ReservedQuantity);
+        Assert.IsTrue(_entityManager.HasComponent<DisableRendering>(item));
+
+        RequestDelivery(first, source);
+        RequestDelivery(second, source);
+        RequestDelivery(third, source);
+        RunMaterialApplyPhase();
+        Assert.AreEqual(winner, _entityManager.GetComponentData<ItemOwnership>(item).Owner);
+        Assert.AreEqual(1, _entityManager.GetBuffer<StoredItemElement>(winner).Length);
+    }
+
+    [Test]
+    public void UnreservedSupplyAndRejectedDelivery_DoNotSettleAnotherDeliveryReservation()
+    {
+        Entity site = CreateSite(BuildingTypeEnum.Storage, 3);
+        Entity firstItem = CreateWorldItem(ItemTypeEnum.Iron);
+        Entity secondItem = CreateWorldItem(ItemTypeEnum.Iron);
+        Entity unreservedItem = CreateWorldItem(ItemTypeEnum.Iron);
+        Entity first = Entities.CreateConstructionMaterialDelivery(site, firstItem, ItemTypeEnum.Iron, true);
+        Entity second = Entities.CreateConstructionMaterialDelivery(site, secondItem, ItemTypeEnum.Iron, true);
+        Entity unreserved = Entities.CreateConstructionMaterialDelivery(site, unreservedItem, ItemTypeEnum.Iron);
+        Entity firstSource = _entityManager.GetComponentData<ItemOwnership>(firstItem).Owner;
+        RunMaterialApplyPhase();
+        RequestDelivery(unreserved, _entityManager.GetComponentData<ItemOwnership>(unreservedItem).Owner);
+        RunMaterialApplyPhase();
+        Assert.AreEqual(2, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)[0].ReservedQuantity);
+
+        RequestDelivery(first, Entity.Null); // 실제 Owner와 다른, 오래된 도착 정보.
+        RequestDelivery(first, Entity.Null);
+        RunMaterialApplyPhase();
+        Assert.AreEqual(1, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)[0].ReservedQuantity);
+        Assert.AreEqual(1, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)[0].DeliveredQuantity);
+        Assert.AreEqual(firstSource, _entityManager.GetComponentData<ItemOwnership>(firstItem).Owner);
+        Assert.AreEqual(1, _entityManager.GetBuffer<StoredItemElement>(firstSource).Length);
+        Assert.IsTrue(_entityManager.GetComponentData<ConstructionMaterialDeliveryResult>(second).ReservationActive);
+
+        CancelDelivery(second);
+        CancelDelivery(second);
+        RunMaterialApplyPhase();
+        Assert.AreEqual(0, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)[0].ReservedQuantity);
+        Assert.AreEqual(ConstructionMaterialDeliveryOutcomeEnum.Cancelled,
+            _entityManager.GetComponentData<ConstructionMaterialDeliveryResult>(second).Outcome);
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void F004Conflict_PreservesRegisteredReservationUntilExplicitCancellation(bool destroy)
+    {
+        Entity site = CreateSite(BuildingTypeEnum.Storage, 3);
+        Entity item = CreateWorldItem(ItemTypeEnum.Iron);
+        Entity delivery = Entities.CreateConstructionMaterialDelivery(site, item, ItemTypeEnum.Iron, true);
+        Entity source = _entityManager.GetComponentData<ItemOwnership>(item).Owner;
+        RunMaterialApplyPhase();
+        if (destroy)
+        {
+            // 유효한 Destroy의 Producer 계약: 소유 버퍼를 먼저 제거한다.
+            _entityManager.GetBuffer<StoredItemElement>(source).Clear();
+            _entityManager.AddComponent<DestroyItemRequest>(item);
+        }
+        else
+        {
+            Entity demolition = _entityManager.CreateEntity();
+            _entityManager.AddComponentData(demolition, new DemolishBuildingRequest(source));
+        }
+        Entity request = RequestDelivery(delivery, source);
+        RunMaterialApplyPhase();
+        Assert.IsFalse(_entityManager.Exists(request));
+        Assert.AreEqual(0, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)[0].DeliveredQuantity);
+        Assert.AreEqual(1, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)[0].ReservedQuantity);
+        Assert.AreEqual(0, _entityManager.GetBuffer<StoredItemElement>(site).Length);
+        Assert.AreEqual(destroy ? 0 : 1, _entityManager.GetBuffer<StoredItemElement>(source).Length);
+        Assert.AreEqual(source, _entityManager.GetComponentData<ItemOwnership>(item).Owner);
+        var result = _entityManager.GetComponentData<ConstructionMaterialDeliveryResult>(delivery);
+        Assert.IsTrue(result.ReservationActive);
+        Assert.AreEqual(destroy ? ConstructionMaterialDeliveryOutcomeEnum.DestroyConflict :
+            ConstructionMaterialDeliveryOutcomeEnum.DemolitionConflict, result.Outcome);
+        CancelDelivery(delivery);
+        RunMaterialApplyPhase();
+        Assert.AreEqual(0, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)[0].ReservedQuantity);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void TransportedMaterial_UsesCurrentHolderAndKeepsOriginalSource(bool worldItem)
+    {
+        Entity site = CreateSite(BuildingTypeEnum.Storage, 3);
+        Entity item = CreateWorldItem(ItemTypeEnum.Iron);
+        Entity delivery = Entities.CreateConstructionMaterialDelivery(site, item, ItemTypeEnum.Iron, true);
+        Entity source = _entityManager.GetComponentData<ItemOwnership>(item).Owner;
+        RunMaterialApplyPhase();
+        Entity carrier = Entity.Null;
+        if (worldItem)
+        {
+            _entityManager.AddComponent<BeltMovementState>(item);
+        }
+        else
+        {
+            carrier = _entityManager.CreateEntity();
+            _entityManager.AddBuffer<StoredItemElement>(carrier).Add(new StoredItemElement(item, ItemTypeEnum.Iron, 0));
+        }
+        _entityManager.GetBuffer<StoredItemElement>(source).Clear();
+        _entityManager.SetComponentData(item, ItemOwnership.Stored(carrier));
+        RequestDelivery(delivery, carrier);
+        RunMaterialApplyPhase();
+        Assert.AreEqual(source, _entityManager.GetComponentData<ConstructionMaterialDelivery>(delivery).SourceBuilding);
+        if (worldItem)
+        {
+            Assert.IsFalse(_entityManager.IsComponentEnabled<BeltMovementState>(item));
+        }
+        else
+        {
+            Assert.AreEqual(0, _entityManager.GetBuffer<StoredItemElement>(carrier).Length);
+        }
+        Assert.AreEqual(site, _entityManager.GetComponentData<ItemOwnership>(item).Owner);
+        Assert.AreEqual(1, _entityManager.GetBuffer<StoredItemElement>(site).Length);
+    }
+
+    [TestCase(true, true)]
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    [TestCase(false, false)]
+    public void ConcurrentWorldTransfer_RejectsSupplyWithoutDependingOnOwnershipSystemOrder(
+        bool ownershipFirst, bool expectWorldOwner)
+    {
+        Entity site = CreateSite(BuildingTypeEnum.Storage, 3);
+        Entity item = CreateWorldItem(ItemTypeEnum.Iron);
+        Entity delivery = Entities.CreateConstructionMaterialDelivery(site, item, ItemTypeEnum.Iron, true);
+        Entity source = _entityManager.GetComponentData<ItemOwnership>(item).Owner;
+        RunMaterialApplyPhase();
+        _entityManager.GetBuffer<StoredItemElement>(source).Clear();
+        _entityManager.AddComponentData(item, new TransferOwnershipRequest(Entity.Null));
+        RequestDelivery(delivery, expectWorldOwner ? Entity.Null : source);
+        var ownership = _world.GetOrCreateSystem<ItemOwnershipApplySystem>();
+        if (ownershipFirst)
+        {
+            Simulation.UpdateAndComplete(ownership);
+            Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item));
+            Assert.IsTrue(_entityManager.GetComponentData<TransferOwnershipRequest>(item).ProcessedInStateApply);
+        }
+        Simulation.UpdateAndComplete(_lifecycleApplySystem);
+        if (!ownershipFirst)
+        {
+            Simulation.UpdateAndComplete(ownership);
+        }
+        Simulation.Playback(_ecbSystem);
+        Assert.AreEqual(Entity.Null, _entityManager.GetComponentData<ItemOwnership>(item).Owner);
+        Assert.IsFalse(_entityManager.HasComponent<DisableRendering>(item));
+        Assert.AreEqual(0, _entityManager.GetBuffer<StoredItemElement>(site).Length);
+        Assert.AreEqual(0, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)[0].ReservedQuantity);
+        Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item));
+        Assert.IsFalse(_entityManager.GetComponentData<TransferOwnershipRequest>(item).ProcessedInStateApply);
+        Assert.AreEqual(ConstructionMaterialDeliveryOutcomeEnum.ConflictingTransfer,
+            _entityManager.GetComponentData<ConstructionMaterialDeliveryResult>(delivery).Outcome);
+
+        // 다음 틱에 공급원으로 정상 복귀한 실물은 이전 처리 표시 때문에 막히지 않는다.
+        _entityManager.GetBuffer<StoredItemElement>(source).Add(new StoredItemElement(item, ItemTypeEnum.Iron, 0));
+        _entityManager.SetComponentData(item, ItemOwnership.Stored(source));
+        _entityManager.AddComponent<DisableRendering>(item);
+        Entity nextDelivery = Entities.CreateConstructionMaterialDelivery(site, item, ItemTypeEnum.Iron, true);
+        RequestDelivery(nextDelivery, source);
+        RunMaterialApplyPhase();
+        Assert.AreEqual(site, _entityManager.GetComponentData<ItemOwnership>(item).Owner);
+        Assert.AreEqual(1, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)[0].DeliveredQuantity);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void DuplicateRegistration_DoesNotConsumeCapacityNeededByAnotherPhysicalItem(bool previouslyRegistered)
+    {
+        Entity site = CreateSite(BuildingTypeEnum.Storage, 2);
+        Entity firstItem = CreateWorldItem(ItemTypeEnum.Iron);
+        Entity secondItem = CreateWorldItem(ItemTypeEnum.Iron);
+        Entity first = Entities.CreateConstructionMaterialDelivery(site, firstItem, ItemTypeEnum.Iron, true);
+        if (previouslyRegistered)
+        {
+            RunMaterialApplyPhase();
+        }
+        Entity duplicate = Entities.CreateConstructionMaterialDelivery(site, firstItem, ItemTypeEnum.Iron, true);
+        Entity second = Entities.CreateConstructionMaterialDelivery(site, secondItem, ItemTypeEnum.Iron, true);
+        RunMaterialApplyPhase();
+        Assert.AreEqual(2, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)[0].ReservedQuantity);
+        Assert.AreEqual(ConstructionMaterialDeliveryOutcomeEnum.ItemAlreadyClaimed,
+            _entityManager.GetComponentData<ConstructionMaterialDeliveryResult>(duplicate).Outcome);
+        Assert.IsFalse(_entityManager.GetComponentData<ConstructionMaterialDeliveryResult>(duplicate).ReservationActive);
+        Assert.AreEqual(ConstructionMaterialDeliveryStateEnum.Ready,
+            _entityManager.GetComponentData<ConstructionMaterialDeliveryResult>(second).State);
+
+        RequestDelivery(first, _entityManager.GetComponentData<ItemOwnership>(firstItem).Owner);
+        RequestDelivery(duplicate, _entityManager.GetComponentData<ItemOwnership>(firstItem).Owner);
+        RequestDelivery(second, _entityManager.GetComponentData<ItemOwnership>(secondItem).Owner);
+        RunMaterialApplyPhase();
+        Assert.AreEqual(2, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)[0].DeliveredQuantity);
+        Assert.AreEqual(0, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)[0].ReservedQuantity);
+        Assert.AreEqual(2, _entityManager.GetBuffer<StoredItemElement>(site).Length);
+        Assert.AreEqual(site, _entityManager.GetComponentData<ItemOwnership>(firstItem).Owner);
+        Assert.AreEqual(site, _entityManager.GetComponentData<ItemOwnership>(secondItem).Owner);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void CancelledDelivery_ReleasesPhysicalClaimBeforeReplacementRegistration(bool previouslyRegistered)
+    {
+        Entity firstSite = CreateSite(BuildingTypeEnum.Storage, 1);
+        Entity nextSite = CreateSite(BuildingTypeEnum.Storage, 1);
+        Entity item = CreateWorldItem(ItemTypeEnum.Iron);
+        Entity first = Entities.CreateConstructionMaterialDelivery(firstSite, item, ItemTypeEnum.Iron, true);
+        if (previouslyRegistered)
+        {
+            RunMaterialApplyPhase();
+        }
+        CancelDelivery(first);
+        Entity replacement = Entities.CreateConstructionMaterialDelivery(nextSite, item, ItemTypeEnum.Iron, true);
+        RunMaterialApplyPhase();
+        Assert.AreEqual(ConstructionMaterialDeliveryOutcomeEnum.Cancelled,
+            _entityManager.GetComponentData<ConstructionMaterialDeliveryResult>(first).Outcome);
+        Assert.AreEqual(0, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(firstSite)[0].ReservedQuantity);
+        Assert.AreEqual(1, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(nextSite)[0].ReservedQuantity);
+        Assert.AreEqual(ConstructionMaterialDeliveryStateEnum.Ready,
+            _entityManager.GetComponentData<ConstructionMaterialDeliveryResult>(replacement).State);
+    }
+
+    [Test]
+    public void ClosedSite_ReleasesPhysicalClaimBeforeReplacementRegistration()
+    {
+        Entity firstSite = CreateSite(BuildingTypeEnum.Storage, 1);
+        Entity nextSite = CreateSite(BuildingTypeEnum.Storage, 1);
+        Entity item = CreateWorldItem(ItemTypeEnum.Iron);
+        Entity first = Entities.CreateConstructionMaterialDelivery(firstSite, item, ItemTypeEnum.Iron, true);
+        RunMaterialApplyPhase();
+        Entity cancelSite = _entityManager.CreateEntity();
+        _entityManager.AddComponentData(cancelSite, new CancelConstructionRequest(firstSite));
+        Entity replacement = Entities.CreateConstructionMaterialDelivery(nextSite, item, ItemTypeEnum.Iron, true);
+        RunMaterialApplyPhase();
+        Assert.IsFalse(_entityManager.Exists(firstSite));
+        Assert.IsFalse(_entityManager.GetComponentData<ConstructionMaterialDeliveryResult>(first).ReservationActive);
+        Assert.AreEqual(ConstructionMaterialDeliveryOutcomeEnum.SiteClosed,
+            _entityManager.GetComponentData<ConstructionMaterialDeliveryResult>(first).Outcome);
+        Assert.AreEqual(ConstructionMaterialDeliveryStateEnum.Ready,
+            _entityManager.GetComponentData<ConstructionMaterialDeliveryResult>(replacement).State);
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void DestroyedTransfer_DoesNotRecordCleanupCommandsAgainstDeletedItem(bool ownershipFirst)
+    {
+        Entity site = CreateSite(BuildingTypeEnum.Storage, 2);
+        Entity item = CreateWorldItem(ItemTypeEnum.Iron);
+        Entity delivery = Entities.CreateConstructionMaterialDelivery(site, item, ItemTypeEnum.Iron, true);
+        Entity source = _entityManager.GetComponentData<ItemOwnership>(item).Owner;
+        RunMaterialApplyPhase();
+        _entityManager.GetBuffer<StoredItemElement>(source).Clear();
+        _entityManager.AddComponent<DestroyItemRequest>(item);
+        _entityManager.AddComponentData(item, new TransferOwnershipRequest(Entity.Null));
+        RequestDelivery(delivery, Entity.Null);
+        var ownership = _world.GetOrCreateSystem<ItemOwnershipApplySystem>();
+        var lifecycle = _world.GetOrCreateSystem<ItemLifecycleApplySystem>();
+        if (ownershipFirst)
+        {
+            Simulation.UpdateAndComplete(ownership);
+        }
+        Simulation.UpdateAndComplete(lifecycle);
+        if (!ownershipFirst)
+        {
+            Simulation.UpdateAndComplete(ownership);
+        }
+        Simulation.UpdateAndComplete(_lifecycleApplySystem);
+        Simulation.Playback(_ecbSystem);
+        Assert.IsFalse(_entityManager.Exists(item));
+        Assert.AreEqual(1, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)[0].ReservedQuantity);
+        Assert.AreEqual(ConstructionMaterialDeliveryOutcomeEnum.DestroyConflict,
+            _entityManager.GetComponentData<ConstructionMaterialDeliveryResult>(delivery).Outcome);
+    }
+
+    [Test]
+    public void MissingDestinationBuffer_DoesNotRemoveSourceMaterialOrCountDelivery()
+    {
+        Entity site = CreateSite(BuildingTypeEnum.Storage, 3);
+        Entity item = CreateWorldItem(ItemTypeEnum.Iron);
+        Entity delivery = Entities.CreateConstructionMaterialDelivery(site, item, ItemTypeEnum.Iron, true);
+        Entity source = _entityManager.GetComponentData<ItemOwnership>(item).Owner;
+        RunMaterialApplyPhase();
+        _entityManager.RemoveComponent<StoredItemElement>(site);
+        RequestDelivery(delivery, source);
+        RunMaterialApplyPhase();
+        Assert.AreEqual(0, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)[0].DeliveredQuantity);
+        Assert.AreEqual(1, _entityManager.GetBuffer<StoredItemElement>(source).Length);
+        Assert.AreEqual(source, _entityManager.GetComponentData<ItemOwnership>(item).Owner);
+    }
+
+    [Test]
+    public void Completion_ClosesOutstandingReservationAndRetainsDeliveredResult()
+    {
+        Entity site = CreateSite(BuildingTypeEnum.Belt, 1);
+        _entityManager.AddComponentData(site, new GridPosition(Unity.Mathematics.int2.zero));
+        _entityManager.AddComponentData(site, new Direction(DirectionEnum.Up));
+        _entityManager.AddComponentData(site, new BuildingFootprint(new Unity.Mathematics.int2(1, 1)));
+        Entity reservedItem = CreateWorldItem(ItemTypeEnum.Iron);
+        Entity suppliedItem = CreateWorldItem(ItemTypeEnum.Iron);
+        Entity pending = Entities.CreateConstructionMaterialDelivery(site, reservedItem, ItemTypeEnum.Iron, true);
+        Entity supplied = Entities.CreateConstructionMaterialDelivery(site, suppliedItem, ItemTypeEnum.Iron);
+        RunMaterialApplyPhase();
+        RequestDelivery(supplied, _entityManager.GetComponentData<ItemOwnership>(suppliedItem).Owner);
+        RunMaterialApplyPhase();
+        Assert.IsFalse(_entityManager.Exists(site));
+        Assert.IsFalse(_entityManager.Exists(suppliedItem));
+        Assert.IsTrue(_entityManager.Exists(reservedItem));
+        var pendingResult = _entityManager.GetComponentData<ConstructionMaterialDeliveryResult>(pending);
+        Assert.AreEqual(ConstructionMaterialDeliveryOutcomeEnum.SiteClosed, pendingResult.Outcome);
+        Assert.IsFalse(pendingResult.ReservationActive);
+        Assert.AreEqual(ConstructionMaterialDeliveryOutcomeEnum.Supplied,
+            _entityManager.GetComponentData<ConstructionMaterialDeliveryResult>(supplied).Outcome);
+        RequestDelivery(supplied, Entity.Null);
+        RunMaterialApplyPhase();
+        Assert.AreEqual(ConstructionMaterialDeliveryOutcomeEnum.Supplied,
+            _entityManager.GetComponentData<ConstructionMaterialDeliveryResult>(supplied).Outcome);
     }
 
     [Test]
@@ -150,6 +535,7 @@ public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
         RequestSupply(siteEntity, item1, ItemTypeEnum.Iron);
         RequestSupply(siteEntity, item2, ItemTypeEnum.Iron);
         RequestSupply(siteEntity, item3, ItemTypeEnum.Iron);
+        Entity thirdSource = _entityManager.GetComponentData<ItemOwnership>(item3).Owner;
 
         RunMaterialApplyPhase();
 
@@ -160,9 +546,10 @@ public class Phase7ConstructionMaterialTests : EcsWorldTestFixture
         var storedBuffer = _entityManager.GetBuffer<StoredItemElement>(siteEntity);
         Assert.AreEqual(2, storedBuffer.Length, "현장 보관함에는 2개만 등록되어야 함");
 
-        // item1, item2는 수납, item3은 월드 유지
+        // 앞선 두 실물은 현장 수납, 초과 실물은 공급원 유지.
         Assert.IsTrue(_entityManager.GetComponentData<ItemOwnership>(item1).IsStored);
         Assert.IsTrue(_entityManager.GetComponentData<ItemOwnership>(item2).IsStored);
-        Assert.IsTrue(_entityManager.GetComponentData<ItemOwnership>(item3).IsWorldItem, "초과된 3번째 아이템은 월드에 유지되어야 함");
+        Assert.AreEqual(thirdSource, _entityManager.GetComponentData<ItemOwnership>(item3).Owner,
+            "초과된 실물은 공급원에 유지되어야 함");
     }
 }

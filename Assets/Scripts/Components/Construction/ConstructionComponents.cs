@@ -64,7 +64,7 @@ public struct ConstructionMaterialRequirementElement : IBufferElementData
     public ItemTypeEnum ItemType;
     public int RequiredQuantity;  // 완공에 필요한 총 수량
     public int DeliveredQuantity; // 현장에 도착/수령된 실제 수량
-    public int ReservedQuantity;  // 운송 중인 예약 수량 (드론 출발 시)
+    public int ReservedQuantity;  // 등록된 운송 건의 활성 예약 합계 (출발 대기 포함, 공사 수명주기가 정산)
 
     // 순수 계산 프로퍼티 (상태 부작용 없음)
     public int RemainingRequired => math.max(0, RequiredQuantity - DeliveredQuantity);

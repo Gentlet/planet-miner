@@ -12,6 +12,7 @@ using Unity.Rendering;
 /// - 소유권 전환(수납 <-> 방출)에 따라 DisableRendering 컴포넌트를 추가/제거하여 렌더링 표시 상태 동기화.
 /// - 단일 워커 Burst Job(ItemOwnershipApplyJob)으로 소유권 변경 순차 적용.
 /// - Consume-on-Apply 원칙에 따라 처리 즉시 TransferOwnershipRequest를 비활성화.
+/// - 처리 표시는 EndStateApply까지 유지하여 다른 인계 경계가 같은 틱의 Transfer를 식별한다.
 /// - Destroy 대상과 철거 소유 버퍼에 남은 실물은 요청만 소비하고 최종 변경을 해당 수명주기 경로에 맡긴다.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
@@ -108,7 +109,7 @@ public partial struct ItemOwnershipApplyJob : IJobEntity
         if (DemolishBuildingRequestLookup.ContainsBufferedItem(
                 entity, DemolitionRequests, StoredBufferLookup, ProductBufferLookup))
         {
-            requestEnabled.ValueRW = false;
+            ConsumeRequest(entity, request, requestEnabled);
             return;
         }
 
@@ -134,8 +135,20 @@ public partial struct ItemOwnershipApplyJob : IJobEntity
         }
         // 수신자가 유효하지 않은(파괴된) 유령 엔티티인 경우 소유권 변경을 무시하고 Drop
 
-        // Consume-on-Apply: 처리 완료 즉시 비활성화
+        ConsumeRequest(entity, request, requestEnabled);
+    }
+
+    private void ConsumeRequest(Entity entity, RefRW<TransferOwnershipRequest> request,
+        EnabledRefRW<TransferOwnershipRequest> requestEnabled)
+    {
+        var consumedRequest = request.ValueRO;
+        consumedRequest.ProcessedInStateApply = true;
+        request.ValueRW = consumedRequest;
         requestEnabled.ValueRW = false;
+
+        // 표시의 수명은 현재 StateApply뿐이다. 다음 틱의 정상 인계를 막지 않는다.
+        consumedRequest.ProcessedInStateApply = false;
+        ECB.SetComponent(entity, consumedRequest);
     }
 }
 
