@@ -155,6 +155,69 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         Assert.AreEqual(pos, _entityManager.GetComponentData<GridPosition>(productItem).Value, "건물 위치로 배치되어야 함");
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void SameTickStorageInputAndDemolition_ReturnsPhysicalItem_InEitherApplyOrder(bool ownershipFirst)
+    {
+        int2 buildingPosition = new int2(10, 10);
+        int2 incomingPosition = new int2(9, 10);
+        Entity storage = Entities.CreateStorage(buildingPosition, new int2(1, 1), slotCount: 1);
+        Entities.CreateBelt(incomingPosition, DirectionEnum.Right);
+        Entity item = Entities.CreateBeltItem(incomingPosition, DirectionEnum.Right, 1.0f, itemType: ItemTypeEnum.Iron);
+        _entityManager.AddComponent<DestroyItemRequest>(item);
+        _entityManager.SetComponentEnabled<DestroyItemRequest>(item, false);
+        _entityManager.SetComponentData(item, new BuildingItemInputDecision(storage, true, 0));
+        _entityManager.SetComponentEnabled<BuildingItemInputDecision>(item, true);
+
+        var beltSpatialSync = _world.GetOrCreateSystem<BeltSpatialSyncSystem>();
+        var storageApply = _world.GetOrCreateSystem<BuildingItemStorageApplySystem>();
+        var ownershipApply = _world.GetOrCreateSystem<ItemOwnershipApplySystem>();
+        Simulation.UpdateAndComplete(beltSpatialSync);
+
+        Entity demolitionRequest = RequestDemolish(storage);
+        RunDemolitionCommandPhase();
+        Assert.IsTrue(_entityManager.Exists(demolitionRequest), "승인된 철거 요청은 StateApply까지 유지되어야 함");
+        Assert.AreEqual(0, _entityManager.GetBuffer<StoredItemElement>(storage).Length);
+
+        // 실제 입고 적용이 실물을 버퍼에 넣고 소유권 이전 요청을 발행한다.
+        Simulation.UpdateAndComplete(storageApply);
+        var storedItems = _entityManager.GetBuffer<StoredItemElement>(storage);
+        Assert.AreEqual(1, storedItems.Length);
+        Assert.AreEqual(item, storedItems[0].ItemEntity);
+        Assert.AreEqual(Entity.Null, _entityManager.GetComponentData<ItemOwnership>(item).Owner);
+        Assert.IsFalse(_entityManager.IsComponentEnabled<BuildingItemInputDecision>(item));
+        Assert.IsTrue(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item));
+        Assert.AreEqual(storage, _entityManager.GetComponentData<TransferOwnershipRequest>(item).TargetOwner);
+
+        // 두 소비자의 상대 순서와 무관하게 최종 반환은 같은 EndStateApply에서 확정된다.
+        if (ownershipFirst)
+        {
+            Simulation.UpdateAndComplete(ownershipApply);
+            Simulation.UpdateAndComplete(_lifecycleApplySystem);
+        }
+        else
+        {
+            Simulation.UpdateAndComplete(_lifecycleApplySystem);
+            Simulation.UpdateAndComplete(ownershipApply);
+        }
+
+        Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item));
+        Assert.IsTrue(_entityManager.GetComponentData<TransferOwnershipRequest>(item).ProcessedInStateApply);
+        Simulation.Playback(_ecbSystem);
+
+        Assert.IsFalse(_entityManager.Exists(storage));
+        Assert.IsFalse(_entityManager.Exists(demolitionRequest));
+        Assert.IsTrue(_entityManager.Exists(item), "입고된 동일 실물은 철거 후에도 보존되어야 함");
+        Assert.AreEqual(Entity.Null, _entityManager.GetComponentData<ItemOwnership>(item).Owner);
+        Assert.AreEqual(buildingPosition, _entityManager.GetComponentData<GridPosition>(item).Value);
+        Assert.AreEqual(new float3(buildingPosition.x, buildingPosition.y, 0f),
+            _entityManager.GetComponentData<LocalTransform>(item).Position);
+        Assert.IsFalse(_entityManager.HasComponent<DisableRendering>(item));
+        Assert.IsFalse(_entityManager.IsComponentEnabled<BeltMovementState>(item));
+        Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item));
+        Assert.IsFalse(_entityManager.GetComponentData<TransferOwnershipRequest>(item).ProcessedInStateApply);
+    }
+
     [Test]
     public void Test03_DemolishBuilding_RefundsConstructionMaterials_100Percent()
     {

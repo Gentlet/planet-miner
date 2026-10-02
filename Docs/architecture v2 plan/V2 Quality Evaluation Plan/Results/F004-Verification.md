@@ -2,7 +2,7 @@
 
 - 날짜: 2026-10-02
 - [Task](../V2%20Quality%20Improvement%20Tasks.md#f-004--같은-프레임-입고철거의-렌더-태그-순서-의존) · 최초 평가 [Q02](Q02.md) · 철거 평가 [Q28](Q28.md)
-- 상태: 승인된 정책 구현·컴파일 완료. 후속 F-003에서 공사 공급 충돌과 Destroy/Transfer 일부 경계를 EditMode로 검증했다. 일반 입고+철거의 실제 정렬 그룹 실행은 미수행.
+- 상태: 승인된 정책 구현·컴파일 완료. 후속 F-003에서 공사 공급 충돌과 Destroy/Transfer 일부 경계를 EditMode로 검증했다. 일반 입고+철거는 실제 시스템을 두 상대 순서로 수동 실행하는 회귀 테스트 2/2를 추가 확인했다. 이 경로의 자동 정렬 그룹 실행은 미수행.
 
 ## 확정 정책과 범위
 
@@ -52,8 +52,17 @@ Ownership과 Construction의 철거 요청 임시 복사본은 `ToComponentDataL
 - `DestroyedTransfer_DoesNotRecordCleanupCommandsAgainstDeletedItem`의 Ownership 선행/후행 두 조건: Item Lifecycle과 Ownership의 실행 순서를 바꿔 ECB를 재생한 뒤 실물 삭제, 공사 예약 보존 및 DestroyConflict 결과를 확인했다. Producer가 원래 소유 버퍼에서 실물을 먼저 제거하는 유효한 Destroy 계약을 전제로 한다.
 - 근거: [테스트 소스](../../../../Assets/Editor/Tests/Phase7ConstructionMaterialTests.cs) · [F-003 구현/검증 기록](F003-Verification.md) · [정리 후 26/26 결과](../../../../Logs/QualityImprovement/F003/cleanup/verification-live.json) · [후속 재컴파일](../../../../Logs/QualityImprovement/F003/cleanup/recompile_status.json)
 
+## 일반 입고·철거의 두 적용 순서 회귀 검증 (2026-10-02)
+
+- 기존 공사 공급 거부와 벨트 라우팅·철거 테스트는 일반 Storage 입고 후 Ownership/Building Lifecycle의 렌더 태그 경합을 직접 확인하지 않는다. 이 구체적인 회귀를 잡기 위해 `Phase7BuildingDemolishTests.SameTickStorageInputAndDemolition_ReturnsPhysicalItem_InEitherApplyOrder`에 두 실행 순서만 추가했다.
+- 실제 Command 검증과 EndCommand 재생 뒤 `BuildingItemStorageApplySystem`을 실행한다. Stored 버퍼의 동일 실물 등록과 활성 Transfer를 중간 assertion으로 확인한 다음, Ownership→Building Lifecycle 또는 Building Lifecycle→Ownership 순서로 실행하고 EndStateApply를 재생한다.
+- 두 조건 모두 **2/2 통과**, 실패/Skipped/Inconclusive 0. 동일 아이템의 생존, World Owner, 철거 건물 원점의 GridPosition/LocalTransform, DisableRendering 제거, 벨트 이동·Transfer 비활성화, 처리 표시 초기화, 건물·철거 요청 삭제를 확인했다. 상대 순서는 테스트가 직접 제어하며 자동 정렬 그룹의 실행 결과로 표현하지 않는다.
+- 같은 변경 묶음에서 공사 테스트 준비의 숨은 소유권 변경을 제거하고 제작기 레시피 변경의 중복 검사를 정리했다. 관련 EditMode는 총 **47/47**(공사 수령 26, 취소 4, 완공 9, 공사 연결 4, 새 입고·철거 회귀 2, 레시피 변경 2), 실패/Skipped/Inconclusive 0이다.
+- Unity 6000.4.11f1 재컴파일 `completed`, `failed:false`, `errors:[]`, `compilationFailed:false`, Editor ready/컴파일·리로드 중 아님/Play Mode stopped 및 런타임·Editor 어셈블리 최신성을 확인했다. `git diff --check`는 통과했고 기존 줄바꿈 변환 안내만 있었다.
+- 근거: [검증 결과](../../../../Logs/QualityImprovement/StyleAlignment/verification-wrapper.json) · [컴파일](../../../../Logs/QualityImprovement/StyleAlignment/recompile-status.json) · [Editor 상태](../../../../Logs/QualityImprovement/StyleAlignment/editor-status.json) · [어셈블리 최신성](../../../../Logs/QualityImprovement/StyleAlignment/assembly-freshness.json) · [diff 검사](../../../../Logs/QualityImprovement/StyleAlignment/diff-check.txt)
+
 ## 실행 미검증과 남은 범위
 
-일반 입고+철거를 실제 정렬 그룹에서 실행하여 최종 Owner·소유 버퍼·위치·DisableRendering을 확인하는 검증과 해당 철거 경로의 양쪽 ECB 순서 재현은 여전히 미수행이다. 위 공급 거부·Destroy 일부 경계의 통과를 전체 물류/반환 경로의 런타임 일치 증거로 확대하지 않는다. Play Mode, 실제 렌더링·베이킹·성능도 검증하지 않았다.
+일반 입고+철거의 두 상대 실행 순서와 해당 ECB 재생 결과는 위 회귀 테스트에서 확인했다. Decision/Reservation을 포함한 전체 자동 정렬 그룹 실행은 이번에 검증하지 않았다. 위 결과와 공급 거부·Destroy 일부 경계의 통과를 전체 물류/반환 경로의 런타임 일치 증거로 확대하지 않는다. Play Mode, 실제 렌더링·베이킹·성능도 검증하지 않았다.
 
 일반 중복 공급·소유 버퍼 인계·운송별 정산의 구현과 검증은 F-003 기록에서 별도로 다룬다. 잘못된 외부 요청의 전역 보정은 구현하지 않았다. Q02/Q28의 원본 평가 기록은 수정하지 않았다.

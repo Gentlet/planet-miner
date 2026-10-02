@@ -53,16 +53,6 @@ public class Phase7ConstructionCancelTests : EcsWorldTestFixture
         return site;
     }
 
-    private Entity CreateWorldItem(ItemTypeEnum type)
-    {
-        var item = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(item, new ItemIdentity(type));
-        _entityManager.AddComponentData(item, ItemOwnership.WorldItem);
-        _entityManager.AddComponentData(item, new GridPosition(int2.zero));
-        _entityManager.AddComponentData(item, LocalTransform.Identity);
-        return item;
-    }
-
     private Entity StoreMaterialItem(Entity site, ItemTypeEnum type)
     {
         var item = _entityManager.CreateEntity();
@@ -84,12 +74,11 @@ public class Phase7ConstructionCancelTests : EcsWorldTestFixture
         return request;
     }
 
-    private Entity RequestSupply(Entity site, Entity item, ItemTypeEnum type)
+    private Entity RequestSupply(Entity site, Entity source, Entity item, ItemTypeEnum type)
     {
-        Entity delivery = Entities.CreateConstructionMaterialDelivery(site, item, type);
-        Entity owner = _entityManager.GetComponentData<ItemOwnership>(item).Owner;
+        Entity delivery = Entities.CreateConstructionMaterialDelivery(site, source, item, type);
         var request = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(delivery, owner));
+        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(delivery, source));
         return request;
     }
 
@@ -129,13 +118,13 @@ public class Phase7ConstructionCancelTests : EcsWorldTestFixture
         reqBuffer.Add(new ConstructionMaterialRequirementElement(ItemTypeEnum.Iron, 1, deliveredQuantity: 0));
 
         // 2. 동일 프레임에 마지막 자재 공급 요청과 취소 요청 동시 발행
-        var item = CreateWorldItem(ItemTypeEnum.Iron);
-        var supplyReq = RequestSupply(site, item, ItemTypeEnum.Iron);
-        Entity source = _entityManager.GetComponentData<ItemOwnership>(item).Owner;
+        Entity source = Entities.CreateConstructionMaterialSource();
+        Entity item = Entities.CreateStoredConstructionMaterial(source, ItemTypeEnum.Iron);
+        var supplyReq = RequestSupply(site, source, item, ItemTypeEnum.Iron);
         var cancelReq = RequestCancel(site);
 
         // 3. Full Pipeline 1회 실행:
-        // MaterialApply (자재 수령 버퍼 추가) -> CancelApply (취소 플래그 마킹, 자재 반환, 현장 파괴) -> CompletionApply (취소 감지하여 완공 스킵)
+        // CancelApply -> 운송 등록 거부 -> MaterialApply의 수령 생략 -> CompletionApply의 완공 생략
         RunCancelPhase();
 
         // 4. 취소 우선(Cancel Wins) 검증

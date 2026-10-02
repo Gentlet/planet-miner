@@ -57,14 +57,6 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
         return site;
     }
 
-    private Entity CreateWorldItem(ItemTypeEnum type)
-    {
-        var item = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(item, new ItemIdentity(type));
-        _entityManager.AddComponentData(item, ItemOwnership.WorldItem);
-        return item;
-    }
-
     private Entity StoreMaterialItem(Entity site, ItemTypeEnum type)
     {
         var item = _entityManager.CreateEntity();
@@ -75,12 +67,11 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
         return item;
     }
 
-    private Entity RequestSupply(Entity site, Entity item, ItemTypeEnum type)
+    private Entity RequestSupply(Entity site, Entity source, Entity item, ItemTypeEnum type)
     {
-        Entity delivery = Entities.CreateConstructionMaterialDelivery(site, item, type);
-        Entity owner = _entityManager.GetComponentData<ItemOwnership>(item).Owner;
+        Entity delivery = Entities.CreateConstructionMaterialDelivery(site, source, item, type);
         var request = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(delivery, owner));
+        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(delivery, source));
         return request;
     }
 
@@ -162,8 +153,9 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
         Assert.IsTrue(_entityManager.Exists(iron2));
 
         // 3. Copper 자재 공급 및 수령 (모든 자재가 충족되므로 즉시 완공 전환)
-        var copperItem = CreateWorldItem(ItemTypeEnum.Copper);
-        RequestSupply(site, copperItem, ItemTypeEnum.Copper);
+        Entity source = Entities.CreateConstructionMaterialSource();
+        Entity copperItem = Entities.CreateStoredConstructionMaterial(source, ItemTypeEnum.Copper);
+        RequestSupply(site, source, copperItem, ItemTypeEnum.Copper);
 
         RunMaterialApplyPhase();
 
@@ -230,12 +222,18 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
 
         Entity site = CreateSite(BuildingTypeEnum.Miner, new int2(4, 6));
         Entity first = StoreMaterialItem(site, ItemTypeEnum.Iron);
-        Entity second = supplyLastMaterial ? CreateWorldItem(ItemTypeEnum.Iron) : StoreMaterialItem(site, ItemTypeEnum.Iron);
+        Entity second;
         _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site).Add(
             new ConstructionMaterialRequirementElement(ItemTypeEnum.Iron, 2, supplyLastMaterial ? 1 : 2));
         if (supplyLastMaterial)
         {
-            RequestSupply(site, second, ItemTypeEnum.Iron);
+            Entity source = Entities.CreateConstructionMaterialSource();
+            second = Entities.CreateStoredConstructionMaterial(source, ItemTypeEnum.Iron);
+            RequestSupply(site, source, second, ItemTypeEnum.Iron);
+        }
+        else
+        {
+            second = StoreMaterialItem(site, ItemTypeEnum.Iron);
         }
 
         var group = _world.GetOrCreateSystemManaged<GameSimulationGroup>();

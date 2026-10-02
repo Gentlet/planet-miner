@@ -128,44 +128,37 @@ public partial struct CrafterRecipeCommandSystem : ISystem
                 crafterState.IsCraftingActive = false;
 
                 // 2. StoredItemElement -> ProductItemElement 잔여 재료 Byproduct 배출 (Slot 1+)
-                if (_storedBufferLookup.HasBuffer(crafter) && _productBufferLookup.HasBuffer(crafter))
+                var storedItems = _storedBufferLookup[crafter];
+                var productItems = _productBufferLookup[crafter];
+
+                if (storedItems.Length > 0)
                 {
-                    var storedItems = _storedBufferLookup[crafter];
-                    var productItems = _productBufferLookup[crafter];
-
-                    if (storedItems.Length > 0)
+                    int maxExistingSlot = 0;
+                    for (int p = 0; p < productItems.Length; p++)
                     {
-                        int maxExistingSlot = 0;
-                        for (int p = 0; p < productItems.Length; p++)
+                        if (productItems[p].SlotIndex > maxExistingSlot)
                         {
-                            if (productItems[p].SlotIndex > maxExistingSlot)
-                            {
-                                maxExistingSlot = productItems[p].SlotIndex;
-                            }
+                            maxExistingSlot = productItems[p].SlotIndex;
                         }
-                        int baseSlot = math.max(1, maxExistingSlot + 1);
-
-                        for (int s = 0; s < storedItems.Length; s++)
-                        {
-                            var item = storedItems[s];
-                            // 같은 품목도 여러 입력 스택을 가질 수 있다. 기존 슬롯 구분을
-                            // 유지하여 잔여물 배출 슬롯의 MaxStack 초과를 방지한다.
-                            int byproductSlot = baseSlot + item.SlotIndex;
-                            productItems.Add(new ProductItemElement(item.ItemEntity, item.ItemType, byproductSlot));
-                        }
-
-                        storedItems.Clear();
                     }
+                    int baseSlot = math.max(1, maxExistingSlot + 1);
 
-                    // 5. 상태 전환: ProductItemElement에 아이템이 남아있으면 WaitingForByproductOutput
-                    if (productItems.Length > 0)
+                    for (int s = 0; s < storedItems.Length; s++)
                     {
-                        crafterState.Status = CrafterStatusEnum.WaitingForByproductOutput;
+                        var item = storedItems[s];
+                        // 같은 품목도 여러 입력 스택을 가질 수 있다. 기존 슬롯 구분을
+                        // 유지하여 잔여물 배출 슬롯의 MaxStack 초과를 방지한다.
+                        int byproductSlot = baseSlot + item.SlotIndex;
+                        productItems.Add(new ProductItemElement(item.ItemEntity, item.ItemType, byproductSlot));
                     }
-                    else
-                    {
-                        crafterState.Status = newRecipeId > 0 ? CrafterStatusEnum.Idle : CrafterStatusEnum.NoRecipe;
-                    }
+
+                    storedItems.Clear();
+                }
+
+                // 5. 상태 전환: ProductItemElement에 아이템이 남아있으면 WaitingForByproductOutput
+                if (productItems.Length > 0)
+                {
+                    crafterState.Status = CrafterStatusEnum.WaitingForByproductOutput;
                 }
                 else
                 {
