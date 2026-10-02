@@ -55,6 +55,7 @@ SimulationSystemGroup
 - 배치 Command가 현장을 만들고, `ConstructionLifecycleApplySystem`이 내부 Job을 취소→자재 수령→완공 순서로 연결한다. 독립 Material/Cancel/Completion 시스템은 현재 경로가 아니다.
 - 수령 Job은 요구량·진행·현장 Stored 버퍼를 직접 갱신하고 Owner/렌더 태그를 EndStateApply에 기록한다. 취소는 즉시 Cancelled를 설정해 뒤의 수령/완공을 막고 기존 실물을 반환한다. Completion은 별도 요청 없이 공통 `BuildingLifecycleUtility.SpawnBuilding`을 호출하며 성공 뒤에만 자재/현장 삭제를 기록한다.
 - 철거 승인과 중복 제거는 `BuildingDemolitionCommandSystem`, 적용·기존 실물 반환·비용 환급은 `BuildingLifecycleApplySystem` 책임이다. 일반 생성·생산물·철거 환급은 `ItemLifecycleUtility`의 초기화를 공유하지만 각 호출자의 ECB·실패 정책은 유지한다.
+- 2026-10-02 F-004는 기존 승인 요청과 입출고 후 소유 버퍼를 공유 조회하여 Ownership의 일반 이전, 공사 수령, 철거 반환과 유효한 Destroy의 적용 대상을 구분했다. 공사 수령만 Storage Apply 뒤로 명시하고 Ownership/Building Lifecycle의 상대 순서는 추가하지 않았다. 정책은 [AGENTS.md](../../../AGENTS.md)의 F-004 계약, 코드·컴파일 근거와 실행 미검증은 [검증 기록](../V2%20Quality%20Evaluation%20Plan/Results/F004-Verification.md)을 따른다.
 - Footprint는 현장/완공 모두 회전 전 크기를 저장하며 점유 Reader가 한 번 회전한다. 배치는 세 인덱스 Writer를 기다리고, 일반 창고 입고 예약은 품목과 수량을 함께 보관한다. 세부 계약은 [AGENTS.md](../../../AGENTS.md)를 따른다.
 - Validator는 Storage 없는 현장을 포함해 두 소유 버퍼의 중복·실존·Identity·Owner를 검사한다. 진단 파일은 World별 세션/보고 순번으로 구분한다. 검사 강화가 F-003/F-004의 생산 경계 문제 해결을 뜻하지 않는다.
 - 이 절은 소스 대조 결과이며 공사 전체·실제 베이킹·Play Mode 성공을 주장하지 않는다. 이슈별 새 검증과 제한은 [품질 개선 Tasks](../V2%20Quality%20Evaluation%20Plan/V2%20Quality%20Improvement%20Tasks.md)에 기록한다.

@@ -13,10 +13,11 @@ using Unity.Transforms;
 ///   1단계 (Cancel)     : CancelConstructionRequest 소비 -> 취소 플래그 마킹, 도착 자재 월드 방출, 현장 파괴 (Cancel Wins)
 ///   2단계 (Material)   : SupplyConstructionMaterialRequest 소비 -> 취소된 현장 거부, 자재 요구량 충족, 자재 소유권 이전
 ///   3단계 (Completion) : 완공 조건 검사 -> 취소된 현장 보류, 보관 자재 소비, 완공 건물 인스턴스화, 현장 파괴
-/// - 시스템 간 얽혀있던 [UpdateBefore]/[UpdateAfter] 어트리뷰트 지옥을 제거하고 단일 트랜잭션 수명주기 확립.
+/// - 입출고 적용 후 소유 버퍼를 읽어 철거 반환 대상의 공급을 거부한다. 철거 적용 결과를 기다리지 않는다.
 /// - EndStateApplyEntityCommandBufferSystem을 통해 ECB로 변경을 반영한다. 전체 rollback을 보장하지 않는다.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
+[UpdateAfter(typeof(BuildingItemStorageApplySystem))]
 [UpdateBefore(typeof(BuildingLifecycleApplySystem))]
 public partial struct ConstructionLifecycleApplySystem : ISystem
 {
@@ -25,13 +26,15 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
     private EntityQuery _siteQuery;
     private EntityQuery _prefabDbQuery;
     private EntityQuery _buildingConfigQuery;
+    private EntityQuery _demolishQuery;
 
     private ComponentLookup<ConstructionSite> _siteLookup;
     private BufferLookup<ConstructionMaterialRequirementElement> _reqBufferLookup;
     private BufferLookup<StoredItemElement> _storedBufferLookup;
+    private BufferLookup<ProductItemElement> _productBufferLookup;
+    private ComponentLookup<DestroyItemRequest> _destroyRequestLookup;
     private ComponentLookup<GridPosition> _gridPosLookup;
     private ComponentLookup<ItemIdentity> _itemIdentityLookup;
-    private ComponentLookup<ItemOwnership> _itemOwnershipLookup;
     private ComponentLookup<PlacementStamp> _stampLookup;
     private BufferLookup<BuildingPrefabElement> _prefabBufferLookup;
     private BufferLookup<BuildingConfigElement> _configBufferLookup;
@@ -59,12 +62,17 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
             .WithAll<BuildingConfig, BuildingConfigElement>()
             .Build();
 
+        _demolishQuery = SystemAPI.QueryBuilder()
+            .WithAll<DemolishBuildingRequest>()
+            .Build();
+
         _siteLookup = state.GetComponentLookup<ConstructionSite>(false);
         _reqBufferLookup = state.GetBufferLookup<ConstructionMaterialRequirementElement>(false);
         _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(false);
+        _productBufferLookup = state.GetBufferLookup<ProductItemElement>(true);
+        _destroyRequestLookup = state.GetComponentLookup<DestroyItemRequest>(true);
         _gridPosLookup = state.GetComponentLookup<GridPosition>(true);
         _itemIdentityLookup = state.GetComponentLookup<ItemIdentity>(true);
-        _itemOwnershipLookup = state.GetComponentLookup<ItemOwnership>(true);
         _stampLookup = state.GetComponentLookup<PlacementStamp>(true);
         _prefabBufferLookup = state.GetBufferLookup<BuildingPrefabElement>(true);
         _configBufferLookup = state.GetBufferLookup<BuildingConfigElement>(true);
@@ -92,9 +100,10 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
         _siteLookup.Update(ref state);
         _reqBufferLookup.Update(ref state);
         _storedBufferLookup.Update(ref state);
+        _productBufferLookup.Update(ref state);
+        _destroyRequestLookup.Update(ref state);
         _gridPosLookup.Update(ref state);
         _itemIdentityLookup.Update(ref state);
-        _itemOwnershipLookup.Update(ref state);
         _stampLookup.Update(ref state);
         _prefabBufferLookup.Update(ref state);
         _configBufferLookup.Update(ref state);
@@ -109,7 +118,8 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
                 ECB = ecb,
                 SiteLookup = _siteLookup,
                 GridPosLookup = _gridPosLookup,
-                StoredBufferLookup = _storedBufferLookup
+                StoredBufferLookup = _storedBufferLookup,
+                DestroyRequestLookup = _destroyRequestLookup
             };
             currentDep = cancelJob.Schedule(_cancelRequestQuery, currentDep);
         }
@@ -117,16 +127,21 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
         // 2단계: 자재 공급 요청 일괄 처리 (취소된 현장은 엄격 거부)
         if (hasMaterialRequests)
         {
+            var demolitionRequests = _demolishQuery.ToComponentDataListAsync<DemolishBuildingRequest>(
+                Allocator.TempJob, currentDep, out var demolitionRequestsHandle);
             var materialJob = new ConstructionMaterialApplyJob
             {
                 ECB = ecb,
                 SiteLookup = _siteLookup,
                 ReqBufferLookup = _reqBufferLookup,
                 StoredBufferLookup = _storedBufferLookup,
-                ItemIdentityLookup = _itemIdentityLookup,
-                ItemOwnershipLookup = _itemOwnershipLookup
+                ProductBufferLookup = _productBufferLookup,
+                DestroyRequestLookup = _destroyRequestLookup,
+                DemolitionRequests = demolitionRequests,
+                ItemIdentityLookup = _itemIdentityLookup
             };
-            currentDep = materialJob.Schedule(_materialRequestQuery, currentDep);
+            var materialHandle = materialJob.Schedule(_materialRequestQuery, demolitionRequestsHandle);
+            currentDep = demolitionRequests.Dispose(materialHandle);
         }
 
         // 3단계: 완공 판정 및 완공 건물 전환 (취소 및 아이템 정리 대기 현장 보류)
@@ -165,6 +180,7 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
 public partial struct CancelConstructionApplyJob : IJobEntity
 {
     public EntityCommandBuffer ECB;
+    [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyRequestLookup;
 
     public ComponentLookup<ConstructionSite> SiteLookup;
 
@@ -211,13 +227,20 @@ public partial struct CancelConstructionApplyJob : IJobEntity
             for (int i = 0; i < storedItems.Length; i++)
             {
                 Entity item = storedItems[i].ItemEntity;
-                if (item != Entity.Null)
+                if (item == Entity.Null)
                 {
-                    ECB.SetComponent(item, ItemOwnership.WorldItem);
-                    ECB.RemoveComponent<DisableRendering>(item);
-                    ECB.SetComponent(item, new GridPosition(sitePos));
-                    ECB.SetComponent(item, LocalTransform.FromPosition(worldPos));
+                    continue;
                 }
+
+                if (DestroyRequestLookup.HasComponent(item) && DestroyRequestLookup.IsComponentEnabled(item))
+                {
+                    continue;
+                }
+
+                ECB.SetComponent(item, ItemOwnership.WorldItem);
+                ECB.RemoveComponent<DisableRendering>(item);
+                ECB.SetComponent(item, new GridPosition(sitePos));
+                ECB.SetComponent(item, LocalTransform.FromPosition(worldPos));
             }
         }
 
@@ -244,8 +267,9 @@ public partial struct ConstructionMaterialApplyJob : IJobEntity
     [ReadOnly]
     public ComponentLookup<ItemIdentity> ItemIdentityLookup;
 
-    [ReadOnly]
-    public ComponentLookup<ItemOwnership> ItemOwnershipLookup;
+    [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyRequestLookup;
+    [ReadOnly] public BufferLookup<ProductItemElement> ProductBufferLookup;
+    [ReadOnly] public NativeList<DemolishBuildingRequest> DemolitionRequests;
 
     public void Execute(Entity requestEntity, in SupplyConstructionMaterialRequest request)
     {
@@ -280,6 +304,21 @@ public partial struct ConstructionMaterialApplyJob : IJobEntity
         if (identity.Type != request.ItemType || request.ItemType == ItemTypeEnum.None)
         {
             // 아이템 종류 불일치 -> Strict Rejection
+            ECB.DestroyEntity(requestEntity);
+            return;
+        }
+
+        // 수령 승인 전에 소멸/철거 반환과의 충돌을 거부한다. 예약량은 기존 거부 정책대로 보존한다.
+        if (DestroyRequestLookup.HasComponent(request.ItemEntity) &&
+            DestroyRequestLookup.IsComponentEnabled(request.ItemEntity))
+        {
+            ECB.DestroyEntity(requestEntity);
+            return;
+        }
+
+        if (DemolishBuildingRequestLookup.ContainsBufferedItem(
+                request.ItemEntity, DemolitionRequests, StoredBufferLookup, ProductBufferLookup))
+        {
             ECB.DestroyEntity(requestEntity);
             return;
         }

@@ -115,29 +115,6 @@ public partial struct ItemLifecycleApplySystem : ISystem
     }
 }
 
-internal static class DemolishBuildingRequestLookup
-{
-    public static bool ContainsTarget(
-        Entity targetBuilding,
-        in NativeList<DemolishBuildingRequest> requests)
-    {
-        if (targetBuilding == Entity.Null)
-        {
-            return false;
-        }
-
-        for (int i = 0; i < requests.Length; i++)
-        {
-            if (requests[i].TargetBuilding == targetBuilding)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-}
-
 /// <summary>
 /// 생산 건물의 ProductResult를 소비하여 실제 아이템 엔티티를 생성하고 ProductItemElement에 반영하는 단일 워커 Burst Job.
 /// </summary>

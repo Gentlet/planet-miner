@@ -10,6 +10,7 @@ using Unity.Mathematics;
 /// [5. Consume Phase]: StateApplyGroup (Phase 5)
 /// [6. 수명주기]     : 단일 프레임 소비 (Consume-on-Apply). EndStateApplyEntityCommandBufferSystem에 의해 처리 및 요청 엔티티 파괴
 /// [7. 결과 정책]    : 유효한 요구 자재일 경우 수령(DeliveredQuantity 증가, StoredItemElement 소유권 이전). 초과/오품/무효 현장 시 Strict Rejection (수령 거부, 아이템 소유권 유지, 요청 엔티티 소비)
+///                    Destroy 대상 또는 입출고 후 철거 건물 버퍼에 남은 실물은 수령 전 거부. 기존 거부처럼 예약량은 보존하며 자동 재시도하지 않는다.
 /// [8. 안전망]       : 요청 처리 후 즉시 파괴되어 고아 요청 누수 방지
 /// </summary>
 public struct SupplyConstructionMaterialRequest : IComponentData, IRequestComponent

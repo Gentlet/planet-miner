@@ -45,7 +45,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 
 - 같은 그룹 안의 순서를 파일명이나 위 표의 나열 순서로 추정하지 않는다. 실제 `UpdateBefore`/`UpdateAfter`/`OrderLast`와 Job 의존성을 확인한다.
 - `BuildingItemStorageApplySystem`과 `RoutingApplySystem`은 `BuildingLifecycleApplySystem` 및 `ItemOwnershipApplySystem`보다 먼저 실행한다. `WorldInvariantValidationSystem`은 Synchronization의 `OrderLast`다.
-- `BuildingDemolitionCommandSystem`은 대상 유효성·타입·철거 불가 조건을 검증하고 중복을 제거한다. 거부/중복 `DemolishBuildingRequest`는 EndCommand에서 삭제하며, 남은 요청을 `BuildingLifecycleApplySystem`과 `ItemLifecycleApplySystem`이 StateApply에서 읽기 전용으로 사용한다. 두 시스템 사이의 철거 승인 전달용 `UpdateAfter`는 없다. Item Lifecycle은 요청의 임시 비동기 복사본을 사용 후 해제하고, 유효 요청은 EndStateApply에서 삭제한다. 요청은 Command 검증 전에 실체화해야 하며 이후 대상·철거 가능 조건을 변경하지 않는다. 철거 대상의 완료 생산물은 생성 없이 폐기하고 Storage/Product Spawn은 거부한다. 선소비 재료·광물은 보상하지 않으며 기존 실물 반환·건축 비용 환급·World Spawn은 유지한다. 이는 기존 실물의 동시 입고·철거 렌더 태그 경합(F-004) 해결을 뜻하지 않는다.
+- `BuildingDemolitionCommandSystem`은 대상 유효성·타입·철거 불가 조건을 검증하고 중복을 제거한다. 거부/중복 `DemolishBuildingRequest`는 EndCommand에서 삭제하며, 남은 요청을 StateApply의 수명주기·소유권 시스템이 읽기 전용으로 사용한다. Building Lifecycle과 Item Lifecycle 사이의 철거 승인 전달용 `UpdateAfter`는 없다. 각 소비자의 임시 비동기 요청 복사본은 Job 사용 후 해제하며, 유효 요청은 EndStateApply에서 삭제한다. 요청은 Command 검증 전에 실체화해야 하며 이후 대상·철거 가능 조건을 변경하지 않는다. 철거 대상의 완료 생산물은 생성 없이 폐기하고 Storage/Product Spawn은 거부한다. 선소비 재료·광물은 보상하지 않으며 기존 실물 반환·건축 비용 환급·World Spawn은 유지한다. 기존 실물의 동시 입고·철거는 아래 F-004 계약으로 조정한다.
 - 계획·테스트 이름의 `Phase7` 등은 개발 마일스톤 번호다. 런타임에 일곱 번째 실행 그룹이 있는 것은 아니다.
 
 ## 핵심 데이터와 변경 규칙
@@ -65,6 +65,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 - `StoredItemElement`는 저장품/제작 재료/공사 도착 자재, `ProductItemElement`는 생산품 출력 대기 버퍼다. 버퍼의 엔티티 참조와 `ItemOwnership`을 함께 유지한다. `Storage.SlotCount`와 `ItemRegistry`의 품목별 `MaxStack`은 서로 다른 제한이다.
 - `BuildingInputSlotElement`는 슬롯별 허용 품목을 정하고 버퍼 길이는 `Storage.SlotCount`와 같다. Crafter는 생성 시 0슬롯/빈 Whitelist로 시작하며, 레시피 변경 시 `BuildingInputSlotUtility`로 품목별 요구량을 합산하여 `ceil(요구량/MaxStack)`개의 전용 슬롯을 구성한다. 입고 예약은 해당 품목 슬롯만 사용한다. 버퍼가 없는 일반 창고에는 이 전용 슬롯 규칙을 적용하지 않는다.
 - 일반 입출고는 `BuildingItemStorageApplySystem`이 버퍼·위치·벨트 상태를 갱신하고 `TransferOwnershipRequest`를 발행한다. `ItemOwnershipApplySystem`이 소유권과 `DisableRendering`을 반영한다. 공사 자재 수령은 `ConstructionLifecycleApplySystem` 내부 `ConstructionMaterialApplyJob`이 도착량/예약량·현장 진행도·Stored 버퍼를 Job에서 직접 갱신하고, 소유권·렌더 태그·요청 삭제는 EndStateApply ECB에 기록한다. 버퍼와 Owner의 최종 일치는 Playback 이후 확인한다.
+- 2026-10-02 F-004: 같은 틱 입고·철거는 입고 후 건물 자리로 반환한다. 입출고 적용 후 승인된 철거 건물의 Stored/Product 버퍼에 남은 실물은 `DemolishBuildingRequestLookup`으로 확인한다. Ownership Apply는 해당 Transfer만 소비하고 Owner·렌더 태그를 쓰지 않으며 Building Lifecycle이 최종 반환을 기록한다. Construction Lifecycle은 Storage Apply 이후의 버퍼를 읽어 해당 실물의 공급을 도착량·예약량·현장 버퍼 변경 전에 거부한다. 공급 거부는 기존처럼 요청만 소비하고 예약량을 보존하며 자동 재시도하지 않는다. 유효한 Destroy 대상은 입출고·소유권 이전·공사 수령/취소 반환·철거 반환/벨트 정지에서 제외하고 Item Lifecycle이 삭제한다. 유효한 Destroy는 Producer의 선행 소유 버퍼 제거를 전제로 한다. 정상 출고로 철거 버퍼를 떠난 실물은 기존 출고를 유지한다. Ownership Apply와 Building Lifecycle의 상대 순서는 추가하지 않는다. 일반 공급의 중복·소유자 간 인계·예약 정산(F-003)은 별도 범위다. 구현/컴파일 확인과 실행 미검증 범위는 F-004 검증 기록에 구분한다.
 - 아이템 생성/삭제는 `ItemLifecycleApplySystem`이 담당한다. 저장된 아이템을 소비할 때는 소유 버퍼에서 먼저 제거한 뒤 `DestroyItemRequest`를 활성화한다. `TransferOwnershipRequest`만으로 소유 버퍼의 추가/제거까지 이루어지지는 않는다.
 - 일반 Spawn·생산물 생성과 건물 철거 비용 환급의 프리팹 초기화는 `Common/ItemLifecycleUtility.SpawnPrefabItem`을 공유한다. 호출자가 DB 조회·실패 정책·버퍼 등록·ECB 시점을 소유하며, 유틸리티는 런타임 구성만 같은 ECB에 기록한다. 취소/철거의 기존 실물 반환은 신규 생성과 구분한다.
 - `ProductResult`는 Execution이 기록하고 Item Lifecycle이 소비하는 임시 생산 결과 버퍼다. 생산량 `Count`는 실제 아이템 엔티티 수로 변환된다. 생산물의 슬롯 0은 주생산품이고 후속 슬롯은 부산물에 사용한다.
@@ -114,7 +115,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 - 승인된 현장은 `BuildingTypeEnum.ConstructionSite`, 위치·크기·방향·`PlacementStamp`, 자재 요구 버퍼와 보관 버퍼를 가지며 건물 공간 인덱스에 포함된다. 바닥 아이템은 배치를 막지 않고 `AwaitingItemClearance`를 표시한다. 기존 같은 타입 벨트 덮어쓰기는 새 현장 대신 방향 변경을 ECB에 기록한다.
 - `ConstructionLifecycleApplySystem`은 취소(`CancelConstructionApplyJob`)→자재 수령(`ConstructionMaterialApplyJob`)→완공(`ConstructionCompletionApplyJob`) 순서로 Job을 연결한다. `SupplyConstructionMaterialRequest`는 자재 수령 Job이 현장·품목·잔여 요구량을 확인하여 도착량/예약량·보관 소유권을 갱신한다. 현재 `ConstructionSite.Progress`는 자재 수령 비율이다. 별도 건설 작업 시간이 누적된다고 설명하지 않는다.
 - 직접 생성은 `SpawnBuildingRequest` → `BuildingLifecycleApplySystem`, 공사 완료는 `ConstructionLifecycleApplySystem`에서 별도 Spawn 요청 없이 공통 `BuildingLifecycleUtility.SpawnBuilding`을 호출한다. 두 경로 모두 타입별 런타임 구성을 주입한다. F-037은 자재 요구가 충족된 현장에서 완공한 Crafter의 생성·제작 연결을 검증했으며 전체 배치·자재 배송이나 취소·철거를 검증한 것은 아니다.
-- 공사 취소는 Cancel Job이 `Cancelled`를 즉시 설정하여 뒤의 수령·완공을 막고, 보관된 실물을 현장 위치의 월드 아이템으로 반환하며 현장/요청 삭제를 EndStateApply에 기록한다. 완료는 취소·바닥 정리 대기를 제외하고 모든 요구량 충족을 확인한 뒤 공통 Spawn 성공 시에만 자재와 현장 삭제를 기록한다. 건물 철거의 Command 검증·기존 실물 반환·건축 비용 환급은 앞의 철거 계약을 따른다. 이 설명은 중복 실물 수령(F-003)이나 동시 입고·철거(F-004)가 해결됐다는 의미가 아니다.
+- 공사 취소는 Cancel Job이 `Cancelled`를 즉시 설정하여 뒤의 수령·완공을 막고, 보관된 실물을 현장 위치의 월드 아이템으로 반환하며 현장/요청 삭제를 EndStateApply에 기록한다. 완료는 취소·바닥 정리 대기를 제외하고 모든 요구량 충족을 확인한 뒤 공통 Spawn 성공 시에만 자재와 현장 삭제를 기록한다. 건물 철거의 Command 검증·기존 실물 반환·건축 비용 환급 및 동시 입고·철거(F-004)는 앞의 계약을 따른다. 중복 실물 수령(F-003)은 별도 미해결 범위다.
 - `BuildingConfigElement.IsUnlocked`와 해금 변경 유틸리티는 있지만 연구 진행 시스템은 없다. 전력·드론·연구 건물 종류와 프리팹 등록도 해당 시뮬레이션 구현을 의미하지 않는다.
 
 ### 물류·생산

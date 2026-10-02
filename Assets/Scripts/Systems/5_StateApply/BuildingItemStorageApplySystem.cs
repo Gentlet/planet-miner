@@ -29,6 +29,7 @@ public partial struct BuildingItemStorageApplySystem : ISystem
     private BufferLookup<ProductItemElement> _productBufferLookup;
     private ComponentLookup<BeltMovementState> _beltMovementStateLookup;
     private ComponentLookup<TransferOwnershipRequest> _transferOwnershipRequestLookup;
+    private ComponentLookup<DestroyItemRequest> _destroyRequestLookup;
     private ComponentLookup<GridPosition> _gridPositionLookup;
     private ComponentLookup<Direction> _directionLookup;
     private ComponentLookup<LocalTransform> _transformLookup;
@@ -43,6 +44,7 @@ public partial struct BuildingItemStorageApplySystem : ISystem
         _productBufferLookup = state.GetBufferLookup<ProductItemElement>(false);
         _beltMovementStateLookup = state.GetComponentLookup<BeltMovementState>(false);
         _transferOwnershipRequestLookup = state.GetComponentLookup<TransferOwnershipRequest>(false);
+        _destroyRequestLookup = state.GetComponentLookup<DestroyItemRequest>(true);
         _gridPositionLookup = state.GetComponentLookup<GridPosition>(false);
         _directionLookup = state.GetComponentLookup<Direction>(false);
         _transformLookup = state.GetComponentLookup<LocalTransform>(false);
@@ -77,6 +79,7 @@ public partial struct BuildingItemStorageApplySystem : ISystem
         _productBufferLookup.Update(ref state);
         _beltMovementStateLookup.Update(ref state);
         _transferOwnershipRequestLookup.Update(ref state);
+        _destroyRequestLookup.Update(ref state);
         _gridPositionLookup.Update(ref state);
         _directionLookup.Update(ref state);
         _transformLookup.Update(ref state);
@@ -86,7 +89,8 @@ public partial struct BuildingItemStorageApplySystem : ISystem
         {
             StoredBufferLookup = _storedBufferLookup,
             BeltMovementStateLookup = _beltMovementStateLookup,
-            TransferOwnershipRequestLookup = _transferOwnershipRequestLookup
+            TransferOwnershipRequestLookup = _transferOwnershipRequestLookup,
+            DestroyRequestLookup = _destroyRequestLookup
         };
         var inputHandle = inputJob.Schedule(_inputQuery, state.Dependency);
 
@@ -100,7 +104,8 @@ public partial struct BuildingItemStorageApplySystem : ISystem
             DirectionLookup = _directionLookup,
             BeltMovementStateLookup = _beltMovementStateLookup,
             TransformLookup = _transformLookup,
-            TransferOwnershipRequestLookup = _transferOwnershipRequestLookup
+            TransferOwnershipRequestLookup = _transferOwnershipRequestLookup,
+            DestroyRequestLookup = _destroyRequestLookup
         };
 
         var outputDep = JobHandle.CombineDependencies(inputHandle, beltFence.GetReaderDependency());
@@ -118,6 +123,7 @@ public partial struct BuildingItemStorageApplySystem : ISystem
 [BurstCompile]
 public partial struct BuildingItemInputApplyJob : IJobEntity
 {
+    [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyRequestLookup;
     public BufferLookup<StoredItemElement> StoredBufferLookup;
     public ComponentLookup<BeltMovementState> BeltMovementStateLookup;
     public ComponentLookup<TransferOwnershipRequest> TransferOwnershipRequestLookup;
@@ -130,6 +136,14 @@ public partial struct BuildingItemInputApplyJob : IJobEntity
     {
         if (!inputDecision.CanDeposit || inputDecision.TargetSlotIndex < 0)
         {
+            return;
+        }
+
+        if (DestroyRequestLookup.HasComponent(entity) && DestroyRequestLookup.IsComponentEnabled(entity))
+        {
+            inputDecision.CanDeposit = false;
+            inputDecision.TargetSlotIndex = -1;
+            inputDecisionEnabled.ValueRW = false;
             return;
         }
 
@@ -169,6 +183,7 @@ public partial struct BuildingItemInputApplyJob : IJobEntity
 [BurstCompile]
 public partial struct BuildingItemOutputApplyJob : IJobEntity
 {
+    [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyRequestLookup;
     [ReadOnly]
     public NativeParallelHashMap<int2, BeltInfo> BeltMap;
 
@@ -192,6 +207,14 @@ public partial struct BuildingItemOutputApplyJob : IJobEntity
 
         Entity itemToOutput = outputDecision.ItemToOutput;
         int2 targetBeltPos = outputDecision.TargetBeltPosition;
+
+        if (DestroyRequestLookup.HasComponent(itemToOutput) && DestroyRequestLookup.IsComponentEnabled(itemToOutput))
+        {
+            outputDecision.CanOutput = false;
+            outputDecision.ItemToOutput = Entity.Null;
+            outputDecisionEnabled.ValueRW = false;
+            return;
+        }
 
         // 대상 외향 벨트가 여전히 존재하는지 확인
         if (!BeltMap.TryGetValue(targetBeltPos, out BeltInfo beltInfo))

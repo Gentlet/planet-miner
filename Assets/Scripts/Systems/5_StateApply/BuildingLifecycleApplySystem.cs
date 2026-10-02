@@ -30,6 +30,7 @@ public partial struct BuildingLifecycleApplySystem : ISystem
 
     private ComponentLookup<BuildingType> _buildingTypeLookup;
     private ComponentLookup<GridPosition> _gridPosLookup;
+    private ComponentLookup<DestroyItemRequest> _destroyRequestLookup;
     private BufferLookup<StoredItemElement> _storedBufferLookup;
     private BufferLookup<ProductItemElement> _productBufferLookup;
     private BufferLookup<BuildingConstructionMaterialElement> _materialBufferLookup;
@@ -66,6 +67,7 @@ public partial struct BuildingLifecycleApplySystem : ISystem
 
         _buildingTypeLookup = state.GetComponentLookup<BuildingType>(true);
         _gridPosLookup = state.GetComponentLookup<GridPosition>(true);
+        _destroyRequestLookup = state.GetComponentLookup<DestroyItemRequest>(true);
         _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
         _productBufferLookup = state.GetBufferLookup<ProductItemElement>(true);
         _materialBufferLookup = state.GetBufferLookup<BuildingConstructionMaterialElement>(true);
@@ -93,6 +95,7 @@ public partial struct BuildingLifecycleApplySystem : ISystem
 
         _buildingTypeLookup.Update(ref state);
         _gridPosLookup.Update(ref state);
+        _destroyRequestLookup.Update(ref state);
         _storedBufferLookup.Update(ref state);
         _productBufferLookup.Update(ref state);
         _materialBufferLookup.Update(ref state);
@@ -125,6 +128,7 @@ public partial struct BuildingLifecycleApplySystem : ISystem
                 ItemPrefabDbEntity = itemPrefabDbEntity,
                 BuildingTypeLookup = _buildingTypeLookup,
                 GridPosLookup = _gridPosLookup,
+                DestroyRequestLookup = _destroyRequestLookup,
                 StoredBufferLookup = _storedBufferLookup,
                 ProductBufferLookup = _productBufferLookup,
                 MaterialBufferLookup = _materialBufferLookup,
@@ -137,6 +141,7 @@ public partial struct BuildingLifecycleApplySystem : ISystem
             var cleanupJob = new DemolishBeltItemCleanupJob
             {
                 DemolishedBeltPositions = demolishedBeltPositions,
+                DestroyRequestLookup = _destroyRequestLookup,
                 ECB = ecb
             };
             currentDep = cleanupJob.Schedule(_beltItemQuery, currentDep);
@@ -171,6 +176,7 @@ public partial struct BuildingLifecycleApplySystem : ISystem
 [BurstCompile]
 public partial struct DemolishBeltItemCleanupJob : IJobEntity
 {
+    [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyRequestLookup;
     [ReadOnly]
     public NativeList<int2> DemolishedBeltPositions;
 
@@ -178,6 +184,11 @@ public partial struct DemolishBeltItemCleanupJob : IJobEntity
 
     public void Execute(Entity itemEntity, in GridPosition gridPos)
     {
+        if (DestroyRequestLookup.HasComponent(itemEntity) && DestroyRequestLookup.IsComponentEnabled(itemEntity))
+        {
+            return;
+        }
+
         for (int i = 0; i < DemolishedBeltPositions.Length; i++)
         {
             if (gridPos.Value.Equals(DemolishedBeltPositions[i]))
@@ -195,6 +206,7 @@ public partial struct DemolishBeltItemCleanupJob : IJobEntity
 [BurstCompile]
 public partial struct DemolishBuildingApplyJob : IJobEntity
 {
+    [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyRequestLookup;
     public EntityCommandBuffer ECB;
     public bool HasConfig;
     public Entity ConfigEntity;
@@ -253,13 +265,20 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
             for (int i = 0; i < storedItems.Length; i++)
             {
                 Entity item = storedItems[i].ItemEntity;
-                if (item != Entity.Null)
+                if (item == Entity.Null)
                 {
-                    ECB.SetComponent(item, ItemOwnership.WorldItem);
-                    ECB.RemoveComponent<DisableRendering>(item);
-                    ECB.SetComponent(item, new GridPosition(sitePos));
-                    ECB.SetComponent(item, LocalTransform.FromPosition(worldPos));
+                    continue;
                 }
+
+                if (DestroyRequestLookup.HasComponent(item) && DestroyRequestLookup.IsComponentEnabled(item))
+                {
+                    continue;
+                }
+
+                ECB.SetComponent(item, ItemOwnership.WorldItem);
+                ECB.RemoveComponent<DisableRendering>(item);
+                ECB.SetComponent(item, new GridPosition(sitePos));
+                ECB.SetComponent(item, LocalTransform.FromPosition(worldPos));
             }
         }
 
@@ -270,13 +289,20 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
             for (int i = 0; i < productItems.Length; i++)
             {
                 Entity item = productItems[i].ItemEntity;
-                if (item != Entity.Null)
+                if (item == Entity.Null)
                 {
-                    ECB.SetComponent(item, ItemOwnership.WorldItem);
-                    ECB.RemoveComponent<DisableRendering>(item);
-                    ECB.SetComponent(item, new GridPosition(sitePos));
-                    ECB.SetComponent(item, LocalTransform.FromPosition(worldPos));
+                    continue;
                 }
+
+                if (DestroyRequestLookup.HasComponent(item) && DestroyRequestLookup.IsComponentEnabled(item))
+                {
+                    continue;
+                }
+
+                ECB.SetComponent(item, ItemOwnership.WorldItem);
+                ECB.RemoveComponent<DisableRendering>(item);
+                ECB.SetComponent(item, new GridPosition(sitePos));
+                ECB.SetComponent(item, LocalTransform.FromPosition(worldPos));
             }
         }
 
