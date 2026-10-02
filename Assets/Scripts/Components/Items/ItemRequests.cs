@@ -81,6 +81,8 @@ public struct DestroyItemRequest : IEnableableRequest
 /// [5. Consume Phase]   : StateApplyGroup
 /// [6. 수명주기 원칙]    : Consume-on-Apply (처리 즉시 SetComponentEnabled(false)로 비활성화)
 /// [7. 실패 정책]        : TargetOwner가 유효하지 않은 경우 무시하고 비활성화(Drop)
+///                      유효한 Destroy 대상 또는 입출고 후 철거 소유 버퍼에 남은 실물도 요청만 소비.
+///                      이 경우 소멸/철거 반환 경로가 최종 상태를 적용하며 Transfer는 Owner/렌더 태그를 쓰지 않는다.
 /// [8. 안전망 정책]      : 비정상 미처리 요청은 WorldInvariantValidationSystem에서 감지
 /// </summary>
 public struct TransferOwnershipRequest : IEnableableRequest

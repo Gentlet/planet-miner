@@ -12,22 +12,34 @@ using Unity.Rendering;
 /// - 소유권 전환(수납 <-> 방출)에 따라 DisableRendering 컴포넌트를 추가/제거하여 렌더링 표시 상태 동기화.
 /// - 단일 워커 Burst Job(ItemOwnershipApplyJob)으로 소유권 변경 순차 적용.
 /// - Consume-on-Apply 원칙에 따라 처리 즉시 TransferOwnershipRequest를 비활성화.
+/// - Destroy 대상과 철거 소유 버퍼에 남은 실물은 요청만 소비하고 최종 변경을 해당 수명주기 경로에 맡긴다.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
 [BurstCompile]
 public partial struct ItemOwnershipApplySystem : ISystem
 {
     private EntityStorageInfoLookup _entityStorageInfoLookup;
+    private ComponentLookup<DestroyItemRequest> _destroyRequestLookup;
+    private BufferLookup<StoredItemElement> _storedBufferLookup;
+    private BufferLookup<ProductItemElement> _productBufferLookup;
     private EntityQuery _requestQuery;
+    private EntityQuery _demolishQuery;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         _entityStorageInfoLookup = state.GetEntityStorageInfoLookup();
+        _destroyRequestLookup = state.GetComponentLookup<DestroyItemRequest>(true);
+        _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
+        _productBufferLookup = state.GetBufferLookup<ProductItemElement>(true);
 
         _requestQuery = SystemAPI.QueryBuilder()
             .WithAllRW<ItemOwnership>()
             .WithAllRW<TransferOwnershipRequest>()
+            .Build();
+
+        _demolishQuery = SystemAPI.QueryBuilder()
+            .WithAll<DemolishBuildingRequest>()
             .Build();
     }
 
@@ -39,19 +51,28 @@ public partial struct ItemOwnershipApplySystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         _entityStorageInfoLookup.Update(ref state);
+        _destroyRequestLookup.Update(ref state);
+        _storedBufferLookup.Update(ref state);
+        _productBufferLookup.Update(ref state);
 
         var ecbSystem = state.World.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
         var ecb = ecbSystem.CreateCommandBuffer();
+        var demolitionRequests = _demolishQuery.ToComponentDataListAsync<DemolishBuildingRequest>(
+            Allocator.TempJob, state.Dependency, out var demolitionRequestsHandle);
 
         var job = new ItemOwnershipApplyJob
         {
             EntityStorageInfoLookup = _entityStorageInfoLookup,
+            DestroyRequestLookup = _destroyRequestLookup,
+            StoredBufferLookup = _storedBufferLookup,
+            ProductBufferLookup = _productBufferLookup,
+            DemolitionRequests = demolitionRequests,
             ECB = ecb
         };
 
-        var handle = job.Schedule(_requestQuery, state.Dependency);
-        ecbSystem.AddJobHandleForProducer(handle);
-        state.Dependency = handle;
+        var handle = job.Schedule(_requestQuery, demolitionRequestsHandle);
+        state.Dependency = demolitionRequests.Dispose(handle);
+        ecbSystem.AddJobHandleForProducer(state.Dependency);
     }
 }
 
@@ -64,6 +85,11 @@ public partial struct ItemOwnershipApplyJob : IJobEntity
     [ReadOnly]
     public EntityStorageInfoLookup EntityStorageInfoLookup;
 
+    [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyRequestLookup;
+    [ReadOnly] public BufferLookup<StoredItemElement> StoredBufferLookup;
+    [ReadOnly] public BufferLookup<ProductItemElement> ProductBufferLookup;
+    [ReadOnly] public NativeList<DemolishBuildingRequest> DemolitionRequests;
+
     public EntityCommandBuffer ECB;
 
     public void Execute(
@@ -72,6 +98,20 @@ public partial struct ItemOwnershipApplyJob : IJobEntity
         RefRW<TransferOwnershipRequest> request,
         EnabledRefRW<TransferOwnershipRequest> requestEnabled)
     {
+        if (DestroyRequestLookup.HasComponent(entity) && DestroyRequestLookup.IsComponentEnabled(entity))
+        {
+            requestEnabled.ValueRW = false;
+            return;
+        }
+
+        // 입출고 적용 후에도 철거 대상 버퍼에 남은 실물은 철거 경로만 최종 반환한다.
+        if (DemolishBuildingRequestLookup.ContainsBufferedItem(
+                entity, DemolitionRequests, StoredBufferLookup, ProductBufferLookup))
+        {
+            requestEnabled.ValueRW = false;
+            return;
+        }
+
         Entity targetOwner = request.ValueRO.TargetOwner;
 
         if (targetOwner == Entity.Null)
