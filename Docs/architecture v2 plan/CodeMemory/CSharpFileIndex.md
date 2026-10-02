@@ -32,7 +32,9 @@
 | `Assets/Scripts/Components/Common/IRequestComponent.cs` | `IRequestComponent`, `IEnableableRequest` 정의. |
 | `Assets/Scripts/Components/Construction/BuildingPlacementRequests.cs` | `BuildingPlacementRequest`, `PlacementRequestCandidateElement` 정의. |
 | `Assets/Scripts/Components/Construction/ConstructionComponents.cs` | `ConstructionSiteFlags`, `ConstructionSite`, `ConstructionMaterialRequirementElement` 정의. |
-| `Assets/Scripts/Components/Construction/ConstructionRequests.cs` | `SupplyConstructionMaterialRequest`, `CancelConstructionRequest` 정의. |
+| `Assets/Scripts/Components/Construction/ConstructionRequests.cs` | 운송 참조형 Supply, 운송 취소, 현장 취소 요청 정의. |
+| `Assets/Scripts/Components/Construction/ConstructionMaterialDeliveryComponents.cs` | 공급원/현장/실물의 운송 기록, 예약 상태와 EndStateApply 이후 공개 결과. |
+| `Assets/Scripts/Systems/5_StateApply/ConstructionLifecycleApplySystem.cs` | 공사 수명주기 시스템과 취소/운송 등록/수령/완공/정산 Job, 공유 연산을 같은 파일에 둔다. |
 | `Assets/Scripts/Components/Construction/PlacementComponents.cs` | `PlacementFlags`, `PlacementValidationCode`, `PlacementValidationResult`, `PlacementCandidate` 정의. |
 | `Assets/Scripts/Components/Items/ItemComponents.cs` | `ItemTypeEnum`, `ItemIdentity`, `ItemOwnership` 정의. |
 | `Assets/Scripts/Components/Items/ItemConfigComponents.cs` | `ItemDataBlob`, `ItemRegistryBlob`, `ItemRegistry` 정의. |

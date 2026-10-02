@@ -86,8 +86,10 @@ public class Phase7ConstructionCancelTests : EcsWorldTestFixture
 
     private Entity RequestSupply(Entity site, Entity item, ItemTypeEnum type)
     {
+        Entity delivery = Entities.CreateConstructionMaterialDelivery(site, item, type);
+        Entity owner = _entityManager.GetComponentData<ItemOwnership>(item).Owner;
         var request = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(site, item, type));
+        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(delivery, owner));
         return request;
     }
 
@@ -129,6 +131,7 @@ public class Phase7ConstructionCancelTests : EcsWorldTestFixture
         // 2. 동일 프레임에 마지막 자재 공급 요청과 취소 요청 동시 발행
         var item = CreateWorldItem(ItemTypeEnum.Iron);
         var supplyReq = RequestSupply(site, item, ItemTypeEnum.Iron);
+        Entity source = _entityManager.GetComponentData<ItemOwnership>(item).Owner;
         var cancelReq = RequestCancel(site);
 
         // 3. Full Pipeline 1회 실행:
@@ -140,11 +143,11 @@ public class Phase7ConstructionCancelTests : EcsWorldTestFixture
         Assert.IsFalse(_entityManager.Exists(cancelReq));
         Assert.IsFalse(_entityManager.Exists(site), "현장은 취소되어 파괴되어야 함");
 
-        // 방금 도착했던 자재도 소비/파괴되지 않고 월드 아이템으로 반환되어야 함
-        Assert.IsTrue(_entityManager.Exists(item), "공급된 자재는 파괴되지 않고 월드로 반환되어야 함");
+        // 수령 전에 취소되었으므로 공급원에 있던 실물을 변경하지 않는다.
+        Assert.IsTrue(_entityManager.Exists(item), "거부된 실물은 공급원에 보존되어야 함");
         var ownership = _entityManager.GetComponentData<ItemOwnership>(item);
-        Assert.AreEqual(Entity.Null, ownership.Owner, "자재 소유권은 WorldItem이어야 함");
-        Assert.IsFalse(_entityManager.HasComponent<DisableRendering>(item), "렌더링이 활성화되어야 함");
+        Assert.AreEqual(source, ownership.Owner, "자재 소유권은 공급원에 유지되어야 함");
+        Assert.IsTrue(_entityManager.HasComponent<DisableRendering>(item));
 
         var beltQuery = _entityManager.CreateEntityQuery(ComponentType.ReadOnly<BeltComponent>());
         Assert.AreEqual(0, beltQuery.CalculateEntityCount(), "완공 건물이 생성되어서는 안 됨");

@@ -70,7 +70,7 @@
 
 ### 4.1 같은 프레임 소유권 요청
 
-실제 정의는 [ItemRequests.cs](../../Assets/Scripts/Components/Item/ItemRequests.cs), Producer는 [BuildingItemStorageApplySystem.cs](../../Assets/Scripts/Systems/5_StateApply/BuildingItemStorageApplySystem.cs), Consumer는 [ItemOwnershipApplySystem.cs](../../Assets/Scripts/Systems/5_StateApply/ItemOwnershipApplySystem.cs)를 따른다.
+실제 정의는 [ItemRequests.cs](../../Assets/Scripts/Components/Items/ItemRequests.cs), Producer는 [BuildingItemStorageApplySystem.cs](../../Assets/Scripts/Systems/5_StateApply/BuildingItemStorageApplySystem.cs), Consumer는 [ItemOwnershipApplySystem.cs](../../Assets/Scripts/Systems/5_StateApply/ItemOwnershipApplySystem.cs)를 따른다.
 
 ```text
 StateApply: BuildingItemStorageApplySystem
@@ -79,11 +79,11 @@ StateApply: ItemOwnershipApplySystem
   TargetOwner == Entity.Null → 월드 소유권 반영
   유효한 TargetOwner → 저장 소유권 반영
   무효한 TargetOwner → 요청 Drop
-  요청 비활성화; 필요한 렌더링 구조 변경은 EndStateApply ECB에 기록
-EndStateApply ECB 재생 → Synchronization에서 요청 잔류 검사
+  요청 즉시 비활성화, ProcessedInStateApply 유지; 렌더링 변경과 처리 표시 초기화는 EndStateApply ECB에 기록
+EndStateApply ECB 재생 → 처리 표시 초기화 → Synchronization에서 요청 잔류 검사
 ```
 
-- 요청 대상은 컴포넌트가 붙은 Item이므로 실제 정의에는 `TargetOwner`만 있다. 별도 `TargetItem`을 추가하지 않는다.
+- 요청 대상은 컴포넌트가 붙은 Item이며 입력은 `TargetOwner`다. 별도 `TargetItem`을 추가하지 않는다. `ProcessedInStateApply`는 처리 결과의 성공 여부가 아니라 같은 StateApply의 충돌 검사에 사용하는 소비 표시다. 공사 등록/수령은 활성 요청과 이 표시를 함께 검사하므로 Ownership 실행 순서에 관계없이 같은 틱의 Transfer 인계를 거부한다. 유효한 Destroy 대상은 즉시 요청만 비활성화하고 삭제 엔티티에 접근할 표시 초기화 ECB를 기록하지 않는다.
 - Producer는 DecisionGroup에서 소유권 요청을 바로 발행하는 예제가 아니라, 예약을 거친 StateApply 흐름을 따른다. Producer에는 Consumer보다 먼저 실행하는 순서가 지정되어 있다.
 - 이것은 현재 소유권 필드 요청의 수명주기 설명이다. 버퍼 이전 전체의 성공 결과를 제공하는 범용 트랜잭션 API를 뜻하지 않는다. 무효 소유자 요청을 Drop하는 것을 다른 도메인의 예약·화물 정리 완료로 간주하지 않는다.
 

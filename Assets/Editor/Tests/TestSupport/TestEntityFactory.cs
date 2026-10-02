@@ -20,6 +20,24 @@ namespace PlanetMiner.Tests
             _entityManager = entityManager;
         }
 
+        /// <summary>수령 테스트의 실물을 허용된 공급원에 보관하고 실제 등록 대상 운송을 만든다.</summary>
+        public Entity CreateConstructionMaterialDelivery(Entity site, Entity item, ItemTypeEnum type, bool reserveMaterial = false)
+        {
+            Entity source = _entityManager.GetComponentData<ItemOwnership>(item).Owner;
+            if (source == Entity.Null)
+            {
+                source = _entityManager.CreateEntity(typeof(BuildingType), typeof(Storage));
+                _entityManager.SetComponentData(source, new BuildingType(BuildingTypeEnum.Storage));
+                _entityManager.SetComponentData(source, new Storage(20));
+                _entityManager.AddBuffer<StoredItemElement>(source).Add(new StoredItemElement(item, type, 0));
+                _entityManager.SetComponentData(item, ItemOwnership.Stored(source));
+                _entityManager.AddComponent<Unity.Rendering.DisableRendering>(item);
+            }
+            var delivery = _entityManager.CreateEntity();
+            _entityManager.AddComponentData(delivery, new ConstructionMaterialDelivery(site, source, item, type, reserveMaterial));
+            return delivery;
+        }
+
         public Entity CreateResourceNode(
             int2 position,
             ItemTypeEnum resourceType,

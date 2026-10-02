@@ -118,7 +118,9 @@ public static class BuildingConfigLoader
             }
 
             // 용량 및 속도 검증
-            if (buildingType == BuildingTypeEnum.Storage || buildingType == BuildingTypeEnum.MainFacility)
+            if (buildingType == BuildingTypeEnum.Storage ||
+                buildingType == BuildingTypeEnum.MainFacility ||
+                buildingType == BuildingTypeEnum.DroneStation)
             {
                 if (entry.storageCapacity <= 0 || entry.storageCapacity > GameConstants.MaxStorageSlots)
                 {

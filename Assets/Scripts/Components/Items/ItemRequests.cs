@@ -80,6 +80,8 @@ public struct DestroyItemRequest : IEnableableRequest
 /// [4. Create Phase]    : StateApplyGroup
 /// [5. Consume Phase]   : StateApplyGroup
 /// [6. 수명주기 원칙]    : Consume-on-Apply (처리 즉시 SetComponentEnabled(false)로 비활성화)
+///                      일반 처리의 ProcessedInStateApply는 EndStateApply까지 유지하여 같은 틱의 중복 인계를 차단한다.
+///                      ECB에서 표시를 지우며, 유효한 Destroy 대상은 삭제와 경합하는 초기화 ECB를 기록하지 않는다.
 /// [7. 실패 정책]        : TargetOwner가 유효하지 않은 경우 무시하고 비활성화(Drop)
 ///                      유효한 Destroy 대상 또는 입출고 후 철거 소유 버퍼에 남은 실물도 요청만 소비.
 ///                      이 경우 소멸/철거 반환 경로가 최종 상태를 적용하며 Transfer는 Owner/렌더 태그를 쓰지 않는다.
@@ -88,9 +90,11 @@ public struct DestroyItemRequest : IEnableableRequest
 public struct TransferOwnershipRequest : IEnableableRequest
 {
     public Entity TargetOwner; // 새로운 소유자 (Entity.Null이면 월드로 방출)
+    public bool ProcessedInStateApply;
 
     public TransferOwnershipRequest(Entity targetOwner)
     {
         TargetOwner = targetOwner;
+        ProcessedInStateApply = false;
     }
 }

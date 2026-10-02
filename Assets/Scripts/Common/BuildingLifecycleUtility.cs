@@ -134,11 +134,8 @@ public static class BuildingLifecycleUtility
                 break;
 
             case BuildingTypeEnum.Storage:
-                ecb.AddComponent(building, new Storage(storageCapacity > 0 ? storageCapacity : 20));
-                ecb.AddBuffer<StoredItemElement>(building);
-                ecb.AddComponent(building, new StorageFilter());
-                ecb.AddComponent<BuildingItemOutputDecision>(building);
-                ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);
+            case BuildingTypeEnum.DroneStation:
+                AttachStorageComponents(ref ecb, building, storageCapacity);
                 break;
 
             case BuildingTypeEnum.Splitter:
@@ -155,23 +152,24 @@ public static class BuildingLifecycleUtility
 
             case BuildingTypeEnum.MainFacility:
                 ecb.AddComponent<IndestructibleBuilding>(building);
-                if (storageCapacity > 0)
-                {
-                    ecb.AddComponent(building, new Storage(storageCapacity));
-                    ecb.AddBuffer<StoredItemElement>(building);
-                    ecb.AddComponent(building, new StorageFilter());
-                    ecb.AddComponent<BuildingItemOutputDecision>(building);
-                    ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);
-                }
+                AttachStorageComponents(ref ecb, building, storageCapacity);
                 break;
 
             case BuildingTypeEnum.PowerPole:
             case BuildingTypeEnum.CoalGenerator:
-            case BuildingTypeEnum.DroneStation:
             case BuildingTypeEnum.ResearchBuilding:
                 // 전력/드론/연구 도메인 컴포넌트는 해당 Phase(Phase 8, 9, 10)에서 확장
                 break;
         }
+    }
+
+    private static void AttachStorageComponents(ref EntityCommandBuffer ecb, Entity building, int storageCapacity)
+    {
+        ecb.AddComponent(building, new Storage(storageCapacity > 0 ? storageCapacity : 20));
+        ecb.AddBuffer<StoredItemElement>(building);
+        ecb.AddComponent(building, new StorageFilter());
+        ecb.AddComponent<BuildingItemOutputDecision>(building);
+        ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);
     }
 
     public static int2 GetDefaultFootprint(BuildingTypeEnum type)

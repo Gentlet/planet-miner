@@ -2,15 +2,15 @@
 
 - 날짜: 2026-10-02
 - [Task](../V2%20Quality%20Improvement%20Tasks.md#f-004--같은-프레임-입고철거의-렌더-태그-순서-의존) · 최초 평가 [Q02](Q02.md) · 철거 평가 [Q28](Q28.md)
-- 상태: 승인된 정책 구현·컴파일 완료. 테스트 및 실제 그룹 실행은 미수행.
+- 상태: 승인된 정책 구현·컴파일 완료. 후속 F-003에서 공사 공급 충돌과 Destroy/Transfer 일부 경계를 EditMode로 검증했다. 일반 입고+철거의 실제 정렬 그룹 실행은 미수행.
 
 ## 확정 정책과 범위
 
 정책의 기준은 [AGENTS.md](../../../../AGENTS.md)의 F-004 계약이다. 같은 틱 입고·철거는 입고 후 건물 자리로 반환한다. 철거 버퍼에 남은 실물의 공급을 거부하며, 유효한 Destroy를 유지하고 충돌 인계를 거부한다. 각 기존 시스템은 자신의 적용 대상만 변경한다.
 
-F-005의 Command 승인, 완료 생산물 폐기, Storage/Product Spawn 거부, 선소비 미보상, 기존 실물 반환·건축 비용 환급·World Spawn 유지 계약은 바꾸지 않았다. 공급 거부는 기존과 같이 요청을 소비하고 예약량을 보존한다. 요청에 예약 식별 정보가 없으므로 임의의 예약 차감·재시도 경로를 추가하지 않았다. 일반 공급의 중복·기존 소유자 인계·예약 정산(F-003)은 별도 범위다.
+F-005의 Command 승인, 완료 생산물 폐기, Storage/Product Spawn 거부, 선소비 미보상, 기존 실물 반환·건축 비용 환급·World Spawn 유지 계약은 바꾸지 않았다. F-004 충돌의 공급 거부는 요청을 소비하고 활성 예약을 보존한다. 최초 F-004 구현 당시에는 요청에 운송/예약 식별 정보가 없어 임의의 예약 차감·재시도를 추가하지 않았다. 후속 [F-003](F003-Verification.md)은 운송 키와 건별 정산을 도입했으며, 일반 최종 거부의 해당 예약 해제와 F-004 충돌의 예약 보존을 구분한다. F-004 충돌의 자동 재시도는 지원하지 않는다.
 
-## 변경한 코드
+## 최초 F-004 구현에서 변경한 코드
 
 - `Common/DemolishBuildingRequestLookup.cs`: Item Lifecycle 파일에 있던 기존 조회를 이동하고, 승인된 철거 요청의 Stored/Product 버퍼에 실물이 남아 있는지 확인하는 조회를 추가했다. 별도 승인·반환 목록이나 영속 상태는 생성하지 않는다.
 - `BuildingItemStorageApplySystem`: 활성 Destroy 대상은 입출고 결정만 소비하고 버퍼·위치·이동·Transfer를 변경하지 않는다. 그 외의 기존 입출고와 벨트 Fence는 유지한다.
@@ -26,14 +26,14 @@ Storage Apply의 Input→Output Job과 기존 Fence/Dependency를 유지한다. 
 
 Ownership과 Construction의 철거 요청 임시 복사본은 `ToComponentDataListAsync` 핸들 뒤에 소비 Job을 연결하고 사용 후 해제한다. 마지막 핸들은 `state.Dependency`와 EndStateApply의 producer에 전달한다. 전체 World 완료, 중간 Playback, 새로운 Sync Point는 추가하지 않았다.
 
-다음 결과는 소스 경로 분석이며 이번 실행 관측이 아니다.
+다음은 최초 F-004 구현 당시의 소스 경로 분석이다. 후속 실행으로 확인한 부분은 아래 별도 절에 기록한다.
 
 1. **입고+철거:** Storage가 실물을 버퍼에 추가한다. Ownership은 버퍼 소속으로 철거 반환임을 확인해 Transfer만 소비한다. 철거 ECB만 최종 World Owner·건물 위치·태그 제거를 기록하므로 기존 두 ECB의 Add/Remove 경합이 제거된다. 새 입고품의 이동은 Storage Apply가 이미 비활성화한다. 건물과 소유 버퍼는 EndStateApply에서 삭제된다.
 2. **출고+철거:** 정상 출고는 원본 버퍼에서 실물을 제거하므로 조회상 철거 반환 대상이 아니다. 일반 Transfer가 World Owner·태그 제거를 적용하고 기존 출고 위치·이동을 유지한다. 출력 벨트도 철거되면 기존 Cleanup이 정지시킨다.
 3. **공급+철거:** 입출고 이후에도 철거 Stored/Product 버퍼에 남은 실물은 수령 승인 전에 거부한다. 도착량·예약량·현장 버퍼·렌더 명령을 기록하지 않고 요청만 소비한다. 현재 Owner가 월드인 이번 틱 입고품도 버퍼 소속으로 식별한다.
 4. **Destroy+인계/반환:** 대상의 활성 Destroy를 각 변경 경계에서 확인하여 충돌한 입출고·Transfer·Supply·반환/벨트 정지 명령을 제외한다. Item Lifecycle의 삭제는 유지한다. 유효한 Destroy는 Producer의 선행 소유 버퍼 제거를 전제로 하며, 잘못된 잔류 버퍼의 전역 복구나 공사 도착량 재산정은 구현하지 않았다.
 
-## 새로 수행한 검증
+## 최초 F-004 구현 시 수행한 검증
 
 - `Verify-Unity.ps1 -CompileOnly`는 모드 선택 오류로 컴파일 시작 전에 실패했다. 래퍼 자체는 수정하지 않았으며 직접 Unity CLI로 전환했다.
 - Unity 6000.4.11f1의 연결된 Editor에서 `recompile --focus false` 후 `recompile_status`를 확인했다.
@@ -44,8 +44,16 @@ Ownership과 Construction의 철거 요청 임시 복사본은 `ToComponentDataL
 
 원본 로그: [컴파일 시작](../../../../Logs/QualityImprovement/F004/recompile-start.json), [최종 상태](../../../../Logs/QualityImprovement/F004/recompile-status.json), [Editor 상태](../../../../Logs/QualityImprovement/F004/editor-status.json), [어셈블리 최신성](../../../../Logs/QualityImprovement/F004/assembly-freshness.json). 로그는 로컬 검증 자료다.
 
+## F-003 후속 검증 근거 (2026-10-02)
+
+최초 F-004 구현에서는 테스트를 추가하거나 실행하지 않았다. 이후 F-003에서 추가한 아래 사례가 후속 리뷰 검증 및 중복 방어 정리 후 `Phase7ConstructionMaterialTests` 실행에 포함됐다. 자재 테스트 클래스 전체는 **26/26**, 실패/Skipped/Inconclusive 0이며 아래 F-004 관련 조건은 그중 4건이다. 이번 문서 갱신은 기존 소스와 실행 기록을 연결한 것이며 새 컴파일/테스트 실행이 아니다.
+
+- `F004Conflict_PreservesRegisteredReservationUntilExplicitCancellation`의 철거/Destroy 두 조건: 공급 요청 소비, Delivered=0, 현장 Stored 비움, 기존 Owner 및 운송의 활성 예약 보존, 해당 충돌 결과, 명시적 운송 취소 후 예약 해제를 확인했다. 철거 요청은 fixture가 직접 구성하므로 실제 Command 승인→입고→철거 전체 그룹의 재현은 아니다.
+- `DestroyedTransfer_DoesNotRecordCleanupCommandsAgainstDeletedItem`의 Ownership 선행/후행 두 조건: Item Lifecycle과 Ownership의 실행 순서를 바꿔 ECB를 재생한 뒤 실물 삭제, 공사 예약 보존 및 DestroyConflict 결과를 확인했다. Producer가 원래 소유 버퍼에서 실물을 먼저 제거하는 유효한 Destroy 계약을 전제로 한다.
+- 근거: [테스트 소스](../../../../Assets/Editor/Tests/Phase7ConstructionMaterialTests.cs) · [F-003 구현/검증 기록](F003-Verification.md) · [정리 후 26/26 결과](../../../../Logs/QualityImprovement/F003/cleanup/verification-live.json) · [후속 재컴파일](../../../../Logs/QualityImprovement/F003/cleanup/recompile_status.json)
+
 ## 실행 미검증과 남은 범위
 
-새 테스트 작성·assertion 보강, 기존 EditMode 실행, 실제 정렬 그룹의 양쪽 ECB 순서 재현은 수행하지 않았다. 컴파일 성공을 최종 Owner·소유 버퍼·위치·DisableRendering의 런타임 일치 증거로 확대하지 않는다. Play Mode, 실제 렌더링·베이킹·성능도 검증하지 않았다.
+일반 입고+철거를 실제 정렬 그룹에서 실행하여 최종 Owner·소유 버퍼·위치·DisableRendering을 확인하는 검증과 해당 철거 경로의 양쪽 ECB 순서 재현은 여전히 미수행이다. 위 공급 거부·Destroy 일부 경계의 통과를 전체 물류/반환 경로의 런타임 일치 증거로 확대하지 않는다. Play Mode, 실제 렌더링·베이킹·성능도 검증하지 않았다.
 
-F-003의 일반 중복 공급 및 소유 버퍼 인계, 거부 시 예약 정산, 잘못된 외부 요청의 전역 보정은 이번 완료 범위가 아니다. Q02/Q28의 원본 평가 기록은 수정하지 않았다.
+일반 중복 공급·소유 버퍼 인계·운송별 정산의 구현과 검증은 F-003 기록에서 별도로 다룬다. 잘못된 외부 요청의 전역 보정은 구현하지 않았다. Q02/Q28의 원본 평가 기록은 수정하지 않았다.
