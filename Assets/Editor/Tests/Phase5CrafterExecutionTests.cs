@@ -12,8 +12,7 @@ using Unity.Mathematics;
 /// </summary>
 public class Phase5CrafterExecutionTests : EcsWorldTestFixture
 {
-    private BlobAssetReference<RecipeRegistryBlob> _recipeBlob;
-    private BlobAssetReference<ItemRegistryBlob> _itemBlob;
+    private Entity _itemConfig;
     private SystemHandle _crafterDecisionHandle;
     private SystemHandle _crafterExecutionHandle;
     private SystemHandle _crafterStateApplyHandle;
@@ -26,9 +25,8 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         base.SetUp();
         CreateGameplayPrefabDatabases();
 
-        // 1. 레시피 레지스트리 전역 싱글톤 초기화
-        _recipeBlob = RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
-        _itemBlob = ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
+        // 레시피 설정은 각 테스트가 처음 게시할 때 선택한다.
+        _itemConfig = ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
 
         // 2. 시스템 핸들 획득
         _crafterDecisionHandle = _world.GetOrCreateSystem(typeof(CrafterDecisionSystem));
@@ -36,20 +34,6 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         _crafterStateApplyHandle = _world.GetOrCreateSystem(typeof(CrafterStateApplySystem));
         _lifecycleHandle = _world.GetOrCreateSystem(typeof(ItemLifecycleApplySystem));
         _endStateApplyEcb = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
-    }
-
-    [TearDown]
-    public override void TearDown()
-    {
-        if (_itemBlob.IsCreated)
-        {
-            _itemBlob.Dispose();
-        }
-        if (_recipeBlob.IsCreated)
-        {
-            _recipeBlob.Dispose();
-        }
-        base.TearDown();
     }
 
     private Entity CreateCrafter(int recipeId = 1, float speed = 1.0f)
@@ -96,6 +80,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
     [Test]
     public void Test02_DisabledCrafterDecision_IsExcludedFromExecution()
     {
+        RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
         var crafter = CreateCrafter(recipeId: 1);
         CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore);
 
@@ -135,11 +120,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
           ]
         }";
 
-        if (_recipeBlob.IsCreated)
-        {
-            _recipeBlob.Dispose();
-        }
-        _recipeBlob = RecipeInitSystem.InitializeRecipeRegistry(_entityManager, customJson);
+        RecipeInitSystem.InitializeRecipeRegistry(_entityManager, customJson);
 
         var crafter = CreateCrafter(recipeId: 10);
         CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore);
@@ -201,11 +182,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
           ]
         }";
 
-        if (_recipeBlob.IsCreated)
-        {
-            _recipeBlob.Dispose();
-        }
-        _recipeBlob = RecipeInitSystem.InitializeRecipeRegistry(_entityManager, customJson);
+        RecipeInitSystem.InitializeRecipeRegistry(_entityManager, customJson);
 
         var crafter = CreateCrafter(recipeId: 10);
         CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore);
@@ -217,7 +194,9 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         var stateMid = _entityManager.GetComponentData<CrafterState>(crafter);
         Assert.AreEqual(1.0f, stateMid.Progress, 0.0001f);
 
-        int maxStack = _itemBlob.Value.GetMaxStack(ItemTypeEnum.Copper);
+        var itemRegistry = _entityManager.GetComponentData<ItemRegistry>(_itemConfig);
+        int maxStack = itemRegistry.GetMaxStack(
+            _entityManager.GetBuffer<ItemConfigElement>(_itemConfig, true), ItemTypeEnum.Copper);
         // 2. 부산품2(Slot 2: Copper)만 MaxStack만큼 채움 (Slot 0, 1은 여유 공간 있음)
         NativeArray<Entity> dummyItems = new NativeArray<Entity>(maxStack, Allocator.Temp);
         for (int i = 0; i < maxStack; i++)

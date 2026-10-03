@@ -637,10 +637,14 @@ public partial class WorldInvariantValidationSystem : SystemBase
 
         // 2. [역방향 검증] Storage Buffer -> Stored Item & 슬롯/스택/필터 세부 검증
         ItemRegistry itemRegistry = default;
-        bool hasItemRegistry = SystemAPI.HasSingleton<ItemRegistry>();
-        if (hasItemRegistry)
+        DynamicBuffer<ItemConfigElement> itemConfigs = default;
+        bool hasItemRegistry = SystemAPI.TryGetSingletonEntity<ItemRegistry>(out var itemRegistryEntity);
+        var itemConfigLookup = SystemAPI.GetBufferLookup<ItemConfigElement>(true);
+        bool hasItemConfig = hasItemRegistry && itemConfigLookup.HasBuffer(itemRegistryEntity);
+        if (hasItemConfig)
         {
             itemRegistry = SystemAPI.GetSingleton<ItemRegistry>();
+            itemConfigs = itemConfigLookup[itemRegistryEntity];
         }
 
         bool hasSpatialIndex = SystemAPI.TryGetSingleton<ItemSpatialIndex>(out var itemSpatialIndex);
@@ -774,8 +778,8 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 ItemTypeEnum slotItemType = (ItemTypeEnum)data.x;
                 int count = data.y;
 
-                int maxStack = (hasItemRegistry && itemRegistry.Value.IsCreated)
-                    ? itemRegistry.Value.Value.GetMaxStack(slotItemType)
+                int maxStack = hasItemConfig
+                    ? itemRegistry.GetMaxStack(itemConfigs, slotItemType)
                     : 50;
 
                 if (count > maxStack)
@@ -873,8 +877,8 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 ItemTypeEnum slotItemType = (ItemTypeEnum)data.x;
                 int count = data.y;
 
-                int maxStack = (hasItemRegistry && itemRegistry.Value.IsCreated)
-                    ? itemRegistry.Value.Value.GetMaxStack(slotItemType)
+                int maxStack = hasItemConfig
+                    ? itemRegistry.GetMaxStack(itemConfigs, slotItemType)
                     : 50;
 
                 if (count > maxStack)
@@ -908,23 +912,24 @@ public partial class WorldInvariantValidationSystem : SystemBase
         }
 
         // 유효한 무재료 레시피도 계산 결과가 0슬롯이다.
-        if (!SystemAPI.TryGetSingleton<RecipeRegistry>(out var recipes))
+        if (!SystemAPI.TryGetSingletonEntity<RecipeRegistry>(out var recipeRegistryEntity))
         {
             return false;
         }
 
-        if (!recipes.Value.IsCreated)
+        var recipeConfigLookup = SystemAPI.GetBufferLookup<RecipeConfigElement>(true);
+        if (!recipeConfigLookup.HasBuffer(recipeRegistryEntity))
         {
             return false;
         }
 
-        ref var registry = ref recipes.Value.Value;
-        if (!registry.TryGetRecipeIndex(recipeId, out int recipeIndex))
+        var recipes = recipeConfigLookup[recipeRegistryEntity];
+        if (!RecipeConfigLookupUtility.TryGetRecipeIndex(recipes, recipeId, out int recipeIndex))
         {
             return false;
         }
 
-        return registry.Recipes[recipeIndex].Ingredients.Length == 0;
+        return recipes[recipeIndex].IngredientCount == 0;
     }
 
     /// <summary>

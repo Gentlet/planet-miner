@@ -23,12 +23,14 @@ using Unity.Mathematics;
 public partial struct MinerDecisionSystem : ISystem
 {
     private ComponentLookup<ResourceNode> _resourceNodeLookup;
+    private BufferLookup<ItemConfigElement> _itemConfigLookup;
     private EntityQuery _minerQuery;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         _resourceNodeLookup = state.GetComponentLookup<ResourceNode>(true);
+        _itemConfigLookup = state.GetBufferLookup<ItemConfigElement>(true);
 
         _minerQuery = SystemAPI.QueryBuilder()
             .WithAllRW<MinerDecision>()
@@ -55,18 +57,23 @@ public partial struct MinerDecisionSystem : ISystem
         ref var resFence = ref SystemAPI.GetSingletonRW<ResourceSpatialIndexFence>().ValueRW;
 
         _resourceNodeLookup.Update(ref state);
+        _itemConfigLookup.Update(ref state);
 
         ItemRegistry itemRegistry = default;
+        Entity itemRegistryEntity = Entity.Null;
         if (SystemAPI.HasSingleton<ItemRegistry>())
         {
             itemRegistry = SystemAPI.GetSingleton<ItemRegistry>();
+            itemRegistryEntity = SystemAPI.GetSingletonEntity<ItemRegistry>();
         }
 
         var job = new MinerDecisionJob
         {
             ResourceMap = resIndex.Map,
             ResourceNodeLookup = _resourceNodeLookup,
-            ItemRegistry = itemRegistry
+            ItemRegistry = itemRegistry,
+            ItemRegistryEntity = itemRegistryEntity,
+            ItemConfigLookup = _itemConfigLookup
         };
 
         var jobDep = Unity.Jobs.JobHandle.CombineDependencies(state.Dependency, resFence.GetReaderDependency());
@@ -92,6 +99,11 @@ public partial struct MinerDecisionJob : IJobEntity
 
     [ReadOnly]
     public ItemRegistry ItemRegistry;
+
+    public Entity ItemRegistryEntity;
+
+    [ReadOnly]
+    public BufferLookup<ItemConfigElement> ItemConfigLookup;
 
     public void Execute(
         ref MinerDecision decision,
@@ -130,9 +142,9 @@ public partial struct MinerDecisionJob : IJobEntity
 
         // 2. 내부 출력 버퍼(ProductItemElement) 여유 공간 확인 (1스택 한도)
         int maxStack = 50;
-        if (ItemRegistry.Value.IsCreated && resourceType != ItemTypeEnum.None)
+        if (resourceType != ItemTypeEnum.None && ItemConfigLookup.HasBuffer(ItemRegistryEntity))
         {
-            maxStack = ItemRegistry.Value.Value.GetMaxStack(resourceType);
+            maxStack = ItemRegistry.GetMaxStack(ItemConfigLookup[ItemRegistryEntity], resourceType);
         }
 
         bool sameItemType = true;

@@ -11,8 +11,8 @@ using UnityEngine.TestTools;
 /// <summary>실제 건물 생성물을 사용하는 입력 구성/레시피 변경/입고 회귀 검증.</summary>
 public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
 {
-    private BlobAssetReference<RecipeRegistryBlob> _recipes;
-    private BlobAssetReference<ItemRegistryBlob> _items;
+    private Entity _recipes;
+    private Entity _items;
     private EndCommandEntityCommandBufferSystem _commandEcb;
     private EndStateApplyEntityCommandBufferSystem _applyEcb;
 
@@ -21,18 +21,10 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
     {
         base.SetUp();
         CreateGameplayPrefabDatabases();
-        _recipes = RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
+        _recipes = Entity.Null;
         _items = ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
         _commandEcb = _world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
         _applyEcb = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
-    }
-
-    [TearDown]
-    public override void TearDown()
-    {
-        base.TearDown();
-        if (_recipes.IsCreated) _recipes.Dispose();
-        if (_items.IsCreated) _items.Dispose();
     }
 
     [TestCase(false, false)]
@@ -82,7 +74,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
     {
         Entity crafter = SpawnCrafter();
         ChangeRecipe(crafter, 5);
-        int maxStack = _items.Value.GetMaxStack(ItemTypeEnum.Iron_Stick);
+        int maxStack = GetMaxStack(ItemTypeEnum.Iron_Stick);
         for (int i = 0; i < maxStack; i++)
         {
             Entities.CreateStoredItem(crafter, ItemTypeEnum.Iron_Stick, 0);
@@ -177,14 +169,10 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
     [Test]
     public void RecipeChange_PreservesMultipleStacks_WhenMovingRemainingInputs()
     {
-        int maxStack = _items.Value.GetMaxStack(ItemTypeEnum.Iron_Ore);
-        using var recipes = RecipeConfigLoader.BuildBlobAssetFromJson(
+        int maxStack = GetMaxStack(ItemTypeEnum.Iron_Ore);
+        _recipes = RecipeInitSystem.InitializeRecipeRegistry(_entityManager,
             "{\"recipes\":[{\"id\":99,\"outputItemType\":\"Iron\",\"craftTime\":1," +
             "\"ingredients\":[{\"itemType\":\"Iron_Ore\",\"amount\":" + (maxStack + 1) + "}]}]}");
-        using (var query = _entityManager.CreateEntityQuery(typeof(RecipeRegistry)))
-        {
-            _entityManager.SetComponentData(query.GetSingletonEntity(), new RecipeRegistry(recipes));
-        }
 
         Entity crafter = SpawnCrafter();
         ChangeRecipe(crafter, 99);
@@ -247,6 +235,8 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
     public void Selection_WaitsForItemRegistry_ThenAppliesTheSameRequest()
     {
         Entity crafter = SpawnCrafter();
+        // The missing-registry state is injected only to exercise request deferral.
+        _entityManager.CompleteAllTrackedJobs();
         using (var query = _entityManager.CreateEntityQuery(typeof(ItemRegistry)))
         {
             _entityManager.DestroyEntity(query.GetSingletonEntity());
@@ -256,8 +246,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
         Assert.IsTrue(_entityManager.Exists(request));
         Assert.AreEqual(0, _entityManager.GetComponentData<Storage>(crafter).SlotCount);
 
-        Entity registry = _entityManager.CreateEntity(typeof(ItemRegistry));
-        _entityManager.SetComponentData(registry, new ItemRegistry(_items));
+        _items = ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
         Run<CrafterRecipeCommandSystem>();
         Simulation.Playback(_commandEcb);
         Assert.IsFalse(_entityManager.Exists(request));
@@ -267,6 +256,19 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
     [Test]
     public void InvalidSlotCalculation_LeavesRecipeProgressBuffersAndFilterUnchanged()
     {
+        // Publish the invalid-slot fixture alongside the normal recipes before gameplay starts.
+        var config = RecipeConfigLoader.LoadFromResources();
+        var invalidConfig = RecipeConfigLoader.ParseJson(
+            "{\"recipes\":[{\"id\":99,\"outputItemType\":\"Iron\",\"craftTime\":1," +
+            "\"ingredients\":[{\"itemType\":\"Iron_Ore\",\"amount\":100000}]}]}");
+        var invalidRecipe = invalidConfig.Recipes[0];
+        invalidRecipe.IngredientStart += config.Ingredients.Count;
+        invalidRecipe.OutputStart += config.Outputs.Count;
+        config.Recipes.Add(invalidRecipe);
+        config.Ingredients.AddRange(invalidConfig.Ingredients);
+        config.Outputs.AddRange(invalidConfig.Outputs);
+        _recipes = RecipeConfigLoader.PublishConfig(_entityManager, config);
+
         Entity crafter = SpawnCrafter();
         ChangeRecipe(crafter, 1);
         Entity item = Entities.CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore, 0);
@@ -274,13 +276,6 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
         state.Progress = 0.5f;
         state.IsCraftingActive = true;
         _entityManager.SetComponentData(crafter, state);
-        using var invalidRecipes = RecipeConfigLoader.BuildBlobAssetFromJson(
-            "{\"recipes\":[{\"id\":99,\"outputItemType\":\"Iron\",\"craftTime\":1," +
-            "\"ingredients\":[{\"itemType\":\"Iron_Ore\",\"amount\":100000}]}]}");
-        using (var query = _entityManager.CreateEntityQuery(typeof(RecipeRegistry)))
-        {
-            _entityManager.SetComponentData(query.GetSingletonEntity(), new RecipeRegistry(invalidRecipes));
-        }
         LogAssert.Expect(LogType.Error,
             "[CrafterRecipeCommandSystem] Invalid input slots for recipe 99: SlotLimitExceeded. Recipe change rejected.");
 
@@ -319,8 +314,8 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
         Simulation.Playback(_applyEcb);
         Assert.IsFalse(_entityManager.Exists(ore));
 
-        _recipes.Value.TryGetRecipeIndex(1, out int recipeIndex);
-        int ticks = (int)math.ceil(_recipes.Value.Recipes[recipeIndex].CraftTime / GameConstants.MaxSimulationDeltaTime) + 2;
+        float craftTime = GetCraftTime(1);
+        int ticks = (int)math.ceil(craftTime / GameConstants.MaxSimulationDeltaTime) + 2;
         for (int i = 0; i < ticks && _entityManager.GetBuffer<ProductItemElement>(crafter).Length == 0; i++)
         {
             Run<CrafterDecisionSystem>();
@@ -417,9 +412,9 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
         Assert.AreEqual(0, _entityManager.GetBuffer<StoredItemElement>(crafter).Length);
         Assert.IsTrue(_entityManager.GetComponentData<CrafterState>(crafter).IsCraftingActive);
 
-        _recipes.Value.TryGetRecipeIndex(1, out int recipeIndex);
+        float craftTime = GetCraftTime(1);
         float speed = _entityManager.GetComponentData<CrafterState>(crafter).Speed;
-        int craftingTicks = (int)math.ceil(_recipes.Value.Recipes[recipeIndex].CraftTime /
+        int craftingTicks = (int)math.ceil(craftTime /
                                          (speed * GameConstants.MaxSimulationDeltaTime)) + 3;
         StepUntil(step, () => _entityManager.GetBuffer<ProductItemElement>(crafter).Length == 1, craftingTicks);
         var product = _entityManager.GetBuffer<ProductItemElement>(crafter)[0];
@@ -502,6 +497,11 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
 
     private Entity CreateCrafterSource(bool withCustomPrefab, bool fromConstruction)
     {
+        if (_recipes == Entity.Null)
+        {
+            _recipes = RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
+        }
+
         if (withCustomPrefab)
         {
             // ECS 모의 prefab: 기존 상태를 스폰 시 올바르게 초기화하는지도 확인한다.
@@ -606,9 +606,23 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
 
     private void DestroyRegistryEntities()
     {
+        _entityManager.CompleteAllTrackedJobs();
         using var recipes = _entityManager.CreateEntityQuery(typeof(RecipeRegistry));
         using var items = _entityManager.CreateEntityQuery(typeof(ItemRegistry));
         _entityManager.DestroyEntity(recipes.GetSingletonEntity());
         _entityManager.DestroyEntity(items.GetSingletonEntity());
+    }
+
+    private int GetMaxStack(ItemTypeEnum itemType)
+    {
+        var registry = _entityManager.GetComponentData<ItemRegistry>(_items);
+        return registry.GetMaxStack(_entityManager.GetBuffer<ItemConfigElement>(_items, true), itemType);
+    }
+
+    private float GetCraftTime(int recipeId)
+    {
+        var recipes = _entityManager.GetBuffer<RecipeConfigElement>(_recipes, true);
+        Assert.IsTrue(RecipeConfigLookupUtility.TryGetRecipeIndex(recipes, recipeId, out int recipeIndex));
+        return recipes[recipeIndex].CraftTime;
     }
 }

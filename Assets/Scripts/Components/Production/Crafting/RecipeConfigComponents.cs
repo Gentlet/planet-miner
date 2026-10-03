@@ -1,30 +1,28 @@
 using Unity.Entities;
 
-/// <summary>
-/// 레시피 개별 입력 재료 (Blittable).
-/// </summary>
-public struct RecipeIngredientBlob
+/// <summary>설정 엔티티가 소유하는 재료 목록. 게시 후 읽기 전용이다.</summary>
+[InternalBufferCapacity(0)]
+public struct RecipeIngredientElement : IBufferElementData
 {
     public ItemTypeEnum ItemType;
     public int Amount;
 
-    public RecipeIngredientBlob(ItemTypeEnum itemType, int amount)
+    public RecipeIngredientElement(ItemTypeEnum itemType, int amount)
     {
         ItemType = itemType;
         Amount = amount;
     }
 }
 
-/// <summary>
-/// 레시피 개별 출력물 (주 생산품 또는 부산품, Blittable).
-/// </summary>
-public struct RecipeOutputBlob
+/// <summary>레시피별 첫 출력은 주생산품이며, 이후 출력은 부산물이다.</summary>
+[InternalBufferCapacity(0)]
+public struct RecipeOutputElement : IBufferElementData
 {
     public ItemTypeEnum ItemType;
     public int Amount;
-    public bool IsByproduct; // false: 주 생산품(Primary), true: 부산품(Byproduct)
+    public bool IsByproduct;
 
-    public RecipeOutputBlob(ItemTypeEnum itemType, int amount, bool isByproduct = false)
+    public RecipeOutputElement(ItemTypeEnum itemType, int amount, bool isByproduct = false)
     {
         ItemType = itemType;
         Amount = amount;
@@ -33,34 +31,35 @@ public struct RecipeOutputBlob
 }
 
 /// <summary>
-/// 개별 제작 레시피 데이터 (BlobArray 가변 목록 지원, Immutable).
+/// 같은 설정 엔티티의 재료/출력 버퍼 안에서 이 레시피가 사용하는 연속 범위.
+/// 시작 위치와 개수는 게시할 때 확정하며 World 종료까지 변경하지 않는다.
 /// </summary>
-public struct RecipeBlob
+[InternalBufferCapacity(0)]
+public struct RecipeConfigElement : IBufferElementData
 {
     public int Id;
     public float CraftTime;
-    public byte ConditionFlags; // 예약 필드 (확장성용)
+    public byte ConditionFlags;
+    public int IngredientStart;
+    public int IngredientCount;
+    public int OutputStart;
+    public int OutputCount;
 
-    public BlobArray<RecipeIngredientBlob> Ingredients;
-    public BlobArray<RecipeOutputBlob> Outputs;
-
-    /// <summary>
-    /// 해당 레시피의 주 생산품(Primary Output)을 반환.
-    /// </summary>
-    public bool TryGetPrimaryOutput(out RecipeOutputBlob primaryOutput)
+    public bool TryGetPrimaryOutput(DynamicBuffer<RecipeOutputElement> outputs, out RecipeOutputElement primaryOutput)
     {
-        for (int i = 0; i < Outputs.Length; i++)
+        for (int i = 0; i < OutputCount; i++)
         {
-            if (!Outputs[i].IsByproduct)
+            var output = outputs[OutputStart + i];
+            if (!output.IsByproduct)
             {
-                primaryOutput = Outputs[i];
+                primaryOutput = output;
                 return true;
             }
         }
 
-        if (Outputs.Length > 0)
+        if (OutputCount > 0)
         {
-            primaryOutput = Outputs[0];
+            primaryOutput = outputs[OutputStart];
             return true;
         }
 
@@ -68,16 +67,14 @@ public struct RecipeBlob
         return false;
     }
 
-    /// <summary>
-    /// 특정 아이템 타입이 해당 레시피의 재료인지 검사하고 필요 수량을 반환.
-    /// </summary>
-    public bool TryFindIngredient(ItemTypeEnum itemType, out int requiredAmount)
+    public bool TryFindIngredient(DynamicBuffer<RecipeIngredientElement> ingredients, ItemTypeEnum itemType, out int requiredAmount)
     {
-        for (int i = 0; i < Ingredients.Length; i++)
+        for (int i = 0; i < IngredientCount; i++)
         {
-            if (Ingredients[i].ItemType == itemType)
+            var ingredient = ingredients[IngredientStart + i];
+            if (ingredient.ItemType == itemType)
             {
-                requiredAmount = Ingredients[i].Amount;
+                requiredAmount = ingredient.Amount;
                 return true;
             }
         }
@@ -88,58 +85,9 @@ public struct RecipeBlob
 }
 
 /// <summary>
-/// 전역 레시피 레지스트리 루트 Blob.
-/// </summary>
-public struct RecipeRegistryBlob
-{
-    public BlobArray<RecipeBlob> Recipes;
-
-    /// <summary>
-    /// Recipe ID로 레시피 인덱스를 검색.
-    /// </summary>
-    public bool TryGetRecipeIndex(int recipeId, out int recipeIndex)
-    {
-        for (int i = 0; i < Recipes.Length; i++)
-        {
-            if (Recipes[i].Id == recipeId)
-            {
-                recipeIndex = i;
-                return true;
-            }
-        }
-
-        recipeIndex = -1;
-        return false;
-    }
-
-    /// <summary>
-    /// 주 생산품(Primary Output) 아이템 타입으로 레시피 인덱스를 검색.
-    /// </summary>
-    public bool TryFindRecipeIndexByPrimaryOutput(ItemTypeEnum outputType, out int recipeIndex)
-    {
-        for (int i = 0; i < Recipes.Length; i++)
-        {
-            if (Recipes[i].TryGetPrimaryOutput(out var primary) && primary.ItemType == outputType)
-            {
-                recipeIndex = i;
-                return true;
-            }
-        }
-
-        recipeIndex = -1;
-        return false;
-    }
-}
-
-/// <summary>
-/// 전역 레시피 레지스트리 싱글톤 컴포넌트.
+/// RecipeConfigElement/RecipeIngredientElement/RecipeOutputElement 버퍼를 소유하는 설정 엔티티.
+/// 게임 시작 시 한 번 게시하며, 버퍼의 할당과 해제는 ECS World가 관리한다.
 /// </summary>
 public struct RecipeRegistry : IComponentData
 {
-    public BlobAssetReference<RecipeRegistryBlob> Value;
-
-    public RecipeRegistry(BlobAssetReference<RecipeRegistryBlob> value)
-    {
-        Value = value;
-    }
 }

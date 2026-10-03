@@ -19,8 +19,6 @@ public class Phase6EndToEndPipelineTests : EcsWorldTestFixture
 {
     private GameSimulationGroup _simulationGroup;
     private WorldInvariantValidationSystem _invariantValidationSystem;
-    private BlobAssetReference<ItemRegistryBlob> _itemBlobRef;
-    private BlobAssetReference<RecipeRegistryBlob> _recipeBlobRef;
     private float _elapsedTime;
 
     [SetUp]
@@ -31,8 +29,8 @@ public class Phase6EndToEndPipelineTests : EcsWorldTestFixture
         _elapsedTime = 0.0f;
 
         // 1. 아이템 및 레시피 레지스트리 초기화
-        _itemBlobRef = ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
-        _recipeBlobRef = RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
+        ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
+        RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
 
         // 2. 최상위 시뮬레이션 그룹 및 Phase 하위 그룹 구성
         _simulationGroup = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
@@ -98,14 +96,6 @@ public class Phase6EndToEndPipelineTests : EcsWorldTestFixture
         executionGroup.SortSystems();
         stateApplyGroup.SortSystems();
         synchronizationGroup.SortSystems();
-    }
-
-    [TearDown]
-    public override void TearDown()
-    {
-        if (_itemBlobRef.IsCreated) _itemBlobRef.Dispose();
-        if (_recipeBlobRef.IsCreated) _recipeBlobRef.Dispose();
-        base.TearDown();
     }
 
     private Entity CreateResourceNode(int2 position, ItemTypeEnum resourceType, int amount)

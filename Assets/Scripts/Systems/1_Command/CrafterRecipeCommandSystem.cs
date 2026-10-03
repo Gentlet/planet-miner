@@ -24,6 +24,9 @@ public partial struct CrafterRecipeCommandSystem : ISystem
     private BufferLookup<BuildingInputSlotElement> _inputSlotLookup;
     private BufferLookup<StoredItemElement> _storedBufferLookup;
     private BufferLookup<ProductItemElement> _productBufferLookup;
+    private BufferLookup<RecipeConfigElement> _recipeConfigLookup;
+    private BufferLookup<RecipeIngredientElement> _recipeIngredientLookup;
+    private BufferLookup<ItemConfigElement> _itemConfigLookup;
 
     public void OnCreate(ref SystemState state)
     {
@@ -37,6 +40,9 @@ public partial struct CrafterRecipeCommandSystem : ISystem
         _inputSlotLookup = state.GetBufferLookup<BuildingInputSlotElement>(false);
         _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(false);
         _productBufferLookup = state.GetBufferLookup<ProductItemElement>(false);
+        _recipeConfigLookup = state.GetBufferLookup<RecipeConfigElement>(true);
+        _recipeIngredientLookup = state.GetBufferLookup<RecipeIngredientElement>(true);
+        _itemConfigLookup = state.GetBufferLookup<ItemConfigElement>(true);
     }
 
     public void OnDestroy(ref SystemState state)
@@ -51,7 +57,8 @@ public partial struct CrafterRecipeCommandSystem : ISystem
         }
 
         state.Dependency.Complete();
-        SystemAPI.TryGetSingleton<RecipeRegistry>(out var recipeRegistry);
+        bool hasRecipeRegistry = SystemAPI.TryGetSingletonEntity<RecipeRegistry>(out var recipeRegistryEntity);
+        bool hasItemRegistry = SystemAPI.TryGetSingletonEntity<ItemRegistry>(out var itemRegistryEntity);
         SystemAPI.TryGetSingleton<ItemRegistry>(out var itemRegistry);
 
         var ecbSystem = state.World.GetExistingSystemManaged<EndCommandEntityCommandBufferSystem>();
@@ -73,6 +80,13 @@ public partial struct CrafterRecipeCommandSystem : ISystem
         _inputSlotLookup.Update(ref state);
         _storedBufferLookup.Update(ref state);
         _productBufferLookup.Update(ref state);
+        _recipeConfigLookup.Update(ref state);
+        _recipeIngredientLookup.Update(ref state);
+        _itemConfigLookup.Update(ref state);
+
+        bool hasRecipeConfig = hasRecipeRegistry && _recipeConfigLookup.HasBuffer(recipeRegistryEntity) &&
+                               _recipeIngredientLookup.HasBuffer(recipeRegistryEntity);
+        bool hasItemConfig = hasItemRegistry && _itemConfigLookup.HasBuffer(itemRegistryEntity);
 
         var requestEntities = _requestQuery.ToEntityArray(Allocator.Temp);
         var requests = _requestQuery.ToComponentDataArray<ChangeCrafterRecipeRequest>(Allocator.Temp);
@@ -97,23 +111,25 @@ public partial struct CrafterRecipeCommandSystem : ISystem
                 FixedList512Bytes<BuildingInputSlotElement> slots = default;
                 if (newRecipeId > 0)
                 {
-                    if (!recipeRegistry.Value.IsCreated || !itemRegistry.Value.IsCreated)
+                    if (!hasRecipeConfig || !hasItemConfig)
                     {
                         // 설정 게시를 기다리는 요청은 소비하지 않는다. 해제는 설정 없이도 처리한다.
                         continue;
                     }
 
-                    ref var registry = ref recipeRegistry.Value.Value;
-                    if (!registry.TryGetRecipeIndex(newRecipeId, out int recipeIndex))
+                    var recipes = _recipeConfigLookup[recipeRegistryEntity];
+                    if (!RecipeConfigLookupUtility.TryGetRecipeIndex(recipes, newRecipeId, out int recipeIndex))
                     {
                         UnityEngine.Debug.LogError($"[CrafterRecipeCommandSystem] Unknown recipe {newRecipeId}. Recipe change rejected.");
                         ecb.DestroyEntity(reqEntity);
                         continue;
                     }
 
-                    ref var recipe = ref registry.Recipes[recipeIndex];
+                    var recipe = recipes[recipeIndex];
                     if (!BuildingInputSlotUtility.TryCalculate(
-                            ref recipe.Ingredients, ref itemRegistry.Value.Value, out slots, out var error))
+                            _recipeIngredientLookup[recipeRegistryEntity], recipe.IngredientStart,
+                            recipe.IngredientCount, itemRegistry, _itemConfigLookup[itemRegistryEntity],
+                            out slots, out var error))
                     {
                         UnityEngine.Debug.LogError($"[CrafterRecipeCommandSystem] Invalid input slots for recipe {newRecipeId}: {error}. Recipe change rejected.");
                         ecb.DestroyEntity(reqEntity);

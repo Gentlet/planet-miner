@@ -8,7 +8,7 @@ using Unity.Mathematics;
 /// 
 /// [책임]
 /// - DecisionGroup(Phase 2)에서 실행.
-/// - RecipeRegistry Blob에서 선택된 레시피(SelectedRecipeId)를 조회.
+/// - RecipeRegistry 엔티티의 읽기 전용 설정 버퍼에서 선택된 레시피(SelectedRecipeId)를 조회.
 /// - [제작/출력 판정]:
 ///   1. 미착수 상태(!IsCraftingActive): StoredItemElement에 레시피 필요 재료가 모두 구비되어 있는지 확인하여 CanStartCraft 결정.
 ///   2. 진행 중 상태(IsCraftingActive && Progress < 1.0f): CanAdvance = true 및 NextStatus = Crafting 결정.
@@ -24,10 +24,19 @@ using Unity.Mathematics;
 public partial struct CrafterDecisionSystem : ISystem
 {
     private EntityQuery _crafterQuery;
+    private BufferLookup<RecipeConfigElement> _recipeConfigLookup;
+    private BufferLookup<RecipeIngredientElement> _recipeIngredientLookup;
+    private BufferLookup<RecipeOutputElement> _recipeOutputLookup;
+    private BufferLookup<ItemConfigElement> _itemConfigLookup;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
+        _recipeConfigLookup = state.GetBufferLookup<RecipeConfigElement>(true);
+        _recipeIngredientLookup = state.GetBufferLookup<RecipeIngredientElement>(true);
+        _recipeOutputLookup = state.GetBufferLookup<RecipeOutputElement>(true);
+        _itemConfigLookup = state.GetBufferLookup<ItemConfigElement>(true);
+
         _crafterQuery = SystemAPI.QueryBuilder()
             .WithAllRW<CrafterDecision, CrafterStateDecision>()
             .WithAll<CrafterState, StoredItemElement, ProductItemElement, ProductResult>()
@@ -48,22 +57,36 @@ public partial struct CrafterDecisionSystem : ISystem
             return;
         }
 
-        var recipeRegistry = SystemAPI.GetSingleton<RecipeRegistry>();
-        if (!recipeRegistry.Value.IsCreated)
+        _recipeConfigLookup.Update(ref state);
+        _recipeIngredientLookup.Update(ref state);
+        _recipeOutputLookup.Update(ref state);
+        _itemConfigLookup.Update(ref state);
+
+        Entity recipeRegistryEntity = SystemAPI.GetSingletonEntity<RecipeRegistry>();
+        if (!_recipeConfigLookup.HasBuffer(recipeRegistryEntity) ||
+            !_recipeIngredientLookup.HasBuffer(recipeRegistryEntity) ||
+            !_recipeOutputLookup.HasBuffer(recipeRegistryEntity))
         {
             return;
         }
 
         ItemRegistry itemRegistry = default;
+        Entity itemRegistryEntity = Entity.Null;
         if (SystemAPI.HasSingleton<ItemRegistry>())
         {
             itemRegistry = SystemAPI.GetSingleton<ItemRegistry>();
+            itemRegistryEntity = SystemAPI.GetSingletonEntity<ItemRegistry>();
         }
 
         var job = new CrafterDecisionJob
         {
-            RecipeRegistry = recipeRegistry,
-            ItemRegistry = itemRegistry
+            RecipeRegistryEntity = recipeRegistryEntity,
+            RecipeConfigLookup = _recipeConfigLookup,
+            RecipeIngredientLookup = _recipeIngredientLookup,
+            RecipeOutputLookup = _recipeOutputLookup,
+            ItemRegistry = itemRegistry,
+            ItemRegistryEntity = itemRegistryEntity,
+            ItemConfigLookup = _itemConfigLookup
         };
 
         state.Dependency = job.ScheduleParallel(_crafterQuery, state.Dependency);
@@ -76,11 +99,24 @@ public partial struct CrafterDecisionSystem : ISystem
 [BurstCompile]
 public partial struct CrafterDecisionJob : IJobEntity
 {
+    public Entity RecipeRegistryEntity;
+
     [ReadOnly]
-    public RecipeRegistry RecipeRegistry;
+    public BufferLookup<RecipeConfigElement> RecipeConfigLookup;
+
+    [ReadOnly]
+    public BufferLookup<RecipeIngredientElement> RecipeIngredientLookup;
+
+    [ReadOnly]
+    public BufferLookup<RecipeOutputElement> RecipeOutputLookup;
 
     [ReadOnly]
     public ItemRegistry ItemRegistry;
+
+    public Entity ItemRegistryEntity;
+
+    [ReadOnly]
+    public BufferLookup<ItemConfigElement> ItemConfigLookup;
 
     public void Execute(
         ref CrafterDecision decision,
@@ -129,8 +165,8 @@ public partial struct CrafterDecisionJob : IJobEntity
             return;
         }
 
-        ref var registry = ref RecipeRegistry.Value.Value;
-        if (!registry.TryGetRecipeIndex(state.SelectedRecipeId, out int recipeIdx))
+        var recipes = RecipeConfigLookup[RecipeRegistryEntity];
+        if (!RecipeConfigLookupUtility.TryGetRecipeIndex(recipes, state.SelectedRecipeId, out int recipeIdx))
         {
             decision.CanCraft = false;
             decision.CanStartCraft = false;
@@ -146,7 +182,9 @@ public partial struct CrafterDecisionJob : IJobEntity
 
         decision.RecipeId = state.SelectedRecipeId;
         decision.RecipeIndex = recipeIdx;
-        ref var recipe = ref registry.Recipes[recipeIdx];
+        var recipe = recipes[recipeIdx];
+        var ingredients = RecipeIngredientLookup[RecipeRegistryEntity];
+        var outputs = RecipeOutputLookup[RecipeRegistryEntity];
 
         // StateApply 미소비 생산 결과 존재 시 새 제작/출력 차단
         // 정상 프레임에서는 같은 프레임 StateApply에서 비워지지만, Phase 누락/지연 시 중복 생산을 방지하는 안전장치.
@@ -165,11 +203,11 @@ public partial struct CrafterDecisionJob : IJobEntity
         // 2. 출력 버퍼 여유 공간 검사 (다중 부산물 지원 및 All-or-Nothing 정책)
         // Slot 0: 주완성품, Slot 1..N: 각 부산물
         bool canProduceOutput = true;
-        bool hasItemRegistry = ItemRegistry.Value.IsCreated;
+        bool hasItemRegistry = ItemConfigLookup.HasBuffer(ItemRegistryEntity);
 
-        for (int outIdx = 0; outIdx < recipe.Outputs.Length; outIdx++)
+        for (int outIdx = 0; outIdx < recipe.OutputCount; outIdx++)
         {
-            ref var output = ref recipe.Outputs[outIdx];
+            var output = outputs[recipe.OutputStart + outIdx];
             if (output.ItemType == ItemTypeEnum.None || output.Amount <= 0)
             {
                 continue;
@@ -185,7 +223,7 @@ public partial struct CrafterDecisionJob : IJobEntity
             }
 
             int maxStack = (hasItemRegistry && output.ItemType != ItemTypeEnum.None)
-                ? ItemRegistry.Value.Value.GetMaxStack(output.ItemType)
+                ? ItemRegistry.GetMaxStack(ItemConfigLookup[ItemRegistryEntity], output.ItemType)
                 : 50;
 
             if (countInSlot + output.Amount > maxStack)
@@ -241,9 +279,9 @@ public partial struct CrafterDecisionJob : IJobEntity
             // 신규 제작 대기 상태: StoredItemElement에 레시피 필요 재료가 완비되었는지 검사
             bool hasAllIngredients = true;
 
-            for (int i = 0; i < recipe.Ingredients.Length; i++)
+            for (int i = 0; i < recipe.IngredientCount; i++)
             {
-                var ingredient = recipe.Ingredients[i];
+                var ingredient = ingredients[recipe.IngredientStart + i];
                 int foundCount = 0;
 
                 for (int s = 0; s < storedItems.Length; s++)

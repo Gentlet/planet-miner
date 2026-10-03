@@ -261,21 +261,20 @@ namespace PlanetMiner.Tests
                 throw new System.InvalidOperationException("Crafter fixtures require RecipeRegistry and ItemRegistry.");
             }
 
-            var recipes = recipeQuery.GetSingleton<RecipeRegistry>();
-            var items = itemQuery.GetSingleton<ItemRegistry>();
-            if (!recipes.Value.IsCreated || !items.Value.IsCreated)
-            {
-                throw new System.InvalidOperationException("Crafter fixture registries must have valid blobs.");
-            }
-
-            ref var registry = ref recipes.Value.Value;
-            if (!registry.TryGetRecipeIndex(recipeId, out int recipeIndex))
+            Entity recipeEntity = recipeQuery.GetSingletonEntity();
+            Entity itemEntity = itemQuery.GetSingletonEntity();
+            var recipes = _entityManager.GetBuffer<RecipeConfigElement>(recipeEntity, true);
+            var ingredients = _entityManager.GetBuffer<RecipeIngredientElement>(recipeEntity, true);
+            var itemRegistry = itemQuery.GetSingleton<ItemRegistry>();
+            var items = _entityManager.GetBuffer<ItemConfigElement>(itemEntity, true);
+            if (!RecipeConfigLookupUtility.TryGetRecipeIndex(recipes, recipeId, out int recipeIndex))
             {
                 throw new System.InvalidOperationException($"Unknown fixture recipe {recipeId}.");
             }
 
-            if (!BuildingInputSlotUtility.TryCalculate(ref registry.Recipes[recipeIndex].Ingredients,
-                    ref items.Value.Value, out var slots, out var error))
+            var recipe = recipes[recipeIndex];
+            if (!BuildingInputSlotUtility.TryCalculate(ingredients, recipe.IngredientStart, recipe.IngredientCount,
+                    itemRegistry, items, out var slots, out var error))
             {
                 throw new System.InvalidOperationException($"Invalid fixture input slots: {error}.");
             }

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using Unity.Collections;
 using Unity.Entities;
 using UnityEngine;
 
@@ -38,136 +37,197 @@ namespace PlanetMiner.Config
         public int amount = 1;
     }
 
-    /// <summary>
-    /// CrafterRecipeConfig JSON 파일 또는 프로그래밍 방식으로
-    /// 불변 RecipeRegistryBlob을 생성하는 빌더 유틸리티.
-    /// </summary>
+    /// <summary>게시 전 파싱 결과. 일반 C# 목록이며 별도의 unmanaged 메모리를 소유하지 않는다.</summary>
+    public sealed class RecipeConfigData
+    {
+        public readonly List<RecipeConfigElement> Recipes = new List<RecipeConfigElement>();
+        public readonly List<RecipeIngredientElement> Ingredients = new List<RecipeIngredientElement>();
+        public readonly List<RecipeOutputElement> Outputs = new List<RecipeOutputElement>();
+    }
+
+    /// <summary>기존 JSON 해석과 기본값을 유지하며 레시피를 World 소유 버퍼로 한 번 게시한다.</summary>
     public static class RecipeConfigLoader
     {
         public const string DefaultResourcePath = "Config/CrafterRecipeConfig";
 
-        /// <summary>
-        /// Resources 경로에서 JSON을 로드하여 RecipeRegistryBlob을 빌드.
-        /// </summary>
-        public static BlobAssetReference<RecipeRegistryBlob> LoadBlobAssetFromResources(string resourcePath = DefaultResourcePath)
+        public static RecipeConfigData LoadFromResources(string resourcePath = DefaultResourcePath)
         {
             var textAsset = Resources.Load<TextAsset>(resourcePath);
-            if (textAsset != null && !string.IsNullOrEmpty(textAsset.text))
+            if (textAsset != null)
             {
-                return BuildBlobAssetFromJson(textAsset.text);
+                if (!string.IsNullOrEmpty(textAsset.text))
+                {
+                    return ParseJson(textAsset.text);
+                }
             }
 
             Debug.LogWarning($"[RecipeConfigLoader] Failed to load recipe JSON at '{resourcePath}'. Falling back to default hardcoded recipes.");
-            return BuildDefaultFallbackBlobAsset();
+            return CreateDefaultConfig();
         }
 
-        /// <summary>
-        /// JSON 문자열을 파싱하여 BlobAssetReference<RecipeRegistryBlob>을 빌드.
-        /// </summary>
-        public static BlobAssetReference<RecipeRegistryBlob> BuildBlobAssetFromJson(string json)
+        public static RecipeConfigData ParseJson(string json)
         {
             var jsonData = JsonUtility.FromJson<RecipeConfigJsonData>(json);
-            if (jsonData == null || jsonData.recipes == null || jsonData.recipes.Count == 0)
+            if (jsonData == null)
             {
-                return BuildDefaultFallbackBlobAsset();
+                return CreateDefaultConfig();
             }
 
-            using (var builder = new BlobBuilder(Allocator.Temp))
+            if (jsonData.recipes == null)
             {
-                ref var root = ref builder.ConstructRoot<RecipeRegistryBlob>();
-                var recipesArray = builder.Allocate(ref root.Recipes, jsonData.recipes.Count);
+                return CreateDefaultConfig();
+            }
 
-                for (int i = 0; i < jsonData.recipes.Count; i++)
+            if (jsonData.recipes.Count == 0)
+            {
+                return CreateDefaultConfig();
+            }
+
+            var config = new RecipeConfigData();
+            foreach (var entry in jsonData.recipes)
+            {
+                var recipe = new RecipeConfigElement
                 {
-                    var rEntry = jsonData.recipes[i];
-                    recipesArray[i].Id = rEntry.id;
-                    recipesArray[i].CraftTime = rEntry.craftTime > 0 ? rEntry.craftTime : 1.0f;
-                    recipesArray[i].ConditionFlags = 0;
+                    Id = entry.id,
+                    CraftTime = entry.craftTime > 0 ? entry.craftTime : 1.0f,
+                    ConditionFlags = 0,
+                    IngredientStart = config.Ingredients.Count,
+                    IngredientCount = entry.ingredients != null ? entry.ingredients.Count : 0,
+                    OutputStart = config.Outputs.Count,
+                    OutputCount = 1 + (entry.byproducts != null ? entry.byproducts.Count : 0)
+                };
 
-                    // 1. 재료 목록 빌드
-                    int ingCount = rEntry.ingredients != null ? rEntry.ingredients.Count : 0;
-                    var ingArray = builder.Allocate(ref recipesArray[i].Ingredients, ingCount);
-                    for (int j = 0; j < ingCount; j++)
+                if (entry.ingredients != null)
+                {
+                    foreach (var ingredient in entry.ingredients)
                     {
-                        var ingEntry = rEntry.ingredients[j];
-                        Enum.TryParse(ingEntry.itemType, true, out ItemTypeEnum ingType);
-                        ingArray[j] = new RecipeIngredientBlob(ingType, ingEntry.amount > 0 ? ingEntry.amount : 1);
-                    }
-
-                    // 2. 출력물 목록 빌드 (주 생산품 1개 + 부산품 N개)
-                    int byCount = rEntry.byproducts != null ? rEntry.byproducts.Count : 0;
-                    int totalOutputs = 1 + byCount;
-                    var outArray = builder.Allocate(ref recipesArray[i].Outputs, totalOutputs);
-
-                    // 주 생산품 (Primary Output)
-                    Enum.TryParse(rEntry.outputItemType, true, out ItemTypeEnum primaryType);
-                    outArray[0] = new RecipeOutputBlob(primaryType, rEntry.outputAmount > 0 ? rEntry.outputAmount : 1, false);
-
-                    // 부산품 목록 (Byproducts)
-                    for (int k = 0; k < byCount; k++)
-                    {
-                        var byEntry = rEntry.byproducts[k];
-                        Enum.TryParse(byEntry.itemType, true, out ItemTypeEnum byType);
-                        outArray[1 + k] = new RecipeOutputBlob(byType, byEntry.amount > 0 ? byEntry.amount : 1, true);
+                        Enum.TryParse(ingredient.itemType, true, out ItemTypeEnum itemType);
+                        config.Ingredients.Add(new RecipeIngredientElement(itemType, ingredient.amount > 0 ? ingredient.amount : 1));
                     }
                 }
 
-                return builder.CreateBlobAssetReference<RecipeRegistryBlob>(Allocator.Persistent);
+                // 각 레시피의 출력 슬롯 0은 주생산품이며, 이후 슬롯은 JSON 순서의 부산물이다.
+                Enum.TryParse(entry.outputItemType, true, out ItemTypeEnum primaryType);
+                config.Outputs.Add(new RecipeOutputElement(primaryType, entry.outputAmount > 0 ? entry.outputAmount : 1));
+                if (entry.byproducts != null)
+                {
+                    foreach (var output in entry.byproducts)
+                    {
+                        Enum.TryParse(output.itemType, true, out ItemTypeEnum itemType);
+                        config.Outputs.Add(new RecipeOutputElement(itemType, output.amount > 0 ? output.amount : 1, true));
+                    }
+                }
+
+                config.Recipes.Add(recipe);
             }
+
+            return config;
+        }
+
+        public static RecipeConfigData CreateDefaultConfig()
+        {
+            var config = new RecipeConfigData();
+            AddDefaultRecipe(config, 1, 1.0f, ItemTypeEnum.Iron,
+                new RecipeIngredientElement(ItemTypeEnum.Iron_Ore, 1));
+            AddDefaultRecipe(config, 2, 1.0f, ItemTypeEnum.Copper,
+                new RecipeIngredientElement(ItemTypeEnum.Copper_Ore, 1));
+            AddDefaultRecipe(config, 3, 1.5f, ItemTypeEnum.Iron_Stick,
+                new RecipeIngredientElement(ItemTypeEnum.Iron, 2));
+            AddDefaultRecipe(config, 4, 1.5f, ItemTypeEnum.Copper_Stick,
+                new RecipeIngredientElement(ItemTypeEnum.Copper, 2));
+            AddDefaultRecipe(config, 5, 4.0f, ItemTypeEnum.Drone,
+                new RecipeIngredientElement(ItemTypeEnum.Iron_Stick, 2),
+                new RecipeIngredientElement(ItemTypeEnum.Copper_Stick, 2));
+            return config;
+        }
+
+        private static void AddDefaultRecipe(
+            RecipeConfigData config, int id, float craftTime, ItemTypeEnum outputType,
+            params RecipeIngredientElement[] ingredients)
+        {
+            config.Recipes.Add(new RecipeConfigElement
+            {
+                Id = id,
+                CraftTime = craftTime,
+                IngredientStart = config.Ingredients.Count,
+                IngredientCount = ingredients.Length,
+                OutputStart = config.Outputs.Count,
+                OutputCount = 1
+            });
+            config.Ingredients.AddRange(ingredients);
+            config.Outputs.Add(new RecipeOutputElement(outputType, 1));
         }
 
         /// <summary>
-        /// JSON 누락 시 안전하게 사용하는 기본 5종 레시피 BlobAsset.
+        /// 읽는 시스템을 실행하기 전에 한 번 게시한다. 기존 설정을 덮어쓰거나 추가 게시하지 않는다.
+        /// 파싱 결과를 버퍼로 복사하므로 호출자가 목록을 보관/해제할 필요가 없다.
+        /// 반환 엔티티와 버퍼는 World 종료까지 유지하며 Init 시스템 제거 시에도 해제하지 않는다.
         /// </summary>
-        public static BlobAssetReference<RecipeRegistryBlob> BuildDefaultFallbackBlobAsset()
+        public static Entity PublishConfig(EntityManager entityManager, RecipeConfigData config)
         {
-            using (var builder = new BlobBuilder(Allocator.Temp))
+            using var query = entityManager.CreateEntityQuery(ComponentType.ReadOnly<RecipeRegistry>());
+            if (!query.IsEmptyIgnoreFilter)
             {
-                ref var root = ref builder.ConstructRoot<RecipeRegistryBlob>();
-                var recipesArray = builder.Allocate(ref root.Recipes, 5);
+                throw new InvalidOperationException("RecipeRegistry is already registered. Runtime replacement is not supported.");
+            }
 
-                // 레시피 1: Iron_Ore 1 -> Iron 1 (1.0s)
-                recipesArray[0].Id = 1;
-                recipesArray[0].CraftTime = 1.0f;
-                var ing1 = builder.Allocate(ref recipesArray[0].Ingredients, 1);
-                ing1[0] = new RecipeIngredientBlob(ItemTypeEnum.Iron_Ore, 1);
-                var out1 = builder.Allocate(ref recipesArray[0].Outputs, 1);
-                out1[0] = new RecipeOutputBlob(ItemTypeEnum.Iron, 1, false);
+            if (config == null)
+            {
+                throw new ArgumentNullException(nameof(config));
+            }
 
-                // 레시피 2: Copper_Ore 1 -> Copper 1 (1.0s)
-                recipesArray[1].Id = 2;
-                recipesArray[1].CraftTime = 1.0f;
-                var ing2 = builder.Allocate(ref recipesArray[1].Ingredients, 1);
-                ing2[0] = new RecipeIngredientBlob(ItemTypeEnum.Copper_Ore, 1);
-                var out2 = builder.Allocate(ref recipesArray[1].Outputs, 1);
-                out2[0] = new RecipeOutputBlob(ItemTypeEnum.Copper, 1, false);
+            ValidateRanges(config);
+            Entity registryEntity = entityManager.CreateEntity(
+                typeof(RecipeRegistry), typeof(RecipeConfigElement),
+                typeof(RecipeIngredientElement), typeof(RecipeOutputElement));
+            try
+            {
+                var recipes = entityManager.GetBuffer<RecipeConfigElement>(registryEntity);
+                recipes.EnsureCapacity(config.Recipes.Count);
+                foreach (var recipe in config.Recipes)
+                {
+                    recipes.Add(recipe);
+                }
 
-                // 레시피 3: Iron 2 -> Iron_Stick 1 (1.5s)
-                recipesArray[2].Id = 3;
-                recipesArray[2].CraftTime = 1.5f;
-                var ing3 = builder.Allocate(ref recipesArray[2].Ingredients, 1);
-                ing3[0] = new RecipeIngredientBlob(ItemTypeEnum.Iron, 2);
-                var out3 = builder.Allocate(ref recipesArray[2].Outputs, 1);
-                out3[0] = new RecipeOutputBlob(ItemTypeEnum.Iron_Stick, 1, false);
+                var ingredients = entityManager.GetBuffer<RecipeIngredientElement>(registryEntity);
+                ingredients.EnsureCapacity(config.Ingredients.Count);
+                foreach (var ingredient in config.Ingredients)
+                {
+                    ingredients.Add(ingredient);
+                }
 
-                // 레시피 4: Copper 2 -> Copper_Stick 1 (1.5s)
-                recipesArray[3].Id = 4;
-                recipesArray[3].CraftTime = 1.5f;
-                var ing4 = builder.Allocate(ref recipesArray[3].Ingredients, 1);
-                ing4[0] = new RecipeIngredientBlob(ItemTypeEnum.Copper, 2);
-                var out4 = builder.Allocate(ref recipesArray[3].Outputs, 1);
-                out4[0] = new RecipeOutputBlob(ItemTypeEnum.Copper_Stick, 1, false);
+                var outputs = entityManager.GetBuffer<RecipeOutputElement>(registryEntity);
+                outputs.EnsureCapacity(config.Outputs.Count);
+                foreach (var output in config.Outputs)
+                {
+                    outputs.Add(output);
+                }
 
-                // 레시피 5: Iron_Stick 2 + Copper_Stick 2 -> Drone 1 (4.0s)
-                recipesArray[4].Id = 5;
-                recipesArray[4].CraftTime = 4.0f;
-                var ing5 = builder.Allocate(ref recipesArray[4].Ingredients, 2);
-                ing5[0] = new RecipeIngredientBlob(ItemTypeEnum.Iron_Stick, 2);
-                ing5[1] = new RecipeIngredientBlob(ItemTypeEnum.Copper_Stick, 2);
-                var out5 = builder.Allocate(ref recipesArray[4].Outputs, 1);
-                out5[0] = new RecipeOutputBlob(ItemTypeEnum.Drone, 1, false);
+                return registryEntity;
+            }
+            catch
+            {
+                // 이번 게시에서 만든 미완성 엔티티만 회수한다.
+                entityManager.DestroyEntity(registryEntity);
+                throw;
+            }
+        }
 
-                return builder.CreateBlobAssetReference<RecipeRegistryBlob>(Allocator.Persistent);
+        private static void ValidateRanges(RecipeConfigData config)
+        {
+            foreach (var recipe in config.Recipes)
+            {
+                if (recipe.IngredientStart < 0 || recipe.IngredientCount < 0 ||
+                    (long)recipe.IngredientStart + recipe.IngredientCount > config.Ingredients.Count)
+                {
+                    throw new ArgumentException("Recipe ingredient range is outside the supplied buffer.", nameof(config));
+                }
+
+                if (recipe.OutputStart < 0 || recipe.OutputCount < 0 ||
+                    (long)recipe.OutputStart + recipe.OutputCount > config.Outputs.Count)
+                {
+                    throw new ArgumentException("Recipe output range is outside the supplied buffer.", nameof(config));
+                }
             }
         }
     }

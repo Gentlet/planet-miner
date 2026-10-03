@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using Unity.Collections;
 using Unity.Entities;
 using UnityEngine;
 
@@ -23,146 +22,114 @@ public class ItemConfigJsonEntry
 }
 
 /// <summary>
-/// 게임 시작 시(InitializationSystemGroup) ItemConfig.json 또는 기본값으로
-/// ItemRegistryBlob을 빌드하고 ItemRegistry 싱글톤 엔티티를 1회 초기화하는 시스템.
+/// 시작 시 ItemRegistry와 ItemConfigElement 버퍼를 한 번 게시한다.
+/// 게시 이후 설정은 읽기 전용이며, 버퍼의 수명은 초기화 시스템이 아닌 World에 속한다.
 /// </summary>
 [UpdateInGroup(typeof(InitializationSystemGroup))]
 public partial class ItemConfigInitSystem : SystemBase
 {
-    private BlobAssetReference<ItemRegistryBlob> _blobReference;
-
     protected override void OnUpdate()
     {
-        if (SystemAPI.HasSingleton<ItemRegistry>())
+        using var query = EntityManager.CreateEntityQuery(ComponentType.ReadOnly<ItemRegistry>());
+        if (!query.IsEmptyIgnoreFilter)
         {
+            Entity registryEntity = query.GetSingletonEntity();
+            if (!EntityManager.HasBuffer<ItemConfigElement>(registryEntity))
+            {
+                throw new InvalidOperationException("The pre-registered ItemRegistry requires an ItemConfigElement buffer.");
+            }
+
             Enabled = false;
             return;
         }
 
-        // 싱글톤이 없을 때만 1회 생성 및 초기화
-        _blobReference = InitializeItemRegistry(EntityManager);
+        InitializeItemRegistry(EntityManager);
         Enabled = false;
     }
 
-    protected override void OnDestroy()
-    {
-        if (_blobReference.IsCreated)
-        {
-            _blobReference.Dispose();
-        }
-        base.OnDestroy();
-    }
-
     /// <summary>
-    /// ItemRegistry 싱글톤 및 BlobAsset을 초기화.
-    /// jsonOverride가 주어지면 해당 문자열을 파싱하고, 없으면 StreamingAssets/ItemConfig.json 또는 기본 폴백을 사용.
+    /// 읽는 시스템을 실행하기 전, World당 설정을 한 번 게시한다. 사전 등록도 이 API를 사용한다.
+    /// 기존 Registry가 있으면 입력을 읽거나 변경하기 전에 거부한다. 실행 중 교체/삭제는 지원하지 않는다.
+    /// 반환 엔티티와 버퍼는 World가 소유하므로 호출자와 Init 시스템은 따로 해제하지 않는다.
     /// </summary>
-    public static BlobAssetReference<ItemRegistryBlob> InitializeItemRegistry(EntityManager entityManager, string jsonOverride = null)
+    public static Entity InitializeItemRegistry(EntityManager entityManager, string jsonOverride = null)
     {
+        using var query = entityManager.CreateEntityQuery(ComponentType.ReadOnly<ItemRegistry>());
+        if (!query.IsEmptyIgnoreFilter)
+        {
+            throw new InvalidOperationException("ItemRegistry is already registered. Runtime replacement is not supported.");
+        }
+
         string jsonText = jsonOverride;
         if (string.IsNullOrEmpty(jsonText))
         {
             jsonText = TryReadConfigFile();
         }
 
-        BlobAssetReference<ItemRegistryBlob> blobRef;
-        if (!string.IsNullOrEmpty(jsonText))
-        {
-            blobRef = BuildBlobAssetFromJson(jsonText);
-        }
-        else
-        {
-            blobRef = BuildDefaultFallbackBlobAsset();
-        }
-
-        var query = entityManager.CreateEntityQuery(typeof(ItemRegistry));
-        Entity singletonEntity;
-
-        if (query.CalculateEntityCount() > 0)
-        {
-            singletonEntity = query.GetSingletonEntity();
-            entityManager.SetComponentData(singletonEntity, new ItemRegistry(blobRef));
-        }
-        else
-        {
-            singletonEntity = entityManager.CreateEntity(typeof(ItemRegistry));
-            entityManager.SetComponentData(singletonEntity, new ItemRegistry(blobRef));
-        }
-
-        return blobRef;
-    }
-
-    /// <summary>
-    /// JSON 문자열로부터 ItemRegistryBlob BlobAsset을 빌드.
-    /// </summary>
-    public static BlobAssetReference<ItemRegistryBlob> BuildBlobAssetFromJson(string jsonText)
-    {
-        int defaultMaxStack = 50;
-        var customStacks = new Dictionary<ItemTypeEnum, int>();
-
+        var items = ParseItems(jsonText, out int defaultMaxStack);
+        Entity registryEntity = entityManager.CreateEntity(typeof(ItemRegistry), typeof(ItemConfigElement));
         try
         {
-            var data = JsonUtility.FromJson<ItemConfigJsonData>(jsonText);
-            if (data != null)
+            entityManager.SetComponentData(registryEntity, new ItemRegistry { DefaultMaxStack = defaultMaxStack });
+            var buffer = entityManager.GetBuffer<ItemConfigElement>(registryEntity);
+            buffer.EnsureCapacity(items.Count);
+            foreach (var item in items)
             {
-                defaultMaxStack = data.DefaultMaxStack > 0 ? data.DefaultMaxStack : 50;
-                if (data.Items != null)
+                buffer.Add(item);
+            }
+
+            return registryEntity;
+        }
+        catch
+        {
+            // 이번 호출이 생성한 미완성 엔티티만 회수한다. 사전 등록 설정은 건드리지 않는다.
+            entityManager.DestroyEntity(registryEntity);
+            throw;
+        }
+    }
+
+    private static List<ItemConfigElement> ParseItems(string jsonText, out int defaultMaxStack)
+    {
+        defaultMaxStack = 50;
+        var customStacks = new Dictionary<ItemTypeEnum, int>();
+        if (!string.IsNullOrEmpty(jsonText))
+        {
+            try
+            {
+                var data = JsonUtility.FromJson<ItemConfigJsonData>(jsonText);
+                if (data != null)
                 {
-                    foreach (var item in data.Items)
+                    defaultMaxStack = data.DefaultMaxStack > 0 ? data.DefaultMaxStack : 50;
+                    if (data.Items != null)
                     {
-                        if (Enum.TryParse<ItemTypeEnum>(item.ItemType, true, out var parsedType))
+                        foreach (var item in data.Items)
                         {
-                            customStacks[parsedType] = item.MaxStack;
+                            if (Enum.TryParse<ItemTypeEnum>(item.ItemType, true, out var parsedType))
+                            {
+                                customStacks[parsedType] = item.MaxStack;
+                            }
                         }
                     }
                 }
             }
-        }
-        catch (Exception ex)
-        {
-            Debug.LogWarning($"[ItemConfigInitSystem] Failed to parse ItemConfig.json, falling back to defaults. Error: {ex.Message}");
-        }
-
-        return BuildBlobAsset(defaultMaxStack, customStacks);
-    }
-
-    /// <summary>
-    /// 기본 폴백 ItemRegistryBlob BlobAsset을 빌드.
-    /// </summary>
-    public static BlobAssetReference<ItemRegistryBlob> BuildDefaultFallbackBlobAsset(int defaultMaxStack = 50)
-    {
-        return BuildBlobAsset(defaultMaxStack, null);
-    }
-
-    private static BlobAssetReference<ItemRegistryBlob> BuildBlobAsset(int defaultMaxStack, Dictionary<ItemTypeEnum, int> customStacks)
-    {
-        using (var builder = new BlobBuilder(Allocator.Temp))
-        {
-            ref var root = ref builder.ConstructRoot<ItemRegistryBlob>();
-            root.DefaultMaxStack = defaultMaxStack;
-
-            int count = System.Enum.GetValues(typeof(ItemTypeEnum)).Length;
-            var itemsArray = builder.Allocate(ref root.Items, count);
-
-            for (int i = 0; i < count; i++)
+            catch (Exception ex)
             {
-                var itemType = (ItemTypeEnum)i;
-                int maxStack;
-
-                if (customStacks != null && customStacks.TryGetValue(itemType, out int customValue))
-                {
-                    maxStack = customValue;
-                }
-                else
-                {
-                    maxStack = GetDefaultMaxStackFor(itemType, defaultMaxStack);
-                }
-
-                itemsArray[i] = new ItemDataBlob(itemType, maxStack);
+                Debug.LogWarning($"[ItemConfigInitSystem] Failed to parse ItemConfig.json, falling back to defaults. Error: {ex.Message}");
             }
-
-            return builder.CreateBlobAssetReference<ItemRegistryBlob>(Allocator.Persistent);
         }
+
+        int count = Enum.GetValues(typeof(ItemTypeEnum)).Length;
+        var items = new List<ItemConfigElement>(count);
+        for (int i = 0; i < count; i++)
+        {
+            var itemType = (ItemTypeEnum)i;
+            int maxStack = customStacks.TryGetValue(itemType, out int customValue)
+                ? customValue
+                : GetDefaultMaxStackFor(itemType, defaultMaxStack);
+            items.Add(new ItemConfigElement(itemType, maxStack));
+        }
+
+        return items;
     }
 
     private static string TryReadConfigFile()
