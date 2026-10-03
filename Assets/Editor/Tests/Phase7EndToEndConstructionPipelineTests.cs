@@ -18,8 +18,6 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
 {
     private GameSimulationGroup _simulationGroup;
     private WorldInvariantValidationSystem _invariantValidationSystem;
-    private BlobAssetReference<ItemRegistryBlob> _itemBlobRef;
-    private BlobAssetReference<RecipeRegistryBlob> _recipeBlobRef;
     private float _elapsedTime;
 
     [SetUp]
@@ -30,8 +28,8 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         _elapsedTime = 0.0f;
 
         // 1. 아이템 및 레시피 레지스트리 초기화
-        _itemBlobRef = ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
-        _recipeBlobRef = RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
+        ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
+        RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
 
         // 2. BuildingConfig 기본 설정 게시 (Belt, Miner, Crafter, Storage)
         SetupBuildingConfigs();
@@ -105,14 +103,6 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         executionGroup.SortSystems();
         stateApplyGroup.SortSystems();
         synchronizationGroup.SortSystems();
-    }
-
-    [TearDown]
-    public override void TearDown()
-    {
-        if (_itemBlobRef.IsCreated) _itemBlobRef.Dispose();
-        if (_recipeBlobRef.IsCreated) _recipeBlobRef.Dispose();
-        base.TearDown();
     }
 
     private void SetupBuildingConfigs()

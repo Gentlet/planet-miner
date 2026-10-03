@@ -41,7 +41,7 @@ SimulationSystemGroup
 
 ## 주요 흐름
 
-1. `ItemConfigInitSystem`은 `StreamingAssets/ItemConfig.json` 또는 기본값을 `ItemRegistryBlob`으로 만든다. `RecipeInitSystem`은 `Resources/Config/CrafterRecipeConfig` 또는 기본 레시피를 `RecipeRegistryBlob`으로 만든다.
+1. `ItemConfigInitSystem`은 `StreamingAssets/ItemConfig.json` 또는 기본값을 `ItemRegistry`와 `ItemConfigElement` 버퍼로 게시한다. `RecipeInitSystem`은 `Resources/Config/CrafterRecipeConfig` 또는 기본 레시피를 `RecipeRegistry`와 레시피·재료·출력 버퍼로 게시한다. 시작 시 1회 게시·World 소유 수명·중복 게시 거부 계약은 AGENTS.md의 초기화 절을 따른다.
 2. 월드 아이템 생성 요청과 Miner/Crafter의 `ProductResult`는 `ItemLifecycleApplySystem`에서 아이템 엔티티가 된다. 요청의 Storage/Product 목적지에 대상 버퍼가 없으면 아이템을 만들지 않고 요청을 소비한다. F-005의 Command 철거 검증·StateApply 생성 폐기 계약은 [AGENTS.md](../../../AGENTS.md)의 실행 단계 규칙을 따른다.
 3. `BeltMovementDecisionSystem`은 벨트 속도와 앞 아이템 간격으로 이동량을 계산하고 `BeltMovementExecutionSystem`이 이동과 위치를 확정한다. 별도로 출고·Routing Decision과 `BeltDestinationReservationSystem`은 `BeltEntryUtility`의 같은 공간 판정을 사용하며, 예약은 외부 진입 후보 사이의 경합을 중재한다.
 4. 벨트 끝 아이템의 입고는 `BuildingItemInputDecisionSystem` → `BuildingStorageInputReservationSystem` → `BuildingItemStorageApplySystem` → `ItemOwnershipApplySystem` 순서로 처리한다. 일반 저장품 및 생산품 출고는 서로 다른 Decision 시스템이 작성하고 공통 Apply 시스템이 처리한다.
@@ -65,15 +65,15 @@ SimulationSystemGroup
 
 - 확정 규칙: 같은 품목의 요구량을 합산하고 `ceil(요구량 / ItemRegistry의 MaxStack)`만큼 품목 전용 입력 슬롯을 계산한다. 슬롯은 최대 스택까지 비축 가능하며 제작 1회분만 입고하는 수량 제한은 아니다.
 - `BuildingInputSlotElement`는 건물 입력 슬롯별 허용 품목만 보관하는 공통 데이터다. 버퍼 인덱스는 `StoredItemElement.SlotIndex`와 대응하고 길이가 입력 용량이다. 제작기의 레시피 미선택 구성은 빈 버퍼다. 실제 보관품과 최대 스택은 기존 버퍼/레지스트리가 소유한다. 연구·발전 등 다른 건물의 슬롯 산정/입고 정책은 아직 구현하지 않았다.
-- `BuildingInputSlotUtility.TryCalculate`는 건물 공통 입력 슬롯의 순수 계산이다. `RecipeBlob` 전체 대신 `ref BlobArray<RecipeIngredientBlob>` 재료 목록과 `ItemRegistryBlob`을 받는다. 기존 재료 요소의 품목/수량 형식을 재사용하며 제작 시간/출력물/건물 종류에는 의존하지 않는다. 최초 재료 등장 순서대로 동일 품목 슬롯을 연속 배치하고, 64비트로 중복 요구량을 합산한다. 반환값은 할당 없는 `FixedList512Bytes<BuildingInputSlotElement>`이며 ECS 상태에 직접 적용하지 않는다. 실패 사유는 `BuildingInputSlotCalculationErrorEnum`으로 반환한다.
-- 0 이하 수량/최대 스택, None·미등록·인덱스 불일치 품목, `GameConstants.MaxStorageSlots` 초과는 오류 코드와 빈 결과로 반환한다. 임의 기본값, 슬롯 잘림, 부분 결과 적용은 없다. 빈 재료 목록은 성공/0슬롯이다. 입력 Blob 참조 유효성과 계산 실패 시 기존 상태 유지 등 호출자 처리는 연결 단계의 책임이다.
+- `BuildingInputSlotUtility.TryCalculate`는 건물 공통 입력 슬롯의 순수 계산이다. `RecipeIngredientElement` 버퍼의 시작 위치·개수와 `ItemRegistry`/`ItemConfigElement`를 받는다. 기존 재료 요소의 품목/수량 형식을 재사용하며 제작 시간/출력물/건물 종류에는 의존하지 않는다. 최초 재료 등장 순서대로 동일 품목 슬롯을 연속 배치하고, 64비트로 중복 요구량을 합산한다. 반환값은 할당 없는 `FixedList512Bytes<BuildingInputSlotElement>`이며 ECS 상태에 직접 적용하지 않는다. 실패 사유는 `BuildingInputSlotCalculationErrorEnum`으로 반환한다.
+- 0 이하 수량/최대 스택, None·미등록·인덱스 불일치 품목, `GameConstants.MaxStorageSlots` 초과는 오류 코드와 빈 결과로 반환한다. 임의 기본값, 슬롯 잘림, 부분 결과 적용은 없다. 빈 재료 목록은 성공/0슬롯이다. 입력 버퍼·범위 유효성과 계산 실패 시 기존 상태 유지 등 호출자 처리는 연결 단계의 책임이다.
 - 관련 테스트: `Phase5CrafterInputSlotTests`의 올림·중복 합산·품목 구분·상한·오류·Burst Job 호출 사례. 2026-09-29 공통 데이터/유틸리티 명칭과 재료 목록 입력 인자 변경까지 반영한 뒤 Unity 6000.4.11f1 연결 Editor에서 컴파일 `completed`, 오류 0, 어셈블리 최신성을 확인했다. 선택 EditMode 테스트 18/18 통과(실패/생략/Inconclusive 0). 검증 래퍼 결과는 `Logs/Codex/F037-building-input-slots-verification.json`에 보존했다. 최초 구현 시 실행한 원본 결과 `Logs/Codex/F037-stage1-tests.json`과 구분한다.
 - 직접 Spawn/공사 완료의 공통 `BuildingLifecycleUtility`가 Crafter의 `CrafterStateDecision`을 비활성으로 초기화하고, `Storage(0)`·빈 Whitelist·빈 입력 슬롯 버퍼를 구성한다. 프리팹 경로도 런타임 구성을 초기화한다.
 - 레시피 변경 Command는 `CrafterDecision`/`CrafterStateDecision`의 값·활성 상태를 수정하거나 두 컴포넌트를 입력 구성 검사 조건으로 요구하지 않는다. 뒤의 `CrafterDecisionSystem`이 변경된 상태를 기준으로 프레임 결정을 작성한다. 생성 시 컴포넌트 구성·초기화와 런타임 결정 작성의 책임을 구분한다.
 - `CrafterRecipeCommandSystem`은 계산을 먼저 검증한 뒤 슬롯 수·품목 배정·필터를 함께 갱신한다. 레시피/아이템 설정 미게시 시 선택 요청을 유지하고, 잘못된 레시피/계산 실패는 기존 상태를 보존한 채 오류와 함께 요청을 소비한다. 레시피 해제는 설정 없이도 0슬롯/빈 필터로 처리한다. 잔여 입력은 원래 슬롯 구분을 유지하여 기존 출력 슬롯 뒤로 옮기고, 배출 완료 전 입고/제작 대기를 유지한다.
 - 입고 Decision은 0슬롯을 거부하고, Reservation은 입력 슬롯 버퍼가 있는 건물에 해당 품목 슬롯만 배정한다. 같은 프레임의 예약 수량과 기존 보관량을 합산해 MaxStack을 적용한다. 버퍼가 없는 일반 창고의 기존 예약 규칙은 유지한다. 불변식 검사는 입력 슬롯 길이·보관 품목 대응을 확인하며, 미선택/무재료 Crafter의 정상적인 빈 입력 구성만 0슬롯으로 허용한다.
 - 회귀 테스트는 `Phase5CrafterInputPipelineTests`에 있다. 개별 시스템 검증 15개에 더해 실제 정렬된 제작·물류 6단계 그룹을 사용하는 통합 4개가 있다. 직접 생성/공사 완료 × 전체 테스트 DB/선택 타입 테스트 DB의 네 경로에서 실제 아이템 요청→공급 창고→벨트→제작기 입고→선소비→생산→벨트→목적지 창고까지 실행한다. 레시피 미선택 입고 차단, 변경 시 잔여물 배출, 해제도 검증하고, 추가 수동 ECB 재생 없이 매 프레임 불변식 위반 0건을 확인한다.
-- 3단계 결과: Unity 6000.4.11f1 재컴파일 `completed`, 오류 0, 런타임/테스트 어셈블리 최신성 확인. 입력 연결 EditMode 19/19 통과(실패/생략/Inconclusive 0). 로그는 `Logs/Codex/F037-stage3-integration-verification.json`, 상세 기록은 [F-037 검증 기록](../V2%20Quality%20Evaluation%20Plan/Results/F037-Verification.md). 실제 SubScene baked prefab, Play Mode, 전체 게임 시스템, 전체 EditMode는 실행하지 않았다. 기존 `RecipeBlob.TryFindIngredient` 및 제작 재료 집계(F-014)는 변경하지 않았다.
+- 3단계 결과: Unity 6000.4.11f1 재컴파일 `completed`, 오류 0, 런타임/테스트 어셈블리 최신성 확인. 입력 연결 EditMode 19/19 통과(실패/생략/Inconclusive 0). 로그는 `Logs/Codex/F037-stage3-integration-verification.json`, 상세 기록은 [F-037 검증 기록](../V2%20Quality%20Evaluation%20Plan/Results/F037-Verification.md). 실제 SubScene baked prefab, Play Mode, 전체 게임 시스템, 전체 EditMode는 실행하지 않았다. 당시 `RecipeBlob.TryFindIngredient` 및 제작 재료 집계(F-014)는 변경하지 않았다. F-008에서 데이터 표현을 버퍼로 바꿨으며 재료 첫 일치 조회·제작 집계의 의미는 유지한다.
 - 2단계 검증: Unity 재컴파일 `completed`, 오류 0·어셈블리 최신성 확인. 관련 EditMode 59개 사례가 각 최종 실행에서 통과했다(새 입력 연결 15, 기존 제작 8, 레시피 변경 2, 건물 생성 10, 공사 완료 8, 저장 소유권/결정/불변식 15, 기존 물류 통합 1). 최초 실행의 테스트 준비 오류는 설정 기반 MaxStack, 공간 인덱스 초기화, 실제 아이템 생성 계약에 맞춰 수정했다. 마지막 입력 연결 결과는 `Logs/Codex/F037-stage2-input-verification.json`; 이전 실패/중간 결과는 `Logs/Codex/F037-stage2-verification.json`과 구분한다. 전체 EditMode 및 Play Mode는 실행하지 않았다.
 
 ### Task 4.5~4.8 월드 생성 수명주기 (2026-09-27 갱신)

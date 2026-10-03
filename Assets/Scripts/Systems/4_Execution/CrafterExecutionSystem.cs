@@ -27,11 +27,17 @@ public partial struct CrafterExecutionSystem : ISystem
 {
     private EntityQuery _crafterQuery;
     private ComponentLookup<DestroyItemRequest> _destroyItemRequestLookup;
+    private BufferLookup<RecipeConfigElement> _recipeConfigLookup;
+    private BufferLookup<RecipeIngredientElement> _recipeIngredientLookup;
+    private BufferLookup<RecipeOutputElement> _recipeOutputLookup;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         _destroyItemRequestLookup = state.GetComponentLookup<DestroyItemRequest>(false);
+        _recipeConfigLookup = state.GetBufferLookup<RecipeConfigElement>(true);
+        _recipeIngredientLookup = state.GetBufferLookup<RecipeIngredientElement>(true);
+        _recipeOutputLookup = state.GetBufferLookup<RecipeOutputElement>(true);
 
         _crafterQuery = SystemAPI.QueryBuilder()
             .WithAllRW<CrafterState>()
@@ -52,8 +58,14 @@ public partial struct CrafterExecutionSystem : ISystem
             return;
         }
 
-        var recipeRegistry = SystemAPI.GetSingleton<RecipeRegistry>();
-        if (!recipeRegistry.Value.IsCreated)
+        _recipeConfigLookup.Update(ref state);
+        _recipeIngredientLookup.Update(ref state);
+        _recipeOutputLookup.Update(ref state);
+
+        Entity recipeRegistryEntity = SystemAPI.GetSingletonEntity<RecipeRegistry>();
+        if (!_recipeConfigLookup.HasBuffer(recipeRegistryEntity) ||
+            !_recipeIngredientLookup.HasBuffer(recipeRegistryEntity) ||
+            !_recipeOutputLookup.HasBuffer(recipeRegistryEntity))
         {
             return;
         }
@@ -69,7 +81,10 @@ public partial struct CrafterExecutionSystem : ISystem
         var job = new CrafterExecutionJob
         {
             DeltaTime = dt,
-            RecipeRegistry = recipeRegistry,
+            RecipeRegistryEntity = recipeRegistryEntity,
+            RecipeConfigLookup = _recipeConfigLookup,
+            RecipeIngredientLookup = _recipeIngredientLookup,
+            RecipeOutputLookup = _recipeOutputLookup,
             DestroyItemRequestLookup = _destroyItemRequestLookup
         };
 
@@ -85,8 +100,16 @@ public partial struct CrafterExecutionJob : IJobEntity
 {
     public float DeltaTime;
 
+    public Entity RecipeRegistryEntity;
+
     [ReadOnly]
-    public RecipeRegistry RecipeRegistry;
+    public BufferLookup<RecipeConfigElement> RecipeConfigLookup;
+
+    [ReadOnly]
+    public BufferLookup<RecipeIngredientElement> RecipeIngredientLookup;
+
+    [ReadOnly]
+    public BufferLookup<RecipeOutputElement> RecipeOutputLookup;
 
     public ComponentLookup<DestroyItemRequest> DestroyItemRequestLookup;
 
@@ -96,15 +119,18 @@ public partial struct CrafterExecutionJob : IJobEntity
         ref DynamicBuffer<ProductResult> productResults,
         in CrafterDecision decision)
     {
-        ref var registry = ref RecipeRegistry.Value.Value;
+        var recipes = RecipeConfigLookup[RecipeRegistryEntity];
 
         // 유효 레시피 확인
-        if (state.SelectedRecipeId <= 0 || !registry.TryGetRecipeIndex(state.SelectedRecipeId, out int recipeIdx))
+        if (state.SelectedRecipeId <= 0 ||
+            !RecipeConfigLookupUtility.TryGetRecipeIndex(recipes, state.SelectedRecipeId, out int recipeIdx))
         {
             return;
         }
 
-        ref var recipe = ref registry.Recipes[recipeIdx];
+        var recipe = recipes[recipeIdx];
+        var ingredients = RecipeIngredientLookup[RecipeRegistryEntity];
+        var outputs = RecipeOutputLookup[RecipeRegistryEntity];
 
         // =========================================================================
         // 2. 신규 제작 착수 및 재료 선소비
@@ -112,9 +138,9 @@ public partial struct CrafterExecutionJob : IJobEntity
         if (decision.CanStartCraft && !state.IsCraftingActive)
         {
             // 레시피 필요 재료를 StoredItemElement에서 차감하고 DestroyItemRequest 발행
-            for (int i = 0; i < recipe.Ingredients.Length; i++)
+            for (int i = 0; i < recipe.IngredientCount; i++)
             {
-                var ingredient = recipe.Ingredients[i];
+                var ingredient = ingredients[recipe.IngredientStart + i];
                 int remainingToConsume = ingredient.Amount;
 
                 for (int s = storedItems.Length - 1; s >= 0 && remainingToConsume > 0; s--)
@@ -161,9 +187,9 @@ public partial struct CrafterExecutionJob : IJobEntity
             }
 
             // Outputs 전체 순회: Slot 0 (주생산품) 및 Slot 1..N (다중 부산물) 결과 기록
-            for (int outIdx = 0; outIdx < recipe.Outputs.Length; outIdx++)
+            for (int outIdx = 0; outIdx < recipe.OutputCount; outIdx++)
             {
-                ref var output = ref recipe.Outputs[outIdx];
+                var output = outputs[recipe.OutputStart + outIdx];
                 if (output.ItemType != ItemTypeEnum.None && output.Amount > 0)
                 {
                     productResults.Add(new ProductResult(output.ItemType, output.Amount, slotIndex: outIdx));

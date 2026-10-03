@@ -17,22 +17,6 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
     }
 
     private EndCommandEntityCommandBufferSystem _endCommand;
-    private BlobAssetReference<RecipeRegistryBlob> _recipeBlob;
-    private BlobAssetReference<ItemRegistryBlob> _itemBlob;
-
-    [TearDown]
-    public override void TearDown()
-    {
-        base.TearDown();
-        if (_recipeBlob.IsCreated)
-        {
-            _recipeBlob.Dispose();
-        }
-        if (_itemBlob.IsCreated)
-        {
-            _itemBlob.Dispose();
-        }
-    }
 
     [TestCase(false, false)]
     [TestCase(true, false)]
@@ -229,26 +213,31 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
     [TestCase(false)]
     public void SameTickCraftCompletion_ConsumesIngredients_OnlyKeepsOutputWithoutDemolition(bool demolish)
     {
-        _recipeBlob = RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
-        _itemBlob = ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
+        Entity recipeConfig = RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
+        ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
         var pipeline = Simulation.CreateCrafterPipeline();
         _endCommand = _world.GetExistingSystemManaged<EndCommandEntityCommandBufferSystem>();
-        ref var recipe = ref _recipeBlob.Value.Recipes[0];
+        var recipe = _entityManager.GetBuffer<RecipeConfigElement>(recipeConfig, true)[0];
+        using var recipeIngredients = _entityManager.GetBuffer<RecipeIngredientElement>(recipeConfig, true)
+            .ToNativeArray(Allocator.Temp);
+        using var recipeOutputs = _entityManager.GetBuffer<RecipeOutputElement>(recipeConfig, true)
+            .ToNativeArray(Allocator.Temp);
         Entity crafter = Entities.CreateCrafter(new int2(5, 5), recipe.Id,
             recipe.CraftTime / GameConstants.MaxSimulationDeltaTime * 2f);
-        for (int i = 0; i < recipe.Ingredients.Length; i++)
+        for (int i = 0; i < recipe.IngredientCount; i++)
         {
-            for (int count = 0; count < recipe.Ingredients[i].Amount; count++)
+            var ingredient = recipeIngredients[recipe.IngredientStart + i];
+            for (int count = 0; count < ingredient.Amount; count++)
             {
-                Entities.CreateStoredItem(crafter, recipe.Ingredients[i].ItemType, i);
+                Entities.CreateStoredItem(crafter, ingredient.ItemType, i);
             }
         }
         using var itemQuery = _entityManager.CreateEntityQuery(typeof(ItemIdentity));
         using var ingredients = itemQuery.ToEntityArray(Allocator.Temp);
         int expectedOutputs = 0;
-        for (int i = 0; i < recipe.Outputs.Length; i++)
+        for (int i = 0; i < recipe.OutputCount; i++)
         {
-            expectedOutputs += recipe.Outputs[i].Amount;
+            expectedOutputs += recipeOutputs[recipe.OutputStart + i].Amount;
         }
 
         // 착수 틱에는 재료를 선소비하고 진행도만 채운다. 다음 Decision이 완료 출력을 승인한다.

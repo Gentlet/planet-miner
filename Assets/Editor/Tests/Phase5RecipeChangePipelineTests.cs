@@ -13,8 +13,6 @@ using Unity.Mathematics;
 /// </summary>
 public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
 {
-    private BlobAssetReference<RecipeRegistryBlob> _recipeBlob;
-    private BlobAssetReference<ItemRegistryBlob> _itemBlob;
     private SystemHandle _crafterCommandHandle;
     private SystemHandle _crafterDecisionHandle;
     private SystemHandle _crafterStateApplyHandle;
@@ -30,8 +28,8 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
         base.SetUp();
 
         // 1. 레시피 레지스트리 초기화
-        _recipeBlob = RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
-        _itemBlob = ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
+        RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
+        ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
 
         // 2. 시스템 핸들 획득
         _crafterCommandHandle = _world.GetOrCreateSystem(typeof(CrafterRecipeCommandSystem));
@@ -42,20 +40,6 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
         _beltSpatialSyncHandle = _world.GetOrCreateSystem(typeof(BeltSpatialSyncSystem));
         _endCommandEcb = _world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
         _endStateApplyEcb = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
-    }
-
-    [TearDown]
-    public override void TearDown()
-    {
-        if (_itemBlob.IsCreated)
-        {
-            _itemBlob.Dispose();
-        }
-        if (_recipeBlob.IsCreated)
-        {
-            _recipeBlob.Dispose();
-        }
-        base.TearDown();
     }
 
     private Entity CreateCrafter(int2 position, int recipeId = 1)

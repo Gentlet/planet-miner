@@ -21,6 +21,7 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
     private ComponentLookup<Storage> _storageLookup;
     private BufferLookup<StoredItemElement> _storedBufferLookup;
     private BufferLookup<BuildingInputSlotElement> _inputSlotLookup;
+    private BufferLookup<ItemConfigElement> _itemConfigLookup;
     private EntityQuery _inputQuery;
     private EntityQuery _itemRegistryQuery;
 
@@ -30,6 +31,7 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
         _storageLookup = state.GetComponentLookup<Storage>(true);
         _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
         _inputSlotLookup = state.GetBufferLookup<BuildingInputSlotElement>(true);
+        _itemConfigLookup = state.GetBufferLookup<ItemConfigElement>(true);
         _itemRegistryQuery = state.GetEntityQuery(ComponentType.ReadOnly<ItemRegistry>());
 
         _inputQuery = SystemAPI.QueryBuilder()
@@ -49,11 +51,14 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
         _storageLookup.Update(ref state);
         _storedBufferLookup.Update(ref state);
         _inputSlotLookup.Update(ref state);
+        _itemConfigLookup.Update(ref state);
 
         ItemRegistry itemRegistry = default;
+        Entity itemRegistryEntity = Entity.Null;
         if (!_itemRegistryQuery.IsEmptyIgnoreFilter)
         {
             itemRegistry = _itemRegistryQuery.GetSingleton<ItemRegistry>();
+            itemRegistryEntity = _itemRegistryQuery.GetSingletonEntity();
         }
 
         int requestCount = _inputQuery.CalculateEntityCount();
@@ -68,6 +73,8 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
             StoredBufferLookup = _storedBufferLookup,
             InputSlotLookup = _inputSlotLookup,
             ItemRegistry = itemRegistry,
+            ItemRegistryEntity = itemRegistryEntity,
+            ItemConfigLookup = _itemConfigLookup,
             PendingAdditions = pendingAdditions
         };
 
@@ -103,6 +110,11 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
     [ReadOnly]
     public ItemRegistry ItemRegistry;
 
+    public Entity ItemRegistryEntity;
+
+    [ReadOnly]
+    public BufferLookup<ItemConfigElement> ItemConfigLookup;
+
     public NativeParallelHashMap<int2, PendingSlot> PendingAdditions;
 
     public void Execute(
@@ -136,12 +148,13 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
         }
 
         bool hasInputSlots = InputSlotLookup.HasBuffer(building);
+        bool hasItemConfig = ItemConfigLookup.HasBuffer(ItemRegistryEntity);
         DynamicBuffer<BuildingInputSlotElement> inputSlots = default;
         if (hasInputSlots)
         {
             inputSlots = InputSlotLookup[building];
             if (inputSlots.Length != slotCount || slotCount > GameConstants.MaxStorageSlots ||
-                !ItemRegistry.Value.IsCreated)
+                !hasItemConfig)
             {
                 inputDecision.CanDeposit = false;
                 inputDecision.TargetSlotIndex = -1;
@@ -152,9 +165,9 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
 
         ItemTypeEnum itemType = itemIdentity.Type;
         int maxStack = 50;
-        if (ItemRegistry.Value.IsCreated)
+        if (hasItemConfig)
         {
-            maxStack = ItemRegistry.Value.Value.GetMaxStack(itemType);
+            maxStack = ItemRegistry.GetMaxStack(ItemConfigLookup[ItemRegistryEntity], itemType);
         }
 
         // FixedList512Bytes를 사용하여 unsafe 코드 없이 스택 기반 O(1) 슬롯 점유 집계 (GameConstants.MaxStorageSlots 상한 준수)

@@ -16,7 +16,6 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
 {
     private GameSimulationGroup _simulationGroup;
     private WorldInvariantValidationSystem _invariantValidationSystem;
-    private BlobAssetReference<ItemRegistryBlob> _itemBlobRef;
     private float _elapsedTime;
 
     [SetUp]
@@ -26,8 +25,8 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
         CreateGameplayPrefabDatabases();
         _elapsedTime = 0.0f;
 
-        // ItemRegistry 싱글톤 초기화 (스택 상한 및 아이템 불변 Blob 설정 제공)
-        _itemBlobRef = ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
+        // ItemRegistry 싱글톤 초기화 (스택 상한 및 아이템 ECS 버퍼 설정 제공)
+        ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
 
         // 1. 최상위 시뮬레이션 그룹 및 Phase 그룹 구성
         _simulationGroup = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
@@ -79,16 +78,6 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
         executionGroup.SortSystems();
         stateApplyGroup.SortSystems();
         synchronizationGroup.SortSystems();
-    }
-
-    [TearDown]
-    public override void TearDown()
-    {
-        if (_itemBlobRef.IsCreated)
-        {
-            _itemBlobRef.Dispose();
-        }
-        base.TearDown();
     }
 
     private Entity CreateResourceNode(int2 position, ItemTypeEnum resourceType, int amount)

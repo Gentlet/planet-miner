@@ -11,7 +11,7 @@ public struct CrafterDecision : IComponentData, IEnableableComponent
     public bool CanAdvance;         // 진행도 누적 가능
     public bool CanProduceOutput;   // 1.0f 완료 후 출력 버퍼에 여유가 있어 배출 가능
     public int RecipeId;
-    public int RecipeIndex;         // 전역 RecipeRegistryBlob 내의 인덱스
+    public int RecipeIndex;         // 전역 RecipeConfigElement 버퍼 내의 인덱스
 
     public CrafterDecision(bool canCraft, int recipeId, int recipeIndex = -1)
     {
