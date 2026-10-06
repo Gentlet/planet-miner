@@ -1,6 +1,7 @@
 using Unity.Collections;
 using Unity.Entities;
 
+/// <summary>검증/슬롯 계산 실패 사유. ECS 상태가 아닌 호출자 반환 값이며 부분 슬롯 적용 여부를 결정한다.</summary>
 public enum BuildingInputSlotCalculationErrorEnum : byte
 {
     None,
@@ -11,8 +12,10 @@ public enum BuildingInputSlotCalculationErrorEnum : byte
 }
 
 /// <summary>
-/// ECS 상태를 변경하거나 메모리를 할당하지 않는 건물 공통 입력 슬롯 계산.
-/// 유효한 재료 범위와 읽기 전용 설정 버퍼를 호출자가 제공하며, 결과 적용과 오류 처리는 호출자가 소유한다.
+/// 역할·목적: 레시피 요구량과 품목별 MaxStack에서 전용 입력 슬롯 구성을 계산한다.
+/// 입력·출력: 재료 범위와 ItemRegistry/품목 버퍼를 읽어 FixedList 슬롯과 실패 사유를 반환한다. ECS 상태 변경/힙 할당은 하지 않는다.
+/// 이용: CrafterRecipeCommandSystem은 성공 결과로 Storage·필터·입력 슬롯을 함께 바꾼다. 적용과 실패 처리, 범위 유효성은 호출자가 소유한다.
+/// 수명: 결과는 호출자에게 반환하는 일시적인 값이다. 같은 품목의 요구량은 합치고 실패 시 부분 슬롯을 외부에 공개하지 않는다.
 /// </summary>
 public static class BuildingInputSlotUtility
 {
@@ -40,6 +43,7 @@ public static class BuildingInputSlotUtility
             return false;
         }
 
+        // 모든 품목 계산이 끝날 때까지 출력과 분리한 임시 목록에 적는다. 슬롯 상한 실패로 부분 구성이 적용되지 않게 한다.
         FixedList512Bytes<BuildingInputSlotElement> calculatedSlots = default;
         for (int i = 0; i < ingredientCount; i++)
         {

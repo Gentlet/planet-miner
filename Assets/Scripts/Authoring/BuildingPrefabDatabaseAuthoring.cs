@@ -15,7 +15,10 @@ public enum BuildingPrefabLoadMode
 }
 
 /// <summary>
-/// 건물 프리팹 데이터베이스 서브씬 Authoring 컴포넌트.
+/// 역할·목적: Inspector 목록 또는 Resources/Prefabs/Building에서 건물 종류→프리팹/기본 크기 DB를 베이킹한다.
+/// 부착 대상: SubScene의 DB Authoring GameObject. Baker는 별도 DB 엔티티에 BuildingPrefabDatabase/BuildingPrefabElement를 게시한다.
+/// 이용: PrefabDatabaseInitializationSystem이 유일성/필수 원형을 검증하고 건물 생성 경계가 참조한다.
+/// 수명·경계: 베이킹 참조는 World 동안 불변으로 사용하는 계약이다. 런타임 BuildingType·위치·작업 상태는 여기서 부착하지 않는다.
 /// </summary>
 [DisallowMultipleComponent]
 public class BuildingPrefabDatabaseAuthoring : MonoBehaviour
@@ -23,6 +26,7 @@ public class BuildingPrefabDatabaseAuthoring : MonoBehaviour
     [Tooltip("프리팹 로드 방식 설정 (인스펙터 직접 지정 vs Resources 폴더 자동 탐색)")]
     public BuildingPrefabLoadMode LoadMode = BuildingPrefabLoadMode.InspectorList;
 
+    /// <summary>Inspector의 건물 원형 등록 값. Size는 방향 적용 전 기본 크기이며 Baker가 각 축을 최소 1로 정규화한다.</summary>
     [System.Serializable]
     public struct BuildingPrefabEntry
     {
@@ -103,6 +107,7 @@ public class BuildingPrefabDatabaseAuthoring : MonoBehaviour
         }
     }
 
+    /// <summary>Unity 베이킹에서 선택된 로드 모드로 DB 버퍼를 만든다. 런타임 필수 항목/중복 검증은 Initialization이 담당한다.</summary>
     public class BuildingPrefabDatabaseBaker : Baker<BuildingPrefabDatabaseAuthoring>
     {
         public override void Bake(BuildingPrefabDatabaseAuthoring authoring)

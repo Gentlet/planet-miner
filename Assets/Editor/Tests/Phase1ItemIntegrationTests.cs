@@ -4,6 +4,11 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Rendering;
 
+/// <summary>
+/// 역할·목적: 아이템 생성·이동·수납·방출·삭제의 상태 연결에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 프리팹 DB/요청/소유자를 준비해 Lifecycle/Ownership→ECB→SpatialSync의 실물·버퍼·인덱스와 Destroy 경합을 검사한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
+/// </summary>
 public class Phase1ItemIntegrationTests : EcsWorldTestFixture
 {
     private SystemHandle _lifecycleHandle;
@@ -27,6 +32,7 @@ public class Phase1ItemIntegrationTests : EcsWorldTestFixture
 
     private void UpdateStateApplyPhase()
     {
+        // 생성/소유권 기록 뒤 ECB를 재생하고 공간 등록은 후속 Synchronization에서 검사한다.
         _lifecycleHandle.Update(_world.Unmanaged);
         _ownershipHandle.Update(_world.Unmanaged);
         _endStateApplyEcb.Update();
@@ -354,6 +360,39 @@ public class Phase1ItemIntegrationTests : EcsWorldTestFixture
         _invariantValidationSystem.ResetViolationCount();
         UpdateSynchronizationPhase();
         Assert.AreEqual(0, _invariantValidationSystem.TotalViolationCount, "No invariant violations should occur when pre-removed.");
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void DestroyedTransfer_DoesNotRecordCleanupCommandsAgainstDeletedItem(bool ownershipFirst)
+    {
+        Entity storage = _entityManager.CreateEntity(typeof(Storage));
+        _entityManager.SetComponentData(storage, new Storage(1));
+        _entityManager.AddBuffer<StoredItemElement>(storage);
+        Entity spawnRequest = _entityManager.CreateEntity();
+        _entityManager.AddComponentData(spawnRequest, new SpawnItemRequest(
+            ItemTypeEnum.Iron, storage, ItemSpawnDestination.Storage));
+        UpdateStateApplyPhase();
+
+        var storedItems = _entityManager.GetBuffer<StoredItemElement>(storage);
+        Entity item = storedItems[0].ItemEntity;
+        storedItems.RemoveAt(0);
+        _entityManager.SetComponentEnabled<DestroyItemRequest>(item, true);
+        _entityManager.SetComponentData(item, new TransferOwnershipRequest(Entity.Null));
+        _entityManager.SetComponentEnabled<TransferOwnershipRequest>(item, true);
+
+        if (ownershipFirst)
+        {
+            Simulation.UpdateAndComplete(_ownershipHandle);
+        }
+        Simulation.UpdateAndComplete(_lifecycleHandle);
+        if (!ownershipFirst)
+        {
+            Simulation.UpdateAndComplete(_ownershipHandle);
+        }
+        Simulation.Playback(_endStateApplyEcb);
+
+        Assert.IsFalse(_entityManager.Exists(item));
     }
 
     [Test]

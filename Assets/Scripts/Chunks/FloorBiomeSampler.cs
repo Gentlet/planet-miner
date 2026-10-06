@@ -1,7 +1,10 @@
 using Unity.Entities;
 using Unity.Mathematics;
 
-/// <summary>월드 셀의 바닥 선택 결과. VariantIndex는 선택한 목록 안의 로컬 인덱스다.</summary>
+/// <summary>
+/// 월드 셀의 바이옴/변형 선택 값. ECS 컴포넌트가 아닌 FloorBiomeSampler 반환 값이며 호출자가 표시/검사에 사용한다.
+/// VariantIndex는 선택한 일반/전이 목록 내부의 로컬 인덱스다. GetVariant가 시작 오프셋과 결합하며 별도 셀 원본을 게시하지 않는다.
+/// </summary>
 public struct FloorTileSelection
 {
     public int BiomeIndex;
@@ -16,7 +19,12 @@ public struct FloorTileSelection
     }
 }
 
-/// <summary>청크 로드 순서나 점유 상태와 무관하게 동일 시드·셀에 동일 결과를 산출한다.</summary>
+/// <summary>
+/// 역할·목적: 월드 셀에서 바이옴 경계/전이와 가중 바닥 변형을 시드 기반으로 결정한다.
+/// 입력·출력: 검증된 바닥 설정/바이옴/변형 버퍼를 읽어 FloorTileSelection 또는 선택 행을 반환한다.
+/// 이용: V2FloorBiomePreview와 바닥 생성 테스트가 호출한다. 실제 바닥 청크 렌더링/셀 엔티티 Writer는 후속이다.
+/// 수명·소유권: 전역 RNG/영속 캐시를 갱신하지 않는 순수 계산이다. 같은 시드·설정·셀은 호출 순서와 무관하게 같은 결과를 낸다.
+/// </summary>
 public static class FloorBiomeSampler
 {
     private const uint BiomeSalt = 0x4F1BBCDCu;
@@ -33,6 +41,7 @@ public static class FloorBiomeSampler
         in DynamicBuffer<FloorVariantElement> variants,
         int2 worldCell)
     {
+        // 경계는 연속 노이즈로 휘게 하고 변형은 셀 해시로 고정한다. 표시/청크 로드 순서가 선택을 바꾸지 않는다.
         float2 warpedCell = worldCell + GetBoundaryWarp(worldSeed, settings, worldCell);
         float regionSizeInCells = settings.BiomeRegionSizeInChunks * (float)ChunkUtility.ChunkSize;
         float2 regionCoordinate = warpedCell / regionSizeInCells;
@@ -45,6 +54,7 @@ public static class FloorBiomeSampler
             HashToUnitFloat(Hash(worldSeed, worldCell.x, worldCell.y, TransitionVariantSalt)) <=
             1f - SmoothStep(distanceRatio);
 
+        // 전이 목록은 버퍼 앞부분, 일반 변형은 바이옴 범위를 사용한다. 반환 인덱스는 이 범위 안의 로컬 값이다.
         int start = usesTransition ? 0 : biomes[biomeIndex].VariantStart;
         int count = usesTransition ? settings.TransitionVariantCount : biomes[biomeIndex].VariantCount;
         uint salt = usesTransition ? TransitionVariantSalt + 1u : VariantSalt + (uint)biomeIndex;

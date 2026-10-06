@@ -6,15 +6,11 @@ using Unity.Rendering;
 using Unity.Transforms;
 
 /// <summary>
-/// 아이템 엔티티의 탄생(생성) 및 죽음(파괴) 전담 시스템.
-/// 
-/// [책임]
-/// - StateApplyGroup(Phase 5)에서 실행.
-/// - ProductResult를 처리하여 생산 완료 결과를 실제 아이템 엔티티와 ProductItemElement로 반영.
-/// - SpawnItemRequest를 처리하여 아이템 엔티티를 생성하고 기본 컴포넌트를 초기화.
-/// - DestroyItemRequest가 활성화된 아이템 엔티티를 파괴.
-/// - 등록된 프리팹만 인스턴스화한다. DB/항목 누락은 시뮬레이션 중단 오류다.
-/// - 수납 아이템에 대해 DisableRendering 컴포넌트를 부착하여 렌더 파이프라인에서 제외.
+/// 역할·목적: 생산 결과/직접 생성 요청을 실물 아이템으로 바꾸고 활성 삭제 요청의 실물을 제거한다.
+/// 처리 단계: StateApply. 입력은 ProductResult, SpawnItemRequest, 활성 DestroyItemRequest 및 등록된 아이템 프리팹 DB다.
+/// 출력·소유권: 아이템 초기화와 목적 보관/생산 버퍼 등록, 렌더 태그, 실물 삭제를 EndStateApply에 기록한다. 기존 실물의 드론 인계는 Ownership API가 담당한다.
+/// World Spawn은 현재 현장 footprint로 다시 검사해 완공 검사 뒤 현장 내부에 새 실물이 생성되는 경우를 막는다.
+/// 정리·가시화: 생산 결과는 Clear, 처리한 Spawn 요청/Destroy 실물은 EndStateApply에 삭제한다. DB 누락은 대체 생성 없이 중단 오류를 기록한다.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
 public partial struct ItemLifecycleApplySystem : ISystem
@@ -26,11 +22,9 @@ public partial struct ItemLifecycleApplySystem : ISystem
     private BufferLookup<ProductItemElement> _productBufferLookup;
     private BufferLookup<ItemPrefabElement> _itemPrefabBufferLookup;
     private EntityQuery _prefabDbQuery;
-    private EntityQuery _demolishQuery;
 
     public void OnCreate(ref SystemState state)
     {
-
         _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
         _productBufferLookup = state.GetBufferLookup<ProductItemElement>(true);
         _itemPrefabBufferLookup = state.GetBufferLookup<ItemPrefabElement>(true);
@@ -52,9 +46,6 @@ public partial struct ItemLifecycleApplySystem : ISystem
             .WithAll<ItemPrefabDatabase, ItemPrefabElement>()
             .Build();
 
-        _demolishQuery = SystemAPI.QueryBuilder()
-            .WithAll<DemolishBuildingRequest>()
-            .Build();
     }
 
     [BurstCompile]
@@ -71,10 +62,8 @@ public partial struct ItemLifecycleApplySystem : ISystem
         _productBufferLookup.Update(ref state);
         _itemPrefabBufferLookup.Update(ref state);
 
-        // EndCommand에서 거부/중복 요청이 제거되었으므로 남은 요청은 철거 대상이다.
-        // 요청은 EndStateApply까지 생존하며, 이 임시 복사본은 생성 Job들이 사용한 뒤 해제한다.
-        var demolitionRequests = _demolishQuery.ToComponentDataListAsync<DemolishBuildingRequest>(
-            Allocator.TempJob, state.Dependency, out var demolitionRequestsHandle);
+        // Admission 이후 생성된 현장과 Admission을 거치지 않은 요청도 현재 현장 기준으로 재검사한다.
+        var constructionFootprints = ConstructionSiteWorldItemUtility.CaptureFootprints(state.EntityManager, Allocator.TempJob);
 
         bool hasPrefabDb = !_prefabDbQuery.IsEmptyIgnoreFilter;
         Entity prefabDbEntity = hasPrefabDb ? _prefabDbQuery.GetSingletonEntity() : Entity.Null;
@@ -85,10 +74,9 @@ public partial struct ItemLifecycleApplySystem : ISystem
             ECB = ecb,
             HasPrefabDb = hasPrefabDb,
             PrefabDbEntity = prefabDbEntity,
-            DemolitionRequests = demolitionRequests,
             ItemPrefabBufferLookup = _itemPrefabBufferLookup
         };
-        var productResultHandle = productResultJob.Schedule(_productResultQuery, demolitionRequestsHandle);
+        var productResultHandle = productResultJob.Schedule(_productResultQuery, state.Dependency);
 
         // 2. [생성 Job] SpawnItemRequest 처리
         var spawnJob = new SpawnItemApplyJob
@@ -96,10 +84,10 @@ public partial struct ItemLifecycleApplySystem : ISystem
             ECB = ecb,
             HasPrefabDb = hasPrefabDb,
             PrefabDbEntity = prefabDbEntity,
-            DemolitionRequests = demolitionRequests,
             ItemPrefabBufferLookup = _itemPrefabBufferLookup,
             StoredBufferLookup = _storedBufferLookup,
-            ProductBufferLookup = _productBufferLookup
+            ProductBufferLookup = _productBufferLookup,
+            ConstructionFootprints = constructionFootprints
         };
         var spawnHandle = spawnJob.Schedule(_spawnQuery, productResultHandle);
 
@@ -110,7 +98,7 @@ public partial struct ItemLifecycleApplySystem : ISystem
         };
         var destroyHandle = destroyJob.Schedule(_destroyQuery, spawnHandle);
 
-        state.Dependency = demolitionRequests.Dispose(destroyHandle);
+        state.Dependency = constructionFootprints.Dispose(destroyHandle);
         ecbSystem.AddJobHandleForProducer(state.Dependency);
     }
 }
@@ -122,7 +110,6 @@ public partial struct ItemLifecycleApplySystem : ISystem
 public partial struct ProductResultApplyJob : IJobEntity
 {
     public EntityCommandBuffer ECB;
-    [ReadOnly] public NativeList<DemolishBuildingRequest> DemolitionRequests;
     public bool HasPrefabDb;
     public Entity PrefabDbEntity;
 
@@ -135,13 +122,6 @@ public partial struct ProductResultApplyJob : IJobEntity
     {
         if (productResults.Length == 0)
         {
-            return;
-        }
-
-        if (DemolishBuildingRequestLookup.ContainsTarget(producerEntity, DemolitionRequests))
-        {
-            // 승인된 철거와 겹친 완료 생산물은 폐기한다. 선소비한 재료/자원은 보상하지 않는다.
-            productResults.Clear();
             return;
         }
 
@@ -203,9 +183,9 @@ public partial struct ProductResultApplyJob : IJobEntity
 public partial struct SpawnItemApplyJob : IJobEntity
 {
     public EntityCommandBuffer ECB;
-    [ReadOnly] public NativeList<DemolishBuildingRequest> DemolitionRequests;
     public bool HasPrefabDb;
     public Entity PrefabDbEntity;
+    [ReadOnly] public NativeArray<ConstructionSiteWorldItemUtility.Footprint> ConstructionFootprints;
 
     [ReadOnly]
     public BufferLookup<ItemPrefabElement> ItemPrefabBufferLookup;
@@ -218,15 +198,6 @@ public partial struct SpawnItemApplyJob : IJobEntity
 
     public void Execute(Entity requestEntity, in SpawnItemRequest request)
     {
-        if (request.Destination == ItemSpawnDestination.Storage || request.Destination == ItemSpawnDestination.Product)
-        {
-            if (DemolishBuildingRequestLookup.ContainsTarget(request.TargetOwner, DemolitionRequests))
-            {
-                ECB.DestroyEntity(requestEntity);
-                return;
-            }
-        }
-
         bool canSpawn = false;
         ItemOwnership ownership = default;
         bool isWorld = false;
@@ -234,7 +205,7 @@ public partial struct SpawnItemApplyJob : IJobEntity
         switch (request.Destination)
         {
             case ItemSpawnDestination.World:
-                canSpawn = true;
+                canSpawn = ConstructionSiteWorldItemUtility.IsWorldPositionAllowed(ConstructionFootprints, request.Position);
                 ownership = ItemOwnership.WorldItem;
                 isWorld = true;
                 break;
@@ -320,4 +291,3 @@ public partial struct DestroyItemApplyJob : IJobEntity
         ECB.DestroyEntity(entity);
     }
 }
-

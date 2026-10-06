@@ -5,14 +5,11 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 /// <summary>
-/// Merger 합류 의사결정 시스템.
-/// 
-/// [책임]
-/// - DecisionGroup (Phase 2)에서 실행.
-/// - Merger의 기준 출력 벨트(OutputBelt) 수용 공간을 검사(공간 부족 시 커서 동결 및 대기).
-/// - 현재 InputCursor부터 back -> left -> right 순서로 유효한 입력 벨트의 종단 아이템을 탐색(Work-conserving).
-/// - 후보가 확정되면 RoutingTransferDecision(Item, SourceBelt, TargetBelt) 활성화.
-/// - 영속 상태(MergerRoutingState)를 직접 수정하지 않으며, 순수 의사결정만 산출.
+/// 역할·목적: Decision에서 합류기의 가용 입력 실물을 기준 출력 벨트로 전달할 후보를 판단한다.
+/// 입력·생성자: RoutingApplySystem의 출력 기준선/입력 커서, Synchronization 인덱스와 벨트 PlacementStamp.
+/// 출력·소유권: 합류기의 RoutingTransferDecision과 enable 상태만 갱신한다. 기준선·커서·실물은 변경하지 않는다.
+/// 이용·정리: BeltDestinationReservationSystem이 목적지 경합을 중재하고 RoutingApplySystem이 인계 성공 시 상태/커서를 반영한다.
+/// 기준 출력이 무효면 다시 찾고 커서부터 가능한 입력을 찾는다. 결정은 다음 틱 초기화하며 철거 대상은 후보에서 제외한다.
 /// </summary>
 [UpdateInGroup(typeof(DecisionGroup))]
 [BurstCompile]
@@ -23,6 +20,7 @@ public partial struct MergerDecisionSystem : ISystem
     private ComponentLookup<GridPosition> _gridPositionLookup;
     private ComponentLookup<Direction> _directionLookup;
     private ComponentLookup<PlacementStamp> _placementStampLookup;
+    private ComponentLookup<PendingBuildingDemolition> _pendingBuildingDemolitionLookup;
 
     private EntityQuery _mergerQuery;
 
@@ -34,6 +32,7 @@ public partial struct MergerDecisionSystem : ISystem
         _gridPositionLookup = state.GetComponentLookup<GridPosition>(true);
         _directionLookup = state.GetComponentLookup<Direction>(true);
         _placementStampLookup = state.GetComponentLookup<PlacementStamp>(true);
+        _pendingBuildingDemolitionLookup = state.GetComponentLookup<PendingBuildingDemolition>(true);
 
         _mergerQuery = SystemAPI.QueryBuilder()
             .WithAllRW<RoutingTransferDecision>()
@@ -69,6 +68,7 @@ public partial struct MergerDecisionSystem : ISystem
         _gridPositionLookup.Update(ref state);
         _directionLookup.Update(ref state);
         _placementStampLookup.Update(ref state);
+        _pendingBuildingDemolitionLookup.Update(ref state);
 
         var decisionJob = new MergerDecisionJob
         {
@@ -78,7 +78,8 @@ public partial struct MergerDecisionSystem : ISystem
             ItemOwnershipLookup = _itemOwnershipLookup,
             GridPositionLookup = _gridPositionLookup,
             DirectionLookup = _directionLookup,
-            PlacementStampLookup = _placementStampLookup
+            PlacementStampLookup = _placementStampLookup,
+            PendingBuildingDemolitionLookup = _pendingBuildingDemolitionLookup
         };
 
         var readDep = JobHandle.CombineDependencies(beltFence.GetReaderDependency(), itemFence.GetReaderDependency());
@@ -107,6 +108,7 @@ public partial struct MergerDecisionJob : IJobEntity
     [ReadOnly] public ComponentLookup<GridPosition> GridPositionLookup;
     [ReadOnly] public ComponentLookup<Direction> DirectionLookup;
     [ReadOnly] public ComponentLookup<PlacementStamp> PlacementStampLookup;
+    [ReadOnly] public ComponentLookup<PendingBuildingDemolition> PendingBuildingDemolitionLookup;
 
     public void Execute(
         Entity entity,
@@ -116,6 +118,15 @@ public partial struct MergerDecisionJob : IJobEntity
         in MergerRoutingState routingState,
         in GridPosition gridPos)
     {
+        // 이전 프레임의 활성 결정을 남기지 않고 이번 프레임 후보만 생성한다.
+        decision = default;
+        decisionEnabled.ValueRW = false;
+
+        if (PendingBuildingDemolitionLookup.HasComponent(entity))
+        {
+            return;
+        }
+
         if (buildingType.Type != BuildingTypeEnum.Merger)
         {
             decisionEnabled.ValueRW = false;
@@ -124,9 +135,15 @@ public partial struct MergerDecisionJob : IJobEntity
 
         int2 mergerPos = gridPos.Value;
 
+        // 기준 출력/입력 커서는 실제 전달 성공 때만 Apply가 바꾼다. 경합 탈락이 포트 순서를 소비하지 않게 판단과 상태를 분리한다.
         // 1. 기준 출력 벨트 결정
         Entity outputBelt = routingState.OutputBelt;
         DirectionEnum forwardDir = routingState.ForwardDirection;
+
+        if (PendingBuildingDemolitionLookup.HasComponent(outputBelt))
+        {
+            outputBelt = Entity.Null;
+        }
 
         if (outputBelt == Entity.Null || !GridPositionLookup.HasComponent(outputBelt))
         {
@@ -170,6 +187,11 @@ public partial struct MergerDecisionJob : IJobEntity
 
             if (BeltMap.TryGetValue(inputPos, out BeltInfo beltInfo))
             {
+                if (PendingBuildingDemolitionLookup.HasComponent(beltInfo.Entity))
+                {
+                    continue;
+                }
+
                 if (RoutingDirectionUtility.IsIncomingBelt(mergerPos, inputPos, beltInfo.Direction))
                 {
                     Entity item = FindItemAtBeltEnd(inputPos);
@@ -210,6 +232,11 @@ public partial struct MergerDecisionJob : IJobEntity
 
             if (BeltMap.TryGetValue(neighborPos, out BeltInfo beltInfo))
             {
+                if (PendingBuildingDemolitionLookup.HasComponent(beltInfo.Entity))
+                {
+                    continue;
+                }
+
                 if (RoutingDirectionUtility.IsOutgoingBelt(routerPos, neighborPos, beltInfo.Direction))
                 {
                     PlacementStamp stamp = default;

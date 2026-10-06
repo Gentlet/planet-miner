@@ -5,11 +5,9 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Phase 5 Crafter 레시피 변경 및 입고 차단/복귀 파이프라인 검증 테스트.
-/// - 레시피 변경 시 CommandGroup에서 원자적 처리 (Filter 갱신, Byproduct to ProductBuffer, 진행도 리셋)
-/// - ProductItemElement에 잔여물이 있는 동안 CrafterStatusEnum.WaitingForByproductOutput 상태 진입
-/// - WaitingForByproductOutput 동안 BuildingItemInputDecisionSystem에서 재료 입고 차단 
-/// - ProductItemElement가 완전히 비워지면 Idle로 복귀하고 새 레시피 재료 입고 개시
+/// 역할·목적: 레시피 변경의 잔여 재료 배출과 입고 차단/복귀에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 제작기/벨트 재료를 준비해 Command/Decision/StateApply 및 ECB 전후의 필터·버퍼·WaitingForByproductOutput 상태를 검사한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
 {
@@ -60,6 +58,7 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
 
     private void SyncSpatialIndices()
     {
+        // 변경 전/후 판단이 같은 건물/벨트 입력을 읽도록 Sync와 fence 완료를 명시한다.
         _buildingSpatialSyncHandle.Update(_world.Unmanaged);
         var buildingFence = _world.EntityManager.CreateEntityQuery(typeof(BuildingSpatialIndexFence)).GetSingletonRW<BuildingSpatialIndexFence>();
         buildingFence.ValueRW.Complete();

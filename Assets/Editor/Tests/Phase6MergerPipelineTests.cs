@@ -4,12 +4,9 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Merger 합류 파이프라인 및 라우팅 순환 단위 테스트.
-/// - Back -> Left -> Right 3방향 라운드로빈 순환 및 커서 전진 검증
-/// - 비어있는 포트 우회 합류(Work-conserving) 및 실제 유입 포트 기준 커서 갱신 검증
-/// - 출력 정체 시 아이템 보존 및 커서 동결 검증
-/// - 정체 해제 시 합류 재개 검증
-/// - 다중 출력 벨트 중 PlacementStamp 우선순위 기준선 자동 선택 검증
+/// 역할·목적: Merger 입력 순환·우회·정체/복구·기준 벨트에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: Back/Left/Right 입력과 출력으로 Decision→Reservation→RoutingApply의 실물/커서를 검사한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase6MergerPipelineTests : EcsWorldTestFixture
 {
@@ -49,6 +46,7 @@ public class Phase6MergerPipelineTests : EcsWorldTestFixture
 
     private void RunPipeline()
     {
+        // 맵→판단→예약→전달→재등록으로 커서 전진과 이동이 같은 승인 결과를 따르는지 검사한다.
         _beltSpatialSyncHandle.Update(_world.Unmanaged);
         _itemSpatialSyncHandle.Update(_world.Unmanaged);
         _mergerDecisionHandle.Update(_world.Unmanaged);

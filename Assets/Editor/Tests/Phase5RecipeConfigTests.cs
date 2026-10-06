@@ -4,7 +4,9 @@ using PlanetMiner.Tests;
 using Unity.Entities;
 
 /// <summary>
-/// 월드가 소유하는 레시피 설정 버퍼와 Crafter 컴포넌트들의 정합성을 검증.
+/// 역할·목적: 레시피 JSON의 재료/주생산품/부산물 매핑에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 기본/사용자 레시피를 ECS 버퍼로 게시해 구간·순서·개수·품목을 검사한다. 실제 제작 진행/생산은 별도 파이프라인 범위다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase5RecipeConfigTests : EcsWorldTestFixture
 {
@@ -45,6 +47,7 @@ public class Phase5RecipeConfigTests : EcsWorldTestFixture
     [TestCase(2)]
     public void Test05_CustomJsonWithByproducts_CorrectlyBuildsOutputs(int byproductCount)
     {
+        // 부산물 개수를 바꿔 출력 구간/순서 매핑을 검사한다. 실제 제작을 진행하는 사례는 아니다.
         // 두 번째 부산물 유무만 바꾸어 공통 파싱·출력 계약을 검증한다.
         string secondByproduct = byproductCount == 2
             ? ", { \"itemType\": \"Copper\", \"amount\": 1 }"

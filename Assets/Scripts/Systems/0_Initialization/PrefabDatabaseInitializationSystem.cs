@@ -7,8 +7,11 @@ using Unity.Transforms;
 using UnityEngine;
 
 /// <summary>
-/// 요청된 SubScene 로딩 후 필수 프리팹 계약을 검증한다. 성공 전/실패 후에는 게임 그룹을 실행하지 않는다.
-/// 실패는 영구 중단이며 자동 재시도하지 않는다. Ready 이후 DB는 월드 수명 동안 불변이어야 한다.
+/// 역할·목적: Initialization 마지막에서 요청된 SubScene 로딩과 필수 프리팹 DB 계약을 검사해 게임 시작을 허용한다.
+/// 입력·생성자: DB Authoring이 베이킹한 건물/아이템/자원 매핑, SceneSystem 로드 상태와 게시된 자원 생성 설정.
+/// 출력·소유권: 전체 검증 성공 시 PrefabDatabaseReady, 실패 시 SimulationFatalError를 즉시 생성한다. DB 원본은 변경하지 않는다.
+/// 이용: GameSimulationGroup이 Ready 존재/중단 오류 부재를 확인하여 여섯 실행 phase를 허용한다.
+/// 정리·가시화: 로딩 중은 다음 Initialization에서 기다리며 성공/실패 뒤 비활성화한다. 실패 자동 재시도·ECB 기록은 없고 준비 후 DB는 불변 계약이다.
 /// </summary>
 [UpdateInGroup(typeof(InitializationSystemGroup), OrderLast = true)]
 [UpdateAfter(typeof(SceneSystemGroup))]
@@ -40,11 +43,13 @@ public partial class PrefabDatabaseInitializationSystem : SystemBase
                 loading = true;
             }
         }
+        // 요청된 장면이 모두 준비되기 전에는 DB 부재를 계약 실패로 확정하지 않는다.
         if (loading)
         {
             return;
         }
 
+        // 개별 DB의 유일성·원형 생존과 필수 타입을 모두 확인한 뒤 한 번만 게임 실행을 허용한다.
         if (!ValidateBuildings(out string error) || !ValidateItems(out error) || !ValidateResources(out error))
         {
             Fail(error);

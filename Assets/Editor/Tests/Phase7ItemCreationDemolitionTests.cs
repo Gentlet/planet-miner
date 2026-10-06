@@ -6,7 +6,11 @@ using Unity.Mathematics;
 using Unity.Rendering;
 using Unity.Transforms;
 
-/// <summary>F-005: 실제 그룹 정렬과 두 ECB 경계에서 생성 대기/철거의 인계를 검증한다.</summary>
+/// <summary>
+/// 역할·목적: 철거 승인과 대기 생성/제작/채굴의 인계에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 기존 실물/생산 결과/요청으로 앞단 생성 차단·반환/환급·선소비 전 재료 보존을 검사한다. 그룹 정렬과 Item/Building 상대 순서를 바꾼 직접 호출 사례를 구분한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
+/// </summary>
 public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
 {
     [SetUp]
@@ -144,7 +148,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void EndCommand_RemovesRejectedAndDuplicateRequests_BeforeStateApply()
+    public void EndCommand_ConsumesAllRequests_RecordsOnlyApprovedBuildingState()
     {
         CreatePipeline(false);
         var buildingSystem = _world.GetExistingSystem<BuildingLifecycleApplySystem>();
@@ -155,13 +159,15 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         Entity mainFacility = CreateBufferedBuilding(BuildingTypeEnum.MainFacility, new int2(2, 0));
         Entity constructionSite = CreateBufferedBuilding(BuildingTypeEnum.ConstructionSite, new int2(3, 0));
         Entity invalidType = CreateBufferedBuilding(BuildingTypeEnum.None, new int2(4, 0));
+        Entity buildingPrefab = CreateBufferedBuilding(BuildingTypeEnum.Storage, new int2(5, 0));
+        _entityManager.AddComponent<Prefab>(buildingPrefab);
         Entity nonBuilding = _entityManager.CreateEntity();
         Entity destroyed = _entityManager.CreateEntity();
         _entityManager.DestroyEntity(destroyed);
         var targets = new[]
         {
             approved, approved, protectedBuilding, mainFacility, constructionSite,
-            invalidType, nonBuilding, destroyed, Entity.Null
+            invalidType, buildingPrefab, nonBuilding, destroyed, Entity.Null
         };
         var requests = new Entity[targets.Length];
         for (int i = 0; i < targets.Length; i++)
@@ -172,32 +178,23 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
 
         _world.GetExistingSystemManaged<CommandGroup>().Update();
 
-        // Command 종료 시 거부/중복 요청은 사라지고 건물과 유효 요청은 유지된다.
+        // Command 종료 시 모든 요청을 소비하고 승인된 건물의 상태만 후속 단계로 전달한다.
         Assert.IsTrue(_entityManager.Exists(approved));
         Assert.AreEqual(BuildingTypeEnum.Storage, _entityManager.GetComponentData<BuildingType>(approved).Type);
-        int acceptedRequestCount = 0;
+        Assert.IsTrue(_entityManager.HasComponent<PendingBuildingDemolition>(approved));
         for (int i = 0; i < requests.Length; i++)
         {
-            if (!_entityManager.Exists(requests[i]))
-            {
-                continue;
-            }
-
-            Assert.Less(i, 2, "거부된 요청은 Command 경계를 통과하면 안 된다.");
-            Assert.AreEqual(approved, _entityManager.GetComponentData<DemolishBuildingRequest>(requests[i]).TargetBuilding);
-            acceptedRequestCount++;
+            Assert.IsFalse(_entityManager.Exists(requests[i]), "유효/거부/중복 요청 모두 EndCommand에서 삭제되어야 한다.");
         }
-        Assert.AreEqual(1, acceptedRequestCount, "중복 요청 중 하나만 StateApply에 도달한다.");
+        foreach (Entity rejectedTarget in new[]
+                 { protectedBuilding, mainFacility, constructionSite, invalidType, buildingPrefab, nonBuilding })
+        {
+            Assert.IsFalse(_entityManager.HasComponent<PendingBuildingDemolition>(rejectedTarget));
+        }
 
         Simulation.UpdateAndComplete(buildingSystem);
-        for (int i = 0; i < requests.Length; i++)
-        {
-            if (_entityManager.Exists(requests[i]))
-            {
-                Assert.AreEqual(approved, _entityManager.GetComponentData<DemolishBuildingRequest>(requests[i]).TargetBuilding);
-            }
-        }
-
+        Assert.IsTrue(_entityManager.Exists(approved), "실제 철거는 EndStateApply에서 확정된다.");
+        Assert.IsTrue(_entityManager.HasComponent<PendingBuildingDemolition>(approved));
         Simulation.Playback(endStateApply);
 
         Assert.IsFalse(_entityManager.Exists(approved));
@@ -205,13 +202,15 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         Assert.IsTrue(_entityManager.Exists(mainFacility));
         Assert.IsTrue(_entityManager.Exists(constructionSite));
         Assert.IsTrue(_entityManager.Exists(invalidType));
+        Assert.IsTrue(_entityManager.Exists(buildingPrefab));
         Assert.IsTrue(_entityManager.Exists(nonBuilding));
         AssertRequestsConsumed();
     }
 
-    [TestCase(true)]
-    [TestCase(false)]
-    public void SameTickCraftCompletion_ConsumesIngredients_OnlyKeepsOutputWithoutDemolition(bool demolish)
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    [TestCase(false, false)]
+    public void ApprovedDemolition_StopsCrafting_PreservesUnconsumedIngredients(bool demolish, bool alreadyCrafting)
     {
         Entity recipeConfig = RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
         ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
@@ -240,11 +239,14 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
             expectedOutputs += recipeOutputs[recipe.OutputStart + i].Amount;
         }
 
-        // 착수 틱에는 재료를 선소비하고 진행도만 채운다. 다음 Decision이 완료 출력을 승인한다.
-        Simulation.SetDeltaTime(GameConstants.MaxSimulationDeltaTime);
-        pipeline.Update();
-        Assert.AreEqual(0, itemQuery.CalculateEntityCount());
-        Assert.IsTrue(_entityManager.GetComponentData<CrafterState>(crafter).IsCraftingActive);
+        // 정상 대조군과 진행 중 철거 사례만 먼저 착수한다. 승인 전 소비된 재료는 보상하지 않는다.
+        if (!demolish || alreadyCrafting)
+        {
+            Simulation.SetDeltaTime(GameConstants.MaxSimulationDeltaTime);
+            pipeline.Update();
+            Assert.AreEqual(0, itemQuery.CalculateEntityCount());
+            Assert.IsTrue(_entityManager.GetComponentData<CrafterState>(crafter).IsCraftingActive);
+        }
         if (demolish)
         {
             RequestDemolition(crafter);
@@ -255,10 +257,17 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
 
         foreach (Entity ingredient in ingredients)
         {
-            Assert.IsFalse(_entityManager.Exists(ingredient));
+            bool shouldPreserve = demolish && !alreadyCrafting;
+            Assert.AreEqual(shouldPreserve, _entityManager.Exists(ingredient));
+            if (shouldPreserve)
+            {
+                AssertWorldItem(ingredient);
+                Assert.AreEqual(new int2(5, 5), _entityManager.GetComponentData<GridPosition>(ingredient).Value);
+            }
         }
         Assert.AreEqual(!demolish, _entityManager.Exists(crafter));
-        Assert.AreEqual(demolish ? 0 : expectedOutputs, itemQuery.CalculateEntityCount());
+        int expectedItems = !demolish ? expectedOutputs : alreadyCrafting ? 0 : ingredients.Length;
+        Assert.AreEqual(expectedItems, itemQuery.CalculateEntityCount());
         if (!demolish)
         {
             Assert.AreEqual(expectedOutputs, _entityManager.GetBuffer<ProductItemElement>(crafter).Length);
@@ -271,9 +280,12 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
     [TestCase(true, 2)]
     [TestCase(false, 1)]
     [TestCase(false, 2)]
-    public void SameTickMiningCompletion_ConsumesResource_OnlyKeepsOutputWithoutDemolition(bool demolish, int amount)
+    public void ApprovedDemolition_StopsMining_LeavesResourceUnconsumed(bool demolish, int amount)
     {
         var pipeline = CreatePipeline(false);
+        var decision = _world.GetExistingSystemManaged<DecisionGroup>();
+        decision.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerDecisionSystem>());
+        decision.SortSystems();
         var execution = _world.GetExistingSystemManaged<ExecutionGroup>();
         execution.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerExecutionSystem>());
         execution.SortSystems();
@@ -281,6 +293,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         Entity miner = Entities.CreateMiner(int2.zero, new int2(1, 1), DirectionEnum.Up, progress: 1f);
         _entityManager.SetComponentData(miner, new MinerDecision(true, resource));
         _entityManager.SetComponentEnabled<MinerDecision>(miner, true);
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<ResourceSpatialSyncSystem>());
         if (demolish)
         {
             RequestDemolition(miner);
@@ -290,10 +303,12 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         pipeline.Update();
 
         Assert.AreEqual(!demolish, _entityManager.Exists(miner));
-        Assert.AreEqual(amount > 1, _entityManager.Exists(resource));
-        if (amount > 1)
+        bool resourceRemains = demolish || amount > 1;
+        Assert.AreEqual(resourceRemains, _entityManager.Exists(resource));
+        if (resourceRemains)
         {
-            Assert.AreEqual(amount - 1, _entityManager.GetComponentData<ResourceNode>(resource).Amount);
+            Assert.AreEqual(demolish ? amount : amount - 1,
+                _entityManager.GetComponentData<ResourceNode>(resource).Amount);
         }
         using var query = _entityManager.CreateEntityQuery(typeof(ItemIdentity));
         Assert.AreEqual(demolish ? 0 : 1, query.CalculateEntityCount());
@@ -315,6 +330,25 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         RecordStoredSpawns(_endCommand.CreateCommandBuffer(), building);
         _world.GetExistingSystemManaged<CommandGroup>().Update();
 
+        Assert.IsTrue(_entityManager.HasComponent<PendingBuildingDemolition>(building));
+        Assert.AreEqual(0, _entityManager.GetBuffer<ProductResult>(building).Length,
+            "승인 시 오래된 생산 결과를 Command에서 소비한다.");
+        using (var spawns = _entityManager.CreateEntityQuery(new EntityQueryDesc
+               {
+                   All = new[] { ComponentType.ReadOnly<SpawnItemRequest>() },
+                   Options = EntityQueryOptions.IgnoreComponentEnabledState
+               }))
+        {
+            Assert.AreEqual(2, spawns.CalculateEntityCount(), "EndCommand에서 생성된 요청도 Decision이 검사해야 한다.");
+            _world.GetExistingSystemManaged<DecisionGroup>().Update();
+            _entityManager.CompleteAllTrackedJobs();
+            using var pendingSpawns = spawns.ToEntityArray(Allocator.Temp);
+            foreach (Entity spawn in pendingSpawns)
+            {
+                Assert.IsFalse(_entityManager.IsComponentEnabled<SpawnItemRequest>(spawn));
+            }
+        }
+
         var itemSystem = _world.GetExistingSystem<ItemLifecycleApplySystem>();
         var buildingSystem = _world.GetExistingSystem<BuildingLifecycleApplySystem>();
         // 중간 Job 완료 대기 없이 두 예약 순서와 ECB 생성 순서 모두 검증한다.
@@ -330,6 +364,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
 
     private GameSimulationGroup CreatePipeline(bool createItemSystemFirst)
     {
+        // Apply 생성 순서를 바꾸어 상대 실행 순서와 관계없이 앞단 철거 승인 차단 계약을 검사한다.
         var simulation = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
         var command = _world.GetOrCreateSystemManaged<CommandGroup>();
         var decision = _world.GetOrCreateSystemManaged<DecisionGroup>();
@@ -346,6 +381,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         _endCommand = _world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
         command.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingDemolitionCommandSystem>());
         command.AddSystemToUpdateList(_endCommand);
+        decision.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemSpawnAdmissionDecisionSystem>());
         if (createItemSystemFirst)
         {
             apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemLifecycleApplySystem>());
@@ -358,6 +394,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         }
         apply.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>());
         command.SortSystems();
+        decision.SortSystems();
         apply.SortSystems();
         simulation.SortSystems();
         return simulation;
@@ -417,7 +454,11 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
     private void AssertRequestsConsumed()
     {
         using var demolish = _entityManager.CreateEntityQuery(typeof(DemolishBuildingRequest));
-        using var spawn = _entityManager.CreateEntityQuery(typeof(SpawnItemRequest));
+        using var spawn = _entityManager.CreateEntityQuery(new EntityQueryDesc
+        {
+            All = new[] { ComponentType.ReadOnly<SpawnItemRequest>() },
+            Options = EntityQueryOptions.IgnoreComponentEnabledState
+        });
         Assert.AreEqual(0, demolish.CalculateEntityCount());
         Assert.AreEqual(0, spawn.CalculateEntityCount());
     }

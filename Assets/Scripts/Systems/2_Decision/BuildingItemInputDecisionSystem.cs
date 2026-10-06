@@ -4,17 +4,11 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 벨트 종단에 도달한 아이템의 건물 입고 적합성을 판정하는 시스템.
-/// 
-/// [책임]
-/// - DecisionGroup(Phase 2)에서 실행.
-/// - 벨트 끝(Progress >= 1.0f - AlignmentEpsilon)에 도달한 월드 아이템을 감지.
-/// - BuildingSpatialIndex를 통해 진행 방향 다음 타일의 건물 존재 및 수납 기능(Storage) 여부를 O(1)로 조회.
-/// - StorageFilter가 부착된 경우 아이템 허용 여부를 검사.
-/// - 적합 시 CanDeposit = true, TargetBuilding 지정, TargetSlotIndex = -1(Reservation 단계 확정용)을 기록하고 활성화.
-/// - 필터 차단 또는 부적합 시 CanDeposit = false로 설정하고 비활성화.
-/// - [엄격한 단일 책임 원칙 (SRP)]: 벨트 이동 컴포넌트(BeltMovementDecision)를 수정하지 않으며, 
-///   BuildingItemInputDecision만 갱신하여 다른 도메인 상태와의 쓰기 경합 방지.
+/// 역할·목적: Decision에서 벨트 종단 실물의 건물 입고 적합성을 판단한다.
+/// 입력·생성자: 월드 실물의 진행도/품목, Synchronization의 건물/벨트 인덱스와 저장·필터·제작 상태.
+/// 출력·소유권: 실물의 BuildingItemInputDecision과 enable 상태만 쓴다. 허용 후보의 슬롯은 -1로 남긴다.
+/// 이용·정리: BuildingStorageInputReservationSystem이 슬롯을 확정하고 BuildingItemStorageApplySystem이 인계 후 비활성화한다.
+/// 철거 승인 대상은 후보부터 차단한다. 실물·소유 버퍼 변경이나 ECB 기록은 하지 않는다.
 /// </summary>
 [UpdateInGroup(typeof(DecisionGroup))]
 [BurstCompile]
@@ -23,6 +17,7 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
     private ComponentLookup<Storage> _storageLookup;
     private ComponentLookup<StorageFilter> _storageFilterLookup;
     private ComponentLookup<CrafterState> _crafterStateLookup;
+    private ComponentLookup<PendingBuildingDemolition> _pendingDemolitionLookup;
     private EntityQuery _itemQuery;
 
     [BurstCompile]
@@ -31,7 +26,9 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
         _storageLookup = state.GetComponentLookup<Storage>(true);
         _storageFilterLookup = state.GetComponentLookup<StorageFilter>(true);
         _crafterStateLookup = state.GetComponentLookup<CrafterState>(true);
+        _pendingDemolitionLookup = state.GetComponentLookup<PendingBuildingDemolition>(true);
 
+        // 지난 틱 비활성 결정을 포함해 다시 판단한다. enable 상태를 쿼리 필터로 삼으면 새 입고 후보를 놓친다.
         _itemQuery = SystemAPI.QueryBuilder()
             .WithAllRW<BuildingItemInputDecision>()
             .WithAll<BeltMovementState, GridPosition, ItemIdentity, ItemOwnership>()
@@ -63,6 +60,7 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
         _storageLookup.Update(ref state);
         _storageFilterLookup.Update(ref state);
         _crafterStateLookup.Update(ref state);
+        _pendingDemolitionLookup.Update(ref state);
 
         var job = new BuildingItemInputDecisionJob
         {
@@ -70,7 +68,8 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
             BeltMap = beltIndex.Map,
             StorageLookup = _storageLookup,
             StorageFilterLookup = _storageFilterLookup,
-            CrafterStateLookup = _crafterStateLookup
+            CrafterStateLookup = _crafterStateLookup,
+            PendingDemolitionLookup = _pendingDemolitionLookup
         };
 
         // Reader 의존성: BuildingSpatialIndex 및 BeltSpatialIndex의 마지막 Writer 완료 대기 및 Reader 등록
@@ -106,6 +105,9 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
     [ReadOnly]
     public ComponentLookup<CrafterState> CrafterStateLookup;
 
+    [ReadOnly]
+    public ComponentLookup<PendingBuildingDemolition> PendingDemolitionLookup;
+
     public void Execute(
         ref BuildingItemInputDecision inputDecision,
         EnabledRefRW<BuildingItemInputDecision> inputDecisionEnabled,
@@ -128,6 +130,16 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
             return;
         }
 
+        // 철거 승인된 현재 벨트는 종단에 도달한 아이템도 인계하지 않는다.
+        if (PendingDemolitionLookup.HasComponent(currentBelt.Entity))
+        {
+            inputDecision.TargetBuilding = Entity.Null;
+            inputDecision.CanDeposit = false;
+            inputDecision.TargetSlotIndex = -1;
+            inputDecisionEnabled.ValueRW = false;
+            return;
+        }
+
         // 3. 벨트 끝(Progress >= 1.0f - Epsilon)에 도달하지 않았으면 비활성화
         if (beltState.Progress < 1.0f - GameConstants.AlignmentEpsilon)
         {
@@ -140,6 +152,16 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
         if (!BuildingMap.TryGetValue(nextPos, out BuildingInfo buildingInfo))
         {
             // 다음 타일에 건물이 없음
+            inputDecision.TargetBuilding = Entity.Null;
+            inputDecision.CanDeposit = false;
+            inputDecision.TargetSlotIndex = -1;
+            inputDecisionEnabled.ValueRW = false;
+            return;
+        }
+
+        // Command에서 철거를 승인한 건물에는 입고 후보를 생성하지 않는다.
+        if (PendingDemolitionLookup.HasComponent(buildingInfo.Entity))
+        {
             inputDecision.TargetBuilding = Entity.Null;
             inputDecision.CanDeposit = false;
             inputDecision.TargetSlotIndex = -1;

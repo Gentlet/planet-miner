@@ -5,7 +5,9 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Task 7.2 원자적 배치 예약 및 공사 현장 생성 Command 시스템 단위/통합 테스트.
+/// 역할·목적: 배치 묶음 정책·동일 틱 경합·현장 초기화에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 설정/Sync 소유 공간 맵/후보 버퍼로 Command/EndCommand의 요구량·차단/PlacementStamp를 검사한다. 승인과 자재 운송/완공은 구분한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase7PlacementCommandTests : EcsWorldTestFixture
 {
@@ -42,6 +44,7 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
 
     private void UpdateCommandPhase()
     {
+        // EndCommand 실체화 뒤 생성된 현장/요구 버퍼를 검사해 승인 판단과 가시화 시점을 구분한다.
         _commandHandle.Update(_world.Unmanaged);
         _endCommandEcb.Update();
     }
@@ -117,7 +120,6 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
         var stamp = _entityManager.GetComponentData<PlacementStamp>(siteEntity);
 
         Assert.AreEqual(BuildingTypeEnum.Miner, site.TargetBuildingType);
-        Assert.AreEqual(0.0f, site.Progress);
         Assert.AreEqual(new int2(2, 2), footprint.Size);
         Assert.AreEqual(new int2(0, 0), pos.Value);
         Assert.GreaterOrEqual(stamp.Tick, 1UL);

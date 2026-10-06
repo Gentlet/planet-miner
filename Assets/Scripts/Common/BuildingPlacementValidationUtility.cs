@@ -4,12 +4,10 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 건물 배치 타당성 검증 순수 함수 유틸리티.
-/// 
-/// [책임]
-/// - UI 프리뷰 시스템과 런타임 배치 시스템(Phase 7 CommandGroup)에서 공통으로 호출되는 검증 유틸리티.
-/// - Unmanaged 공간 인덱스(BuildingSpatialIndex, ResourceSpatialIndex, ItemSpatialIndex)의 ReadOnly 뷰를 직접 조회.
-/// - 단일 건물 및 다중 배치 묶음(Batch)의 경합·충돌·중재(PlacementFlags)를 무비용(O(1) 해시 조회, Zero GC Alloc)으로 판정.
+/// 역할·목적: 단일/묶음 배치의 회전 점유·자원 필요·해금·바닥 실물 여부를 검증한다.
+/// 입력·출력: 직전 동기화의 공간 인덱스와 후보/설정을 읽고 후보별 승인/거부 값을 쓴다. 월드 상태와 인덱스를 변경하지 않는다.
+/// 이용: BuildingPlacementCommandSystem(Command)과 테스트가 호출한다. 런타임 UI 프리뷰 Producer는 미구현이다.
+/// 수명·경계: 묶음 호출마다 임시 claimedCells를 만들어 내부 충돌을 검사한 뒤 Dispose한다. 별도 요청 묶음 간의 영속 선점이나 조기 공간 동기화가 아니다.
 /// </summary>
 [BurstCompile]
 public static class BuildingPlacementValidationUtility

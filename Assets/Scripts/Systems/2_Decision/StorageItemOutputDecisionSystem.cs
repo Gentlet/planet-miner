@@ -4,16 +4,11 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 일반 창고(Storage) 내부에 보관된 아이템(StoredItemElement)의 외부 벨트 방출 적합성을 판정하는 시스템.
-/// 
-/// [책임]
-/// - DecisionGroup(Phase 2)에서 실행.
-/// - 일반 보관 버퍼(StoredItemElement)를 가지고 있으면서 생산물 버퍼(ProductItemElement)가 없는 일반 창고 건물을 탐색.
-/// - 건물 둘레 타일(Perimeter)을 순회하여 건물 외부로 향하는 외향 벨트(Outward Belt)를 감지.
-/// - 외향 벨트 시작점(Progress = 0.0f)에 ItemSpacing 이상의 여유 공간이 확보되었는지 확인.
-/// - 방출 조건 충족 시 FIFO 0번 아이템을 대상으로 CanOutput = true, ItemToOutput, TargetBeltPosition을 기록하고 활성화.
-/// - 방출 조건 미충족 시(아이템 없음, 외향 벨트 없음, 또는 벨트 정체) 컴포넌트를 비활성화.
-/// - [상태-의사결정 분리]: 버퍼에서 아이템을 제거하거나 소유권을 변경하지 않으며, 순수 의사결정 컴포넌트(BuildingItemOutputDecision)만 갱신.
+/// 역할·목적: Decision에서 보관품의 첫 실물을 보낼 외향 벨트 후보를 찾는다.
+/// 입력·생성자: 건물 생성/입고가 유지하는 StoredItemElement, 회전 footprint와 Synchronization의 벨트/월드 실물 인덱스.
+/// 출력·소유권: 건물의 BuildingItemOutputDecision과 enable 상태만 쓴다. 보관품을 제거하거나 이동시키지 않는다.
+/// 이용·정리: BeltDestinationReservationSystem이 목적지 경합을 중재하고 BuildingItemStorageApplySystem이 인계 후 결정을 소비한다.
+/// 건물 둘레에서 처음 가능한 벨트를 선택하며 철거 승인 건물/벨트는 제외한다. ECB 구조 변경은 없다.
 /// </summary>
 [UpdateInGroup(typeof(DecisionGroup))]
 [BurstCompile]
@@ -21,6 +16,7 @@ public partial struct StorageItemOutputDecisionSystem : ISystem
 {
     private ComponentLookup<BeltMovementState> _beltMovementStateLookup;
     private ComponentLookup<ItemOwnership> _itemOwnershipLookup;
+    private ComponentLookup<PendingBuildingDemolition> _pendingDemolitionLookup;
     private EntityQuery _buildingQuery;
 
     [BurstCompile]
@@ -28,6 +24,7 @@ public partial struct StorageItemOutputDecisionSystem : ISystem
     {
         _beltMovementStateLookup = state.GetComponentLookup<BeltMovementState>(true);
         _itemOwnershipLookup = state.GetComponentLookup<ItemOwnership>(true);
+        _pendingDemolitionLookup = state.GetComponentLookup<PendingBuildingDemolition>(true);
 
         _buildingQuery = SystemAPI.QueryBuilder()
             .WithAllRW<BuildingItemOutputDecision>()
@@ -61,13 +58,15 @@ public partial struct StorageItemOutputDecisionSystem : ISystem
 
         _beltMovementStateLookup.Update(ref state);
         _itemOwnershipLookup.Update(ref state);
+        _pendingDemolitionLookup.Update(ref state);
 
         var job = new StorageItemOutputDecisionJob
         {
             BeltMap = beltIndex.Map,
             ItemMap = itemIndex.Map,
             BeltMovementStateLookup = _beltMovementStateLookup,
-            ItemOwnershipLookup = _itemOwnershipLookup
+            ItemOwnershipLookup = _itemOwnershipLookup,
+            PendingDemolitionLookup = _pendingDemolitionLookup
         };
 
         var readDep = Unity.Jobs.JobHandle.CombineDependencies(beltFence.GetReaderDependency(), itemFence.GetReaderDependency());
@@ -100,7 +99,11 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
     [ReadOnly]
     public ComponentLookup<ItemOwnership> ItemOwnershipLookup;
 
+    [ReadOnly]
+    public ComponentLookup<PendingBuildingDemolition> PendingDemolitionLookup;
+
     public void Execute(
+        Entity building,
         ref BuildingItemOutputDecision outputDecision,
         EnabledRefRW<BuildingItemOutputDecision> outputDecisionEnabled,
         in DynamicBuffer<StoredItemElement> storedItems,
@@ -108,6 +111,15 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
         in GridPosition gridPos,
         in Direction dir)
     {
+        if (PendingDemolitionLookup.HasComponent(building))
+        {
+            outputDecision.CanOutput = false;
+            outputDecision.ItemToOutput = Entity.Null;
+            outputDecision.TargetBeltPosition = int2.zero;
+            outputDecisionEnabled.ValueRW = false;
+            return;
+        }
+
         // 1. 보관 버퍼에 아이템이 전혀 없으면 방출 불가 및 비활성화
         if (storedItems.Length == 0)
         {
@@ -124,6 +136,7 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
         int2 foundBeltPos = int2.zero;
         bool foundBelt = false;
 
+        // 후보 하나만 선택하는 고정 둘레 순서다. 여기서 공간을 확보하지 않고 Reservation이 다른 발신자와 중재한다.
         // 2. 건물 둘레 순회 (하단 -> 우측 -> 상단 -> 좌측)
         // 하단 변 (y = anchor.y - 1)
         for (int x = 0; x < effectiveSize.x && !foundBelt; x++)
@@ -156,7 +169,7 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
         // 3. 의사결정 기록
         if (foundBelt)
         {
-            // 방출 가능: FIFO 0번 아이템 방출 확정
+            // 첫 보관 실물을 출고 후보로 지정한다. 실제 제거/이동은 Reservation 승인 뒤 Apply가 수행한다.
             outputDecision.CanOutput = true;
             outputDecision.ItemToOutput = storedItems[0].ItemEntity;
             outputDecision.TargetBeltPosition = foundBeltPos;
@@ -180,6 +193,11 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
         ref bool foundBelt)
     {
         if (!BeltMap.TryGetValue(cell, out BeltInfo beltInfo))
+        {
+            return;
+        }
+
+        if (PendingDemolitionLookup.HasComponent(beltInfo.Entity))
         {
             return;
         }

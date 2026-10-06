@@ -10,7 +10,9 @@ using UnityEngine;
 using UnityEngine.TestTools;
 
 /// <summary>
-/// Task 7.7 건물 철거 코어 및 내용물/자재 반환 단위/통합 테스트.
+/// 역할·목적: 철거 승인/동작 중단과 반환/환급/삭제에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 완공 건물/실물/설정/요청으로 보호·무효·중복·DB 누락·물류 차단·두 ECB 가시화를 검사한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase7BuildingDemolishTests : EcsWorldTestFixture
 {
@@ -34,6 +36,7 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
 
     private void RunDemolishPhase()
     {
+        // Command/EndCommand 승인과 동작 중단 뒤 Lifecycle/EndStateApply가 반환·환급·삭제를 반영한다.
         RunDemolitionCommandPhase();
         Simulation.UpdateAndComplete(_lifecycleApplySystem);
         Simulation.Playback(_ecbSystem);
@@ -73,6 +76,13 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         var req = _entityManager.CreateEntity();
         _entityManager.AddComponentData(req, new DemolishBuildingRequest(targetBuilding));
         return req;
+    }
+
+    private Entity CreateOperatingBelt(int2 position, DirectionEnum direction)
+    {
+        Entity belt = CreateBuilding(BuildingTypeEnum.Belt, position, direction);
+        _entityManager.AddComponentData(belt, new BeltComponent(2f));
+        return belt;
     }
 
     private Entity CreateStoredItem(Entity owner, ItemTypeEnum type)
@@ -155,14 +165,17 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         Assert.AreEqual(pos, _entityManager.GetComponentData<GridPosition>(productItem).Value, "건물 위치로 배치되어야 함");
     }
 
-    [TestCase(false)]
-    [TestCase(true)]
-    public void SameTickStorageInputAndDemolition_ReturnsPhysicalItem_InEitherApplyOrder(bool ownershipFirst)
+    [TestCase(false, false)]
+    [TestCase(true, false)]
+    [TestCase(false, true)]
+    [TestCase(true, true)]
+    public void ApprovedDemolition_BlocksStorageInput_FromPendingSourceOrDestination(
+        bool ownershipFirst, bool demolishSourceBelt)
     {
         int2 buildingPosition = new int2(10, 10);
         int2 incomingPosition = new int2(9, 10);
         Entity storage = Entities.CreateStorage(buildingPosition, new int2(1, 1), slotCount: 1);
-        Entities.CreateBelt(incomingPosition, DirectionEnum.Right);
+        Entity sourceBelt = CreateOperatingBelt(incomingPosition, DirectionEnum.Right);
         Entity item = Entities.CreateBeltItem(incomingPosition, DirectionEnum.Right, 1.0f, itemType: ItemTypeEnum.Iron);
         _entityManager.AddComponent<DestroyItemRequest>(item);
         _entityManager.SetComponentEnabled<DestroyItemRequest>(item, false);
@@ -172,24 +185,30 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         var beltSpatialSync = _world.GetOrCreateSystem<BeltSpatialSyncSystem>();
         var storageApply = _world.GetOrCreateSystem<BuildingItemStorageApplySystem>();
         var ownershipApply = _world.GetOrCreateSystem<ItemOwnershipApplySystem>();
+        var inputDecision = _world.GetOrCreateSystem<BuildingItemInputDecisionSystem>();
+        var inputReservation = _world.GetOrCreateSystem<BuildingStorageInputReservationSystem>();
         Simulation.UpdateAndComplete(beltSpatialSync);
+        Simulation.UpdateAndComplete(_spatialSyncSystem);
 
-        Entity demolitionRequest = RequestDemolish(storage);
+        Entity target = demolishSourceBelt ? sourceBelt : storage;
+        Entity demolitionRequest = RequestDemolish(target);
         RunDemolitionCommandPhase();
-        Assert.IsTrue(_entityManager.Exists(demolitionRequest), "승인된 철거 요청은 StateApply까지 유지되어야 함");
+        Assert.IsFalse(_entityManager.Exists(demolitionRequest), "승인된 철거 요청도 EndCommand에서 소비한다.");
+        Assert.IsTrue(_entityManager.HasComponent<PendingBuildingDemolition>(target));
         Assert.AreEqual(0, _entityManager.GetBuffer<StoredItemElement>(storage).Length);
 
-        // 실제 입고 적용이 실물을 버퍼에 넣고 소유권 이전 요청을 발행한다.
+        // 이전 프레임의 활성 입고 결정이 있어도 실제 Decision이 지운다. 예약과 인계 요청은 생성하지 않는다.
+        Simulation.UpdateAndComplete(inputDecision);
+        Simulation.UpdateAndComplete(inputReservation);
+        Assert.IsFalse(_entityManager.IsComponentEnabled<BuildingItemInputDecision>(item));
+        Assert.IsFalse(_entityManager.GetComponentData<BuildingItemInputDecision>(item).CanDeposit);
         Simulation.UpdateAndComplete(storageApply);
         var storedItems = _entityManager.GetBuffer<StoredItemElement>(storage);
-        Assert.AreEqual(1, storedItems.Length);
-        Assert.AreEqual(item, storedItems[0].ItemEntity);
+        Assert.AreEqual(0, storedItems.Length);
         Assert.AreEqual(Entity.Null, _entityManager.GetComponentData<ItemOwnership>(item).Owner);
-        Assert.IsFalse(_entityManager.IsComponentEnabled<BuildingItemInputDecision>(item));
-        Assert.IsTrue(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item));
-        Assert.AreEqual(storage, _entityManager.GetComponentData<TransferOwnershipRequest>(item).TargetOwner);
+        Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item));
 
-        // 두 소비자의 상대 순서와 무관하게 최종 반환은 같은 EndStateApply에서 확정된다.
+        // 후속 Apply의 상대 순서와 무관하게 기존 월드 실물은 입력 벨트 위치에 보존된다.
         if (ownershipFirst)
         {
             Simulation.UpdateAndComplete(ownershipApply);
@@ -202,20 +221,19 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         }
 
         Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item));
-        Assert.IsTrue(_entityManager.GetComponentData<TransferOwnershipRequest>(item).ProcessedInStateApply);
         Simulation.Playback(_ecbSystem);
 
-        Assert.IsFalse(_entityManager.Exists(storage));
+        Assert.IsFalse(_entityManager.Exists(target));
+        Assert.AreEqual(demolishSourceBelt, _entityManager.Exists(storage));
         Assert.IsFalse(_entityManager.Exists(demolitionRequest));
-        Assert.IsTrue(_entityManager.Exists(item), "입고된 동일 실물은 철거 후에도 보존되어야 함");
+        Assert.IsTrue(_entityManager.Exists(item), "차단된 입고 아이템은 원래 위치에 보존되어야 한다.");
         Assert.AreEqual(Entity.Null, _entityManager.GetComponentData<ItemOwnership>(item).Owner);
-        Assert.AreEqual(buildingPosition, _entityManager.GetComponentData<GridPosition>(item).Value);
-        Assert.AreEqual(new float3(buildingPosition.x, buildingPosition.y, 0f),
+        Assert.AreEqual(incomingPosition, _entityManager.GetComponentData<GridPosition>(item).Value);
+        Assert.AreEqual(new float3(incomingPosition.x, incomingPosition.y, 0f),
             _entityManager.GetComponentData<LocalTransform>(item).Position);
         Assert.IsFalse(_entityManager.HasComponent<DisableRendering>(item));
-        Assert.IsFalse(_entityManager.IsComponentEnabled<BeltMovementState>(item));
+        Assert.AreEqual(!demolishSourceBelt, _entityManager.IsComponentEnabled<BeltMovementState>(item));
         Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item));
-        Assert.IsFalse(_entityManager.GetComponentData<TransferOwnershipRequest>(item).ProcessedInStateApply);
     }
 
     [Test]
@@ -385,85 +403,152 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         query.Dispose();
     }
 
-    [Test]
-    public void Test11_DemolishBelt_SameTickMovement_TimingCorrectness()
+    [TestCase(true)]
+    [TestCase(false)]
+    public void Test11_DemolishBelt_BlocksMovementOnPendingSourceOrEntryIntoPendingDestination(bool demolishSource)
     {
-        // 시나리오: 틱 N의 Phase 4에서 아이템이 (10, 10) 벨트 A에서 (11, 10) 벨트 B로 이동한 상태.
-        // 즉, 아이템의 실제 GridPosition은 이미 (11, 10)로 갱신됨.
         int2 posA = new int2(10, 10);
         int2 posB = new int2(11, 10);
+        Entity beltA = CreateOperatingBelt(posA, DirectionEnum.Right);
+        Entity beltB = CreateOperatingBelt(posB, DirectionEnum.Right);
+        Entity item = Entities.CreateBeltItem(posA, DirectionEnum.Right, 0.95f, plannedProgress: 0.2f);
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<BeltSpatialSyncSystem>());
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<ItemSpatialSyncSystem>());
 
-        var beltA = CreateBuilding(BuildingTypeEnum.Belt, posA);
-        var beltB = CreateBuilding(BuildingTypeEnum.Belt, posB);
+        Entity target = demolishSource ? beltA : beltB;
+        RequestDemolish(target);
+        RunDemolitionCommandPhase();
+        Simulation.SetDeltaTime(0.1f);
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<BeltMovementDecisionSystem>());
+        var movement = _entityManager.GetComponentData<BeltMovementDecision>(item);
+        Assert.IsTrue(movement.IsBlocked);
+        if (demolishSource)
+        {
+            Assert.AreEqual(0f, movement.PlannedProgress, "철거 승인된 현재 벨트는 이동을 계획하지 않는다.");
+        }
 
-        var item = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(item, new ItemIdentity(ItemTypeEnum.Copper));
-        _entityManager.AddComponentData(item, ItemOwnership.WorldItem);
-        // Phase 4가 끝난 직후라 아이템은 이미 posB에 위치함
-        _entityManager.AddComponentData(item, new GridPosition(posB));
-        _entityManager.AddComponentData(item, LocalTransform.FromPosition(new float3(posB.x, posB.y, 0f)));
-        _entityManager.AddComponentData(item, new BeltMovementState(0.1f));
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<BeltMovementExecutionSystem>());
+        Assert.AreEqual(posA, _entityManager.GetComponentData<GridPosition>(item).Value,
+            "철거 승인된 벨트에서 이동하거나 철거 목적지로 진입하면 안 된다.");
+        float progress = _entityManager.GetComponentData<BeltMovementState>(item).Progress;
+        if (demolishSource)
+        {
+            Assert.AreEqual(0.95f, progress);
+        }
+        else
+        {
+            Assert.Less(progress, 1f, "철거 목적지의 경계 이전에서 대기한다.");
+        }
 
-        // 1. 아이템이 이미 떠난 이전 벨트 A를 철거
-        RequestDemolish(beltA);
-        RunDemolishPhase();
-
-        // 검증: 아이템은 posB에 있으므로, beltA가 철거되어도 BeltMovementState는 안전하게 활성화 유지되어야 함 (엉뚱한 아이템 차단 방지)
-        Assert.IsFalse(_entityManager.Exists(beltA), "벨트 A는 파괴되어야 함");
-        Assert.IsTrue(_entityManager.IsComponentEnabled<BeltMovementState>(item), "벨트 A 철거는 이미 떠난 아이템의 BeltMovementState에 영향을 주지 않아야 함");
-
-        // 2. 이제 아이템이 실제로 위치하고 있는 벨트 B를 철거
-        RequestDemolish(beltB);
-        RunDemolishPhase();
-
-        // 검증: 아이템이 위치한 벨트 B가 철거되었으므로, BeltMovementState가 정상적으로 비활성화되어야 함
-        Assert.IsFalse(_entityManager.Exists(beltB), "벨트 B는 파괴되어야 함");
-        Assert.IsFalse(_entityManager.IsComponentEnabled<BeltMovementState>(item), "벨트 B가 철거되었으므로 BeltMovementState가 비활성화되어야 함");
-        Assert.AreEqual(posB, _entityManager.GetComponentData<GridPosition>(item).Value, "아이템 좌표는 posB로 유지되어야 함");
+        Simulation.UpdateAndComplete(_lifecycleApplySystem);
+        Simulation.Playback(_ecbSystem);
+        Assert.IsFalse(_entityManager.Exists(target));
+        Assert.IsTrue(_entityManager.Exists(item));
+        Assert.AreEqual(posA, _entityManager.GetComponentData<GridPosition>(item).Value);
+        Assert.AreEqual(!demolishSource, _entityManager.IsComponentEnabled<BeltMovementState>(item));
     }
 
-    [Test]
-    public void Test12_DemolishBelt_WithConcurrentRoutingAndOutput_OrderingGuaranteed()
+    [TestCase(BuildingTypeEnum.Splitter, false)]
+    [TestCase(BuildingTypeEnum.Splitter, true)]
+    [TestCase(BuildingTypeEnum.Merger, false)]
+    [TestCase(BuildingTypeEnum.Merger, true)]
+    public void Test12_ApprovedDemolition_StopsRoutingAndStoredProductOutput(
+        BuildingTypeEnum routerType, bool demolishOwners)
     {
-        // 시나리오: 동일 프레임 StateApplyGroup에서 Routing/Output으로 벨트 위로 이동된 아이템과 해당 벨트의 철거가 동시에 일어남.
-        // UpdateAfter(RoutingApplySystem, BuildingItemStorageApplySystem) 덕분에 물류가 먼저 반영된 후 철거 Job이 실행되어야 함.
+        int2 routerPosition = new int2(20, 20);
+        int2 sourcePosition = new int2(19, 20);
+        Entity inputBelt = CreateOperatingBelt(sourcePosition, DirectionEnum.Right);
+        Entity targetBelt = CreateOperatingBelt(new int2(21, 20), DirectionEnum.Right);
+        Entity routedItem = Entities.CreateBeltItem(sourcePosition, DirectionEnum.Right, 1f);
+        Entity router = CreateBuilding(routerType, routerPosition);
+        _entityManager.AddComponentData(router, new RoutingTransferDecision(routedItem, inputBelt, targetBelt));
+        if (routerType == BuildingTypeEnum.Splitter)
+        {
+            _entityManager.AddComponentData(router, new SplitterRoutingState(inputBelt, DirectionEnum.Right));
+        }
+        else
+        {
+            _entityManager.AddComponentData(router, new MergerRoutingState(targetBelt, DirectionEnum.Right));
+        }
+
+        int2 storagePosition = new int2(30, 30);
+        Entity storage = Entities.CreateStorage(storagePosition, new int2(1, 1));
+        Entity storageOutputBelt = CreateOperatingBelt(new int2(31, 30), DirectionEnum.Right);
+        Entity storedItem = CreateStoredItem(storage, ItemTypeEnum.Iron);
+        _entityManager.SetComponentData(storage,
+            new BuildingItemOutputDecision(true, storedItem, new int2(31, 30)));
+        _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(storage, true);
+
+        int2 productPosition = new int2(40, 40);
+        Entity producer = CreateBuilding(BuildingTypeEnum.Crafter, productPosition);
+        Entity productOutputBelt = CreateOperatingBelt(new int2(41, 40), DirectionEnum.Right);
+        Entity productItem = CreateProductItem(producer, ItemTypeEnum.Copper);
+        _entityManager.AddComponentData(producer,
+            new BuildingItemOutputDecision(true, productItem, new int2(41, 40)));
+
+        if (demolishOwners)
+        {
+            // 승인 전 남아 있던 소유권 이전도 정산과 충돌하지 않도록 Command에서 소비한다.
+            _entityManager.AddComponentData(storedItem, new TransferOwnershipRequest(Entity.Null));
+            _entityManager.AddComponentData(productItem, new TransferOwnershipRequest(Entity.Null));
+        }
+
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<BeltSpatialSyncSystem>());
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<ItemSpatialSyncSystem>());
+        RequestDemolish(demolishOwners ? router : targetBelt);
+        RequestDemolish(demolishOwners ? storage : storageOutputBelt);
+        RequestDemolish(demolishOwners ? producer : productOutputBelt);
+        RunDemolitionCommandPhase();
+
+        var decisionGroup = _world.GetOrCreateSystemManaged<DecisionGroup>();
+        decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<SplitterDecisionSystem>());
+        decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<MergerDecisionSystem>());
+        decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<StorageItemOutputDecisionSystem>());
+        decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<ProductItemOutputDecisionSystem>());
+        decisionGroup.SortSystems();
+        decisionGroup.Update();
+        _entityManager.CompleteAllTrackedJobs();
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<BeltDestinationReservationSystem>());
+
+        Assert.IsFalse(_entityManager.IsComponentEnabled<RoutingTransferDecision>(router));
+        Assert.IsFalse(_entityManager.IsComponentEnabled<BuildingItemOutputDecision>(storage));
+        Assert.IsFalse(_entityManager.IsComponentEnabled<BuildingItemOutputDecision>(producer));
+        Assert.IsFalse(_entityManager.GetComponentData<BuildingItemOutputDecision>(storage).CanOutput);
+        Assert.IsFalse(_entityManager.GetComponentData<BuildingItemOutputDecision>(producer).CanOutput);
+        if (demolishOwners)
+        {
+            Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(storedItem));
+            Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(productItem));
+        }
+
         var stateApplyGroup = _world.GetOrCreateSystemManaged<StateApplyGroup>();
         stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<RoutingApplySystem>());
         stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
+        stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
         stateApplyGroup.AddSystemToUpdateList(_lifecycleApplySystem);
         stateApplyGroup.AddSystemToUpdateList(_ecbSystem);
         stateApplyGroup.SortSystems();
-
-        int2 targetPos = new int2(20, 20);
-        var targetBelt = CreateBuilding(BuildingTypeEnum.Belt, targetPos);
-
-        // 이전 벨트 또는 라우터에서 targetBelt로 진입하기로 확정된 아이템
-        var item = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(item, new ItemIdentity(ItemTypeEnum.Iron));
-        _entityManager.AddComponentData(item, ItemOwnership.WorldItem);
-        _entityManager.AddComponentData(item, new GridPosition(new int2(19, 20)));
-        _entityManager.AddComponentData(item, LocalTransform.FromPosition(new float3(19f, 20f, 0f)));
-        _entityManager.AddComponentData(item, new BeltMovementState(1.0f));
-
-        // RoutingTransferDecision 활성화 (아이템을 targetBelt로 이동시키도록)
-        var routerEntity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(routerEntity, new RoutingTransferDecision(item, Entity.Null, targetBelt));
-        _entityManager.AddComponentData(routerEntity, new SplitterRoutingState(Entity.Null, DirectionEnum.Right));
-
-        // 동시에 targetBelt에 대한 철거 요청 인큐
-        RequestDemolish(targetBelt);
-        RunDemolitionCommandPhase();
-
-        // StateApplyGroup 1회 업데이트 (RoutingApply -> BuildingLifecycleApply -> EndStateApply ECB 순차 실행)
         stateApplyGroup.Update();
-
-        // 검증:
-        // 1. targetBelt는 완전히 파괴됨
-        Assert.IsFalse(_entityManager.Exists(targetBelt), "targetBelt는 파괴되어야 함");
-        // 2. 아이템은 targetPos(20, 20)로 이동 반영됨
-        Assert.AreEqual(targetPos, _entityManager.GetComponentData<GridPosition>(item).Value, "아이템은 목적지 벨트 좌표로 전송되어야 함");
-        // 3. Routing이 먼저 전송한 후 BuildingLifecycle이 철거했으므로, 아이템의 BeltMovementState는 안전하게 꺼져 있어야 함!
-        Assert.IsFalse(_entityManager.IsComponentEnabled<BeltMovementState>(item), "철거된 벨트에 도착한 아이템의 이동 상태는 안전하게 비활성화되어야 함");
+        Assert.AreEqual(sourcePosition, _entityManager.GetComponentData<GridPosition>(routedItem).Value);
+        Assert.IsTrue(_entityManager.IsComponentEnabled<BeltMovementState>(routedItem));
+        Assert.AreEqual(!demolishOwners, _entityManager.Exists(router));
+        Assert.AreEqual(demolishOwners, _entityManager.Exists(targetBelt));
+        Assert.AreEqual(demolishOwners ? Entity.Null : storage,
+            _entityManager.GetComponentData<ItemOwnership>(storedItem).Owner);
+        Assert.AreEqual(demolishOwners ? Entity.Null : producer,
+            _entityManager.GetComponentData<ItemOwnership>(productItem).Owner);
+        Assert.AreEqual(!demolishOwners, _entityManager.HasComponent<DisableRendering>(storedItem));
+        Assert.AreEqual(!demolishOwners, _entityManager.HasComponent<DisableRendering>(productItem));
+        if (demolishOwners)
+        {
+            Assert.AreEqual(storagePosition, _entityManager.GetComponentData<GridPosition>(storedItem).Value);
+            Assert.AreEqual(productPosition, _entityManager.GetComponentData<GridPosition>(productItem).Value);
+        }
+        else
+        {
+            Assert.AreEqual(1, _entityManager.GetBuffer<StoredItemElement>(storage).Length);
+            Assert.AreEqual(1, _entityManager.GetBuffer<ProductItemElement>(producer).Length);
+        }
     }
 
     [Test]

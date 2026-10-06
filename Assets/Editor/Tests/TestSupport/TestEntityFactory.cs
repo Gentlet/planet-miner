@@ -6,10 +6,9 @@ using Unity.Transforms;
 namespace PlanetMiner.Tests
 {
     /// <summary>
-    /// 테스트에서 사용하는 대표 ECS Entity 구성을 한 곳에서 관리.
-    ///
-    /// 기능 컴포넌트가 추가/삭제될 때 각 테스트 파일의 Create* 헬퍼를 반복 수정하지 않고
-    /// 이 Factory만 갱신하는 것이 목적.
+    /// 역할·목적: 테스트 자원/벨트/보관품/건물의 공통 컴포넌트 구성을 직접 준비한다.
+    /// 호출·입출력: 테스트 EntityManager와 위치/종류/수량으로 엔티티를 즉시 생성하여 반환하고 Owner/버퍼·enable 상태를 맞춘다.
+    /// 수명·범위: 엔티티는 호출 테스트 World가 해제한다. 제품 Authoring/요청/생성 phase를 실행하는 Factory는 아니다.
     /// </summary>
     public sealed class TestEntityFactory
     {
@@ -18,36 +17,6 @@ namespace PlanetMiner.Tests
         public TestEntityFactory(EntityManager entityManager)
         {
             _entityManager = entityManager;
-        }
-
-        public Entity CreateConstructionMaterialSource()
-        {
-            Entity source = _entityManager.CreateEntity(typeof(BuildingType), typeof(Storage));
-            _entityManager.SetComponentData(source, new BuildingType(BuildingTypeEnum.Storage));
-            _entityManager.SetComponentData(source, new Storage(20));
-            _entityManager.AddBuffer<StoredItemElement>(source);
-            return source;
-        }
-
-        public Entity CreateStoredConstructionMaterial(Entity source, ItemTypeEnum type, int2 position = default)
-        {
-            Entity item = _entityManager.CreateEntity();
-            _entityManager.AddComponentData(item, new ItemIdentity(type));
-            _entityManager.AddComponentData(item, ItemOwnership.Stored(source));
-            _entityManager.AddComponentData(item, new GridPosition(position));
-            _entityManager.AddComponentData(item, LocalTransform.FromPosition(new float3(position.x, position.y, 0f)));
-            _entityManager.AddComponent<Unity.Rendering.DisableRendering>(item);
-            _entityManager.GetBuffer<StoredItemElement>(source).Add(new StoredItemElement(item, type, 0));
-            return item;
-        }
-
-        /// <summary>지정한 공급원과 실물을 변경하지 않고 운송 등록 대상 기록만 만든다.</summary>
-        public Entity CreateConstructionMaterialDelivery(
-            Entity site, Entity sourceBuilding, Entity item, ItemTypeEnum type, bool reserveMaterial = false)
-        {
-            var delivery = _entityManager.CreateEntity();
-            _entityManager.AddComponentData(delivery, new ConstructionMaterialDelivery(site, sourceBuilding, item, type, reserveMaterial));
-            return delivery;
         }
 
         public Entity CreateResourceNode(
@@ -201,6 +170,7 @@ namespace PlanetMiner.Tests
             float speed = 1.0f,
             StorageFilter? filter = null)
         {
+            // 선택 레시피의 슬롯/Whitelist fixture다. 실제 신규 제작기의 0슬롯·미선택 초기화 경로와 구분한다.
             var slots = CalculateCrafterInputSlots(recipeId);
             var entity = _entityManager.CreateEntity(
                 typeof(BuildingType),
@@ -291,6 +261,7 @@ namespace PlanetMiner.Tests
             ItemTypeEnum itemType,
             int slotIndex = 0)
         {
+            // 수납 fixture는 Owner와 소유자의 StoredItemElement를 함께 준비하여 같은 실물 참조를 유지한다.
             var itemEntity = _entityManager.CreateEntity(
                 typeof(ItemIdentity),
                 typeof(ItemOwnership),

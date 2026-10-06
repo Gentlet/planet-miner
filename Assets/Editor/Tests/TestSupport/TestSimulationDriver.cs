@@ -3,11 +3,9 @@ using Unity.Entities;
 namespace PlanetMiner.Tests
 {
     /// <summary>
-    /// 테스트에서 반복되는 시간 설정, 시스템 실행, Dependency 완료 및 ECB Playback을
-    /// 한 곳에서 표현하기 위한 경량 Driver.
-    ///
-    /// 각 테스트는 도메인별 Phase 순서를 그대로 명시하고,
-    /// 저수준 World/SystemHandle 호출만 이 Driver에 위임.
+    /// 역할·목적: 테스트가 시간·Update·Job 완료·ECB 재생을 명시적으로 제어할 실행 helper.
+    /// 호출·입출력: 테스트 World의 SystemHandle/그룹을 실행해 상태를 남긴다. 단일 Update는 Job 완료/ECB 재생을 자동 수행하지 않는다.
+    /// 수명·범위: World는 Fixture가 소유/해제하고 Driver는 참조만 보관한다. 그룹 builder는 선택 시스템의 실제 SortSystems/두 ECB 경계를 구성한다.
     /// </summary>
     public sealed class TestSimulationDriver
     {
@@ -36,6 +34,7 @@ namespace PlanetMiner.Tests
 
         public void UpdateAndComplete(SystemHandle systemHandle)
         {
+            // 개별 Update는 Job 예약으로 끝날 수 있으므로 상태를 즉시 읽을 테스트는 Dependency 완료를 명시한다.
             Update(systemHandle);
             ref var state = ref _world.Unmanaged.ResolveSystemStateRef(systemHandle);
             state.Dependency.Complete();
@@ -54,6 +53,7 @@ namespace PlanetMiner.Tests
         /// <summary>제작기 생성·물류 통합 검증. 각 그룹의 실제 정렬과 두 ECB 경계를 사용한다.</summary>
         public GameSimulationGroup CreateCrafterPipeline()
         {
+            // 등록 순서만으로 phase/선후 관계를 추정하지 않는다. 각 그룹과 루트의 SortSystems로 실제 정렬을 적용한다.
             var simulation = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
             var command = _world.GetOrCreateSystemManaged<CommandGroup>();
             var decision = _world.GetOrCreateSystemManaged<DecisionGroup>();
@@ -70,9 +70,11 @@ namespace PlanetMiner.Tests
 
             command.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterRecipeCommandSystem>());
             command.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingDemolitionCommandSystem>());
+            command.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionCancelCommandSystem>());
             command.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>());
             decision.AddSystemToUpdateList(_world.GetOrCreateSystem<BeltMovementDecisionSystem>());
             decision.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemInputDecisionSystem>());
+            decision.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemSpawnAdmissionDecisionSystem>());
             decision.AddSystemToUpdateList(_world.GetOrCreateSystem<StorageItemOutputDecisionSystem>());
             decision.AddSystemToUpdateList(_world.GetOrCreateSystem<ProductItemOutputDecisionSystem>());
             decision.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterDecisionSystem>());

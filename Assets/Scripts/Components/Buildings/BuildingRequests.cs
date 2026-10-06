@@ -3,14 +3,12 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// [1. 역할]         : 단일 완공 건물 엔티티 생성 및 컴포넌트 초기화 요청 (Command / Transient Request)
-/// [2. Producer]     : Task 7.5 공사 완료 시스템, 부트스트랩 스폰, 테스트 러너
-/// [3. Consumer]     : BuildingLifecycleApplySystem (StateApplyGroup)
-/// [4. Create Phase]: CommandGroup / ExecutionGroup / StateApplyGroup
-/// [5. Consume Phase]: StateApplyGroup (Phase 5)
-/// [6. 수명주기]     : 단일 프레임 소비 (Consume-on-Apply). EndStateApplyEntityCommandBufferSystem에 의해 처리 및 엔티티 파괴
-/// [7. 결과 정책]    : DB/프리팹 누락 시 스폰 거부·요청 소비 및 SimulationFatalError 게시. 대체 생성하지 않는다.
-/// [8. 안전망]       : 요청 처리 후 즉시 파괴되어 고아 요청 누수 방지
+/// 역할·목적: 완공 건물 하나의 직접 생성과 런타임 컴포넌트 초기화를 요청한다.
+/// 부착 엔티티: 위치·종류 등을 담은 별도 일회성 요청 엔티티. 생성될 건물에 붙이는 상태가 아니다.
+/// 생성: 외부 Producer가 소비 전에 실체화하는 계약이며 현재 직접 생성은 테스트가 담당한다.
+/// 현재 ConstructionLifecycleApplySystem은 이 요청을 만들지 않고 공통 SpawnBuilding API로 완공 건물을 직접 생성한다.
+/// 이용: BuildingLifecycleApplySystem(StateApply)이 등록된 프리팹을 인스턴스화한다. DB/항목 누락 시 대체 생성 없이 중단 오류를 기록한다.
+/// 제거: 성공/실패와 관계없이 처리한 요청을 EndStateApply에서 삭제한다. 생성 실패 시 요청 자체를 재시도하지 않는다.
 /// </summary>
 public struct SpawnBuildingRequest : IComponentData, IRequestComponent
 {
@@ -55,20 +53,18 @@ public struct SpawnBuildingRequest : IComponentData, IRequestComponent
 }
 
 /// <summary>
-/// [1. 역할]         : 완공된 건물 철거 및 내용물/자재 반환 요청 (Command / Transient Request)
-/// [2. Producer]     : 플레이어/UI 철거 액션, 테스트 러너 (Command 검증 전에 요청을 실체화)
-/// [3. Consumer]     : BuildingDemolitionCommandSystem 검증 -> BuildingLifecycleApplySystem 소비 / ItemLifecycleApplySystem 조회
-/// [4. Create Phase]: BuildingDemolitionCommandSystem 실행 전. EndCommand 재생이나 그 이후에 새 요청을 생성하지 않는다.
-/// [5. Consume Phase]: 거부/중복 요청은 EndCommand, 유효 요청은 EndStateApply에서 삭제
-/// [6. 수명주기]     : Command 이후 남은 요청은 철거 확정 대상이다. StateApply까지 요청 대상과 철거 가능 조건을 유지한다.
-/// [7. 결과 정책]    : 내용물 방출, 건설 재료 환급, 건물 파괴. 완료 생산물 폐기 및 대상 Storage/Product Spawn 거부.
+/// 역할·목적: 완공 건물의 철거 승인을 요청한다. 공사 현장 취소는 CancelConstructionRequest로 처리한다.
+/// 부착 엔티티: TargetBuilding을 참조하는 별도 일회성 요청 엔티티. 승인 상태와 구분한다.
+/// 생성: 외부 입력이 BuildingDemolitionCommandSystem 실행 전에 실체화하는 계약이며 현재 직접 Producer는 테스트다.
+/// 이용: BuildingDemolitionCommandSystem(Command)만 요청을 검증/소비하고 승인 결과를 대상의 PendingBuildingDemolition으로 전달한다.
+/// 승인 후 입고·생산·출고·운송은 앞단에서 중단하며 BuildingLifecycleApplySystem(StateApply)이 내용물 반환·비용 환급·철거를 반영한다.
+/// 제거: 승인/거부/중복 요청 모두 EndCommand에서 삭제한다. 실제 건물 삭제는 승인 상태를 통해 EndStateApply까지 이어진다.
 /// </summary>
 public struct DemolishBuildingRequest : IComponentData, IRequestComponent
 {
     /// <summary>
     /// 철거할 대상 완공 건물 엔티티.
-    /// Command 종료 후에는 검증된 대상만 남으며, StateApply에서는 이 값을 변경하지 않는다.
-    /// ItemLifecycleApplySystem은 EndStateApply 재생 이전에 요청을 읽어 생성 여부를 결정한다.
+    /// Command 이후에는 요청이 삭제되고 대상 건물의 승인 상태가 수명주기를 이어받는다.
     /// </summary>
     public Entity TargetBuilding;
 

@@ -2,11 +2,11 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 건물 배치 요청 엔티티에 부착되는 요청 헤더 컴포넌트 (Unmanaged).
-/// 
-/// [수명주기 계약 (Consume-on-Apply)]
-/// - UI 또는 블루프린트 시스템에서 생성된 후 CommandGroup의 BuildingPlacementCommandSystem에서 소비.
-/// - 처리가 완료되면 성공/실패 여부와 관계없이 해당 프레임에 엔티티가 파괴되어 고아 요청 누수 방지.
+/// 역할·목적: 배치 후보 묶음의 충돌 정책과 기본 요청 Tick을 전달하는 일회성 요청 헤더.
+/// 부착 엔티티: PlacementRequestCandidateElement 버퍼를 가진 별도 배치 요청 엔티티. 현장/완공 건물에 붙이지 않는다.
+/// 생성: 외부 입력이 Command 실행 전에 요청과 후보를 준비하는 계약이다. 현재 런타임 UI/블루프린트 Producer는 미구현이며 테스트가 직접 생성한다.
+/// 이용: BuildingPlacementCommandSystem(Command)이 후보를 검증하고 승인한 후보의 현장·자재 요구량·PlacementStamp를 기록한다.
+/// 제거: 성공/실패와 관계없이 처리한 요청과 후보 버퍼를 EndCommand에서 삭제한다. 거부 요청을 자동 재시도하지 않는다.
 /// </summary>
 public struct BuildingPlacementRequest : IComponentData
 {
@@ -28,8 +28,12 @@ public struct BuildingPlacementRequest : IComponentData
 }
 
 /// <summary>
-/// BuildingPlacementRequest 엔티티에 첨부되는 배치 후보 버퍼 엘리먼트 (Unmanaged).
-/// 하나의 배치 요청에 다수의 후보(드래그 설치, 복사-붙여넣기 등)가 포함될 수 있음.
+/// 역할·목적: 요청 하나에 단일/다중 건물의 종류·기본 크기·좌하단 위치·방향·개별 Tick을 전달한다.
+/// 부착 엔티티: BuildingPlacementRequest와 같은 요청 엔티티의 버퍼. 후보 자체는 공사 현장의 상태가 아니다.
+/// 생성: 외부 요청 Producer가 헤더와 함께 채운다. 현재 직접 생성은 배치 테스트가 담당한다.
+/// 이용: BuildingPlacementCommandSystem(Command)이 버퍼 순서로 검증하며, 승인 후보의 원래 인덱스를 PlacementStamp.Order로 사용한다.
+/// 개별 RequestTick이 양수이면 헤더/현재 Tick보다 우선하지만 후보의 처리 순서를 Tick으로 재정렬하지는 않는다.
+/// 제거: 처리 후 요청 엔티티와 함께 EndCommand에서 제거한다. 승인 후보의 값은 별도 현장 컴포넌트로 옮겨진다.
 /// </summary>
 public struct PlacementRequestCandidateElement : IBufferElementData
 {

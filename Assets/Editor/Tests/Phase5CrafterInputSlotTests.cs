@@ -5,6 +5,11 @@ using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
 
+/// <summary>
+/// 역할·목적: 전용 슬롯 계산의 합산/반올림·오류·Burst 호출에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 유틸리티 전용 레시피/Registry로 슬롯/오류 코드를 검사한다. 잘못된 Registry 행은 실패 fixture이며 제품 Init의 정상 출력이 아니다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
+/// </summary>
 public class Phase5CrafterInputSlotTests : EcsWorldTestFixture
 {
     private Entity _recipe;
@@ -203,7 +208,8 @@ public class Phase5CrafterInputSlotTests : EcsWorldTestFixture
 
     private void CreateItems(int ironMaxStack, int copperMaxStack, bool mismatchIronEntry = false)
     {
-        // Invalid input rows are deliberately constructed only in these utility tests.
+        // 실패용 Registry를 직접 구성해 품목/스택 오류가 기본값으로 숨겨지지 않는지 확인한다.
+        // 잘못된 입력 행은 이 유틸리티 실패 검증에서만 직접 구성한다.
         _items = _entityManager.CreateEntity(typeof(ItemRegistry));
         _entityManager.SetComponentData(_items, new ItemRegistry { DefaultMaxStack = 50 });
         var entries = _entityManager.AddBuffer<ItemConfigElement>(_items);
@@ -217,6 +223,11 @@ public class Phase5CrafterInputSlotTests : EcsWorldTestFixture
         entries[(int)ItemTypeEnum.Copper] = new ItemConfigElement(ItemTypeEnum.Copper, copperMaxStack);
     }
 
+    /// <summary>
+    /// 역할·목적: 입력 슬롯 계산을 Burst Job 안에서 호출해 결과/오류를 테스트에 전달한다.
+    /// 입력은 읽기 전용 재료/아이템 버퍼이며 출력 NativeReference는 호출 테스트가 생성·Job 완료 후 읽고 해제한다.
+    /// 제품 실행 그룹에 등록하지 않는 단발성 테스트 Job이며 제작/입고 동작을 수행하지 않는다.
+    /// </summary>
     [BurstCompile(CompileSynchronously = true)]
     private struct CalculateSlotsJob : IJob
     {

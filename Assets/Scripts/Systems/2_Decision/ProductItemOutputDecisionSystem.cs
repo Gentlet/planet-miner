@@ -4,15 +4,11 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 채굴기, 제작기 등 생산 건물 내부에 완성된 생산물(ProductItemElement)의 외부 벨트 방출 적합성을 판정하는 시스템.
-/// 
-/// [책임]
-/// - DecisionGroup(Phase 2)에서 실행.
-/// - 생산물 버퍼(ProductItemElement)에 아이템이 존재하는 생산 건물을 탐색.
-/// - 건물 둘레 타일(Perimeter)을 순회하여 건물 외부로 향하는 외향 벨트(Outward Belt)를 감지.
-/// - 외향 벨트 시작점(Progress = 0.0f)에 ItemSpacing 이상의 여유 공간이 확보되었는지 확인.
-/// - 방출 조건 충족 시 주완성품(Slot 0) 우선 또는 FIFO 순서로 방출 아이템을 결정하고 BuildingItemOutputDecision을 활성화.
-/// - [상태-의사결정 분리]: 버퍼에서 아이템을 제거하지 않으며, 순수 의사결정 컴포넌트만 갱신.
+/// 역할·목적: Decision에서 생산품을 외향 벨트로 내보낼 후보를 찾는다.
+/// 입력·생성자: ItemLifecycleApplySystem의 ProductItemElement, 회전 footprint와 Synchronization의 벨트/월드 실물 인덱스.
+/// 출력·소유권: 건물의 BuildingItemOutputDecision만 갱신하며 슬롯 0 주생산품을 우선, 없으면 첫 생산품을 고른다.
+/// 이용·정리: BeltDestinationReservationSystem이 목적지 경합을 중재하고 BuildingItemStorageApplySystem이 인계/결정 소비를 수행한다.
+/// 철거 승인 건물/벨트는 제외한다. 생산 버퍼·소유권 원본 및 ECB는 변경하지 않는다.
 /// </summary>
 [UpdateInGroup(typeof(DecisionGroup))]
 [BurstCompile]
@@ -20,6 +16,7 @@ public partial struct ProductItemOutputDecisionSystem : ISystem
 {
     private ComponentLookup<BeltMovementState> _beltMovementStateLookup;
     private ComponentLookup<ItemOwnership> _itemOwnershipLookup;
+    private ComponentLookup<PendingBuildingDemolition> _pendingDemolitionLookup;
     private EntityQuery _buildingQuery;
 
     [BurstCompile]
@@ -27,6 +24,7 @@ public partial struct ProductItemOutputDecisionSystem : ISystem
     {
         _beltMovementStateLookup = state.GetComponentLookup<BeltMovementState>(true);
         _itemOwnershipLookup = state.GetComponentLookup<ItemOwnership>(true);
+        _pendingDemolitionLookup = state.GetComponentLookup<PendingBuildingDemolition>(true);
 
         _buildingQuery = SystemAPI.QueryBuilder()
             .WithAllRW<BuildingItemOutputDecision>()
@@ -59,13 +57,15 @@ public partial struct ProductItemOutputDecisionSystem : ISystem
 
         _beltMovementStateLookup.Update(ref state);
         _itemOwnershipLookup.Update(ref state);
+        _pendingDemolitionLookup.Update(ref state);
 
         var job = new ProductItemOutputDecisionJob
         {
             BeltMap = beltIndex.Map,
             ItemMap = itemIndex.Map,
             BeltMovementStateLookup = _beltMovementStateLookup,
-            ItemOwnershipLookup = _itemOwnershipLookup
+            ItemOwnershipLookup = _itemOwnershipLookup,
+            PendingDemolitionLookup = _pendingDemolitionLookup
         };
 
         var readDep = Unity.Jobs.JobHandle.CombineDependencies(beltFence.GetReaderDependency(), itemFence.GetReaderDependency());
@@ -98,7 +98,11 @@ public partial struct ProductItemOutputDecisionJob : IJobEntity
     [ReadOnly]
     public ComponentLookup<ItemOwnership> ItemOwnershipLookup;
 
+    [ReadOnly]
+    public ComponentLookup<PendingBuildingDemolition> PendingDemolitionLookup;
+
     public void Execute(
+        Entity building,
         ref BuildingItemOutputDecision outputDecision,
         EnabledRefRW<BuildingItemOutputDecision> outputDecisionEnabled,
         in DynamicBuffer<ProductItemElement> productItems,
@@ -106,6 +110,15 @@ public partial struct ProductItemOutputDecisionJob : IJobEntity
         in GridPosition gridPos,
         in Direction dir)
     {
+        if (PendingDemolitionLookup.HasComponent(building))
+        {
+            outputDecision.CanOutput = false;
+            outputDecision.ItemToOutput = Entity.Null;
+            outputDecision.TargetBeltPosition = int2.zero;
+            outputDecisionEnabled.ValueRW = false;
+            return;
+        }
+
         // 1. 생산물 버퍼에 아이템이 전혀 없으면 방출 불가 및 비활성화
         if (productItems.Length == 0)
         {
@@ -122,6 +135,7 @@ public partial struct ProductItemOutputDecisionJob : IJobEntity
         int2 foundBeltPos = int2.zero;
         bool foundBelt = false;
 
+        // 생산품 선택과 목적지 경합 승인은 별개다. 첫 가용 벨트 후보만 남기고 수용 공간 경합은 Reservation에 넘긴다.
         // 2. 건물 둘레 순회 (하단 -> 우측 -> 상단 -> 좌측)
         for (int x = 0; x < effectiveSize.x && !foundBelt; x++)
         {
@@ -184,6 +198,11 @@ public partial struct ProductItemOutputDecisionJob : IJobEntity
         ref bool foundBelt)
     {
         if (!BeltMap.TryGetValue(cell, out BeltInfo beltInfo))
+        {
+            return;
+        }
+
+        if (PendingDemolitionLookup.HasComponent(beltInfo.Entity))
         {
             return;
         }

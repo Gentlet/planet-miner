@@ -1,12 +1,11 @@
 using Unity.Entities;
 
 /// <summary>
-/// [부착 대상: 아이템 엔티티 (Item Entity)]
-/// 벨트 위 아이템의 프레임 단위 이동 의사결정 산출물(Decision)을 저장하는 컴포넌트.
-/// - DecisionGroup(BeltMovementDecisionSystem)에서 계산하여 기록(Write)하고,
-///   ExecutionGroup(BeltMovementExecutionSystem)에서 실제 이동 반영 후 소비.
-/// - 처리 대상 여부는 BeltMovementState의 Enabled 상태로 결정.
-/// - BeltMovementState와 Decision 데이터를 분리하여 동일 Job 내 상태/결정 책임 분리.
+/// 역할·목적: 실제 BeltMovementState와 분리한 이번 틱의 진행 계획·정체 여부다. 진행 원본이나 일회성 요청이 아니다.
+/// 부착 엔티티: BeltMovementState를 가진 아이템 실물 엔티티다.
+/// 생성: ItemLifecycleUtility가 아이템 생성 ECB에 준비하고 BeltMovementDecisionSystem(Decision)이 매 틱 계획을 작성한다.
+/// 이용: BeltMovementExecutionSystem(Execution)이 계획을 읽어 실제 진행도·좌표를 갱신한다. 대상 여부는 BeltMovementState의 enable 상태로 정한다.
+/// 제거: 틱마다 컴포넌트를 삭제하지 않고 다음 Decision이 값을 덮어쓴다. 실물 삭제 시 함께 제거한다.
 /// </summary>
 public struct BeltMovementDecision : IComponentData
 {

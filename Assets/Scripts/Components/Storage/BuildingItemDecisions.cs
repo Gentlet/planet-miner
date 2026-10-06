@@ -3,8 +3,11 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 벨트 위의 월드 아이템 엔티티에 부착되는 입고 의사결정 컴포넌트 (상태-의사결정 분리).
-/// 벨트 끝(Progress >= 1.0f - Epsilon)에 도달하여 건물 입고를 시도할 때 활성화(Enable).
+/// 역할·목적: 벨트 끝 월드 아이템의 건물 입고 후보와 슬롯 예약 결과를 전달하는 enableable 판단이다.
+/// 부착 엔티티: 건물이 아니라 입고를 시도하는 아이템 실물 엔티티다.
+/// 생성: ItemLifecycleUtility가 비활성으로 준비하고 BuildingItemInputDecisionSystem(Decision)이 대상·입고 자격을 작성한다.
+/// 이용: BuildingStorageInputReservationSystem(Reservation)이 경합을 해결하여 슬롯을 확정하고 BuildingItemStorageApplySystem(StateApply)이 보관 버퍼·위치와 Transfer 요청을 기록한다.
+/// 제거: Apply 후 즉시 비활성화하며 컴포넌트는 실물 삭제까지 유지한다. TargetSlotIndex=-1은 미배정이다.
 /// </summary>
 public struct BuildingItemInputDecision : IComponentData, IEnableableComponent
 {
@@ -33,9 +36,11 @@ public struct BuildingItemInputDecision : IComponentData, IEnableableComponent
 }
 
 /// <summary>
-/// 보관/생산 건물 엔티티에 부착되는 출고 의사결정 컴포넌트 (상태-의사결정 분리).
-/// 건물 내부에 아이템이 있고 외부 벨트로 방출할 조건이 만족되었을 때 활성화(Enable).
-/// (건물당 프레임당 1개 아이템 순차 방출)
+/// 역할·목적: 보관/생산 건물에서 이번 틱 벨트로 내보낼 실물 하나와 대상 벨트를 전달한다.
+/// 부착 엔티티: StoredItemElement 또는 ProductItemElement를 가진 완공 건물 엔티티다.
+/// 생성: BuildingLifecycleUtility가 비활성으로 준비하고 StorageItemOutputDecisionSystem/ProductItemOutputDecisionSystem(Decision)이 출고 후보를 작성한다.
+/// 이용: BeltDestinationReservationSystem(Reservation)이 목적지 경합을 중재하고 BuildingItemStorageApplySystem(StateApply)이 실물 버퍼 제거·벨트 위치·Transfer 요청을 반영한다.
+/// 제거: Apply 후 비활성화하며 컴포넌트는 건물 삭제까지 유지한다. 아이템 Owner 변경은 이어지는 ItemOwnershipApplySystem이 담당한다.
 /// </summary>
 public struct BuildingItemOutputDecision : IComponentData, IEnableableComponent
 {

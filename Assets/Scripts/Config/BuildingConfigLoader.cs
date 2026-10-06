@@ -7,7 +7,7 @@ using Unity.Mathematics;
 using UnityEngine;
 
 /// <summary>
-/// BuildingConfig JSON 직렬화를 위한 DTO 클래스들.
+/// 건물 JSON의 최상위 목록 DTO. Resources 파싱 시에만 쓰며 ECS에 부착하거나 런타임 설정 원본으로 유지하지 않는다.
 /// </summary>
 [Serializable]
 public class BuildingConfigJsonData
@@ -15,6 +15,7 @@ public class BuildingConfigJsonData
     public List<BuildingConfigJsonEntry> buildings = new List<BuildingConfigJsonEntry>();
 }
 
+/// <summary>건물 한 종류의 JSON 입력 행. 속도/용량/해금/기본 크기와 비용 목록은 검증 후 ECS 버퍼 값으로 변환한다.</summary>
 [Serializable]
 public class BuildingConfigJsonEntry
 {
@@ -27,6 +28,7 @@ public class BuildingConfigJsonEntry
     public List<BuildingMaterialJsonEntry> materials = new List<BuildingMaterialJsonEntry>();
 }
 
+/// <summary>건축 비용의 품목 문자열/수량 DTO. 실제 현장의 요구량이나 도착 실물 상태가 아니다.</summary>
 [Serializable]
 public class BuildingMaterialJsonEntry
 {
@@ -35,7 +37,10 @@ public class BuildingMaterialJsonEntry
 }
 
 /// <summary>
-/// BuildingConfig JSON을 로드, 파싱, 검증하고 ECS 월드에 게시하는 정적 유틸리티.
+/// 역할·목적: Resources의 건물 JSON을 파싱/검증하고 통합 설정·건축 비용·호환 런타임 버퍼로 게시한다.
+/// 입력·출력: 유효하지 않은 입력은 false/Null로 거부한다. PublishConfig는 제공된 검증 결과로 새 ECS 엔티티를 만든다.
+/// 이용: BuildingConfigInitSystem(Initialization)과 설정 테스트가 호출한다. 초기화 시점/중복 게시 관리는 호출자가 소유한다.
+/// 수명·경계: JSON DTO/managed 목록은 게시 전 입력이며 게임 실행 Reader는 ECS 버퍼를 사용한다. 해금의 연구 Writer는 별도 후속이다.
 /// </summary>
 public static class BuildingConfigLoader
 {
@@ -220,6 +225,7 @@ public static class BuildingConfigLoader
             return Entity.Null;
         }
 
+        // 통합 설정과 호환 버퍼를 같은 입력에서 게시한다. 이후 게임 Reader가 managed JSON 목록을 원본으로 다시 읽지 않게 한다.
         var entity = entityManager.CreateEntity(
             typeof(BuildingConfig),
             typeof(BuildingRuntimeConfig),

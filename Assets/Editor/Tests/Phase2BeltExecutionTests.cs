@@ -5,9 +5,9 @@ using Unity.Mathematics;
 using Unity.Transforms;
 
 /// <summary>
-/// Belt Execution System 통합 및 단위 테스트.
-/// BeltMovementExecutionSystem에 의한 아이템 진행도(Progress), 타일 횡단(GridPosition),
-/// 실제 렌더링 위치(LocalTransform), 의사결정 소비(Consume)를 검증.
+/// 역할·목적: 벨트 Execution의 횡단·코너·종단 및 delta time 상한에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 진행도/이동 계획을 준비해 GridPosition/LocalTransform과 계획 소비를 검사한다. Transform 값 검사는 실제 화면 렌더링 검증과 구분한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase2BeltExecutionTests : EcsWorldTestFixture
 {
@@ -35,6 +35,7 @@ public class Phase2BeltExecutionTests : EcsWorldTestFixture
 
     private void SyncSpatialIndices()
     {
+        // 수동 생성한 실물은 즉시 맵에 들어가지 않으므로 Execution이 읽을 공간 입력을 Sync로 준비한다.
         _beltSpatialSyncHandle.Update(_world.Unmanaged);
         _itemSpatialSyncHandle.Update(_world.Unmanaged);
     }

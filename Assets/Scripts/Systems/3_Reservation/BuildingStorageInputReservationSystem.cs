@@ -5,14 +5,11 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 창고 입고 판정을 받은 아이템들의 슬롯 예약 및 경합을 해결하는 시스템.
-/// 
-/// [책임]
-/// - ReservationGroup(Phase 3)에서 실행.
-/// - BuildingItemInputDecisionSystem(Phase 2)에서 입고 가능 판정(CanDeposit == true, TargetSlotIndex == -1)을 받은 아이템을 수집.
-/// - 단일 워커 스레드 Job(BuildingStorageInputReservationJob)을 스케줄링하여 메인 스레드 부하를 0으로 유지하면서,
-///   순차 실행으로 동일 창고의 슬롯 중복 배정 경합 방지.
-/// - ItemConfig.MaxStack 기반 스택 병합 및 신규 슬롯 배정을 확정하여 BuildingItemStorageApplySystem에 전달.
+/// 역할·목적: Reservation에서 같은 틱 건물 입고 후보의 저장 슬롯 경합을 중재한다.
+/// 입력·생성자: BuildingItemInputDecisionSystem의 활성 후보, 기존 StoredItemElement와 입력 전용 슬롯/품목 스택 한도.
+/// 출력·소유권: 허용 결정의 TargetSlotIndex 또는 거부/비활성 상태만 쓴다. 저장 실물 버퍼는 변경하지 않는다.
+/// 이번 Job의 PendingAdditions로 앞서 승인한 품목/수량을 합산하여 같은 빈 슬롯의 중복 사용을 막는다. 영속 예약이 아니다.
+/// 이용·정리: BuildingItemStorageApplySystem이 승인 슬롯에 입고한다. 임시 집계는 Job 완료 후 해제하며 ECB 기록은 없다.
 /// </summary>
 [UpdateInGroup(typeof(ReservationGroup))]
 [BurstCompile]
@@ -92,6 +89,7 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
 [BurstCompile]
 public partial struct BuildingStorageInputReservationJob : IJobEntity
 {
+    /// <summary>이번 Reservation Job에서 승인한 슬롯 품목/수량의 임시 집계. 컴포넌트나 영속 재고로 게시하지 않는다.</summary>
     public struct PendingSlot
     {
         public ItemTypeEnum ItemType;
@@ -192,6 +190,7 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
             }
         }
 
+        // 저장 버퍼는 입고 전이므로 같은 Job에서 먼저 승인된 후보의 품목/수량을 합산해야 한다.
         for (int s = 0; s < safeSlotCount; s++)
         {
             if (PendingAdditions.TryGetValue(new int2(building.Index, s), out var pending))

@@ -6,12 +6,16 @@ using Unity.Collections;
 using UnityEngine;
 
 /// <summary>
-/// WorldGenerationConfig.json 파일을 로드하고 유효성을 전수 검증하여 ECS 월드에 설정을 게시하는 정적 로더 유틸리티.
+/// 역할·목적: Resources의 월드/자원/바닥 JSON을 검증해 시드·초기 청크 범위·가중치/변형 목록을 ECS에 게시한다.
+/// 입력·출력: JSON DTO를 검증된 managed 목록/바닥 정의로 바꾸며 오류는 로그와 false로 반환한다. 게시 함수는 새 설정 엔티티와 버퍼를 만든다.
+/// 이용: WorldGenerationConfigLoadSystem(Initialization)이 호출하고 청크·자원 생성/바닥 선택은 ECS 상태를 읽는다.
+/// 수명·소유권: DTO/목록은 게시 전 입력이다. 게시 시점·중복/World 수명은 호출자가 소유하며 런타임 공간/실물은 로더가 만들지 않는다.
 /// </summary>
 public static class WorldGenerationConfigLoader
 {
     public const string DefaultResourcePath = "Config/WorldGenerationConfig";
 
+    /// <summary>월드 시드·초기 청크 크기·자원/바닥 입력의 최상위 JSON DTO. ECS에 부착하는 상태가 아니다.</summary>
     [Serializable]
     public class WorldGenerationConfigFile
     {
@@ -21,6 +25,7 @@ public static class WorldGenerationConfigLoader
         public FloorGenerationConfigData floor;
     }
 
+    /// <summary>자원별 광맥 확률/반경/셀 채움/잔량 범위의 파싱 입력. 검증 후 ResourceGenerationConfigElement로 바꾼다.</summary>
     [Serializable]
     public class ResourceGenerationConfigData
     {
@@ -33,6 +38,7 @@ public static class WorldGenerationConfigLoader
         public int maxAmount;
     }
 
+    /// <summary>바이옴 구역·경계 노이즈/전이 폭·기본/전이 변형 목록의 JSON 입력. 실제 셀 선택/렌더 객체는 포함하지 않는다.</summary>
     [Serializable]
     public class FloorGenerationConfigData
     {
@@ -45,6 +51,7 @@ public static class WorldGenerationConfigLoader
         public List<FloorBiomeConfigData> biomes;
     }
 
+    /// <summary>바이옴 ID·가중치·바닥 변형의 파싱 입력. 게시 시 평탄한 변형 목록의 시작/길이로 변환한다.</summary>
     [Serializable]
     public class FloorBiomeConfigData
     {
@@ -53,6 +60,7 @@ public static class WorldGenerationConfigLoader
         public List<FloorVariantConfigData> floorVariants;
     }
 
+    /// <summary>바닥 Sprite Resources 경로와 가중치 DTO. Sprite 로드/실제 렌더링이 구현됐다는 뜻은 아니다.</summary>
     [Serializable]
     public class FloorVariantConfigData
     {
@@ -60,6 +68,7 @@ public static class WorldGenerationConfigLoader
         public float weight;
     }
 
+    /// <summary>검증 후 게시 전의 바닥 설정·바이옴·변형 목록. managed 값이며 PublishConfig가 World 버퍼로 복사한다.</summary>
     public sealed class FloorGenerationDefinition
     {
         public FloorGenerationSettings Settings;
@@ -412,6 +421,7 @@ public static class WorldGenerationConfigLoader
             buffer.Add(elements[i]);
         }
 
+        // 설정/바이옴 범위/평탄한 변형 목록을 같은 게시 엔티티에 보관해 Reader가 일치하는 구성을 읽게 한다.
         if (floor != null)
         {
             entityManager.AddComponentData(entity, floor.Settings);

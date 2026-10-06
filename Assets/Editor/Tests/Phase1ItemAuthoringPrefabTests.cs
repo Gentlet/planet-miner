@@ -8,6 +8,11 @@ using Unity.Transforms;
 using UnityEngine;
 using UnityEngine.TestTools;
 
+/// <summary>
+/// 역할·목적: 아이템 Authoring/Resources 목록과 생성 실패 정책에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 임시 Authoring과 ECS DB/요청으로 자산 참조·종류 일치/누락 거부를 검사한다. 실제 SubScene 베이킹/장면 렌더링은 범위 밖이다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
+/// </summary>
 public class Phase1ItemAuthoringPrefabTests : EcsWorldTestFixture
 {
     private SystemHandle _lifecycleHandle;
@@ -26,6 +31,7 @@ public class Phase1ItemAuthoringPrefabTests : EcsWorldTestFixture
 
     private void RunStateApplyPhase()
     {
+        // ECB 재생 이후 실물 생성/렌더 태그를 검사하며 Authoring 목록 편집과 런타임 생성은 구분한다.
         _lifecycleHandle.Update(_world.Unmanaged);
         _ownershipHandle.Update(_world.Unmanaged);
         _endStateApplyEcb.Update();

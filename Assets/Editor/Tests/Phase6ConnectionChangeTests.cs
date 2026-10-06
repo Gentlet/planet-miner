@@ -4,13 +4,9 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 라우터 연결 변경(소멸, 대체, 재연결) 및 잔류 아이템 처리 단위 테스트.
-/// - Splitter 입력 벨트 소멸 시 남은 벨트로 기준선 전환 및 커서 0 리셋 검증
-/// - Splitter 모든 입력 벨트 소멸 시 대기 및 재연결 시 라우팅 재개 검증
-/// - Splitter 출력 포트 소멸 시 남은 포트로 우회 분배 검증
-/// - Merger 출력 벨트 소멸 시 남은 벨트로 기준선 전환 및 커서 0 리셋 검증
-/// - Merger 모든 출력 벨트 소멸 시 입력 아이템 종단 보존 및 재연결 시 합류 재개 검증
-/// - 전달 결정 후 적용 전 벨트/아이템 소멸 시 안전 무효화(Fail-safe) 검증
+/// 역할·목적: 라우터 연결 소멸·대체·재연결과 적용 전 소실에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 벨트/라우터/아이템을 준비해 연결 삭제 전후 기준선·커서·잔류 실물과 안전 무효화를 검사한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase6ConnectionChangeTests : EcsWorldTestFixture
 {
@@ -68,6 +64,7 @@ public class Phase6ConnectionChangeTests : EcsWorldTestFixture
 
     private void RunPipeline()
     {
+        // 삭제된 연결의 맵을 갱신해 낡은 기준선으로 커서나 실물을 움직이지 않는지 확인한다.
         _beltSpatialSyncHandle.Update(_world.Unmanaged);
         _itemSpatialSyncHandle.Update(_world.Unmanaged);
         _splitterDecisionHandle.Update(_world.Unmanaged);

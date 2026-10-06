@@ -1,7 +1,10 @@
 using Unity.Entities;
 
 /// <summary>
-/// 창고의 필터링 모드를 정의하는 열거형.
+/// 역할·목적: 전체 허용·Whitelist·Blacklist의 품목 필터 해석 방식을 구분한다.
+/// 부착 엔티티: 열거형 자체는 부착하지 않고 StorageFilter.Mode 값으로 사용한다.
+/// 생성·이용: BuildingLifecycleUtility/CrafterRecipeCommandSystem이 설정하며 입고·드론 보관 검사에서 StorageFilter.IsItemAllowed가 해석한다.
+/// 제거: StorageFilter 갱신·소유자 삭제의 수명을 따른다.
 /// </summary>
 public enum StorageFilterMode : byte
 {
@@ -11,8 +14,10 @@ public enum StorageFilterMode : byte
 }
 
 /// <summary>
-/// 128종 이상의 아이템을 지원하는 고정 크기 unmanaged 비트셋.
-/// 향후 비트 크기 확장 시 내부 구현만 확장하여 호환성을 유지.
+/// 역할·목적: 0~127 품목 번호의 허용/차단 비트를 저장하는 128비트 값 형식이다.
+/// 부착 엔티티: 독립 ECS 컴포넌트가 아니며 StorageFilter.Mask에 포함한다.
+/// 생성·이용: CrafterRecipeCommandSystem(Command)이 레시피 입력 품목 비트를 설정하고 StorageFilter.IsItemAllowed가 읽는다. 범위 밖 번호는 IsSet=false다.
+/// 제거: Clear는 값의 비트만 0으로 되돌린다. 값을 포함한 필터의 수명을 따른다.
 /// </summary>
 public struct FixedBitSet
 {
@@ -61,8 +66,11 @@ public struct FixedBitSet
 }
 
 /// <summary>
-/// 창고나 건물에서 수용할 아이템을 제한하는 필터 컴포넌트.
-/// 필터링이 필요 없는 일반 창고는 이 컴포넌트를 부착하지 않거나 AllowAll로 둡니다.
+/// 역할·목적: 보관 건물이 수용할 품목을 Mode와 128비트 Mask로 제한한다.
+/// 부착 엔티티: 품목 필터가 필요한 보관/제작 건물 엔티티다. 일반 보관은 AllowAll을 사용하며 컴포넌트가 없는 검사 경로도 허용한다.
+/// 생성: BuildingLifecycleUtility가 일반 보관 필터 또는 Crafter 빈 Whitelist를 붙인다.
+/// 이용: BuildingItemInputDecisionSystem(Decision), BuildingStorageInputReservationSystem(Reservation), 드론 보관 Utility가 허용 품목을 검사한다. CrafterRecipeCommandSystem(Command)이 레시피 변경 때 갱신한다.
+/// 제거: 레시피 변경으로 값이 재작성되며 컴포넌트는 건물 삭제 시 함께 제거한다.
 /// </summary>
 public struct StorageFilter : IComponentData
 {

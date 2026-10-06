@@ -5,14 +5,11 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 /// <summary>
-/// Splitter 분배 의사결정 시스템.
-/// 
-/// [책임]
-/// - DecisionGroup (Phase 2)에서 실행.
-/// - Splitter의 입력 벨트 종단(Progress >= 1.0f - Epsilon)에 도달한 아이템 감지.
-/// - 현재 OutputCursor부터 forward -> right -> left 순서로 유효한 출력 벨트를 탐색(Work-conserving).
-/// - 후보가 확정되면 RoutingTransferDecision(Item, SourceBelt, TargetBelt) 활성화.
-/// - 영속 상태(SplitterRoutingState)를 직접 수정하지 않으며, 순수 의사결정만 산출.
+/// 역할·목적: Decision에서 분배기의 입력 종단 실물을 가용 출력 포트로 전달할 후보를 판단한다.
+/// 입력·생성자: RoutingApplySystem의 입력 기준선/출력 커서, Synchronization 인덱스와 벨트 PlacementStamp.
+/// 출력·소유권: 분배기의 RoutingTransferDecision과 enable 상태만 갱신한다. 기준선·커서·실물은 변경하지 않는다.
+/// 이용·정리: BeltDestinationReservationSystem이 목적지 경합을 중재하고 RoutingApplySystem이 인계 성공 시 상태/커서를 반영한다.
+/// 기준 입력이 무효면 다시 찾고 커서부터 가능한 출력을 찾는다. 결정은 다음 틱 초기화하며 철거 대상은 후보에서 제외한다.
 /// </summary>
 [UpdateInGroup(typeof(DecisionGroup))]
 [BurstCompile]
@@ -23,6 +20,7 @@ public partial struct SplitterDecisionSystem : ISystem
     private ComponentLookup<GridPosition> _gridPositionLookup;
     private ComponentLookup<Direction> _directionLookup;
     private ComponentLookup<PlacementStamp> _placementStampLookup;
+    private ComponentLookup<PendingBuildingDemolition> _pendingBuildingDemolitionLookup;
 
     private EntityQuery _splitterQuery;
 
@@ -34,6 +32,7 @@ public partial struct SplitterDecisionSystem : ISystem
         _gridPositionLookup = state.GetComponentLookup<GridPosition>(true);
         _directionLookup = state.GetComponentLookup<Direction>(true);
         _placementStampLookup = state.GetComponentLookup<PlacementStamp>(true);
+        _pendingBuildingDemolitionLookup = state.GetComponentLookup<PendingBuildingDemolition>(true);
 
         _splitterQuery = SystemAPI.QueryBuilder()
             .WithAllRW<RoutingTransferDecision>()
@@ -69,6 +68,7 @@ public partial struct SplitterDecisionSystem : ISystem
         _gridPositionLookup.Update(ref state);
         _directionLookup.Update(ref state);
         _placementStampLookup.Update(ref state);
+        _pendingBuildingDemolitionLookup.Update(ref state);
 
         var decisionJob = new SplitterDecisionJob
         {
@@ -78,7 +78,8 @@ public partial struct SplitterDecisionSystem : ISystem
             ItemOwnershipLookup = _itemOwnershipLookup,
             GridPositionLookup = _gridPositionLookup,
             DirectionLookup = _directionLookup,
-            PlacementStampLookup = _placementStampLookup
+            PlacementStampLookup = _placementStampLookup,
+            PendingBuildingDemolitionLookup = _pendingBuildingDemolitionLookup
         };
 
         var readDep = JobHandle.CombineDependencies(beltFence.GetReaderDependency(), itemFence.GetReaderDependency());
@@ -107,6 +108,7 @@ public partial struct SplitterDecisionJob : IJobEntity
     [ReadOnly] public ComponentLookup<GridPosition> GridPositionLookup;
     [ReadOnly] public ComponentLookup<Direction> DirectionLookup;
     [ReadOnly] public ComponentLookup<PlacementStamp> PlacementStampLookup;
+    [ReadOnly] public ComponentLookup<PendingBuildingDemolition> PendingBuildingDemolitionLookup;
 
     public void Execute(
         Entity entity,
@@ -116,6 +118,15 @@ public partial struct SplitterDecisionJob : IJobEntity
         in SplitterRoutingState routingState,
         in GridPosition gridPos)
     {
+        // 이전 프레임의 활성 결정을 남기지 않고 이번 프레임 후보만 생성한다.
+        decision = default;
+        decisionEnabled.ValueRW = false;
+
+        if (PendingBuildingDemolitionLookup.HasComponent(entity))
+        {
+            return;
+        }
+
         if (buildingType.Type != BuildingTypeEnum.Splitter)
         {
             decisionEnabled.ValueRW = false;
@@ -124,9 +135,15 @@ public partial struct SplitterDecisionJob : IJobEntity
 
         int2 splitterPos = gridPos.Value;
 
+        // 영속 기준선은 실제 전달 성공 때만 Apply가 바꾼다. 여기서는 무효 연결을 다시 찾되 상태 원본은 유지한다.
         // 1. 기준 입력 벨트 결정
         Entity inputBelt = routingState.InputBelt;
         DirectionEnum forwardDir = routingState.ForwardDirection;
+
+        if (PendingBuildingDemolitionLookup.HasComponent(inputBelt))
+        {
+            inputBelt = Entity.Null;
+        }
 
         if (inputBelt == Entity.Null || !GridPositionLookup.HasComponent(inputBelt))
         {
@@ -171,6 +188,11 @@ public partial struct SplitterDecisionJob : IJobEntity
 
             if (BeltMap.TryGetValue(targetPos, out BeltInfo beltInfo))
             {
+                if (PendingBuildingDemolitionLookup.HasComponent(beltInfo.Entity))
+                {
+                    continue;
+                }
+
                 if (RoutingDirectionUtility.IsOutgoingBelt(splitterPos, targetPos, beltInfo.Direction))
                 {
                     if (IsTargetBeltAvailable(targetPos))
@@ -209,6 +231,11 @@ public partial struct SplitterDecisionJob : IJobEntity
 
             if (BeltMap.TryGetValue(neighborPos, out BeltInfo beltInfo))
             {
+                if (PendingBuildingDemolitionLookup.HasComponent(beltInfo.Entity))
+                {
+                    continue;
+                }
+
                 if (RoutingDirectionUtility.IsIncomingBelt(routerPos, neighborPos, beltInfo.Direction))
                 {
                     PlacementStamp stamp = default;
@@ -267,4 +294,3 @@ public partial struct SplitterDecisionJob : IJobEntity
             targetPos, ItemMap, ItemOwnershipLookup, BeltMovementStateLookup);
     }
 }
-

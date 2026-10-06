@@ -4,14 +4,11 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 외부 건물 출고 및 라우팅 후보의 대상 벨트 진입 경합을 조율하는 시스템.
-/// 
-/// [책임]
-/// - ReservationGroup (Phase 3)에서 실행.
-/// - 건물 출고(BuildingItemOutputDecision)와 라우팅(RoutingTransferDecision)의 대상 벨트 진입 경합 해결.
-/// - 대상 벨트의 여유 공간(정원 및 입구 간격) 확인 후 진입 허용 여부 결정.
-/// - 동일 대상 벨트로 진입하려는 후보 중 PlacementStamp 우선순위가 가장 높은 1개만 승인.
-/// - 탈락하거나 공간 부족으로 거부된 후보의 결정 컴포넌트를 비활성화.
+/// 역할·목적: Reservation에서 건물 출고와 분배/합류 전달의 같은 벨트 셀 진입 경합을 중재한다.
+/// 입력·생성자: 출고/라우팅 Decision의 활성 후보, Synchronization 인덱스와 발신 건물 PlacementStamp.
+/// 출력·소유권: 목적 셀별 후보 하나만 유지하고 탈락 결정은 비활성화한다. 일반 벨트 이동·원본 실물은 쓰지 않는다.
+/// 이용: BuildingItemStorageApplySystem과 RoutingApplySystem이 승인된 인계를 반영한다. 인덱스 Reader는 Fence로 동기화한다.
+/// 정리·가시화: 후보 집계는 Job 안에서만 유지 후 해제한다. 별도 영속 예약/ECB 생성 없이 이번 틱 결정에 승인을 남긴다.
 /// </summary>
 [UpdateInGroup(typeof(ReservationGroup))]
 [BurstCompile]
@@ -116,12 +113,14 @@ public partial struct BeltDestinationReservationSystem : ISystem
     }
 }
 
+/// <summary>같은 목적 벨트 셀을 중재할 후보의 발신 경계. 영속 요청 종류나 실물 종류가 아니다.</summary>
 public enum DestinationCandidateType : byte
 {
     BuildingOutput = 0,
     RoutingTransfer = 1
 }
 
+/// <summary>Reservation Job 안에서만 이용하는 발신 결정/실물/PlacementStamp의 후보 기록.</summary>
 public struct DestinationCandidate
 {
     public DestinationCandidateType Type;
@@ -131,6 +130,7 @@ public struct DestinationCandidate
     public bool HasStamp;
 }
 
+/// <summary>목적 셀별 후보를 모아 하나만 유지하는 단일 Job. 인덱스를 읽고 탈락 결정만 쓰며 로컬 후보 컨테이너는 처리 뒤 Dispose한다.</summary>
 [BurstCompile]
 public struct BeltDestinationReservationJob : Unity.Jobs.IJob
 {
@@ -296,6 +296,7 @@ public struct BeltDestinationReservationJob : Unity.Jobs.IJob
                 }
             }
 
+            // 한 셀에 이번 틱 외부 진입 하나만 유지한다. 일반 벨트 전진은 이 후보 집계에 포함하지 않는다.
             // 최고 우선순위 1개만 승인(유지)하고 나머지 탈락 후보는 비활성화
             for (int i = 0; i < candidates.Length; i++)
             {

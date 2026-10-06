@@ -7,10 +7,9 @@ using Unity.Rendering;
 using Unity.Transforms;
 
 /// <summary>
-/// Task 6.2: 벨트 목적지 예약 시스템(BeltDestinationReservationSystem) 단위 및 파이프라인 테스트.
-/// - 외부 건물 출고 및 분배기/합류기 라우팅 후보들의 공유 대상 벨트 경합 조율 검증
-/// - PlacementStamp(Tick, Order) 기반 1개 후보 승인 및 탈락 후보 비활성화 검증
-/// - 실제 출고/Routing 후보 생성부터 예약·반영까지 공통 점유/간격 정책 검증
+/// 역할·목적: 건물/라우터 벨트 입구 경합과 공통 진입 정책에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: PlacementStamp·점유/간격·후보를 준비해 Decision/Reservation/Apply의 승인과 실물 위치가 일치하는지 검사한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase6BeltDestinationReservationTests : EcsWorldTestFixture
 {
@@ -201,6 +200,10 @@ public class Phase6BeltDestinationReservationTests : EcsWorldTestFixture
         Assert.DoesNotThrow(() => RunReservation());
     }
 
+    /// <summary>
+    /// 역할·목적: 벨트 진입 회귀의 목표 셀 점유 fixture를 분류한다.
+    /// 테스트 입력을 만드는 분기 값이며 제품 도메인 상태/엔티티로 게시하지 않는다.
+    /// </summary>
     public enum TargetOccupancy
     {
         EnabledWorld,
@@ -380,6 +383,7 @@ public class Phase6BeltDestinationReservationTests : EcsWorldTestFixture
 
     private void ApplyEntriesAndSync()
     {
+        // 승인 뒤 저장/라우팅/Owner를 반영하고 ECB→ItemSync 이후 실제 목표 셀을 검사한다.
         Simulation.UpdateAndComplete(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
         Simulation.UpdateAndComplete(_world.GetOrCreateSystem<RoutingApplySystem>());
         Simulation.UpdateAndComplete(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());

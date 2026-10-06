@@ -1,5 +1,15 @@
 #requires -Version 7.0
 
+<#
+.SYNOPSIS
+PlanetMiner의 연결된 Unity Editor에서 재컴파일과 선택한 EditMode 테스트를 실행하고 결과를 요약한다.
+.DESCRIPTION
+입력은 프로젝트/CLI 경로와 CompileOnly 또는 TestFilter 또는 명시적인 AllEditModeTests다.
+CLI 접수 성공을 완료로 간주하지 않고 Editor 준비, 컴파일 종료, 어셈블리 시각과 실제 테스트 건수를 확인한다.
+실패/경고는 요약 결과에도 남긴다. Play Mode·입력·렌더·성능의 동작 증거는 제공하지 않는다.
+외부 프로세스·poll timeout·선택 테스트 결과는 이 실행 범위가 소유하며 게임 소스/장면/설정은 수정하지 않는다.
+#>
+
 [CmdletBinding()]
 param(
     [string[]]$TestFilter,
@@ -23,6 +33,7 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script:UnityWarnings = [System.Collections.Generic.List[string]]::new()
 
+# 오류 항목을 제한된 개수로 요약하되 오류 코드/메시지를 남겨 성공 출력으로 오해하지 않게 한다.
 function Get-CompactErrorText {
     param([object[]]$Errors)
 
@@ -39,6 +50,7 @@ function Get-CompactErrorText {
     return ($messages -join '; ')
 }
 
+# stdout/stderr를 따로 모으되 JSON/CLI 종료 오류를 함께 판정한다. 접수 성공과 Editor 작업 완료를 구분한다.
 function Invoke-UnityJson {
     param([Parameter(Mandatory)][string[]]$Arguments)
 
@@ -117,6 +129,7 @@ function Invoke-UnityJson {
     return $response
 }
 
+# Pipeline 버전에 따라 result가 객체 또는 JSON 문자열일 수 있다. 외부 응답 포장과 실제 작업 결과를 분리해 해석한다.
 function Get-UnityCommandResult {
     param([Parameter(Mandatory)]$Response)
 
@@ -141,6 +154,7 @@ function Get-UnityCommandResult {
     return $result
 }
 
+# 비동기 작업은 다시 제출하지 않고 상태만 조회한다. poll 간격을 늘리되 timeout/실패를 성공으로 승격하지 않는다.
 function Wait-UnityOperation {
     param(
         [Parameter(Mandatory)][ValidateSet('recompile_status', 'test_status')][string]$StatusCommand,
@@ -179,6 +193,7 @@ function Wait-UnityOperation {
     throw "$StatusCommand 완료를 ${TimeoutSeconds}초 안에 확인하지 못했습니다. 작업을 다시 제출하지 말고 Editor 연결과 상태를 확인하세요."
 }
 
+# 편집기 연결이 있더라도 컴파일/도메인 재로딩이 진행 중이면 다음 검증을 시작하지 않는다.
 function Wait-EditorReady {
     $deadline = [DateTime]::UtcNow.AddSeconds($TimeoutSeconds)
     $pollSeconds = $InitialPollSeconds
@@ -213,6 +228,7 @@ function Wait-EditorReady {
     throw "Editor가 ${TimeoutSeconds}초 안에 ready 상태가 되지 않았습니다."
 }
 
+# up_to_date 응답만으로 최신 소스 반영을 보장하지 않는다. 런타임/선택 테스트 어셈블리 시각을 각 소스 집합과 비교한다.
 function Assert-AssemblyFreshness {
     param([switch]$IncludeEditorAssembly)
 
@@ -246,6 +262,7 @@ function Assert-AssemblyFreshness {
     }
 }
 
+# 전체 테스트 로그 대신 실패 이름/메시지/제한된 스택만 보관한다. 실패 건수/실패 존재 자체는 숨기지 않는다.
 function Get-FailedTestDetails {
     param([Parameter(Mandatory)]$TestResult)
 
@@ -265,6 +282,7 @@ function Get-FailedTestDetails {
     return @($failures)
 }
 
+# 같은 검증 결과를 기계용 JSON 또는 사람용 요약으로 출력한다. 출력 형식 선택이 실행/검증 범위를 바꾸지는 않는다.
 function Write-ValidationResult {
     param(
         [Parameter(Mandatory)]$Result,
@@ -331,6 +349,9 @@ try {
     $ProjectPath = (Resolve-Path -LiteralPath $ProjectPath).Path
     $validationResult.project = $ProjectPath
 
+    # 모드는 하나만 허용해 실수로 전체 테스트를 실행하지 않게 한다.
+    # TODO: null TestFilter도 @($TestFilter).Count가 양수로 계산되는 기존 조건 때문에 CompileOnly가 거부될 수 있다.
+    # 옵션 오검출은 실제 호출에서 확인한 별도 결함이며 이번 주석 작업에서는 동작을 변경하지 않는다.
     $selectedModes = @(@(
             [bool]$CompileOnly,
             [bool]$AllEditModeTests,

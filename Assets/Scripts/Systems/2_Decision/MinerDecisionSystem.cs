@@ -4,25 +4,18 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 채굴기의 채굴 조건(하부 자원 실존 및 내부 버퍼 여유 공간)을 판정하는 시스템.
-/// 
-/// [책임]
-/// - DecisionGroup(Phase 2)에서 실행.
-/// - 채굴기의 Footprint 하부 타일을 순회하여 ResourceSpatialIndex에서 유효 자원(Amount > 0)을 탐색.
-///   (다중 타일 채굴기의 경우 좌하단 Anchor 기준 첫 번째 자원을 우선 선택.)
-/// - 채굴기 내부 생산물 버퍼(DynamicBuffer<ProductItemElement>)를 단일 ResourceType 1스택으로 취급.
-/// - 기존 생산물이 있다면 현재 자원과 같은 ItemType인지 확인하고, 해당 자원의 1스택 한도(ItemRegistry.MaxStack)와 비교하여 여유 공간을 검사.
-/// - 미소비 ProductResult가 남아 있으면 추가 생산을 차단.
-/// - 하부 자원이 존재하고 내부 버퍼에 공간이 확보되어 있으면 CanMine = true를 기록하고 활성화.
-/// - 자원이 없거나 내부 버퍼가 가득 찬 경우 CanMine = false로 설정하고 비활성화.
-/// - [상태-의사결정 분리]: 채굴 진행도를 누적하거나 아이템을 생성하지 않으며, 순수 의사결정 컴포넌트(MinerDecision)만 갱신.
-/// - 외부 벨트로의 방출은 채굴기에 부착된 BuildingItemOutputDecision과 출고 시스템(ProductItemOutputDecisionSystem)이 전담.
+/// 역할·목적: Decision에서 채굴 대상과 생산 버퍼 여유를 검사한다.
+/// 입력·생성자: Synchronization의 자원 인덱스, ResourceNode, 기존 생산품/미소비 결과와 ItemRegistry의 스택 한도.
+/// 출력·소유권: 채굴기의 MinerDecision과 enable 상태만 쓴다. 회전 footprint에서 처음 유효한 자원을 선택한다.
+/// 이용: MinerExecutionSystem이 진행도·자원량·ProductResult를 반영하고 ItemLifecycleApplySystem이 실물을 생성한다.
+/// 정리·가시화: 결정은 다음 Decision에서 갱신한다. 철거 승인/미소비 생산 결과/품목 불일치는 새 생산을 차단하며 ECB 기록은 없다.
 /// </summary>
 [UpdateInGroup(typeof(DecisionGroup))]
 [BurstCompile]
 public partial struct MinerDecisionSystem : ISystem
 {
     private ComponentLookup<ResourceNode> _resourceNodeLookup;
+    private ComponentLookup<PendingBuildingDemolition> _pendingDemolitionLookup;
     private BufferLookup<ItemConfigElement> _itemConfigLookup;
     private EntityQuery _minerQuery;
 
@@ -30,6 +23,7 @@ public partial struct MinerDecisionSystem : ISystem
     public void OnCreate(ref SystemState state)
     {
         _resourceNodeLookup = state.GetComponentLookup<ResourceNode>(true);
+        _pendingDemolitionLookup = state.GetComponentLookup<PendingBuildingDemolition>(true);
         _itemConfigLookup = state.GetBufferLookup<ItemConfigElement>(true);
 
         _minerQuery = SystemAPI.QueryBuilder()
@@ -57,6 +51,7 @@ public partial struct MinerDecisionSystem : ISystem
         ref var resFence = ref SystemAPI.GetSingletonRW<ResourceSpatialIndexFence>().ValueRW;
 
         _resourceNodeLookup.Update(ref state);
+        _pendingDemolitionLookup.Update(ref state);
         _itemConfigLookup.Update(ref state);
 
         ItemRegistry itemRegistry = default;
@@ -71,6 +66,7 @@ public partial struct MinerDecisionSystem : ISystem
         {
             ResourceMap = resIndex.Map,
             ResourceNodeLookup = _resourceNodeLookup,
+            PendingDemolitionLookup = _pendingDemolitionLookup,
             ItemRegistry = itemRegistry,
             ItemRegistryEntity = itemRegistryEntity,
             ItemConfigLookup = _itemConfigLookup
@@ -98,6 +94,9 @@ public partial struct MinerDecisionJob : IJobEntity
     public ComponentLookup<ResourceNode> ResourceNodeLookup;
 
     [ReadOnly]
+    public ComponentLookup<PendingBuildingDemolition> PendingDemolitionLookup;
+
+    [ReadOnly]
     public ItemRegistry ItemRegistry;
 
     public Entity ItemRegistryEntity;
@@ -106,6 +105,7 @@ public partial struct MinerDecisionJob : IJobEntity
     public BufferLookup<ItemConfigElement> ItemConfigLookup;
 
     public void Execute(
+        Entity building,
         ref MinerDecision decision,
         EnabledRefRW<MinerDecision> decisionEnabled,
         in DynamicBuffer<ProductItemElement> productItems,
@@ -115,6 +115,14 @@ public partial struct MinerDecisionJob : IJobEntity
         in GridPosition gridPos,
         in Direction dir)
     {
+        if (PendingDemolitionLookup.HasComponent(building))
+        {
+            decision.CanMine = false;
+            decision.TargetResource = Entity.Null;
+            decisionEnabled.ValueRW = false;
+            return;
+        }
+
         int2 anchor = gridPos.Value;
         int2 effectiveSize = footprint.GetEffectiveSize(dir.dir);
 
@@ -157,6 +165,7 @@ public partial struct MinerDecisionJob : IJobEntity
             }
         }
 
+        // 결과가 실물로 바뀌기 전에는 출력 버퍼에 아직 보이지 않는다. 미소비 결과를 별도로 막아 중복 생산을 방지한다.
         bool hasPendingProduction = productResults.Length > 0;
         bool hasSpace = !hasPendingProduction && sameItemType && productItems.Length < maxStack;
 

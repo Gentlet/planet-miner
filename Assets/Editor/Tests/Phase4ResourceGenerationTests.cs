@@ -6,6 +6,11 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
 
+/// <summary>
+/// 역할·목적: 자원 생성의 시드/청크 순서 결정성과 수량 경계에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 명시적 설정/프리팹 DB로 서로 다른 생성 순서의 ECB를 재생해 좌표/수량·중복 셀·난수 소비 독립성을 비교한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
+/// </summary>
 public class Phase4ResourceGenerationTests : EcsWorldTestFixture
 {
     private (Entity ConfigEntity, Entity PrefabDbEntity) SetupDefaultConfig(uint worldSeed = 12345u, int initialChunkSize = 3)
@@ -170,6 +175,7 @@ public class Phase4ResourceGenerationTests : EcsWorldTestFixture
     [Test]
     public void Test04_ResourceGenerationUtility_LoadOrderInvariance_CrossChunkPatchesMatchRegardlessOfLoadOrder()
     {
+        // 같은 시드/좌표를 다른 청크 순서로 생성해 난수 소비와 패치 결과의 순서 의존성을 분리한다.
         uint seed = 77777u;
         int2 chunkA = new int2(0, 0);
         int2 chunkB = new int2(1, 0);

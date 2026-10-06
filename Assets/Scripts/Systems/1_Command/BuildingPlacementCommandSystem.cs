@@ -5,16 +5,11 @@ using Unity.Mathematics;
 using Unity.Transforms;
 
 /// <summary>
-/// 건설 모드 UI 또는 블루프린트에서 인큐된 BuildingPlacementRequest를 원자적으로 소비하고
-/// 검증을 거쳐 ConstructionSite 엔티티를 생성하는 Command 시스템.
-/// 
-/// [책임 및 계약]
-/// - CommandGroup(Phase 1)에서 실행되어 배치 요청을 일괄 처리.
-/// - BuildingConfig(해금 상태, 자재 요구량) 및 공간 인덱스를 참조하여 배치 타당성 검증.
-/// - StrictAllOrNothing(기본) 정책 시 단 1개 타일이라도 충돌 시 전체 요청 롤백.
-/// - 벨트 덮어쓰기: 동일 벨트는 즉시 Direction만 갱신(자재 소모 0), 다른 벨트는 ConstructionSite 생성.
-/// - 승인된 후보에는 PlacementStamp(Tick, Order) 발급 및 ConstructionMaterialRequirementElement 버퍼 부착.
-/// - 처리가 완료된 요청 엔티티는 해당 프레임에 즉시 파괴(Consume-on-Apply).
+/// 역할·목적: 외부 배치 요청을 검증해 현장과 자재 요구량을 만들고 기존 벨트의 방향 변경을 처리한다.
+/// 처리 단계: Command. 입력은 BuildingPlacementRequest/후보 버퍼, 건물 설정과 직전 Synchronization의 공간 인덱스다.
+/// 출력·소유권: 현장 생성, PlacementStamp와 요구/보관 버퍼 초기화, 벨트 Direction 변경만 EndCommand에 기록한다.
+/// StrictAllOrNothing은 요청 묶음 전체를 거부하고 부분 배치 정책은 승인 후보만 기록한다. 드론 작업/순번 생성은 담당하지 않는다.
+/// 정리·가시화: 처리한 요청/후보는 EndCommand에서 삭제하고 생성 현장도 이때 실체화한다. 공간 점유 등록은 Synchronization까지 기다린다.
 /// </summary>
 [UpdateInGroup(typeof(CommandGroup))]
 public partial struct BuildingPlacementCommandSystem : ISystem
@@ -57,7 +52,8 @@ public partial struct BuildingPlacementCommandSystem : ISystem
         var ecbSystem = state.World.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
         var ecb = ecbSystem.CreateCommandBuffer();
 
-        // BuildingConfig 조회 (존재 시 해금 상태 및 자재 요구량 사용)
+        // 설정 버퍼를 임시 배열로 복사해 검증과 ECB 기록 동안 같은 입력을 사용한다.
+        // 여기서 해금/자재 요구량만 읽으며 설정이나 드론 관리 상태를 변경하지 않는다.
         bool hasConfig = SystemAPI.TryGetSingletonEntity<BuildingConfig>(out var configEntity);
         NativeArray<BuildingConfigElement> configs = default;
         NativeArray<BuildingConstructionMaterialElement> materials = default;
@@ -91,7 +87,8 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                 candidates[i] = candidateBuffer[i];
             }
 
-            // 배치 타당성 및 동일 프레임 선점 충돌 검증
+            // 직전 동기화의 점유와 이 요청 묶음 안의 후보 충돌을 검사한다.
+            // 같은 틱의 취소/철거가 기록됐더라도 인덱스가 갱신되기 전 점유는 그대로 사용한다.
             if (hasConfig)
             {
                 BuildingPlacementValidationUtility.ValidateBatchPlacement(
@@ -114,6 +111,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                     results);
             }
 
+            // 후보의 명시 Tick을 우선하되 버퍼 순서를 유지한다. 이 Stamp가 이후 최초 공급 우선순위의 근거가 된다.
             ulong defaultTick = request.ValueRO.RequestTick > 0 ? request.ValueRO.RequestTick : _currentTick;
 
             for (int i = 0; i < count; i++)
@@ -129,13 +127,13 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                     {
                         if (existingBuilding.Type == candidate.TargetType)
                         {
-                            // 동일 벨트: 자재 소모 없이 즉시 Direction만 갱신 (옵션 2)
+                            // 기존 같은 타입 벨트는 새 현장/요구 자재 없이 EndCommand에서 방향만 바꾼다.
                             ecb.SetComponent(existingBuilding.Entity, new Direction(candidate.Direction));
                             continue;
                         }
                     }
 
-                    // 다른 벨트인 경우 신규 공사 현장 생성으로 진행 (옵션 1)
+                    // 같은 타입 벨트의 방향 변경으로 처리하지 못한 승인 후보는 현장 생성 경로를 따른다.
                 }
 
                 if (res.IsValid)
@@ -156,11 +154,12 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                         flags |= ConstructionSiteFlags.AwaitingItemClearance;
                     }
 
-                    ecb.AddComponent(siteEntity, new ConstructionSite(candidate.TargetType, 0.0f, flags));
+                    ecb.AddComponent(siteEntity, new ConstructionSite(candidate.TargetType, flags));
                     ecb.AddComponent(siteEntity, new PlacementStamp(candidateTick, (uint)i));
                     ecb.AddComponent(siteEntity, LocalTransform.FromPosition(candidate.OriginPosition.x, candidate.OriginPosition.y, 0f));
 
-                    // 자재 요구량 버퍼 및 자재 수납 버퍼 부착
+                    // 요구 수량과 실물 참조를 분리한다. 현장은 요구량만으로 자재를 소유하지 않으며
+                    // 드론 공급의 실제 성공분이 StoredItemElement/Owner와 DeliveredQuantity를 함께 채운다.
                     var reqBuffer = ecb.AddBuffer<ConstructionMaterialRequirementElement>(siteEntity);
                     ecb.AddBuffer<StoredItemElement>(siteEntity);
 

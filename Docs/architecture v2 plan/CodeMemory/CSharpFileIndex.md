@@ -2,7 +2,11 @@
 
 컴포넌트 파일 항목은 2026-09-30 도메인별 재배치 후 현재 소스의 선언을 기준으로 갱신했다. 경로는 저장소 루트 기준이다. 그 외 항목은 기존 조사 기록이며 전체 C# 파일을 빠짐없이 나열한 목록은 아니다. 역할·타입 목록은 테스트 실행 결과가 아니다. 위쪽 설계·흐름은 [README.md](README.md)를, 폴더 분류 기준은 [AGENTS.md](../../../AGENTS.md)를 참조한다.
 
+2026-10-04 공사 운송·Progress 제거와 취소/완공의 단계 분리를 반영했다. 현장 취소 요청은 ConstructionCancelCommandSystem이 Command에서 처리하고 Lifecycle Apply는 완공만 담당한다. `TransferOwnershipRequest`의 같은 틱 처리 표시도 제거되었다. 실행 결과와 한계는 [공사 운송 제거 검증](../V2%20Quality%20Evaluation%20Plan/Results/ConstructionTransportRemoval-Verification.md)과 [취소 Command 이동 검증](../V2%20Quality%20Evaluation%20Plan/Results/ConstructionCancelCommand-Verification.md)을 따른다.
+
 ## 공통, 데이터, 설정, Phase
+
+2026-10-04 드론 작업 관리 2단계에 이어 2026-10-05 3단계 행동 접수·인계와 이전 틱 입력의 판단·실행 계획 분리를 연결했다. 인계는 이번 물류 실행 전 실물/수량/슬롯 계획 안에서 현재 원본을 재검사하며 같은 틱 신규 입력은 다음 틱부터 사용한다. 적재품 재배정·바닥 차단은 4단계에서 연결했고 실제 관측 원본 Writer·수행자 실행은 후속이다.
 
 | 파일 | 현재 역할 |
 | --- | --- |
@@ -15,14 +19,13 @@
 | `Assets/Scripts/Common/BuildingTypeExtensions.cs` | 건물 종류의 Burst 호환 FixedString 변환을 제공한다. |
 | `Assets/Scripts/Common/ItemTypeExtensions.cs` | 아이템 종류의 Burst 호환 FixedString 변환을 제공한다. |
 | `Assets/Scripts/Common/ItemLifecycleUtility.cs` | 일반 Spawn·생산물·철거 환급의 프리팹 런타임 초기화를 호출자의 ECB에 기록한다. 조회/실패 정책/버퍼 등록은 호출자가 소유한다. |
-| `Assets/Scripts/Common/DemolishBuildingRequestLookup.cs` | 기존 Item Lifecycle 내부 조회를 이동·확장했다. 검증된 철거 대상과 입출고 후 해당 버퍼에 남은 실물을 읽기 전용으로 확인한다. 별도 승인 목록·상태는 소유하지 않는다. |
 | `Assets/Scripts/Common/SimulationFailureUtility.cs` | Spawn 오류를 로그와 `SimulationFatalError`로 ECB에 게시한다. |
 | `Assets/Scripts/Common/PrefabLookupUtility.cs` | 건물·아이템·자원 프리팹 버퍼 조회를 제공하며 누락/Null 프리팹 실패 정책을 유지한다. |
 | `Assets/Scripts/Common/ResourceGenerationConfigLookupUtility.cs` | 품목별 자원 생성 설정 버퍼를 조회한다. |
 | `Assets/Scripts/Components/Belts/BeltComponents.cs` | `BeltComponent`, `BeltMovementState` 정의. |
 | `Assets/Scripts/Components/Belts/BeltDecisions.cs` | `BeltMovementDecision` 정의. |
 | `Assets/Scripts/Components/Belts/BeltSpatialIndex.cs` | `BeltInfo`, `BeltSpatialIndex`, `BeltSpatialIndexFence` 정의. |
-| `Assets/Scripts/Components/Buildings/BuildingComponents.cs` | `BuildingTypeEnum`, `BuildingType`, `BuildingFootprint`, `IndestructibleBuilding` 정의. |
+| `Assets/Scripts/Components/Buildings/BuildingComponents.cs` | `BuildingTypeEnum`, `BuildingType`, `BuildingFootprint`, `IndestructibleBuilding`, `PendingBuildingDemolition` 정의. |
 | `Assets/Scripts/Components/Buildings/BuildingConfigComponents.cs` | `BuildingConfig`, `BuildingConfigElement`, `BuildingConstructionMaterialElement` 정의. |
 | `Assets/Scripts/Components/Buildings/BuildingRequests.cs` | `SpawnBuildingRequest`, `DemolishBuildingRequest` 정의. |
 | `Assets/Scripts/Components/Buildings/BuildingRuntimeConfigComponents.cs` | `BuildingRuntimeConfig`, `BuildingRuntimeConfigElement` 정의. |
@@ -31,10 +34,32 @@
 | `Assets/Scripts/Components/Common/GridComponents.cs` | `DirectionEnum`, `GridPosition`, `Direction` 정의. |
 | `Assets/Scripts/Components/Common/IRequestComponent.cs` | `IRequestComponent`, `IEnableableRequest` 정의. |
 | `Assets/Scripts/Components/Construction/BuildingPlacementRequests.cs` | `BuildingPlacementRequest`, `PlacementRequestCandidateElement` 정의. |
-| `Assets/Scripts/Components/Construction/ConstructionComponents.cs` | `ConstructionSiteFlags`, `ConstructionSite`, `ConstructionMaterialRequirementElement` 정의. |
-| `Assets/Scripts/Components/Construction/ConstructionRequests.cs` | 운송 참조형 Supply, 운송 취소, 현장 취소 요청 정의. |
-| `Assets/Scripts/Components/Construction/ConstructionMaterialDeliveryComponents.cs` | 공급원/현장/실물의 운송 기록, 예약 상태와 EndStateApply 이후 공개 결과. |
-| `Assets/Scripts/Systems/5_StateApply/ConstructionLifecycleApplySystem.cs` | 공사 수명주기 시스템과 취소/운송 등록/수령/완공/정산 Job, 공유 연산을 같은 파일에 둔다. |
+| `Assets/Scripts/Components/Construction/ConstructionComponents.cs` | 현장/자재 요구 데이터. Reservation/Publish/Lifecycle이 예약·실제 도착량을 정산하고 Construction이 현재 월드 Owner/GridPosition·활성 Destroy로 차단을 갱신한다. |
+| `Assets/Scripts/Components/Construction/ConstructionRequests.cs` | 현장 취소 요청 `CancelConstructionRequest`만 정의한다. |
+| `Assets/Scripts/Components/Construction/ConstructionSupplyReservation.cs` | Reservation이 일반 해제·확보하고 Publish가 최종 재검사 후 공개한다. |
+| `Assets/Scripts/Components/DroneLogistics/DroneTaskComponents.cs` | DroneTaskExecutionSystem/DroneTaskAssignmentPublishSystem이 작업·배정을 생성하고 DroneTaskLifecycleApplySystem이 행동 성공분과 진행·종료 상태를 반영한다. 실물 이전은 ItemOwnershipApplySystem의 공통 API에 위임한다. |
+| `Assets/Scripts/Components/DroneLogistics/DroneWorkerComponents.cs` | 수행자 표시·관측·배정 연결·적재 출처. 등록/생성/이동 기능은 없다. |
+| `Assets/Scripts/Components/DroneLogistics/DroneCapacityState.cs` | World 공통 최대 적재량. Decision 후보·Reservation 승인·Execution 경로 검사·Publish 공개에서 읽으며 초기화·연구 Writer는 후속이다. |
+| `Assets/Scripts/Components/DroneLogistics/DroneRouteContracts.cs` | Decision의 경로 평가 요청과 같은 엔티티의 외부 결과. 실제 경로 계산기는 없다. |
+| `Assets/Scripts/Components/DroneLogistics/DroneActionContracts.cs` | 행동 식별 값·World 접수 번호를 가진 인계 요청과 실제 인계 결과. 배정 행동 번호는 중복 거절 기준이다. |
+| `Assets/Scripts/Components/DroneLogistics/DroneActionReceiptSequence.cs` | World 행동 접수 순번 원본. 외부 입력 Submit만 발급한다. |
+| `Assets/Scripts/Components/DroneLogistics/DroneItemTransferDecisions.cs` | 요청별 자격·수량 계획, 전체 사용 가능 실물 ID, 기존 슬롯 품목/개수의 파생 입력 3타입. EndStateApply에 제거한다. |
+| `Assets/Scripts/Common/DroneActionRequestUtility.cs` | 시뮬레이션 전 Submit 접수·요청 게시, EndStateApply 이후 TryConsumeResult 외부 결과 소비·엔티티 삭제. |
+| `Assets/Scripts/Common/DroneItemTransferUtility.cs` | 실물 조회는 기존 Ownership API에 위임하고 단일 품목 검사·현장 도착량/예약 정산을 공유한다. 원본 버퍼·위치·Owner를 직접 쓰지 않는다. |
+| `Assets/Scripts/Common/DroneItemTransferValidationUtility.cs` | 인계 Decision/Execution/StateApply가 공유하는 읽기 전용 배정·행동·관측 버전·출처 자격 검사. |
+| `Assets/Scripts/Components/DroneLogistics/DroneTaskSequence.cs` | 공급·회수 작업의 생성 순번 원본. |
+| `Assets/Scripts/Components/DroneLogistics/DroneRecoveryPending.cs` | 드론 방출 실물의 회수 필요 표시. Transfer Apply가 방출 시 추가·회수 성공 시 제거를 기록한다. |
+| `Assets/Scripts/Components/DroneLogistics/DroneTaskCandidateDecisionElement.cs` | Decision 후보와 Reservation 승인·미공개 현장 예약·Publish 공개 기록. |
+| `Assets/Scripts/Components/DroneLogistics/DroneRouteDecisionElement.cs` | 경로 요청 Create/Retain/Remove 의도. Execution이 소비한다. |
+| `Assets/Scripts/Components/DroneLogistics/DroneTaskCreationDecisionElement.cs` | 공급·회수 작업 생성 의도. Execution이 순번을 부여하고 ECB에 기록한다. |
+| `Assets/Scripts/Components/DroneLogistics/DroneTaskInvalidationDecisionElement.cs` | 작업·배정 무효화 판단 의도. Lifecycle Apply가 상태·연결·삭제 보류를 반영한다. |
+| `Assets/Scripts/Common/DroneTaskCreationUtility.cs` | 작업 생성과 공통 순번 발급. |
+| `Assets/Scripts/Common/DroneSchedulingUtility.cs` | 수행자·작업·재고·공간·경로 읽기와 후보 재검사. FindStorageSlot/CanStoreInSlot은 같은 현재 슬롯·필터·MaxStack 정책을 사용한다. |
+| `Assets/Scripts/Common/ConstructionSupplyReservationUtility.cs` | 현장 예약 합계 확보·해제와 자기 예약을 제외한 부족량 계산. |
+| `Assets/Scripts/Systems/2_Decision/ItemSpawnAdmissionDecisionSystem.cs` | 철거 예정 Storage/Product Spawn 요청을 앞단에서 비활성화하고 EndStateApply에 삭제한다. Item Lifecycle에는 철거 정책 분기가 없다. |
+| `Assets/Scripts/Systems/1_Command/ConstructionCancelCommandSystem.cs` | 취소 요청을 단일 워커 Job으로 소비한다. Cancelled로 중복 반환을 막고 기존 실물의 월드 반환 및 현장/요청 삭제를 EndCommand에 확정한다. 공간 인덱스의 조기 갱신은 없다. |
+| `Assets/Scripts/Systems/5_StateApply/ConstructionLifecycleApplySystem.cs` | DroneLifecycle 뒤 현재 월드 Owner/GridPosition·활성 Destroy로 차단을 갱신하고 완공한다. 예정 기록과 Item/Building 선행 제약은 제거했다. |
+| `Assets/Scripts/Common/ConstructionSiteWorldItemUtility.cs` | 현재 활성·비취소 현장의 회전 footprint를 캡처해 내부 월드 생성/방출을 읽기 검사한다. 원본·공간 인덱스를 변경하지 않는다. |
 | `Assets/Scripts/Components/Construction/PlacementComponents.cs` | `PlacementFlags`, `PlacementValidationCode`, `PlacementValidationResult`, `PlacementCandidate` 정의. |
 | `Assets/Scripts/Components/Items/ItemComponents.cs` | `ItemTypeEnum`, `ItemIdentity`, `ItemOwnership` 정의. |
 | `Assets/Scripts/Components/Items/ItemConfigComponents.cs` | `ItemConfigElement`, `ItemRegistry` 정의. |
@@ -75,7 +100,21 @@
 | `Assets/Scripts/Phases/StateApplyGroup.cs` | Execution 이후 상태 반영 그룹을 선언한다. |
 | `Assets/Scripts/Phases/SynchronizationGroup.cs` | StateApply 이후 동기화 그룹을 선언한다. |
 
-## 런타임 시스템과 검증 (24개)
+## 런타임 시스템과 검증
+
+드론 2단계 추가 파일:
+
+| 파일 | 현재 역할 |
+| --- | --- |
+| `Assets/Scripts/Systems/4_Execution/DroneTaskExecutionSystem.cs` | 생성·경로 명령 소비, 생성 순번 발급, EndStateApply ECB 기록. 실제 이동은 후속. |
+| `Assets/Scripts/Systems/2_Decision/DroneTaskDecisionSystem.cs` | 한 본체에서 생성·신규/적재 후보·ViaSource/Direct 경로·무효화를 판단한다. 적재품은 현장/보관/방출 우선순위와 거리/Stamp를 적용하며 None은 대기한다. 원본을 쓰지 않는다. |
+| `Assets/Scripts/Systems/5_StateApply/DroneTaskLifecycleApplySystem.cs` | 한 본체 파일에서 행동 접수 순서·이전 계획을 검사하고 공통 Ownership API 성공분으로 배정·출처·예약·도착량·결과를 정산한다. 무효화·연결·미정산 예약/참조의 삭제 보류도 소유한다. |
+| `Assets/Scripts/Systems/3_Reservation/ConstructionSupplyReservationSystem.cs` | 기존 예약 정산 뒤 적재 그룹을 최초 작업 순서로 먼저 선택하고 신규 두 선두 비교를 적용한다. 공급 현장만 예약하며 재고/보관 공간은 잠그지 않는다. |
+| `Assets/Scripts/Systems/5_StateApply/DroneTaskAssignmentPublishSystem.cs` | 최종 재검사·롤백 후 신규 생성 또는 기존 적재 배정 revision 증가·행동/목적지/예약 변경을 EndStateApply에 공개한다. 실물·최초 순서·기존 결과 참조를 보존한다. |
+| `Assets/Scripts/Systems/2_Decision/DroneItemTransferDecisionSystem.cs` | 외부 행동 요청의 초기 자격을 읽기 검사해 CanExecute만 판단한다. 원본 실물·예약·배정·행동 번호를 쓰지 않는다. |
+| `Assets/Scripts/Systems/4_Execution/DroneItemTransferExecutionSystem.cs` | Execution OrderFirst에서 이번 물류 쓰기 전 전체 실물 ID·수량 상한·기존 슬롯 품목/개수 계획을 확정한다. 원본 상태·예약은 쓰지 않는다. |
+
+기존 파일 지도:
 
 | 파일 | 현재 역할 |
 | --- | --- |
@@ -97,8 +136,8 @@
 | `Assets/Scripts/Systems/5_StateApply/BuildingItemStorageApplySystem.cs` | 입고/출고 버퍼·벨트 상태·위치와 소유권 이전 요청을 반영한다. |
 | `Assets/Scripts/Systems/5_StateApply/CrafterStateApplySystem.cs` | `CrafterStateDecision.NextStatus`를 적용하고 결정을 비활성화한다. |
 | `Assets/Scripts/Systems/5_StateApply/EndStateApplyEntityCommandBufferSystem.cs` | StateApply 끝에서 누적된 구조 변경을 재생한다. |
-| `Assets/Scripts/Systems/5_StateApply/ItemLifecycleApplySystem.cs` | 생산 결과와 명시적 스폰 요청을 실제 아이템/버퍼로 바꾸고 삭제 요청을 처리한다. |
-| `Assets/Scripts/Systems/5_StateApply/ItemOwnershipApplySystem.cs` | 유효한 대상에 소유권을 옮기고 이전 요청을 비활성화한다. |
+| `Assets/Scripts/Systems/5_StateApply/ItemLifecycleApplySystem.cs` | 생산 결과/Spawn·Destroy를 처리하고 최종 World Spawn의 현장 내부 위치를 다시 거부한다. 예정 월드 기록을 만들지 않는다. |
+| `Assets/Scripts/Systems/5_StateApply/ItemOwnershipApplySystem.cs` | 한 본체 파일에서 일반 Transfer 요청 적용과 EffectiveOwner/CanTransferItem/TryTransferItem 공통 API를 소유한다. API는 성공 실물의 버퍼·Owner·위치·벨트·렌더를 함께 반영하고 새 Transfer 요청을 만들지 않는다. |
 | `Assets/Scripts/Systems/6_Synchronization/BeltSpatialSyncSystem.cs` | 벨트 셀 인덱스를 비우고 현재 벨트 엔티티에서 재구축한다. |
 | `Assets/Scripts/Systems/6_Synchronization/BuildingSpatialSyncSystem.cs` | footprint의 모든 점유 셀을 건물 인덱스로 재구축한다. |
 | `Assets/Scripts/Systems/6_Synchronization/ItemSpatialSyncSystem.cs` | `Owner == Entity.Null`인 아이템만 공간 인덱스로 재구축한다. |
@@ -109,6 +148,7 @@
 
 | 파일 | 검증 대상으로 작성된 범위 |
 | --- | --- |
+| `Assets/Editor/Tests/DroneLifecycleIntegrationTests.cs` | 실제 정렬 6개 phase/두 ECB의 취소·공급원 철거·회수 보관처 철거 정상 3흐름과 실제 완공 뒤 초기 무예약 적재 배정의 방어 재배정 1흐름. 경로·관측·행동은 테스트 입력이며 핵심 Closed/Retargeting 전이는 직접 설정하지 않는다. |
 | `Assets/Editor/Tests/Phase1ItemIntegrationTests.cs` | 스폰, 소유권 이전, 공간 반영, 삭제, 잘못된 목적지/버퍼 정합성. |
 | `Assets/Editor/Tests/Phase2BeltExecutionTests.cs` | 회전, 연속 홉, 큰 이동량의 종단 정지와 delta time 제한. |
 | `Assets/Editor/Tests/Phase2BeltIntegrationTests.cs` | 다중 타일 흐름, 후방 정체, 4개 수용, 간격 위반 탐지. |

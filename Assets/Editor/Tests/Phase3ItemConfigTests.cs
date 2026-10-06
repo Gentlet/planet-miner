@@ -3,7 +3,9 @@ using PlanetMiner.Tests;
 using Unity.Entities;
 
 /// <summary>
-/// ItemRegistry 및 아이템별 MaxStack ECS 버퍼 설정 인프라 단위 테스트.
+/// 역할·목적: 아이템 설정 JSON과 품목별 MaxStack 게시에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 사용자 JSON/초기화 Update로 지정 값·미등록 종류 기본 조회·자동 Registry 게시를 검사한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase3ItemConfigTests : EcsWorldTestFixture
 {
@@ -19,6 +21,7 @@ public class Phase3ItemConfigTests : EcsWorldTestFixture
     [Test]
     public void Test03_CustomJson_OverridesValues()
     {
+        // 지정/미지정 품목을 같은 Registry에서 읽어 덮어쓴 값과 기본 규칙을 구분한다.
         // Arrange: Custom JSON with custom MaxStack
         string customJson = @"{
             ""DefaultMaxStack"": 64,

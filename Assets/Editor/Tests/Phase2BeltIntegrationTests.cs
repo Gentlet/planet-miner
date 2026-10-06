@@ -7,9 +7,9 @@ using Unity.Transforms;
 using UnityEngine;
 
 /// <summary>
-/// Belt Domain 전체 파이프라인 통합 및 Invariant 검증 테스트.
-/// SpatialSync -> Decision -> Execution -> SpatialSync -> InvariantValidation 전체 흐름의
-/// 위치 정합성, 공간 인덱스 동기화, 간격 보존, 무결성 위반 감지 기능을 검증.
+/// 역할·목적: 벨트 간격 보존·정체 전파·불변식 위반 감지에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 수동 구성한 벨트/아이템을 선택 시스템 순서로 진행해 위치/인덱스/진단 로그를 검사한다. 로그는 전후 정리하고 Play Mode/성능은 실행하지 않는다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase2BeltIntegrationTests : EcsWorldTestFixture
 {
@@ -74,6 +74,7 @@ public class Phase2BeltIntegrationTests : EcsWorldTestFixture
     /// </summary>
     private void StepFullBeltSimulation(float deltaTime)
     {
+        // 이동 전 맵 입력과 이동 후 재등록을 구분하고 그 뒤 불변식을 검사한다.
         _world.SetTime(new Unity.Core.TimeData(0.1, deltaTime));
 
         // 1. 사전 공간 동기화 (Decision 이전 단계 최신 상태 반영)
