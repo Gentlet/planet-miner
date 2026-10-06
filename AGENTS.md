@@ -4,7 +4,7 @@
 
 `planet miner`는 격자 기반 2D 채굴·공장 시뮬레이션 Unity 프로젝트다. 현재 소스는 Architecture V2로 전환 중이며, Unity Entities의 unmanaged 컴포넌트와 `ISystem`/Burst Job을 중심으로 구성한다. 설정 로드 일부와 시스템 그룹, 개발용 검증에는 managed 시스템을 사용한다.
 
-이 지도는 2026-09-28에 작성하고 2026-10-06 드론 관리 1~4단계와 5단계 선별 통합 회귀까지 현재 소스 계약을 갱신했다. 현재 구현 범위는 아이템 수명주기, 벨트·저장·채굴·제작·분배/합류, 청크 자원 생성과 바닥 선택, 프리팹 DB 베이킹, 건물 배치 검증·공사 현장 생성·자재 요구 관리·현장 취소·완공 건물 직접 스폰과 드론 작업 생성·배정·현장 공급 예약이다. 기존 공사 자재 운송/수령/예약 처리는 제거했으며 새 드론의 행동 신호 기반 실물 인계·도착량·예약 정산을 연결했다. 실제 이동·행동 신호 생성은 아직 구현하지 않았다.
+이 지도는 2026-09-28에 작성하고 2026-10-06 건물·드론 도메인 분리까지 현재 소스 계약을 갱신했다. 현재 구현 범위는 아이템 수명주기, 벨트·저장·채굴·제작·분배/합류, 청크 자원 생성과 바닥 선택, 프리팹 DB 베이킹, 건물 배치 검증·공사 현장 생성·자재 요구 관리·현장 취소·완공 건물 직접 스폰과 드론 작업 생성·배정·현장 공급 예약이다. 기존 공사 자재 운송/수령/예약 처리는 제거했으며 새 드론의 행동 신호 기반 실물 인계·도착량·예약 정산을 연결했다. 실제 이동·행동 신호 생성은 아직 구현하지 않았다.
 
 `Assets/Scenes/V2 Test Scene.unity`는 `Assets/Scenes/V2 Test Scene/sub.unity`를 자동 로드하며, 이 SubScene에 건물·아이템·자원 프리팹 DB Authoring이 있다. 메인 장면의 `V2FloorBiomePreview`는 진단용 색상 텍스처를 표시한다. 한편 `ProjectSettings/EditorBuildSettings.asset`의 활성 빌드 장면은 아직 `Assets/Scenes/SampleScene.unity`다. V2 테스트 장면과 빌드 진입 장면이 같다고 가정하지 않는다.
 
@@ -27,52 +27,55 @@
 
 ## 실행 단계와 시스템 지도
 
-2026-10-04 드론 작업 관리 2단계의 phase 분리에 이어 2026-10-05 생성·경로 명령을 Execution으로 분리했다. Placement는 현장·자재 요구만 생성하며 드론 순번/작업 의존이 없다. `DroneTaskDecisionSystem`은 생성·무효화·경로 의도와 배정 후보만 작성한다. `ConstructionSupplyReservationSystem`은 현장 수량의 예약 확보/해제, `DroneTaskExecutionSystem`은 작업 생성·경로 명령 소비와 순번 발급·EndStateApply 기록을 담당한다. `DroneTaskLifecycleApplySystem`은 무효화 의도를 최종 재검사하여 작업·배정 상태/연결/삭제 보류를 반영하고, `DroneTaskAssignmentPublishSystem`은 최종 재검사/롤백과 배정 공개를 유지한다. 작업·경로 요청은 EndStateApply에 실체화하며 다음 시뮬레이션부터 배정 판단한다. 드론 계약 문서의 ECS 타입은 22개다. 공급원·보관 공간 예약 및 벨트 판단 변경은 없다. 실제 수행자 등록·공통 능력 게시·연구·경로 계산·이동은 후속이다. [드론 계약](Docs/CodeMemory/Components/DroneLogistics.md), [Execution 분리 당시 검증](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/DroneExecutionSplit-Verification.md>)을 따른다. [앞선 phase 분리 검증](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/DronePhaseSeparation-Verification.md>)은 당시 실행 근거다.
+2026-10-06 건물·드론 도메인 실행 그룹을 분리했다. 사용자가 확정한 1A·2A·3A·4B·5A·6A 규칙과 현재 변경의 검증 범위는 [도메인 분리 검증](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/BuildingDroneDomainSplit-Verification.md>)을 따른다. 이전 검증 기록은 당시 구조의 실행 근거로 보존한다.
 
-생성 의도는 `DroneTaskCreationDecisionElement`, 작업 닫기·배정 무효화 의도는 `DroneTaskInvalidationDecisionElement`, 경로 명령은 `DroneRouteDecisionElement`로 전달한다. 경로의 Create/Retain/Remove는 Decision이 명시하며 Execution은 의도에 없는 기존 요청을 찾아 삭제하지 않는다. Execution은 명령 대상 생존·타입·중복과 경로 스냅샷만 적용 검사하고 작업 필요 여부를 다시 탐색하지 않는다. Execution 이후 StateApply에서 상태가 바뀌면 다음 Decision이 낡은 작업·경로를 배정 후보에서 제외하고 정리 의도를 작성한다. Lifecycle Apply는 전달된 무효화 의도와 이미 Closed인 작업의 참조 정리만 반영하며 신규 무효 대상을 다시 탐색하지 않는다.
-
-드론 수행자는 `DroneWorker` 태그로 식별하며 공통 최대 적재량은 World 단일 `DroneCapacityState.CarryingCapacity`가 소유한다. Decision/Reservation/Publish의 새 배정 검사와 Execution의 경로 적용 검사는 같은 공통 값을 읽는다. 부재/0 이하면 신규 배정은 없지만 작업 생성·무효 작업 정리·기존 예약 해제·미공개 예약 롤백은 계속 처리한다. 초기 공통 능력 게시와 연구 Writer는 아직 후속이며 임의 기본값을 만들지 않는다. 연구에 따른 변경은 새 배정부터 적용하고 기존 AssignedQuantity·개별 예약·적재품을 소급 수정하지 않는다. `DroneTaskCandidateDecisionElement`는 Decision 후보 결과에 Reservation 선택/CommittedQuantity와 Publish 기록 여부를 함께 담는다. 미공개 예약이 남으면 다음 틱 정산까지 보존하므로 순수한 한 틱 Decision과 수명이 같지 않다. 현재 드론 ECS 타입은 22개다. 이번 계약과 검증은 [공통 적재량·무효화 검증](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/DroneCapacityAndInvalidation-Verification.md>)을 따른다.
-
-현장 ReservedQuantity는 활성 개별 예약과 미공개 CommittedQuantity를 포함한다. Decision은 해제 예정량을 읽기 계산한 ProjectedRemaining만 사용하고 원본을 쓰지 않는다. 일반 해제와 이전 미공개 예약 정리는 Reservation, 공개 직전 무효/축소 롤백은 StateApply의 Publish가 담당한다. 무효 배정의 Cancelled/Retargeting·수행자 연결 해제·삭제는 Lifecycle Apply가 반영한다. 미정산 예약이 남으면 배정 삭제를 보류한다. 우선순위는 공급 선두 PlacementStamp→CreationSequence, 회수 선두 CreationSequence, 두 선두 간 CreationSequence 비교를 유지한다.
-
-드론 행동 반영은 기존 소유자로 통합했다. DroneActionRequestUtility.Submit의 World 접수 순번과 이전 틱 계획을 DroneTaskLifecycleApplySystem이 일반 Ownership Job 이후 재검사한다. 실물 이동은 ItemOwnershipApplySystem.cs의 TryTransferItem에 위임한다. 호출자가 품목·수량·목적지·슬롯을 고르고 공통 API는 실제 출발 Owner·버퍼·Destroy를 검사해 성공 실물의 출발/도착 버퍼·Owner·격자/시각 위치·벨트 정지·렌더 ECB를 함께 반영한다. 새 TransferOwnershipRequest를 발행하지 않으며 기존 벨트 Transfer 경로는 유지한다. Lifecycle은 실제 성공분으로 배정·적재 출처·DeliveredQuantity·개별 예약/합계·행동 번호·결과를 정산한다. 요청/계획 제거·결과 추가는 EndStateApply이고 외부 TryConsumeResult가 결과를 소비한다. 미소비 참조의 삭제 보류와 수집한 회수품의 유효 보관 이동 예외는 유지한다. 각 시스템은 한 본체 파일에 구현하며 실제 수행부·위치 SoT Writer는 후속이다. [소유자 통합 검증](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/DroneTransferOwnerConsolidation-Verification.md>)을 따른다.
-
-StateApply는 Storage/Routing → 일반 Ownership → DroneLifecycle 인계를 유지한다. Construction은 DroneLifecycle 이후 현재 월드 Owner/GridPosition과 활성 Destroy만 조회한다. 예정 월드 위치 기록과 Item/Building Lifecycle 선행 속성은 제거했다. 현장 내부 새 World Spawn은 Decision과 최종 Apply가 거부하고 드론 방출도 현재 현장 외부에서만 반영한다. 이전 틱 인계·렌더 이후 완공 삭제 기록은 유지한다.
-
-드론 인계의 이전 틱 입력 정책은 유지한다. DroneItemTransferDecisionSystem은 행동 자격을 읽기 검사하고 Execution OrderFirst에서 전체 기존 Item ID·수량 상한·슬롯 품목/개수의 계획을 준비한다. D/E는 원본 실물·Owner·예약·배정을 쓰지 않는다. Lifecycle의 행동 반영은 계획 안의 실물만 현재 생존·Owner·Destroy·대상/버전으로 재검사해 공통 API에 전달하고 성공분을 정산한다. 같은 틱 새 입고·수집품·출고 공간을 계획에 더하지 않으며 목적지별 슬롯 예산은 성공분만 소비한다. 영속 재고/공간 예약은 없고 Command 취소·철거 차단은 즉시 유효하다. 세 인계 계획 컴포넌트는 EndStateApply에 제거되는 파생 데이터다. [이전 틱 인계 검증](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/DronePreviousTickTransfer-Verification.md>)은 당시 구현 근거이며 현재 소유자 통합은 새 검증 기록을 따른다.
-
-드론의 생성 판단·행동 정산과 공통 실물 API는 각각 DroneTaskDecisionSystem.cs, DroneTaskLifecycleApplySystem.cs, ItemOwnershipApplySystem.cs 본체 한 파일에 합쳤다. 기존 데이터 소유자·단계·이전 틱 입력 계약은 유지한다. Unity Entities 소스 생성용 partial 선언을 파일 분리 근거로 사용하지 않는다. [시스템 파일 통합 검증](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/SystemFileConsolidation-Verification.md>)을 따른다.
-
-2026-10-06 4단계는 적재품 재배정과 완공 차단 갱신을 연결했다. Decision은 Retargeting 적재품을 Supply 출처이면 필요 현장→보관처, Recovery이면 보관처만 탐색하고 Direct 실제 거리/동률 PlacementStamp로 선택한다. 관련 결과 None은 대기하며 모두 평가해 도달 가능한 곳이 없으면 DropCargo를 배정한다. Reservation은 기존 예약을 정산한 뒤 적재 그룹을 최초 OriginalTaskCreationSequence 순서로 신규보다 먼저 선택하고 공급 현장만 예약한다. Publish는 같은 배정 엔티티의 revision을 증가시키고 행동 번호를 0으로 초기화하되 실물·출처·최초 순서·기존 결과 참조를 보존한다. 공통 용량을 기존 적재 재배정량에 소급 적용하지 않는다.
-
-안전 방출 정책은 ConstructionSiteWorldItemUtility의 현재 활성·비취소 회전 footprint 내부 새 월드 생성/드론 방출을 금지한다. 현재 셀이 외부이면 그 셀을 선택하고 내부이면 Direct/IsDropPositionSearch(Source/Destination=Null)로 외부 평가자의 가장 가까운 실제 도달 가능한 현장 외부 셀을 기다린다. Reachable/HasDropPosition/DropPosition이 유효해야 하며 None/Unreachable은 적재 대기다. 후보/배정 DropPosition은 선택 목표이고 실제 위치 원본이 아니다. 최종 Drop은 선택 목표==요청 위치==관측 격자 셀과 현장 외부를 검사하며 새 현장이 막으면 Retargeting으로 돌려 실물을 보존한다. 예정 위치 버퍼/기록 helper는 제거하여 ECS102/드론22다. 실제 이동·경로 평가·관측/초기 능력/연구 Writer는 후속이다. [안전 방출·기록 제거 검증](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/DroneSafeDropAndJournalRemoval-Verification.md>)을 따른다.
-
-드론 5단계 통합 회귀는 실제 정렬된 여섯 phase와 EndCommand/EndStateApply에서 취소·공급원 철거·회수 보관처 철거의 정상 3흐름과 실제 완공 후 무예약 적재품 방어 1흐름을 확인한다. 완공은 실제 배정/수집/공급/Construction으로 만들고 다른 적재 배정의 예약0 상태만 초기 fixture로 준비한다. 정상 예약 불변식상 다른 유효 예약을 남긴 현장의 선완공 사례로 해석하지 않는다. 핵심 Closed/Retargeting 전이는 시스템이 반영한다. 경로 결과·관측·행동 신호는 테스트 입력이며 실제 이동·경로/SoT Producer는 후속이다. [신규 통합 4사례](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/DroneLifecycleIntegration-Verification.md>)와 앞선 142사례는 별도 실행 기록으로 보존하고 합산 실행 통과 수치로 표시하지 않는다. 제품 소스 변경 없이 테스트/문서만 추가했다.
-
-다음 추천은 공통 적재량 초기화 검토다. 현재 DroneConfig.json의 carryingCapacity=3과 런타임 게시 Writer 부재를 출발점으로 하되 설정 출처·오류 정책·기존 singleton 처리는 미확정이다. [검토안](Docs/Specifications/DroneCapacityInitializationPlan.md)은 구현 승인이나 실제 수행부 등록 확정이 아니다.
-
-`InitializationSystemGroup`에서 설정과 초기 청크 요청을 준비한다. `SimulationSystemGroup` 아래 `GameSimulationGroup`은 다음 여섯 그룹을 순서대로 실행한다.
+Initialization에서 설정과 초기 청크 요청을 준비한다. SimulationSystemGroup 아래 GameSimulationGroup은 다음 순서로 각 그룹을 한 번씩 실행한다.
 
 ```text
-Command → Decision → Reservation → Execution → StateApply → Synchronization
+Command → EndCommand
+        → BuildingSimulation: Decision → Reservation → Execution → StateApply(마지막 완공)
+        → EndBuilding
+        → DroneSimulation: Decision → Reservation → Execution → StateApply
+        → SimulationCommit: EndSimulation
+        → Synchronization
 ```
 
-| 단계 / `Assets/Scripts/Systems/` 하위 폴더 | 현재 시스템과 책임 |
+- 건물 입출고·생산 아이템 생성·철거 반환/환급·건물 생성/삭제는 EndBuilding에서 확정되어 같은 틱 드론 입력으로 보인다. 기존 공급원 종류와 품목 제한은 유지한다.
+- 각 도메인은 한 번만 실행한다. 건물의 이번 틱 입고 자재를 재차 생산 판단하지 않는다. 드론은 드론 실행 전 계획을 모두 준비하며, 드론 처리 도중 새 수집품이나 새 공간을 기존 계획에 추가하지 않는다.
+- 작업·경로·배정과 행동 결과는 EndSimulation에 공개한다. 새 작업·배정·경로는 다음 틱부터 사용한다.
+- 완공은 BuildingStateApply 마지막에서 판단한다. 이번 틱 드론의 마지막 납품·방해물 회수는 다음 틱 완공 판정에 반영된다. 이번 틱 완공된 건물은 드론에 보이지만 자체 생산·출고는 다음 틱부터 한다.
+- GameSimulationGroup은 틱 시작에 PrefabDatabaseReady와 SimulationFatalError를 검사한다. 중간 EndBuilding에서 오류가 확정되어도 현재 틱은 끝까지 수행하고 다음 틱부터 차단한다. 현재 틱 전체 rollback은 보장하지 않는다.
+
+| 그룹 / 소스 위치 | 시스템과 책임 |
 | --- | --- |
-| `0_Initialization/` | `ItemConfigInitSystem`, `RecipeInitSystem`, `BuildingConfigInitSystem`, `WorldGenerationConfigLoadSystem`이 설정을 게시한다. `InitialChunkLoadBootstrapSystem`은 월드 설정 이후 초기 청크를 요청한다. |
-| `1_Command/` | `ChunkLoadCommandSystem`은 청크 생성 수명주기를 관리하고 `ResourceGenerationCommandSystem`이 그 뒤에 자원 스폰을 기록한다. `CrafterRecipeCommandSystem`은 레시피를 변경하고 `BuildingPlacementCommandSystem`은 배치 요청을 검증하고, `BuildingDemolitionCommandSystem`은 철거 요청을 검증한다. `ConstructionCancelCommandSystem`은 현장을 취소하고 EndCommand에 자재 반환과 현장/요청 삭제를 기록한다. `EndCommandEntityCommandBufferSystem`이 Command 끝(OrderLast)에서 구조 변경을 재생하여 동일 프레임 Phase 2~4에서 물리적 실체로 상호작용할 수 있게 한다. |
-| `2_Decision/` | `BeltMovementDecisionSystem`, `BuildingItemInputDecisionSystem`, `StorageItemOutputDecisionSystem`, `ProductItemOutputDecisionSystem`, `MinerDecisionSystem`, `CrafterDecisionSystem`, `SplitterDecisionSystem`, `MergerDecisionSystem`이 실행 후보를 계산한다. `DroneTaskDecisionSystem`은 생성·종료·경로 의도와 배정 후보를 작성하고 `DroneItemTransferDecisionSystem`은 행동 자격을 읽기 검사한다. |
-| `3_Reservation/` | `BuildingStorageInputReservationSystem`이 저장 슬롯을 배정하고 `BeltDestinationReservationSystem`이 건물 출고와 라우팅 전달의 목적지 경합을 중재한다. `ConstructionSupplyReservationSystem`은 드론 후보 선택과 현장 공급 수량 예약·해제를 담당한다. |
-| `4_Execution/` | `BeltMovementExecutionSystem`이 위치·진행도를 반영한다. `MinerExecutionSystem`과 `CrafterExecutionSystem`은 작업 진행과 생산 결과를 기록하며 제작 재료를 선소비한다. `DroneTaskExecutionSystem`은 결정된 작업 생성·경로 명령을 소비하고 순번과 EndStateApply ECB 기록을 소유한다. `DroneItemTransferExecutionSystem`은 물류 실행 전에 기존 실물·수량·공간의 인계 계획을 준비한다. |
-| `5_StateApply/` | `BuildingItemStorageApplySystem`, `ItemOwnershipApplySystem`, `ItemLifecycleApplySystem`, `CrafterStateApplySystem`, `RoutingApplySystem`, `BuildingLifecycleApplySystem`, `ConstructionLifecycleApplySystem`이 각 결과를 반영한다. `BuildingLifecycleApplySystem`은 물류 전송 이후에 실행(`UpdateAfter(RoutingApplySystem, BuildingItemStorageApplySystem)`)된다. `DroneTaskLifecycleApplySystem`은 신호 기반 실물 인계·도착량·예약 정산을, `DroneTaskLifecycleApplySystem`은 종료 상태·연결·삭제 보류를 반영하고 `DroneTaskAssignmentPublishSystem`은 배정을 최종 재검사하여 롤백하거나 공개를 기록한다. `EndStateApplyEntityCommandBufferSystem`이 마지막(OrderLast)에 구조 변경을 재생한다. |
-| `6_Synchronization/` | `BeltSpatialSyncSystem`, `BuildingSpatialSyncSystem`, `ItemSpatialSyncSystem`, `ResourceSpatialSyncSystem`이 공간 인덱스를 재구축한다. |
+| Initialization / Systems/Initialization | 설정 게시·초기 청크 요청과 프리팹 DB 준비를 처리한다. |
+| Command / Systems/Command | 청크·자원 요청, 레시피 변경, 배치·철거 승인·공사 취소를 처리한다. EndCommandEntityCommandBufferSystem이 마지막에 현장·자원 생성과 반환·요청 삭제를 확정한다. |
+| BuildingDecision / Systems/Buildings/Decision, Items/Decision | 벨트 이동·건물 입출고·채굴·제작·분배/합류 후보와 아이템 생성 허용 여부를 판단한다. |
+| BuildingReservation / Systems/Buildings/Reservation | BuildingStorageInputReservationSystem은 저장 슬롯을, BeltDestinationReservationSystem은 건물 출고·라우팅 목적지 경합을 중재한다. |
+| BuildingExecution / Systems/Buildings/Execution | 벨트 위치·진행도, 채굴/제작 진행·결과·재료 선소비를 반영한다. |
+| BuildingStateApply / Systems/Buildings/StateApply, Items/StateApply, Construction/StateApply | Storage/Routing 뒤 일반 Ownership을 적용한다. 아이템·건물 수명주기를 처리하며 ConstructionLifecycleApplySystem은 OrderLast로 현재 월드 Owner/GridPosition·활성 Destroy와 도착 자재를 검사한다. EndBuildingEntityCommandBufferSystem은 BuildingSimulationGroup의 마지막 직접 자식이다. |
+| DroneDecision / Systems/Drones/Decision | DroneTaskDecisionSystem은 생성·무효화·경로 의도와 배정 후보를, DroneItemTransferDecisionSystem은 행동 자격을 작성한다. |
+| DroneReservation / Systems/Drones/Reservation | ConstructionSupplyReservationSystem은 미공개·무효 예약을 정산한 뒤 후보를 선택하고 현장 공급량을 예약한다. |
+| DroneExecution / Systems/Drones/Execution | DroneItemTransferExecutionSystem은 OrderFirst로 건물 종료 상태 기준 실물·수량·공간 계획을 준비한다. DroneTaskExecutionSystem은 생성·경로 명령과 순번 발급·최종 ECB 기록을 소유한다. |
+| DroneStateApply / Systems/Drones/StateApply | DroneTaskLifecycleApplySystem은 의도 최종 재검사·종료·연결·삭제 보류와 신호 인계·실제 성공량 정산을 담당한다. DroneTaskAssignmentPublishSystem은 OrderLast로 배정을 최종 검사하고 롤백하거나 공개를 기록한다. |
+| SimulationCommit / Systems/Commit | EndSimulationEntityCommandBufferSystem이 드론 작업·경로·배정·결과 및 종료 삭제를 확정한다. |
+| Synchronization / Systems/Synchronization | 최상위 OrderLast로 최종 Commit 뒤에 실행한다. Belt/Building/Item/ResourceSpatialSyncSystem이 원본 ECS로 맵을 재구축하며 WorldInvariantValidationSystem은 내부 OrderLast다. |
 
-- 같은 그룹 안의 순서를 파일명이나 위 표의 나열 순서로 추정하지 않는다. 실제 `UpdateBefore`/`UpdateAfter`/`OrderLast`와 Job 의존성을 확인한다.
-- 드론 StateApply 순서는 필요한 데이터 경계만 지정한다. `DroneTaskLifecycleApplySystem`은 최신 소유권 재검사를 위해 `ItemOwnershipApplySystem` 이후에 실행한다. Storage→Ownership의 기존 순서가 보관 버퍼도 보장한다. `DroneTaskAssignmentPublishSystem`은 `OrderLast`로 일반 Apply 이후, `UpdateBefore(EndStateApplyEntityCommandBufferSystem)`으로 ECB 재생 전에 실행한다. 완공·철거의 구조 변경은 EndStateApply에서 재생되므로 두 드론 시스템에 Construction/Building Lifecycle의 개별 선행 제약을 추가하지 않는다.
-- `BuildingItemStorageApplySystem`과 `RoutingApplySystem`은 `BuildingLifecycleApplySystem` 및 `ItemOwnershipApplySystem`보다 먼저 실행한다. `WorldInvariantValidationSystem`은 Synchronization의 `OrderLast`다.
-- `BuildingDemolitionCommandSystem`은 Command에서 완공 인스턴스와 철거 조건·중복을 검증하며 Prefab 원형은 보호한다. 승인 대상에 `PendingBuildingDemolition` 상태를 기록하고 기존 ProductResult를 Clear하며 Stored/Product 실물의 이전 Transfer를 비활성화한다. 승인/거부/중복 DemolishBuildingRequest 모두 EndCommand에 삭제한다. 이후 입고·채굴/제작·출고·벨트 이동/진입·분배/합류를 Decision에서 차단하여 Reservation/Execution 후보를 만들지 않는다. `ItemSpawnAdmissionDecisionSystem`은 철거 대상 Storage/Product Spawn 요청을 즉시 비활성화하고 EndStateApply에 삭제한다. `BuildingLifecycleApplySystem`은 상태로 대상(기존 Disabled 포함)을 조회하여 반환/환급/철거를 적용하고 EndStateApply에 건물·상태를 삭제한다. StateApply에서는 BuildingType 소실만 방어하며 철거 정책은 재검증하지 않는다. Item Lifecycle/Ownership에는 철거 요청/상태 조회·복사 분기가 없다. 요청은 Command 검증 전에 실체화하고 승인 대상/조건은 StateApply까지 유지한다. 같은 틱 재배치는 기존 공간 인덱스 점유로 거부한다. 기존 실물 반환·건축 비용 환급·World Spawn·활성 Destroy 제외는 유지하며 이전 틱에 선소비한 재료의 보상은 추가하지 않는다.
-- 계획·테스트 이름의 `Phase7` 등은 개발 마일스톤 번호다. 런타임에 일곱 번째 실행 그룹이 있는 것은 아니다.
+같은 그룹 내부 순서는 UpdateBefore/UpdateAfter/OrderLast와 Job 의존성으로 확인한다. 그룹을 가로지르는 순서는 같은 부모의 도메인 그룹 사이에 선언하며, 그룹 순서만으로 Job 완료나 NativeContainer 안전성이 확보됐다고 가정하지 않는다.
 
+DroneTaskCandidateDecisionElement는 Decision이 매 틱 Clear하고 다시 만드는 순수 후보다. DroneTaskPendingPublicationElement는 Reservation이 선택한 후보 스냅샷·Quantity·CommittedQuantity와 Publish의 PublicationQueued를 소유한다. PublicationQueued는 ECB 기록 완료이며 실제 공개 완료와 다르다. 미공개 CommittedQuantity는 다음 Reservation의 해제까지 보존하고 공개 기록은 다음 Reservation에서 제거한다. 현장 ReservedQuantity는 활성 개별 예약과 아직 공개되지 않은 CommittedQuantity를 포함한다. 후보 Clear가 예약 해제 근거를 제거하지 않는다.
+
+Decision은 생성·무효화·경로 의도와 후보만 작성한다. Execution은 명령 생존·타입·중복·경로 스냅샷만 검사하고 작업 필요 여부를 다시 탐색하지 않는다. Lifecycle은 전달된 무효화 의도와 이미 Closed인 작업 참조 정리만 반영한다. 적재품 재배정은 신규보다 먼저 최초 OriginalTaskCreationSequence 순서로 선택하며, 신규 공급 대표 PlacementStamp→CreationSequence·회수 대표 CreationSequence와 두 대표 비교 규칙을 유지한다. 공통 적재량은 DroneCapacityState가 소유하고 초기화·연구 Writer는 후속이다.
+
+드론 행동은 DroneActionRequestUtility.Submit의 World 접수 순서로 적용한다. Lifecycle은 준비된 실물만 현재 생존·Owner·Destroy·대상/버전으로 검사하고 ItemOwnershipApplySystem.TryTransferItem으로 옮긴 실제 성공분을 배정·적재 출처·DeliveredQuantity·예약·행동 번호·결과에 반영한다. 새 TransferOwnershipRequest는 발행하지 않는다. 요청/계획 제거와 결과 추가는 EndSimulation이며 외부 TryConsumeResult가 결과를 소비한다. 공급원 재고·보관 공간의 영속 예약은 없고 목적지 슬롯 예산은 성공분만 소비한다.
+
+안전 방출은 현재 활성·비취소 현장의 회전 footprint 외부만 허용한다. 현재 셀이 내부이면 외부 평가자의 Direct/IsDropPositionSearch 결과를 기다리며 Reachable/HasDropPosition/DropPosition을 검사한다. None/Unreachable은 적재 대기다. 최종 Drop은 선택 목표==요청 위치==관측 격자 셀과 현장 외부를 검사한다. 새 현장이 막으면 Retargeting으로 돌려 실물을 보존한다. 예정 위치 버퍼·기록 helper는 없으며 월드 아이템 생성도 Decision/최종 Apply에서 현장 내부를 거부한다.
+
+건물 철거는 Command에서 승인·PendingBuildingDemolition 게시·이전 Transfer 비활성화·ProductResult Clear 후 후보 생성을 차단한다. ItemSpawnAdmissionDecisionSystem은 철거 대상 Storage/Product 요청을 비활성화하고 EndBuilding에 삭제한다. BuildingLifecycleApplySystem은 승인 상태로 기존 Disabled 포함 대상을 조회하여 반환·환급·철거를 EndBuilding에 기록하며 BuildingType 소실만 방어한다. 기존 실물 반환·비용 환급·활성 Destroy 제외와 같은 틱 재배치의 이전 인덱스 점유 규칙은 유지한다.
+
+현재 드론 관리의 실제 수행자 생성·등록·이동·경로 평가·관측 원본·행동 신호 Producer와 초기 능력·연구 Writer는 후속이다. [드론 계약](Docs/CodeMemory/Components/DroneLogistics.md), [건설 명세](Docs/Specifications/ConstructionAndDroneSupply.md)를 따른다. [기존 통합 4사례](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/DroneLifecycleIntegration-Verification.md>)와 [기존 142사례](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/DroneSafeDropAndJournalRemoval-Verification.md>)는 이전 여섯 phase의 별도 실행 기록이며 새 구조의 검증으로 합산하거나 소급 해석하지 않는다.
+
+다음 추천인 [공통 적재량 초기화 검토안](Docs/Specifications/DroneCapacityInitializationPlan.md)은 설정 출처·오류 정책·기존 singleton 처리 결정 전의 제안으로 구현 승인이 아니다. 개발 마일스톤 Phase7 등의 숫자는 런타임 그룹 개수를 뜻하지 않는다.
 ## 핵심 데이터와 변경 규칙
 
 ### 공간과 작업 의존성
@@ -82,7 +85,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 - 각 맵의 `*SpatialIndexFence`는 NativeContainer 읽기·쓰기 Job 의존성을 관리한다. Reader는 마지막 Writer에 의존하고 자신의 핸들을 등록하며, Writer는 이전 Writer와 모든 Reader를 기다린다. 메인 스레드 직접 접근·용량 변경·Dispose 때도 해당 Fence를 확인한다. ECS 컴포넌트 의존성만으로 맵 접근이 동기화된다고 가정하지 않는다.
 - 인덱스는 Synchronization 이전의 구조 변경을 즉시 반영하지 않는다. 동일 프레임 배치·입출고·스폰 경합은 해당 요청/예약 경계에서 처리하며, 인덱스만 조회하고 이미 반영됐다고 간주하지 않는다.
 - 청크 변환은 `Chunks/ChunkUtility`의 floor division, 방향 오프셋은 `DirectionExtensions`, 라우팅 회전·포트 계산은 `RoutingDirectionUtility`를 사용한다. Footprint 정규화·회전 계산은 `Common/BuildingFootprintUtility.GetEffectiveSize`를 사용한다. `BuildingFootprint.Size`는 현장과 완공 건물 모두 방향 적용 전 기본 크기다. 동명 확장 메서드도 같은 계산을 호출하며 각 Reader가 한 번 회전한다. 크기 변경은 요청→생성→인덱스의 회전 적용 횟수까지 추적한다.
-- 구조 변경은 2-Sync Point 모델로 분리 관리한다. Phase 1 명령의 구조적 변경은 `EndCommandEntityCommandBufferSystem`에 기록하여 Command 종료 시점에 재생되며, Phase 4~5의 고갈 자원 파괴·수명주기 전이·철거·아이템 스폰/소멸은 `EndStateApplyEntityCommandBufferSystem`에 기록하여 StateApply 종료 시점에 재생된다. 실제 엔티티 생성·삭제 및 렌더 태그 변경은 각 Playback 시점에 확정된다. 구조 변경 전후에 `DynamicBuffer`를 계속 보관하지 말고, 필요하면 `ToNativeArray` 등으로 복사한 뒤 버퍼를 다시 얻는다. 기존 문서의 `DynamicBufferCopyUtility`는 현재 소스에 없다.
+- 구조 변경은 세 경계에서 확정한다. Command 요청은 EndCommandEntityCommandBufferSystem, 건물·아이템·공사 완공은 EndBuildingEntityCommandBufferSystem, 드론 작업·경로·배정·행동 결과는 EndSimulationEntityCommandBufferSystem에 기록한다. 실제 생성·삭제·렌더 태그 변경은 해당 Playback에서 확정되고 공간 인덱스는 마지막 Synchronization에서 갱신된다. 구조 변경 전후에 DynamicBuffer를 보관하지 말고 필요하면 ToNativeArray로 복사한 뒤 다시 얻는다. 기존 DynamicBufferCopyUtility는 현재 소스에 없다.
 
 ### 아이템·결정·요청
 
@@ -144,7 +147,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 - 배치 Command는 Building/Resource/Item 공간 Fence를 요구하고 직접 Map 조회 전에 세 마지막 Writer를 완료한다. 다른 Reader 전체나 World 전체를 완료하지 않으며 Validator의 동기화 부수효과에 의존하지 않는다.
 - 한 배치 묶음은 기본 `StrictAllOrNothing` 또는 `AllowPartialPlacement` 정책을 사용한다. 유틸리티의 임시 `claimedCells`는 해당 묶음 내부의 선점 검사다. 여러 요청 엔티티 전체에 걸친 영속 예약으로 설명하지 않는다.
 - 승인된 현장은 `BuildingTypeEnum.ConstructionSite`, 위치·크기·방향·`PlacementStamp`, 자재 요구 버퍼와 보관 버퍼를 가지며 건물 공간 인덱스에 포함된다. 바닥 아이템은 배치를 막지 않고 `AwaitingItemClearance`를 표시한다. 기존 같은 타입 벨트 덮어쓰기는 새 현장 대신 방향 변경을 ECB에 기록한다.
-- `ConstructionCancelCommandSystem`은 Command에서 취소를 처리하고 자재 반환과 현장/요청 삭제를 EndCommand에 확정한다. `ConstructionLifecycleApplySystem`은 StateApply에서 완공만 처리한다. 기존 운송 등록·수령·예약·결과 처리와 철거 요청 조회는 없다. 완공은 요구 행의 `IsSatisfied`와 현장 플래그를 검사하며 공통 Spawn 성공 후에만 자재/현장을 삭제한다. `ConstructionSite.Progress`는 제거했고 자재 도착 비율을 보관하지 않는다. 신호 기반 드론 공급/회수 인계는 연결됐으며 적재품 재배정·바닥 차단 갱신은 4단계에서 연결했으며 실제 이동은 후속이다. 현재 단계 이동의 실행 근거는 [검증 기록](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/ConstructionCancelCommand-Verification.md>)을 따른다.
+- `ConstructionCancelCommandSystem`은 Command에서 취소를 처리하고 자재 반환과 현장/요청 삭제를 EndCommand에 확정한다. `ConstructionLifecycleApplySystem`은 BuildingStateApply 마지막에서 완공만 처리하며 이번 틱 드론 결과는 다음 틱에 검사한다. 기존 운송 등록·수령·예약·결과 처리와 철거 요청 조회는 없다. 완공은 요구 행의 `IsSatisfied`와 현장 플래그를 검사하며 공통 Spawn 성공 후에만 자재/현장을 삭제한다. `ConstructionSite.Progress`는 제거했고 자재 도착 비율을 보관하지 않는다. 신호 기반 드론 공급/회수 인계는 연결됐으며 적재품 재배정·바닥 차단 갱신은 4단계에서 연결했으며 실제 이동은 후속이다. 현재 단계 이동의 실행 근거는 [검증 기록](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/ConstructionCancelCommand-Verification.md>)을 따른다.
 - 직접 생성은 `SpawnBuildingRequest` → `BuildingLifecycleApplySystem`, 공사 완료는 `ConstructionLifecycleApplySystem`에서 별도 Spawn 요청 없이 공통 `BuildingLifecycleUtility.SpawnBuilding`을 호출한다. 두 경로 모두 타입별 런타임 구성을 주입한다. F-037은 자재 요구가 충족된 현장에서 완공한 Crafter의 생성·제작 연결을 검증했으며 전체 배치·자재 배송이나 취소·철거를 검증한 것은 아니다.
 - 공사 취소는 Command의 Cancel Job이 `Cancelled`를 즉시 설정하여 중복 반환을 막고, 보관 실물을 현장 위치의 월드 아이템으로 반환하며 현장/요청 삭제를 EndCommand에 기록한다. 활성 Destroy 실물은 반환하지 않고 기존 Item Lifecycle이 삭제한다. Command 취소 처리 이후 생성된 요청은 다음 Command에서 대상을 재검증하며 이미 완공된 건물은 보호한다. 같은 틱 취소/철거와 재배치는 기존 공간 인덱스의 점유를 기준으로 재배치를 거부한다. 조기 공간 동기화나 Command 중간 ECB 재생을 추가하지 않으며 Synchronization 이후 새 요청부터 변경된 점유로 검증한다. 관련 테스트는 도착 실물을 직접 준비하고 운송을 검증하지 않는다. 건물 철거의 Command 검증·기존 실물 반환·비용 환급 및 일반 입고·철거(F-004)는 앞의 유지 계약을 따른다.
 - `BuildingConfigElement.IsUnlocked`와 해금 변경 유틸리티는 있지만 연구 진행 시스템은 없다. 전력·드론·연구 건물 종류와 프리팹 등록도 해당 시뮬레이션 구현을 의미하지 않는다.
@@ -211,7 +214,7 @@ Command → Decision → Reservation → Execution → StateApply → Synchroniz
 | --- | --- |
 | [ECS 컴포넌트 색인](Docs/CodeMemory/Components/README.md) | 컴포넌트별 목적·부착 엔티티·생성·Reader/Writer·단계·소비와 종료를 추적하는 현재 소스 기반 문서. 정적 분석과 실행 검증을 구분한다. |
 | [건설 현장과 드론 자재 공급 명세](Docs/Specifications/ConstructionAndDroneSupply.md) | 확정한 건설·공급·회수·예약 규칙과 2026-10-05 phase 책임 분리. 기획 전체 및 실제 드론 운송의 구현 완료를 뜻하지 않는다. |
-| [V2 코드 지도](<Docs/architecture v2 plan/CodeMemory/README.md>), [C# 파일 색인](<Docs/architecture v2 plan/CodeMemory/CSharpFileIndex.md>) | V2 탐색 보조. 과거 파일 수·미구현 설명·예약 범위 등이 일부 남아 있으므로 현재 소스로 확인한다. |
+| [V2 코드 지도](<Docs/architecture v2 plan/CodeMemory/README.md>), [C# 파일 색인](<Docs/architecture v2 plan/CodeMemory/CSharpFileIndex.md>) | 2026-10-06 도메인 그룹·현재 주요 파일 경로에 맞춘 탐색 보조. 날짜가 붙은 과거 실행 기록은 당시 범위이며 현재 검증으로 합산하지 않는다. 전체 파일의 개별 내용 재감사 목록은 아니다. |
 | [V2 계획](<Docs/architecture v2 plan/Architecture V2 Plan_0.2.md>), [구현 작업 목록](<Docs/architecture v2 plan/Architecture V2 Tasks.md>) | 설계 의도와 후속 작업. 체크 표시를 실행 증거나 현재 전체 구현으로 간주하지 않는다. |
 | [Command/Event 규약](<Docs/architecture v2 plan/Architecture V2 Command Event Standard.md>) | 요청·결정·이벤트의 설계 배경. 현재 Producer/Consumer와 소비 시점을 함께 확인한다. |
 | [Authoring/Prefab 규약](<Docs/architecture v2 plan/Architecture V2 Authoring Prefab Contract.md>) | 베이킹/스폰 책임 분리. 프리팹 누락 정책은 위 현재 코드의 도메인별 동작을 우선한다. |

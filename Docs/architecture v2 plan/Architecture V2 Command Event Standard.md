@@ -1,5 +1,7 @@
 # PlanetMiner Architecture V2 - Transient Command & Event Standard
 
+> 현재 코드와의 관계 (2026-10-06): 이 문서는 설계 배경/규약 또는 개발 마일스톤 기록이다. 현재 실행은 Command→Building→Drone→Commit→Synchronization이며 세 ECB 경계를 사용한다. 본문의 전역 6페이즈·이전 심볼·완료 표시는 당시 설계/작업 범위로 읽고, 구현 판단은 [AGENTS.md](../../AGENTS.md)와 [현재 컴포넌트 계약](../CodeMemory/Components/README.md)을 우선한다. 개발 Phase 번호와 런타임 그룹을 구분한다.
+
 > Architecture V2의 일회성 요청·결과 이벤트에 대한 수명주기 계약이다. 실제 상태 소유자, 소비 시점, ECB 반영 경계를 명시한다. 준비 대기를 없애거나 모든 도메인에 공통 재시도 프레임워크를 추가하는 규칙은 아니다.
 
 ---

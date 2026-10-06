@@ -84,7 +84,7 @@ public struct IndestructibleBuilding : IComponentData
 /// 생성: BuildingDemolitionCommandSystem이 EndCommand에 부착한다. 승인된 대상과 철거 조건은 StateApply까지 유지하는 계약이다.
 /// 이용: 입고·생산·출고·벨트/라우팅 Decision과 드론 판단/검증이 읽어 실행 후보를 막는다.
 /// BuildingLifecycleApplySystem(StateApply)이 이 상태로 철거 대상을 조회하여 내용물 반환·비용 환급·건물 삭제를 기록한다.
-/// 제거: EndStateApply에서 건물과 함께 삭제한다. BuildingType이 소실된 경우에는 상태만 제거하는 방어 경로가 있다.
+/// 제거: EndBuilding에서 건물과 함께 삭제한다. BuildingType이 소실된 경우에는 상태만 제거하는 방어 경로가 있다.
 /// </summary>
 public struct PendingBuildingDemolition : IComponentData
 {

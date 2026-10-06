@@ -2,9 +2,9 @@
 
 이 문서는 컴포넌트를 출발점으로 Planet Miner의 현재 데이터 흐름을 따라가기 위한 지도다. 각 하위 문서에서 **목적 → 부착 엔티티 → 생성과 초기화 → 읽고 쓰는 시스템 → 처리와 반영 시점 → 소비와 종료**를 확인할 수 있다. 함께 유지하는 데이터 관계와 조건도 해당 컴포넌트에 기록했다.
 
-최초 조사는 **2026-10-03**, 조사 시작 커밋은 `0998016624ee15ee035beb8dc306d68990a69bb0`이다. **2026-10-06 현장 외부 방출·예정 월드 기록 제거까지**의 정의와 경로로 갱신했다. **프로젝트 ECS 컴포넌트/버퍼 요소 102개를 9개 하위 문서에 정리**하며 드론은 22개다. 현장 내부의 새 월드 생성·방출은 금지하고 완공은 현재 월드 실물과 활성 Destroy만 조회한다. 실제 수행부·관측/경로 계산·공통 능력/연구 Writer는 후속이다. 소스와 실행 검증을 구분한다.
+최초 조사는 **2026-10-03**, 조사 시작 커밋은 `0998016624ee15ee035beb8dc306d68990a69bb0`이다. **2026-10-06 건물·드론 도메인 분리와 후보/공개 대기 예약 분리까지**의 정의와 경로로 갱신했다. **프로젝트 ECS 컴포넌트/버퍼 요소 103개를 9개 하위 문서에 정리**하며 드론은 23개다. 현장 내부의 새 월드 생성·방출은 금지하고 완공은 현재 월드 실물과 활성 Destroy만 조회한다. 실제 수행부·관측/경로 계산·공통 능력/연구 Writer는 후속이다. 소스와 실행 검증을 구분한다.
 
-드론 관리 1~4단계의 작업·예약·인계·Direct 재배정·현장 외부 방출·완공 차단과 5단계 선별 통합 회귀를 연결했다. [기존 142사례](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneSafeDropAndJournalRemoval-Verification.md)와 [신규 4사례](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneLifecycleIntegration-Verification.md)는 별도 실행이다. 실제 수행부·관측/경로·초기 능력/연구 Writer는 후속이며 다음 추천은 [공통 적재량 초기화 검토안](../../Specifications/DroneCapacityInitializationPlan.md)이다. 설정 출처·오류·기존 singleton 정책은 미확정이므로 구현 승인으로 해석하지 않는다. 세부 계약은 [명세](../../Specifications/ConstructionAndDroneSupply.md)와 [드론 컴포넌트 계약](DroneLogistics.md)을 따른다.
+드론 관리 1~4단계의 작업·예약·인계·Direct 재배정·현장 외부 방출·완공 차단과 5단계 선별 통합 회귀를 연결했다. [기존 142사례](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneSafeDropAndJournalRemoval-Verification.md)와 [신규 4사례](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneLifecycleIntegration-Verification.md)는 이전 구조의 별도 실행이다. 현재 구조의 컴파일·선택 EditMode·제한된 Play Mode 검증은 [도메인 분리 검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDroneDomainSplit-Verification.md)에 기록하며 과거 실행과 합산하지 않는다. 실제 수행부·관측/경로·초기 능력/연구 Writer는 후속이며 다음 추천은 [공통 적재량 초기화 검토안](../../Specifications/DroneCapacityInitializationPlan.md)이다. 설정 출처·오류·기존 singleton 정책은 미확정이므로 구현 승인으로 해석하지 않는다. 세부 계약은 [명세](../../Specifications/ConstructionAndDroneSupply.md)와 [드론 컴포넌트 계약](DroneLogistics.md)을 따른다.
 
 ## 읽는 방법
 
@@ -22,7 +22,7 @@
 | [공통 좌표와 공간 인덱스](CommonAndSpatial.md) | 10 | GridPosition/Direction, 공간 조회 맵과 Job 의존성 |
 | [건물과 건물 설정](Buildings.md) | 12 | 건물 식별·크기·배치 순번, 설정, 직접 생성과 철거 요청 |
 | [배치와 공사](Construction.md) | 5 | 배치 묶음, 현장, 자재 요구 데이터, 현장 취소·완공 |
-| [드론 작업 관리 계약](DroneLogistics.md) | 22 | 작업·배정·예약·공통 적재량, 인계 계획·정산·적재품 Direct 재배정·외부 결과 소비 |
+| [드론 작업 관리 계약](DroneLogistics.md) | 23 | 작업·배정·예약·공통 적재량, 인계 계획·정산·적재품 Direct 재배정·외부 결과 소비 |
 | [아이템과 저장](ItemsAndStorage.md) | 13 | 아이템·소유권·요청, 보관·입출고·입력 슬롯, 현장 내부 World Spawn 거부 |
 | [벨트와 분배 및 합류](BeltsAndRouting.md) | 6 | 벨트 속도·실제 이동·프레임 계획, 라우팅 상태·전달 결정 |
 | [채굴과 제작](Production.md) | 12 | 작업 상태·결정, 레시피 설정, 결과와 출력 대기 실물 |
@@ -36,7 +36,7 @@
 | 월드 또는 보관 아이템 | [ItemIdentity](ItemsAndStorage.md#itemidentity), [ItemOwnership](ItemsAndStorage.md#itemownership), [GridPosition](CommonAndSpatial.md#gridposition), 아이템 자체의 [이동 상태](BeltsAndRouting.md#beltmovementstate)와 [입고 결정](ItemsAndStorage.md#buildingiteminputdecision) |
 | 완공 건물 | [BuildingType](Buildings.md#buildingtype), [BuildingFootprint](Buildings.md#buildingfootprint), [PlacementStamp](Buildings.md#placementstamp), GridPosition/Direction과 타입별 저장·생산·라우팅 데이터 |
 | 공사 현장 | [ConstructionSite](Construction.md#constructionsite), [ConstructionMaterialRequirementElement](Construction.md#constructionmaterialrequirementelement), StoredItemElement, 건물 공통 위치·크기·방향 |
-| 드론 작업·배정·최소 수행자 계약 | [DroneLogisticsTask](DroneLogistics.md#dronelogisticstask)는 Execution이, [DroneTaskAssignment](DroneLogistics.md#dronetaskassignment)는 Publish가 생성 명령을 기록하며 EndStateApply에 실체화한다. [DroneWorker](DroneLogistics.md#droneworker)는 수행자 표시이고 [DroneCapacityState](DroneLogistics.md#dronecapacitystate)는 World 공통 적재량이다. 실제 등록/생성과 용량 초기화·연구 갱신은 후속이다. |
+| 드론 작업·배정·최소 수행자 계약 | [DroneLogisticsTask](DroneLogistics.md#dronelogisticstask)는 Execution이, [DroneTaskAssignment](DroneLogistics.md#dronetaskassignment)는 Publish가 생성 명령을 기록하며 EndSimulation에 실체화하며 다음 틱부터 사용한다. [DroneWorker](DroneLogistics.md#droneworker)는 수행자 표시이고 [DroneCapacityState](DroneLogistics.md#dronecapacitystate)는 World 공통 적재량이다. 실제 등록/생성과 용량 초기화·연구 갱신은 후속이다. |
 | 건물의 저장품과 생산품 목록 | 건물에 붙는 [StoredItemElement](ItemsAndStorage.md#storeditemelement)와 [ProductItemElement](Production.md#productitemelement). 버퍼 요소가 참조하는 실물 아이템은 별도 엔티티다. |
 | 일회성 요청 엔티티 | [SpawnBuildingRequest](Buildings.md#spawnbuildingrequest), [DemolishBuildingRequest](Buildings.md#demolishbuildingrequest), [SpawnItemRequest](ItemsAndStorage.md#spawnitemrequest), [BuildingPlacementRequest](Construction.md#buildingplacementrequest), 공사·레시피 요청 |
 | 자원 노드 | [ResourceNode](WorldAndResources.md#resourcenode), GridPosition. 현재 매장량은 설정/프리팹 DB와 분리된다. |
@@ -46,28 +46,29 @@
 
 ## 실행 단계와 데이터가 확정되는 시점
 
-Initialization은 설정을 게시하고 프리팹 DB를 검증한다. [GameSimulationGroup](../../../Assets/Scripts/Phases/GameSimulationGroup.cs)은 PrefabDatabaseReady가 있고 SimulationFatalError가 없을 때 다음 여섯 단계를 실행한다.
+Initialization은 설정을 게시하고 프리팹 DB를 검증한다. [GameSimulationGroup](../../../Assets/Scripts/Phases/GameSimulationGroup.cs)은 틱 시작에 PrefabDatabaseReady와 SimulationFatalError를 검사한다. 중간 EndBuilding에서 Fatal이 확정되어도 현재 틱을 완주하고 다음 틱부터 차단한다.
 
 ```mermaid
 flowchart LR
-    C["Command"] --> D["Decision"]
-    D --> R["Reservation"]
-    R --> E["Execution"]
-    E --> A["StateApply"]
-    A --> S["Synchronization"]
+    C["Command · EndCommand"] --> B["BuildingSimulation<br/>Decision → Reservation → Execution → StateApply · 완공"]
+    B --> EB["EndBuilding"]
+    EB --> D["DroneSimulation<br/>Decision → Reservation → Execution → StateApply"]
+    D --> ES["SimulationCommit · EndSimulation"]
+    ES --> S["Synchronization"]
 ```
 
 | 경계 | 컴포넌트를 읽을 때 구분할 현재 동작 |
 | --- | --- |
-| Command 종료 | EndCommand ECB가 자원·공사 현장 생성과 해당 요청 소비 등을 재생한다. 엔티티가 실체화되는 시점과 공간 인덱스 등록 시점은 다르다. |
-| Decision → Reservation | 프레임 후보를 작성한 뒤 저장 슬롯/외부 벨트 목적지 경합을 중재한다. 모든 Decision이 예약 단계를 거치는 것은 아니다. |
-| Execution | OrderFirst의 드론 인계 시스템이 이번 물류 쓰기 전 실물·수량·슬롯 계획을 확정한다. 기존 실행 시스템은 벨트 좌표·진행도, 채굴/제작 진행·선소비와 ProductResult를 기록한다. |
-| StateApply 내부 | 일반 입출고·Ownership 요청 적용 이후 DroneLifecycle의 행동 반영이 이전 계획을 현재 원본으로 검사한다. 공통 Ownership API가 실물의 버퍼·Owner·위치·벨트·렌더를 반영하고 Lifecycle이 성공분·배정·도착량/예약을 정산한다. 이후 완공을 판정한다. 이번 틱 새 입력을 계획에 더하지 않는다. 전체 Apply를 한 고정 체인으로 가정하지 않는다. |
-| StateApply 종료 | EndStateApply ECB가 생성·삭제·지연 컴포넌트 변경을 재생한다. ECB로 넘긴 소유권과 보관 버퍼의 최종 일치는 이 경계 이후에 해석한다. |
-| Synchronization | 공간 인덱스를 원본 ECS 상태로 재구축한다. 개발용 WorldInvariantValidationSystem이 마지막에 현재 구현된 검사를 수행한다. |
+| Command 종료 | EndCommand는 자원·현장 생성·취소 반환·요청 소비 등을 확정한다. 공간 인덱스 등록 시점과 다르다. |
+| 건물 내부 | Decision 후보 뒤 저장 슬롯/벨트 목적지를 중재한다. Execution은 벨트 진행·채굴/제작 진행·재료 선소비·결과를 반영하고 StateApply는 일반 입출고·Ownership·생성과 삭제를 처리한다. 같은 틱 입고 재료로 재차 생산 판단하지 않는다. |
+| 완공 | Construction은 BuildingStateApply OrderLast로 현재 Owner/GridPosition·활성 Destroy와 지난 틱 도착량을 검사한다. 이번 틱 드론 납품·회수는 다음 틱에 판정한다. |
+| 건물 종료 | EndBuilding은 건물·아이템 생성/삭제·반환/환급·렌더 변경을 확정한다. 모든 결과는 같은 틱 드론 입력으로 보이되 기존 공급원·품목 제한을 지킨다. 새 건물의 자체 동작은 다음 틱부터다. |
+| 드론 계획 | Decision은 후보·의도·자격을 작성한다. Reservation은 후보를 읽어 공개 대기 기록에 선택/현장 예약을 보관한다. Execution OrderFirst는 건물 종료 상태의 실물·수량·슬롯 계획을 모두 준비한다. |
+| 드론 반영 | Lifecycle은 접수 순서로 계획 현재 원본을 검사하고 공통 Ownership API의 성공분을 배정·도착량/예약에 정산한다. 드론 처리 중 새 수집품·새 공간은 계획에 더하지 않는다. Publish는 OrderLast로 최종 검사·롤백·공개 기록을 한다. |
+| 최종 확정 | EndSimulation은 작업·경로·배정·개별 예약·인계 결과를 공개하고 요청/계획·종료 엔티티를 제거한다. 새 작업·배정·경로는 다음 틱부터 쓴다. |
+| Synchronization | 원본 ECS 상태로 공간 인덱스를 재구축한다. WorldInvariantValidationSystem은 마지막이다. 중간 ECB 재생만으로 맵이 갱신되지는 않는다. |
 
-StateApply는 저장/라우팅 → 일반 Ownership → DroneLifecycle 인계를 유지한다. Construction은 DroneLifecycle 이후 현재 월드 Owner/GridPosition과 활성 Destroy로 차단/완공을 판단한다. Item/Building Lifecycle 선행 제약과 예정 위치 버퍼는 제거했다. 현장 내부 World Spawn은 Decision·최종 Apply가 거부한다. Publish는 일반 Apply 뒤·ECB 재생 전이다. 근거: [드론](../../../Assets/Scripts/Systems/5_StateApply/DroneTaskLifecycleApplySystem.cs), [완공](../../../Assets/Scripts/Systems/5_StateApply/ConstructionLifecycleApplySystem.cs), [위치 허용 검사](../../../Assets/Scripts/Common/ConstructionSiteWorldItemUtility.cs), [World Spawn](../../../Assets/Scripts/Systems/2_Decision/ItemSpawnAdmissionDecisionSystem.cs).
-
+각 그룹은 한 번 실행한다. 같은 부모 그룹의 도메인 순서와 각 그룹 내부 UpdateBefore/After·OrderLast를 구분하고 Job/Fence 의존성을 유지한다. 근거: [건물 그룹](../../../Assets/Scripts/Phases/Buildings/BuildingSimulationGroup.cs), [드론 그룹](../../../Assets/Scripts/Phases/Drones/DroneSimulationGroup.cs), [완공](../../../Assets/Scripts/Systems/Construction/StateApply/ConstructionLifecycleApplySystem.cs), [드론 인계](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs), [도메인 분리 검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDroneDomainSplit-Verification.md).
 ## 생명주기 표기
 
 - **일반 컴포넌트:** 엔티티 상태/설정/참조를 유지한다. 이름이 Decision이어도 enableable이 아닐 수 있다.
@@ -76,7 +77,7 @@ StateApply는 저장/라우팅 → 일반 Ownership → DroneLifecycle 인계를
 - **요청:** 별도 요청 엔티티를 삭제하는 경로와 기존 엔티티에서 요청 컴포넌트를 비활성화하는 경로가 있다. 준비 대기로 유지하는 조건도 별도다.
 - **정의만 존재 또는 생성 경로 없음:** 현재 `Assets/Scripts`에서 확인한 연결 상태다. 테스트의 직접 구성은 제품 런타임 Producer가 구현되어 있다는 증거로 사용하지 않았다.
 
-`IRequestComponent`/`IEnableableRequest` 인터페이스와 enum·일반 struct는 83개에 세지 않았다. Unity 제공 `LocalTransform`/`Prefab`/`DisableRendering` 등은 연결 설명에 포함하고 독립 조사 타입에서는 제외했다. MonoBehaviour/Authoring은 ECS 생성 출처나 Reader일 때만 설명한다.
+`IRequestComponent`/`IEnableableRequest` 인터페이스 자체와 enum·일반 struct는 총 103개에 세지 않았다. 해당 인터페이스를 구현한 실제 요청 struct는 `IComponentData`의 간접 구현이므로 포함한다. Unity 제공 `LocalTransform`/`Prefab`/`DisableRendering` 등은 연결 설명에 포함하고 독립 조사 타입에서는 제외했다. MonoBehaviour/Authoring은 ECS 생성 출처나 Reader일 때만 설명한다.
 
 ## 전체 컴포넌트 색인
 
@@ -133,7 +134,8 @@ StateApply는 저장/라우팅 → 일반 Ownership → DroneLifecycle 인계를
 | [DroneLogisticsTask](DroneLogistics.md#dronelogisticstask) | 상태 | [DroneTaskComponents.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneTaskComponents.cs) |
 | [DroneTaskSequence](DroneLogistics.md#dronetasksequence) | 상태 | [DroneTaskSequence.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneTaskSequence.cs) |
 | [DroneRecoveryPending](DroneLogistics.md#dronerecoverypending) | 표시 | [DroneRecoveryPending.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneRecoveryPending.cs) |
-| [DroneTaskCandidateDecisionElement](DroneLogistics.md#dronetaskcandidatedecisionelement) | 후보·공개 대기 예약 버퍼 | [DroneTaskCandidateDecisionElement.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneTaskCandidateDecisionElement.cs) |
+| [DroneTaskCandidateDecisionElement](DroneLogistics.md#dronetaskcandidatedecisionelement) | 한 틱 순수 배정 후보 버퍼 | [DroneTaskCandidateDecisionElement.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneTaskCandidateDecisionElement.cs) |
+| [DroneTaskPendingPublicationElement](DroneLogistics.md#dronetaskpendingpublicationelement) | 선택·공개 대기 예약 버퍼 | [DroneTaskPendingPublicationElement.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneTaskPendingPublicationElement.cs) |
 | [DroneRouteDecisionElement](DroneLogistics.md#droneroutedecisionelement) | 결정 버퍼 | [DroneRouteDecisionElement.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneRouteDecisionElement.cs) |
 | [DroneTaskCreationDecisionElement](DroneLogistics.md#dronetaskcreationdecisionelement) | 결정 버퍼 | [DroneTaskCreationDecisionElement.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneTaskCreationDecisionElement.cs) |
 | [DroneTaskInvalidationDecisionElement](DroneLogistics.md#dronetaskinvalidationdecisionelement) | 무효화 결정 버퍼 | [DroneTaskInvalidationDecisionElement.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneTaskInvalidationDecisionElement.cs) |

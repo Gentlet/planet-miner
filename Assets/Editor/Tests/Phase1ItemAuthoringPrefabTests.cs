@@ -17,7 +17,7 @@ public class Phase1ItemAuthoringPrefabTests : EcsWorldTestFixture
 {
     private SystemHandle _lifecycleHandle;
     private SystemHandle _ownershipHandle;
-    private EndStateApplyEntityCommandBufferSystem _endStateApplyEcb;
+    private EndBuildingEntityCommandBufferSystem _endStateApplyEcb;
 
     [SetUp]
     public override void SetUp()
@@ -26,7 +26,7 @@ public class Phase1ItemAuthoringPrefabTests : EcsWorldTestFixture
 
         _lifecycleHandle = _world.GetOrCreateSystem(typeof(ItemLifecycleApplySystem));
         _ownershipHandle = _world.GetOrCreateSystem(typeof(ItemOwnershipApplySystem));
-        _endStateApplyEcb = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
+        _endStateApplyEcb = _world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>();
     }
 
     private void RunStateApplyPhase()

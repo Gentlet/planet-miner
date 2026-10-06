@@ -66,10 +66,10 @@ public enum DroneTaskAssignmentStateEnum : byte
 /// <summary>
 /// 역할·목적: 현장·품목별 공급 요구 또는 월드 실물별 회수 필요를 여러 드론의 개별 배정과 분리하여 관리하는 상위 작업이다.
 /// 부착 엔티티: 현장·아이템·수행자·배정과 별도인 상위 작업 엔티티다. Target은 공급 현장 또는 회수할 실물이다.
-/// 생성: Decision의 DroneTaskDecisionSystem이 의도를 작성하고 Execution의 DroneTaskExecutionSystem이 순번을 발급하여 EndStateApply에 생성한다.
+/// 생성: Decision의 DroneTaskDecisionSystem이 의도를 작성하고 Execution의 DroneTaskExecutionSystem이 순번을 발급하여 EndSimulation에 생성한다.
 /// 이용: 다음 틱부터 Decision의 DroneTaskDecisionSystem이 후보를 판단하고 Reservation의 ConstructionSupplyReservationSystem이 생성 순서·PlacementStamp에 따른 선두를 선택한다.
 /// StateApply의 DroneTaskAssignmentPublishSystem은 배정에 작업을 연결하고 DroneTaskLifecycleApplySystem은 전달받은 무효화 의도로 Closed를 반영한다.
-/// 제거: Lifecycle이 Closed인 작업에 연결 배정이 없음을 확인한 뒤 EndStateApply에 작업 엔티티 삭제를 기록한다.
+/// 제거: Lifecycle이 Closed인 작업에 연결 배정이 없음을 확인한 뒤 EndSimulation에 작업 엔티티 삭제를 기록한다.
 /// CreationSequence는 PlacementStamp와 별개인 양수 작업 생성 순번이며 RecoveryReason은 회수 필요의 근거다.
 /// </summary>
 public struct DroneLogisticsTask : IComponentData
@@ -85,11 +85,11 @@ public struct DroneLogisticsTask : IComponentData
 /// <summary>
 /// 역할·목적: 수행자에게 배정한 개별 수집·공급·보관·방출의 대상·수량·행동 상태를 관리한다.
 /// 부착 엔티티: 현장·상위 작업·수행자와 별도인 하위 배정 엔티티다. ConstructionSupplyReservation도 같은 엔티티에 붙는다.
-/// 생성: StateApply의 DroneTaskAssignmentPublishSystem이 승인 후보를 Revision=1/MovingToSource로 EndStateApply에 생성하고 수행자를 연결한다.
+/// 생성: StateApply의 DroneTaskAssignmentPublishSystem이 승인 후보를 Revision=1/MovingToSource로 EndSimulation에 생성하고 수행자를 연결한다.
 /// 이용: DroneTaskDecisionSystem(Decision), ConstructionSupplyReservationSystem(Reservation), DroneTaskAssignmentPublishSystem(StateApply)이 배정 유효성과 적재 재배정 후보를 검사한다.
 /// DroneItemTransferDecisionSystem(Decision)·DroneItemTransferExecutionSystem(Execution)은 행동 인계 계획에, DroneTaskLifecycleApplySystem(StateApply)은 인계 성공분·예약·종료 상태 반영에 사용한다.
 /// 후속 외부 수행부는 배정을 읽고 행동 신호를 제출하며 직접 성공 상태를 쓰지 않는다. 실제 이동·행동 신호 생성은 미구현이다.
-/// 제거: Lifecycle이 적재품 없음·예약 정산·수행자 연결 해제·미소비 요청/결과 참조 없음 이후 EndStateApply에 삭제를 기록한다.
+/// 제거: Lifecycle이 적재품 없음·예약 정산·수행자 연결 해제·미소비 요청/결과 참조 없음 이후 EndSimulation에 삭제를 기록한다.
 /// 적재품이 남으면 Retargeting으로 유지한다. 재배정은 같은 엔티티의 revision을 늘리고 최초 작업 생성 순서를 보존한다.
 /// LastAppliedActionSequence는 내부 인계가 소비한 행동 번호이며 0은 미처리다. 실제 적재 품목·수량은 Worker의 StoredItemElement가 원본이다.
 /// </summary>

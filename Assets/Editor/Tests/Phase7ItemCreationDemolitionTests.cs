@@ -152,7 +152,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
     {
         CreatePipeline(false);
         var buildingSystem = _world.GetExistingSystem<BuildingLifecycleApplySystem>();
-        var endStateApply = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
+        var endStateApply = _world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>();
         Entity approved = CreateBufferedBuilding(BuildingTypeEnum.Storage, int2.zero);
         Entity protectedBuilding = CreateBufferedBuilding(BuildingTypeEnum.Storage, new int2(1, 0));
         _entityManager.AddComponent<IndestructibleBuilding>(protectedBuilding);
@@ -283,10 +283,10 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
     public void ApprovedDemolition_StopsMining_LeavesResourceUnconsumed(bool demolish, int amount)
     {
         var pipeline = CreatePipeline(false);
-        var decision = _world.GetExistingSystemManaged<DecisionGroup>();
+        var decision = _world.GetExistingSystemManaged<BuildingDecisionGroup>();
         decision.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerDecisionSystem>());
         decision.SortSystems();
-        var execution = _world.GetExistingSystemManaged<ExecutionGroup>();
+        var execution = _world.GetExistingSystemManaged<BuildingExecutionGroup>();
         execution.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerExecutionSystem>());
         execution.SortSystems();
         Entity resource = Entities.CreateResourceNode(int2.zero, ItemTypeEnum.Iron_Ore, amount);
@@ -340,7 +340,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
                }))
         {
             Assert.AreEqual(2, spawns.CalculateEntityCount(), "EndCommand에서 생성된 요청도 Decision이 검사해야 한다.");
-            _world.GetExistingSystemManaged<DecisionGroup>().Update();
+            _world.GetExistingSystemManaged<BuildingDecisionGroup>().Update();
             _entityManager.CompleteAllTrackedJobs();
             using var pendingSpawns = spawns.ToEntityArray(Allocator.Temp);
             foreach (Entity spawn in pendingSpawns)
@@ -354,7 +354,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         // 중간 Job 완료 대기 없이 두 예약 순서와 ECB 생성 순서 모두 검증한다.
         Simulation.Update(itemFirst ? itemSystem : buildingSystem);
         Simulation.Update(itemFirst ? buildingSystem : itemSystem);
-        Simulation.Playback(_world.GetExistingSystemManaged<EndStateApplyEntityCommandBufferSystem>());
+        Simulation.Playback(_world.GetExistingSystemManaged<EndBuildingEntityCommandBufferSystem>());
 
         Assert.IsFalse(_entityManager.Exists(building));
         using var items = _entityManager.CreateEntityQuery(typeof(ItemIdentity));
@@ -367,17 +367,19 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         // Apply 생성 순서를 바꾸어 상대 실행 순서와 관계없이 앞단 철거 승인 차단 계약을 검사한다.
         var simulation = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
         var command = _world.GetOrCreateSystemManaged<CommandGroup>();
-        var decision = _world.GetOrCreateSystemManaged<DecisionGroup>();
-        var reservation = _world.GetOrCreateSystemManaged<ReservationGroup>();
-        var execution = _world.GetOrCreateSystemManaged<ExecutionGroup>();
-        var apply = _world.GetOrCreateSystemManaged<StateApplyGroup>();
+        var building = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();
+        var decision = _world.GetOrCreateSystemManaged<BuildingDecisionGroup>();
+        var reservation = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
+        var execution = _world.GetOrCreateSystemManaged<BuildingExecutionGroup>();
+        var apply = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
         var sync = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
         simulation.AddSystemToUpdateList(sync);
-        simulation.AddSystemToUpdateList(apply);
-        simulation.AddSystemToUpdateList(execution);
-        simulation.AddSystemToUpdateList(reservation);
-        simulation.AddSystemToUpdateList(decision);
+        simulation.AddSystemToUpdateList(building);
         simulation.AddSystemToUpdateList(command);
+        building.AddSystemToUpdateList(apply);
+        building.AddSystemToUpdateList(execution);
+        building.AddSystemToUpdateList(reservation);
+        building.AddSystemToUpdateList(decision);
         _endCommand = _world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
         command.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingDemolitionCommandSystem>());
         command.AddSystemToUpdateList(_endCommand);
@@ -392,10 +394,11 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
             apply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingLifecycleApplySystem>());
             apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemLifecycleApplySystem>());
         }
-        apply.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>());
+        building.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>());
         command.SortSystems();
         decision.SortSystems();
         apply.SortSystems();
+        building.SortSystems();
         simulation.SortSystems();
         return simulation;
     }

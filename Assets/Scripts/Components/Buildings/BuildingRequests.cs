@@ -8,7 +8,7 @@ using Unity.Mathematics;
 /// 생성: 외부 Producer가 소비 전에 실체화하는 계약이며 현재 직접 생성은 테스트가 담당한다.
 /// 현재 ConstructionLifecycleApplySystem은 이 요청을 만들지 않고 공통 SpawnBuilding API로 완공 건물을 직접 생성한다.
 /// 이용: BuildingLifecycleApplySystem(StateApply)이 등록된 프리팹을 인스턴스화한다. DB/항목 누락 시 대체 생성 없이 중단 오류를 기록한다.
-/// 제거: 성공/실패와 관계없이 처리한 요청을 EndStateApply에서 삭제한다. 생성 실패 시 요청 자체를 재시도하지 않는다.
+/// 제거: 성공/실패와 관계없이 처리한 요청을 EndBuilding에서 삭제한다. 생성 실패 시 요청 자체를 재시도하지 않는다.
 /// </summary>
 public struct SpawnBuildingRequest : IComponentData, IRequestComponent
 {
@@ -58,7 +58,7 @@ public struct SpawnBuildingRequest : IComponentData, IRequestComponent
 /// 생성: 외부 입력이 BuildingDemolitionCommandSystem 실행 전에 실체화하는 계약이며 현재 직접 Producer는 테스트다.
 /// 이용: BuildingDemolitionCommandSystem(Command)만 요청을 검증/소비하고 승인 결과를 대상의 PendingBuildingDemolition으로 전달한다.
 /// 승인 후 입고·생산·출고·운송은 앞단에서 중단하며 BuildingLifecycleApplySystem(StateApply)이 내용물 반환·비용 환급·철거를 반영한다.
-/// 제거: 승인/거부/중복 요청 모두 EndCommand에서 삭제한다. 실제 건물 삭제는 승인 상태를 통해 EndStateApply까지 이어진다.
+/// 제거: 승인/거부/중복 요청 모두 EndCommand에서 삭제한다. 실제 건물 삭제는 승인 상태를 통해 EndBuilding까지 이어진다.
 /// </summary>
 public struct DemolishBuildingRequest : IComponentData, IRequestComponent
 {

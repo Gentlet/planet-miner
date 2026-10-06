@@ -26,37 +26,39 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
 
         // 1. 최상위 시뮬레이션 그룹 및 Phase 그룹 구성
         _simulationGroup = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
-        var decisionGroup = _world.GetOrCreateSystemManaged<DecisionGroup>();
-        var reservationGroup = _world.GetOrCreateSystemManaged<ReservationGroup>();
-        var executionGroup = _world.GetOrCreateSystemManaged<ExecutionGroup>();
-        var stateApplyGroup = _world.GetOrCreateSystemManaged<StateApplyGroup>();
+        var buildingGroup = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();
+        var decisionGroup = _world.GetOrCreateSystemManaged<BuildingDecisionGroup>();
+        var reservationGroup = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
+        var executionGroup = _world.GetOrCreateSystemManaged<BuildingExecutionGroup>();
+        var stateApplyGroup = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
         var synchronizationGroup = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
 
-        _simulationGroup.AddSystemToUpdateList(decisionGroup);
-        _simulationGroup.AddSystemToUpdateList(reservationGroup);
-        _simulationGroup.AddSystemToUpdateList(executionGroup);
-        _simulationGroup.AddSystemToUpdateList(stateApplyGroup);
+        _simulationGroup.AddSystemToUpdateList(buildingGroup);
         _simulationGroup.AddSystemToUpdateList(synchronizationGroup);
+        buildingGroup.AddSystemToUpdateList(decisionGroup);
+        buildingGroup.AddSystemToUpdateList(reservationGroup);
+        buildingGroup.AddSystemToUpdateList(executionGroup);
+        buildingGroup.AddSystemToUpdateList(stateApplyGroup);
 
-        // 2. Phase 2: DecisionGroup 시스템 등록
+        // 2. Phase 2: BuildingDecisionGroup 시스템 등록
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerDecisionSystem>());
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<StorageItemOutputDecisionSystem>());
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<ProductItemOutputDecisionSystem>());
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BeltMovementDecisionSystem>());
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemInputDecisionSystem>());
 
-        // 3. Phase 3: ReservationGroup 시스템 등록
+        // 3. Phase 3: BuildingReservationGroup 시스템 등록
         reservationGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingStorageInputReservationSystem>());
 
-        // 4. Phase 4: ExecutionGroup 시스템 등록
+        // 4. Phase 4: BuildingExecutionGroup 시스템 등록
         executionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerExecutionSystem>());
         executionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BeltMovementExecutionSystem>());
 
-        // 5. Phase 5: StateApplyGroup 시스템 등록
+        // 5. Phase 5: BuildingStateApplyGroup 시스템 등록
         stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
         stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemLifecycleApplySystem>());
         stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
-        stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>());
+        buildingGroup.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>());
 
         // 6. Phase 6: SynchronizationGroup 시스템 등록
         synchronizationGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<ResourceSpatialSyncSystem>());
@@ -73,6 +75,7 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
         reservationGroup.SortSystems();
         executionGroup.SortSystems();
         stateApplyGroup.SortSystems();
+        buildingGroup.SortSystems();
         synchronizationGroup.SortSystems();
     }
 

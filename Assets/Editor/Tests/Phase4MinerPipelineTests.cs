@@ -18,7 +18,7 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
     private SystemHandle _storageApplyHandle;
     private SystemHandle _lifecycleHandle;
     private SystemHandle _ownershipHandle;
-    private EndStateApplyEntityCommandBufferSystem _endStateApplyEcb;
+    private EndBuildingEntityCommandBufferSystem _endStateApplyEcb;
 
     [SetUp]
     public override void SetUp()
@@ -34,7 +34,7 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         _storageApplyHandle = _world.GetOrCreateSystem(typeof(BuildingItemStorageApplySystem));
         _lifecycleHandle = _world.GetOrCreateSystem(typeof(ItemLifecycleApplySystem));
         _ownershipHandle = _world.GetOrCreateSystem(typeof(ItemOwnershipApplySystem));
-        _endStateApplyEcb = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
+        _endStateApplyEcb = _world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>();
     }
 
     private Entity CreateResourceNode(int2 position, ItemTypeEnum resourceType, int amount)

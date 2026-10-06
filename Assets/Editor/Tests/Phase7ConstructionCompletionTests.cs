@@ -11,7 +11,7 @@ using Unity.Mathematics;
 public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
 {
     private SystemHandle _lifecycleApplySystem;
-    private EndStateApplyEntityCommandBufferSystem _ecbSystem;
+    private EndBuildingEntityCommandBufferSystem _ecbSystem;
 
     [SetUp]
     public override void SetUp()
@@ -19,7 +19,7 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
         base.SetUp();
         CreateGameplayPrefabDatabases();
         _lifecycleApplySystem = _world.GetOrCreateSystem<ConstructionLifecycleApplySystem>();
-        _ecbSystem = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
+        _ecbSystem = _world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>();
     }
 
     private void RunCompletionPhase()
@@ -221,11 +221,15 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
             new ConstructionMaterialRequirementElement(ItemTypeEnum.Iron, 2, deliveredQuantity: 2));
 
         var group = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
-        var apply = _world.GetOrCreateSystemManaged<StateApplyGroup>();
+        var building = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();
+        var apply = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
         apply.AddSystemToUpdateList(_lifecycleApplySystem);
-        apply.AddSystemToUpdateList(_ecbSystem);
         apply.SortSystems();
-        group.AddSystemToUpdateList(apply);
+        building.AddSystemToUpdateList(apply);
+        building.AddSystemToUpdateList(_ecbSystem);
+        building.SortSystems();
+        group.AddSystemToUpdateList(building);
+        group.SortSystems();
 
         UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Error,
             new System.Text.RegularExpressions.Regex(".*Missing prefab for building type.*"));

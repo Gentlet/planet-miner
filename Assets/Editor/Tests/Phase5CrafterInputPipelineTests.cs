@@ -18,7 +18,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
     private Entity _recipes;
     private Entity _items;
     private EndCommandEntityCommandBufferSystem _commandEcb;
-    private EndStateApplyEntityCommandBufferSystem _applyEcb;
+    private EndBuildingEntityCommandBufferSystem _applyEcb;
 
     [SetUp]
     public override void SetUp()
@@ -28,7 +28,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
         _recipes = Entity.Null;
         _items = ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
         _commandEcb = _world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
-        _applyEcb = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
+        _applyEcb = _world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>();
     }
 
     [TestCase(false, false)]

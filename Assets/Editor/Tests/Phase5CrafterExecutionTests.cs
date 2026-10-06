@@ -17,7 +17,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
     private SystemHandle _crafterExecutionHandle;
     private SystemHandle _crafterStateApplyHandle;
     private SystemHandle _lifecycleHandle;
-    private EndStateApplyEntityCommandBufferSystem _endStateApplyEcb;
+    private EndBuildingEntityCommandBufferSystem _endStateApplyEcb;
 
     [SetUp]
     public override void SetUp()
@@ -33,7 +33,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         _crafterExecutionHandle = _world.GetOrCreateSystem(typeof(CrafterExecutionSystem));
         _crafterStateApplyHandle = _world.GetOrCreateSystem(typeof(CrafterStateApplySystem));
         _lifecycleHandle = _world.GetOrCreateSystem(typeof(ItemLifecycleApplySystem));
-        _endStateApplyEcb = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
+        _endStateApplyEcb = _world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>();
     }
 
     private Entity CreateCrafter(int recipeId = 1, float speed = 1.0f)

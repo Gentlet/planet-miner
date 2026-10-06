@@ -1,10 +1,10 @@
 using Unity.Entities;
 
 /// <summary>
-/// 역할·목적: Unity SimulationSystemGroup 안에서 게임의 여섯 phase를 순서대로 실행하는 최상위 그룹.
+/// 역할·목적: Unity SimulationSystemGroup 안에서 Command→Building→Drone→Commit→Synchronization을 실행한다.
 /// 입력·생성자: PrefabDatabaseInitializationSystem의 Ready와 초기화/실행 경계의 SimulationFatalError.
-/// 실행 조건: Ready가 있고 중단 오류가 없어야 Command→Decision→Reservation→Execution→StateApply→Synchronization을 실행한다.
-/// 출력·정리: 그룹 자체가 도메인 상태/요청을 쓰거나 지우지는 않는다. 각 소유 시스템과 두 ECB 재생 경계를 유지한다.
+/// 실행 조건: 틱 시작에 Ready가 있고 중단 오류가 없어야 전체 그룹을 한 번 실행한다.
+/// 출력·정리: Command/Building/Simulation 종료 ECB를 재생한다. 중간 오류도 현재 틱을 마치고 다음 틱부터 차단한다.
 /// </summary>
 [UpdateInGroup(typeof(SimulationSystemGroup))]
 public partial class GameSimulationGroup : ComponentSystemGroup

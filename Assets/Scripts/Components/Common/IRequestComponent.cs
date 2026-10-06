@@ -14,7 +14,7 @@ public interface IRequestComponent : IComponentData
 /// 역할·목적: 기존 대상에 미리 준비한 요청을 enable 상태로 발행·소비하는 마커다.
 /// 부착 엔티티: 인터페이스 자체는 부착하지 않는다. DestroyItemRequest·TransferOwnershipRequest 등 구현 컴포넌트가 아이템에 붙는다.
 /// 생성·이용: 초기화가 요청 컴포넌트를 비활성으로 준비하고 Producer가 활성화한다. ItemLifecycleApplySystem/ItemOwnershipApplySystem(StateApply)이 활성 요청을 처리한다.
-/// 제거: Transfer는 컴포넌트를 유지한 채 비활성화하고 Destroy는 실물 엔티티를 EndStateApply에 삭제한다. 토글과 구조 삭제를 구분한다.
+/// 제거: Transfer는 컴포넌트를 유지한 채 비활성화하고 Destroy는 실물 엔티티를 EndBuilding에 삭제한다. 토글과 구조 삭제를 구분한다.
 /// </summary>
 public interface IEnableableRequest : IRequestComponent, IEnableableComponent
 {

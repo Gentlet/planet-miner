@@ -58,7 +58,7 @@ public struct DroneActionIdentity
 /// 생성: 외부 입력 경계의 DroneActionRequestUtility.Submit이 World 접수 순번을 발급하여 즉시 게시한다. 실제 수행부의 호출은 미구현이다.
 /// 이용: Decision의 DroneItemTransferDecisionSystem이 자격을 판단하고 Execution의 DroneItemTransferExecutionSystem이 계획을 준비한다.
 /// StateApply의 DroneTaskLifecycleApplySystem이 접수 순서대로 현재 실물·배정·대상을 재검사하여 인계와 결과 정산을 수행한다.
-/// 제거: Lifecycle이 요청·계획 제거와 같은 엔티티의 결과 추가를 EndStateApply에 기록한다. 결과 엔티티는 외부 소비까지 남는다.
+/// 제거: Lifecycle이 요청·계획 제거와 같은 엔티티의 결과 추가를 EndSimulation에 기록한다. 결과 엔티티는 외부 소비까지 남는다.
 /// WorldPosition은 DropCargo의 선택 목표 및 WorkerObservationRevision에 해당하는 현재 관측 셀과 대조할 위치다.
 /// </summary>
 public struct DroneActionReadyRequest : IRequestComponent
@@ -72,9 +72,9 @@ public struct DroneActionReadyRequest : IRequestComponent
 /// <summary>
 /// 역할·목적: 외부 행동 완료 신호에 대한 내부 인계 결과와 실제 옮긴 실물 개수를 공개한다.
 /// 부착 엔티티: 처리한 DroneActionReadyRequest와 같은 엔티티에 부착되며 요청·계획 제거 후에도 유지된다.
-/// 생성: StateApply의 DroneTaskLifecycleApplySystem이 실물 인계·현장 도착량·예약 정산 후 EndStateApply에 게시한다.
+/// 생성: StateApply의 DroneTaskLifecycleApplySystem이 실물 인계·현장 도착량·예약 정산 후 EndSimulation에 게시한다.
 /// 이용: 외부 수행부는 DroneActionRequestUtility.TryConsumeResult로 읽는다. Lifecycle은 미소비 결과의 배정 참조를 삭제 보류에 사용한다.
-/// 제거: EndStateApply 공개 후 TryConsumeResult가 성공하면 결과 엔티티를 삭제한다. 소비되지 않은 결과는 보존한다.
+/// 제거: EndSimulation 공개 후 TryConsumeResult가 성공하면 결과 엔티티를 삭제한다. 소비되지 않은 결과는 보존한다.
 /// Completed/Partial은 양수 MovedQuantity, Unavailable/Rejected는 0이며 기본 None은 미결정이다.
 /// </summary>
 public struct DroneItemTransferResult : IComponentData

@@ -13,7 +13,7 @@ using UnityEngine;
 /// 입력·생성자: 여섯 phase가 반영한 ECS 원본과 SpatialSyncSystem의 공간 인덱스. 직접 맵 조회 전 네 Fence를 완료한다.
 /// 출력·소유권: 위반 누적 수와 세션별 진단 파일을 기록하고 Debug.Break를 호출한다. 도메인 상태를 복구하거나 요청을 대신 소비하지 않는다.
 /// 이용·정리: 개발자/테스트가 로그와 누적 수를 확인한다. 검사 주기는 프레임 간격으로 조정하며 임시 검사용 컨테이너는 검사 뒤 해제한다.
-/// 가시화: EndStateApply 재생과 공간 Writer 완료 뒤의 상태만 검사한다. 진단 순번은 누적 위반 수 초기화와 별도로 유지하며 ECB 기록은 없다.
+/// 가시화: 최종 EndSimulation 재생과 공간 Writer 완료 뒤의 상태만 검사한다. 진단 순번은 누적 위반 수 초기화와 별도로 유지하며 ECB 기록은 없다.
 /// </summary>
 [UpdateInGroup(typeof(SynchronizationGroup), OrderLast = true)]
 public partial class WorldInvariantValidationSystem : SystemBase
@@ -230,7 +230,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
         {
             ReportViolation(
                 "RequestLifecycle",
-                $"TransferOwnershipRequest remained enabled on Entity ({entity.Index}:{entity.Version}) at the end of the frame (SynchronizationGroup). Request was not consumed in StateApplyGroup.",
+                $"TransferOwnershipRequest remained enabled on Entity ({entity.Index}:{entity.Version}) at the end of the frame (SynchronizationGroup). Request was not consumed in BuildingStateApplyGroup.",
                 entity
             );
         }
@@ -242,7 +242,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
         {
             ReportViolation(
                 "RequestLifecycle",
-                $"DestroyItemRequest remained active on Entity ({entity.Index}:{entity.Version}) at the end of the frame (SynchronizationGroup). Entity was not destroyed in StateApplyGroup.",
+                $"DestroyItemRequest remained active on Entity ({entity.Index}:{entity.Version}) at the end of the frame (SynchronizationGroup). Entity was not destroyed in BuildingStateApplyGroup.",
                 entity
             );
         }
@@ -282,7 +282,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
             {
                 ReportViolation(
                     "BeltInvariant",
-                    $"BeltMovementDecision.PlannedProgress ({decision.ValueRO.PlannedProgress}) was not consumed at the end of the frame on Entity ({entity.Index}:{entity.Version}). ExecutionGroup execution may be missing.",
+                    $"BeltMovementDecision.PlannedProgress ({decision.ValueRO.PlannedProgress}) was not consumed at the end of the frame on Entity ({entity.Index}:{entity.Version}). BuildingExecutionGroup execution may be missing.",
                     entity
                 );
             }
@@ -949,7 +949,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
             {
                 ReportViolation(
                     "DecisionLifecycle",
-                    $"BuildingItemInputDecision remained confirmed (CanDeposit=true, TargetSlotIndex={decision.ValueRO.TargetSlotIndex}) at the end of the frame on Item ({entity.Index}:{entity.Version}). Decision was not consumed in StateApplyGroup.",
+                    $"BuildingItemInputDecision remained confirmed (CanDeposit=true, TargetSlotIndex={decision.ValueRO.TargetSlotIndex}) at the end of the frame on Item ({entity.Index}:{entity.Version}). Decision was not consumed in BuildingStateApplyGroup.",
                     entity
                 );
             }
@@ -964,7 +964,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
             {
                 ReportViolation(
                     "DecisionLifecycle",
-                    $"BuildingItemOutputDecision remained confirmed (CanOutput=true, ItemToOutput={decision.ValueRO.ItemToOutput.Index}:{decision.ValueRO.ItemToOutput.Version}) at the end of the frame on Building ({entity.Index}:{entity.Version}). Decision was not consumed in StateApplyGroup.",
+                    $"BuildingItemOutputDecision remained confirmed (CanOutput=true, ItemToOutput={decision.ValueRO.ItemToOutput.Index}:{decision.ValueRO.ItemToOutput.Version}) at the end of the frame on Building ({entity.Index}:{entity.Version}). Decision was not consumed in BuildingStateApplyGroup.",
                     entity
                 );
             }
@@ -979,7 +979,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
             {
                 ReportViolation(
                     "DecisionLifecycle",
-                    $"RoutingTransferDecision remained active (Item={decision.ValueRO.Item.Index}:{decision.ValueRO.Item.Version}, TargetBelt={decision.ValueRO.TargetBelt.Index}:{decision.ValueRO.TargetBelt.Version}) at the end of the frame on Entity ({entity.Index}:{entity.Version}). Decision was not consumed in StateApplyGroup.",
+                    $"RoutingTransferDecision remained active (Item={decision.ValueRO.Item.Index}:{decision.ValueRO.Item.Version}, TargetBelt={decision.ValueRO.TargetBelt.Index}:{decision.ValueRO.TargetBelt.Version}) at the end of the frame on Entity ({entity.Index}:{entity.Version}). Decision was not consumed in BuildingStateApplyGroup.",
                     entity
                 );
             }

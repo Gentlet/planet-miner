@@ -32,10 +32,10 @@ public enum DroneRouteEvaluationStatusEnum : byte
 /// <summary>
 /// 역할·목적: 외부 경로 평가에 전달하는 불변 입력이다. 실제 위치의 원본이나 도달 가능 판정 자체가 아니다.
 /// 부착 엔티티: 수행자·배정·후보 관리 엔티티와 별도인 경로 요청 엔티티다. 결과도 같은 엔티티에 붙는다.
-/// 생성: Decision의 DroneTaskDecisionSystem이 생성 의도를 작성하고 Execution의 DroneTaskExecutionSystem이 EndStateApply에 게시한다.
+/// 생성: Decision의 DroneTaskDecisionSystem이 생성 의도를 작성하고 Execution의 DroneTaskExecutionSystem이 EndSimulation에 게시한다.
 /// 이용: 외부 평가자는 충전 경유를 포함한 실제 경로를 계산한다. 이 Producer는 미구현이다.
 /// DroneTaskDecisionSystem(Decision), ConstructionSupplyReservationSystem(Reservation), DroneTaskAssignmentPublishSystem(StateApply)은 관측 revision·배정·대상 좌표를 재검사해 유효한 결과만 후보 선택에 사용한다.
-/// 제거: Decision이 사용하지 않거나 유효하지 않은 요청의 Remove 의도를 작성하고 Execution이 EndStateApply에 결과를 포함한 엔티티 삭제를 기록한다.
+/// 제거: Decision이 사용하지 않거나 유효하지 않은 요청의 Remove 의도를 작성하고 Execution이 EndSimulation에 결과를 포함한 엔티티 삭제를 기록한다.
 /// ViaSource는 OriginPosition → Source → Destination, Direct는 현재 위치 → Destination을 평가하며 Direct의 Source는 Null이다.
 /// SourcePosition/DestinationPosition은 대상 GridPosition의 스냅샷이다. 배정 전 평가는 Assignment=Null/revision=0, 적재 재배정은 현재 배정·revision을 사용한다.
 /// IsDropPositionSearch이면 Source/Destination은 Null이며 가장 가까운 도달 가능 현장 외부 셀의 평가를 요청한다.
@@ -63,7 +63,7 @@ public struct DroneRouteEvaluationRequest : IRequestComponent
 /// 생성: 후속 외부 경로 평가자가 게시할 계약이며 현재 제품 코드에 평가 Producer는 없다.
 /// 이용: Decision의 DroneTaskDecisionSystem, Reservation의 ConstructionSupplyReservationSystem, StateApply의 DroneTaskAssignmentPublishSystem이 읽는다.
 /// 양수 EvaluationRevision과 요청·관측·배정·대상 스냅샷이 유효해야 하며 Reachable일 때만 거리를 후보 비교에 사용한다.
-/// 제거: Decision의 Remove 의도를 소비한 DroneTaskExecutionSystem이 EndStateApply에 경로 요청 엔티티와 함께 삭제한다.
+/// 제거: Decision의 Remove 의도를 소비한 DroneTaskExecutionSystem이 EndSimulation에 경로 요청 엔티티와 함께 삭제한다.
 /// TotalDistance는 충전 경유를 포함한 유한한 0 이상 실제 이동거리다. 기본 None/거리 0만으로 도달 가능이라고 해석하지 않는다.
 /// </summary>
 public struct DroneRouteEvaluationResult : IComponentData

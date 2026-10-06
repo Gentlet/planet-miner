@@ -10,17 +10,20 @@ using Unity.Transforms;
 
 /// <summary>
 /// 역할·목적: 드론 작업/경로 의도·우선순위·현장 예약·배정 공개에 대한 NUnit EditMode 회귀 검증.
-/// 입력·검사: 현장/재고/수행자/용량과 경로 응답을 준비해 실제 그룹/두 ECB 경계를 검사한다. 실물 운송/이동이나 경로 평가 Producer를 실행하지 않는다.
+/// 입력·검사: 현장/재고/수행자/용량과 경로 응답을 준비해 실제 그룹/세 ECB 경계를 검사한다. 실물 운송/이동이나 경로 평가 Producer를 실행하지 않는다.
 /// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class DroneTaskSchedulingTests : EcsWorldTestFixture
 {
     private GameSimulationGroup _simulation;
     private CommandGroup _command;
-    private DecisionGroup _decision;
-    private ReservationGroup _reservation;
-    private ExecutionGroup _execution;
-    private StateApplyGroup _apply;
+    private DroneDecisionGroup _decision;
+    private DroneReservationGroup _reservation;
+    private DroneExecutionGroup _execution;
+    private DroneStateApplyGroup _apply;
+    private BuildingSimulationGroup _building;
+    private BuildingStateApplyGroup _buildingApply;
+    private SimulationCommitGroup _commit;
     private double _elapsedTime;
 
     [SetUp]
@@ -32,17 +35,27 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         _elapsedTime = 0;
         _simulation = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
         _command = _world.GetOrCreateSystemManaged<CommandGroup>();
-        _decision = _world.GetOrCreateSystemManaged<DecisionGroup>();
-        _reservation = _world.GetOrCreateSystemManaged<ReservationGroup>();
-        _execution = _world.GetOrCreateSystemManaged<ExecutionGroup>();
-        _apply = _world.GetOrCreateSystemManaged<StateApplyGroup>();
+        _decision = _world.GetOrCreateSystemManaged<DroneDecisionGroup>();
+        _reservation = _world.GetOrCreateSystemManaged<DroneReservationGroup>();
+        _execution = _world.GetOrCreateSystemManaged<DroneExecutionGroup>();
+        _apply = _world.GetOrCreateSystemManaged<DroneStateApplyGroup>();
+        _building = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();
+        _buildingApply = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
+        _building.AddSystemToUpdateList(_buildingApply);
+        _building.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>());
+        var drone = _world.GetOrCreateSystemManaged<DroneSimulationGroup>();
+        _commit = _world.GetOrCreateSystemManaged<SimulationCommitGroup>();
+        _commit.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>());
         var synchronization = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
         _simulation.AddSystemToUpdateList(_command);
-        _simulation.AddSystemToUpdateList(_decision);
-        _simulation.AddSystemToUpdateList(_reservation);
-        _simulation.AddSystemToUpdateList(_execution);
-        _simulation.AddSystemToUpdateList(_apply);
+        _simulation.AddSystemToUpdateList(_building);
+        _simulation.AddSystemToUpdateList(drone);
+        _simulation.AddSystemToUpdateList(_commit);
         _simulation.AddSystemToUpdateList(synchronization);
+        drone.AddSystemToUpdateList(_decision);
+        drone.AddSystemToUpdateList(_reservation);
+        drone.AddSystemToUpdateList(_execution);
+        drone.AddSystemToUpdateList(_apply);
 
         _command.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingPlacementCommandSystem>());
         _command.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>());
@@ -51,7 +64,6 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         _execution.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskExecutionSystem>());
         _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskLifecycleApplySystem>());
         _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskAssignmentPublishSystem>());
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>());
         synchronization.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingSpatialSyncSystem>());
         synchronization.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemSpatialSyncSystem>());
         synchronization.AddSystemToUpdateList(_world.GetOrCreateSystem<ResourceSpatialSyncSystem>());
@@ -61,12 +73,16 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         _reservation.SortSystems();
         _execution.SortSystems();
         _apply.SortSystems();
+        _buildingApply.SortSystems();
+        _building.SortSystems();
+        drone.SortSystems();
+        _commit.SortSystems();
         synchronization.SortSystems();
         _simulation.SortSystems();
     }
 
     [Test]
-    public void ApprovedPlacement_PublishesTasksAtEndStateApply_AndSchedulesThemOnTheNextDecision()
+    public void ApprovedPlacement_PublishesTasksAtEndSimulation_AndSchedulesThemOnTheNextDecision()
     {
         Entity config = _entityManager.CreateEntity(typeof(BuildingConfig));
         _entityManager.AddBuffer<BuildingConfigElement>(config).Add(
@@ -101,8 +117,8 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         Assert.AreEqual(3UL, _entityManager.GetComponentData<DroneTaskSequence>(sequenceEntity).NextValue,
             "소비한 생성 의도는 순번도 다시 발급하지 않는다.");
         Assert.AreEqual(0, QueryEntities<DroneLogisticsTask>().Length,
-            "Execution이 두 번 실행되어도 작업은 EndStateApply 이전에 공개되지 않는다.");
-        _apply.Update();
+            "Execution이 두 번 실행되어도 작업은 EndSimulation 이전에 공개되지 않는다.");
+        ApplyDroneAndCommit();
 
         Entity[] tasks = QueryEntities<DroneLogisticsTask>();
         Assert.AreEqual(2, tasks.Length, "소비한 생성 의도를 다시 실행하여 작업을 중복 생성하지 않는다.");
@@ -122,15 +138,15 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         Assert.AreEqual(0, QueryEntities<DroneRouteEvaluationRequest>().Length,
             "이번 StateApply에 공개된 작업은 이전 Decision에서 배정하지 않는다.");
 
-        // 다음 Decision의 경로 의도도 Execution이 기록하고 EndStateApply에 공개한다.
+        // 다음 Decision의 경로 의도도 Execution이 기록하고 EndSimulation에 공개한다.
         _decision.Update();
-        _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>().Update();
+        _world.GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>().Update();
         Assert.AreEqual(0, QueryEntities<DroneRouteEvaluationRequest>().Length);
         _reservation.Update();
         _execution.Update();
         _execution.Update();
         Assert.AreEqual(0, QueryEntities<DroneRouteEvaluationRequest>().Length);
-        _apply.Update();
+        ApplyDroneAndCommit();
         Assert.AreEqual(1, QueryEntities<DroneRouteEvaluationRequest>().Length);
         Assert.AreEqual(2, QueryEntities<DroneLogisticsTask>().Length, "다음 StateApply가 공급 작업을 중복 생성하지 않는다.");
         AssertNoAssignments();
@@ -184,7 +200,7 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         _reservation.Update();
         _execution.Update();
         Assert.AreEqual(0, QueryEntities<DroneRouteEvaluationRequest>().Length,
-            "이번 Execution의 경로 요청은 아직 EndStateApply에 공개되지 않았다.");
+            "이번 Execution의 경로 요청은 아직 EndSimulation에 공개되지 않았다.");
 
         // 이번 StateApply에서 벨트 입고 또는 이동이 적용된 상황만 준비한다.
         // 드론의 실제 수집/인계 기능을 실행한 것으로 간주하지 않는다.
@@ -200,7 +216,7 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
             _entityManager.SetComponentData(item, new GridPosition(new int2(40, 40)));
         }
 
-        _apply.Update();
+        ApplyDroneAndCommit();
         if (afterRouteCommand)
         {
             Assert.AreEqual(1, QueryEntities<DroneRouteEvaluationRequest>().Length);
@@ -209,7 +225,7 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         else
         {
             Assert.AreEqual(1, QueryEntities<DroneLogisticsTask>().Length,
-                "Execution에 기록한 생성 명령은 기존 대상 상태를 기준으로 EndStateApply에 공개된다.");
+                "Execution에 기록한 생성 명령은 기존 대상 상태를 기준으로 EndSimulation에 공개된다.");
         }
         AssertNoAssignments();
 
@@ -520,7 +536,7 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void ApprovedAssignment_IsPublishedOnlyAtEndStateApply()
+    public void ApprovedAssignment_IsPublishedOnlyAtEndSimulation()
     {
         Entity site = CreateSite(new int2(10, 0), 1, ItemTypeEnum.Iron, 1);
         CreateSupplyTask(site, ItemTypeEnum.Iron, 1);
@@ -534,13 +550,28 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         _reservation.Update();
         AssertNoAssignments();
         Assert.AreEqual(Entity.Null, _entityManager.GetComponentData<DroneWorkerAssignment>(worker).Assignment);
+        using var publicationQuery = _entityManager.CreateEntityQuery(
+            ComponentType.ReadOnly<DroneTaskPendingPublicationElement>());
+        Entity publicationOwner = publicationQuery.GetSingletonEntity();
+        var pending = _entityManager.GetBuffer<DroneTaskPendingPublicationElement>(publicationOwner, true);
+        Assert.AreEqual(1, pending.Length);
+        Assert.AreEqual(1, pending[0].CommittedQuantity);
+        Assert.IsFalse(pending[0].PublicationQueued);
         _execution.Update();
         AssertNoAssignments();
         _apply.Update();
+        AssertNoAssignments();
+        Assert.AreEqual(Entity.Null, _entityManager.GetComponentData<DroneWorkerAssignment>(worker).Assignment);
+        pending = _entityManager.GetBuffer<DroneTaskPendingPublicationElement>(publicationOwner, true);
+        Assert.IsTrue(pending[0].PublicationQueued, "공개 기록과 실제 ECB 공개를 구분한다.");
+        _commit.Update();
 
         Entity assignmentEntity = SingleEntity<DroneTaskAssignment>();
         Assert.AreEqual(assignmentEntity, _entityManager.GetComponentData<DroneWorkerAssignment>(worker).Assignment);
         Assert.AreEqual(DroneTaskAssignmentStateEnum.MovingToSource, SingleAssignment().State);
+        Tick();
+        Assert.AreEqual(0, _entityManager.GetBuffer<DroneTaskPendingPublicationElement>(publicationOwner).Length);
+        Assert.AreEqual(1, Requirement(site).ReservedQuantity, "공개 대기 기록 정리는 활성 개별 예약량을 해제하지 않는다.");
     }
 
     [Test]
@@ -654,7 +685,7 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         var requirements = _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site);
         requirements[0] = requirement;
         _execution.Update();
-        _apply.Update();
+        ApplyDroneAndCommit();
 
         AssertNoAssignments();
         Assert.AreEqual(0, Requirement(site).ReservedQuantity);
@@ -687,7 +718,7 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
             _entityManager.SetComponentData(capacity, new DroneCapacityState { CarryingCapacity = 0 });
         }
         _execution.Update();
-        _apply.Update();
+        ApplyDroneAndCommit();
 
         AssertNoAssignments();
         Assert.AreEqual(0, Requirement(site).ReservedQuantity);
@@ -724,7 +755,7 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
 
         _decision.Update();
         // ECB만 재생해도 작업/배정이 남아야 Decision의 삭제 기록까지 배제할 수 있다.
-        _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>().Update();
+        _world.GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>().Update();
         Assert.AreEqual(2, Requirement(site).ReservedQuantity,
             "Decision은 다른 도메인의 현장 예약량을 변경하지 않는다.");
         Assert.AreEqual(2, _entityManager.GetComponentData<ConstructionSupplyReservation>(oldAssignment).RemainingQuantity);
@@ -748,7 +779,7 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         Assert.AreEqual(DroneTaskAssignmentStateEnum.MovingToSource,
             _entityManager.GetComponentData<DroneTaskAssignment>(oldAssignment).State);
         Assert.AreEqual(oldAssignment, _entityManager.GetComponentData<DroneWorkerAssignment>(worker).Assignment);
-        _apply.Update();
+        ApplyDroneAndCommit();
         Assert.IsFalse(_entityManager.Exists(oldAssignment));
         Assert.AreEqual(0, Requirement(site).ReservedQuantity);
         Assert.AreEqual(Entity.Null, _entityManager.GetComponentData<DroneWorkerAssignment>(worker).Assignment);
@@ -787,12 +818,11 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void SortedStateApply_RechecksTaskClosureAfterOwnershipReturnsItemToWorld()
+    public void Lifecycle_RechecksCapturedTaskClosureAfterBuildingOwnershipReturnsItemToWorld()
     {
-        // 기본 등록 순서에서는 Lifecycle/Publish/ECB가 먼저 있다.
-        // Ownership을 뒤에 추가한 후 실제 그룹 정렬이 데이터 의존 순서를 보장하는지 검증한다.
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
-        _apply.SortSystems();
+        // 이전에 기록된 무효화 의도도 건물에서 확정한 현재 소유권으로 최종 재검사한다.
+        _buildingApply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
+        _buildingApply.SortSystems();
         CreateSite(new int2(4, 4), 1, ItemTypeEnum.Iron, 0);
         Entity storage = CreateStorage(new int2(10, 4), 1, ItemTypeEnum.Iron, 1);
         Entity item = StoredEntities(storage)[0];
@@ -823,14 +853,15 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
             _entityManager.GetComponentData<DroneLogisticsTask>(task).State);
 
         // 보관 반영자가 버퍼 제거/위치 갱신 후 소유권 요청을 발행한 상태를 준비한다.
-        // 실제 소유권과 렌더 변경은 정렬된 그룹의 ItemOwnershipApplySystem이 처리한다.
+        // 실제 소유권과 렌더 변경은 건물 그룹과 건물 종료 ECB가 처리한다.
         _entityManager.GetBuffer<StoredItemElement>(storage).Clear();
         _entityManager.SetComponentData(item, new GridPosition(new int2(4, 4)));
         _entityManager.SetComponentData(item, LocalTransform.FromPosition(new float3(4f, 4f, 0f)));
         _entityManager.AddComponentData(item, new TransferOwnershipRequest(Entity.Null));
         _entityManager.SetComponentEnabled<TransferOwnershipRequest>(item, true);
 
-        _apply.Update();
+        _building.Update();
+        ApplyDroneAndCommit();
 
         Assert.IsTrue(_entityManager.GetComponentData<ItemOwnership>(item).IsWorldItem);
         Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item));
@@ -841,6 +872,12 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
             _entityManager.GetComponentData<DroneLogisticsTask>(task).State);
         Assert.AreEqual(0, _entityManager.GetBuffer<StoredItemElement>(storage).Length);
         AssertNoAssignments();
+    }
+
+    private void ApplyDroneAndCommit()
+    {
+        _apply.Update();
+        _commit.Update();
     }
 
     private Entity CreateSite(int2 position, ulong stamp, ItemTypeEnum itemType, int quantity)

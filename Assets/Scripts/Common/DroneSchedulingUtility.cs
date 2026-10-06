@@ -17,6 +17,10 @@ public static class DroneSchedulingUtility
         if (!query.IsEmptyIgnoreFilter)
         {
             Entity existing = query.GetSingletonEntity();
+            if (!manager.HasBuffer<DroneTaskPendingPublicationElement>(existing))
+            {
+                manager.AddBuffer<DroneTaskPendingPublicationElement>(existing);
+            }
             if (!manager.HasBuffer<DroneRouteDecisionElement>(existing))
             {
                 manager.AddBuffer<DroneRouteDecisionElement>(existing);
@@ -32,7 +36,7 @@ public static class DroneSchedulingUtility
             return existing;
         }
 
-        return manager.CreateEntity(typeof(DroneTaskCandidateDecisionElement), typeof(DroneRouteDecisionElement),
+        return manager.CreateEntity(typeof(DroneTaskCandidateDecisionElement), typeof(DroneTaskPendingPublicationElement), typeof(DroneRouteDecisionElement),
             typeof(DroneTaskCreationDecisionElement), typeof(DroneTaskInvalidationDecisionElement));
     }
 
@@ -381,11 +385,11 @@ public static class DroneSchedulingUtility
     }
 
     /// <summary>
-    /// 아직 해제되지 않은 무효 배정/미공개 후보의 수량을 제외해 다음 예약 가능량을 읽기 계산한다.
+    /// 아직 해제되지 않은 무효 배정/미공개 예약의 수량을 제외해 다음 예약 가능량을 읽기 계산한다.
     /// Decision이 원본 합계를 선행 수정하지 않으며 실제 해제는 Reservation/Publish의 소유 경계가 담당한다.
     /// </summary>
     public static int ProjectedRemaining(EntityManager manager, Entity site, ItemTypeEnum type,
-        NativeArray<Entity> assignments, NativeArray<Entity> sites, DynamicBuffer<DroneTaskCandidateDecisionElement> candidates)
+        NativeArray<Entity> assignments, NativeArray<Entity> sites, DynamicBuffer<DroneTaskPendingPublicationElement> pendingPublications)
     {
         int releasedQuantity = 0;
         for (int i = 0; i < assignments.Length; i++)
@@ -397,11 +401,11 @@ public static class DroneSchedulingUtility
             if (AssignmentNeedsCleanup(manager, manager.GetComponentData<DroneTaskAssignment>(entity), sites))
                 releasedQuantity += reservation.RemainingQuantity;
         }
-        for (int i = 0; i < candidates.Length; i++)
+        for (int i = 0; i < pendingPublications.Length; i++)
         {
-            var candidate = candidates[i];
-            if (!candidate.Published && candidate.Destination == site && candidate.ItemType == type)
-                releasedQuantity += candidate.CommittedQuantity;
+            var pending = pendingPublications[i];
+            if (!pending.PublicationQueued && pending.Candidate.Destination == site && pending.Candidate.ItemType == type)
+                releasedQuantity += pending.CommittedQuantity;
         }
         return ConstructionSupplyReservationUtility.RemainingIncludingOwn(manager, site, type, releasedQuantity);
     }
@@ -534,10 +538,10 @@ public static class DroneSchedulingUtility
     }
 
     public static int CandidateQuantity(EntityManager manager, in DroneTaskCandidateDecisionElement candidate, Entity registry,
-        int carryingCapacity)
+        int carryingCapacity, int committedQuantity = 0)
     {
         if (candidate.Assignment != Entity.Null)
-            return RetargetingCandidateQuantity(manager, candidate, registry, carryingCapacity);
+            return RetargetingCandidateQuantity(manager, candidate, registry, carryingCapacity, committedQuantity);
         if (!IsIdleWorker(manager, candidate.Worker, carryingCapacity) || !manager.HasComponent<DroneLogisticsTask>(candidate.Task))
         {
             return 0;
@@ -562,7 +566,7 @@ public static class DroneSchedulingUtility
         {
             if (task.Target != candidate.Destination || !IsSite(manager, task.Target)) return 0;
             return math.min(carryingCapacity, math.min(candidate.Quantity,
-                math.min(ConstructionSupplyReservationUtility.RemainingIncludingOwn(manager, task.Target, task.ItemType, candidate.CommittedQuantity),
+                math.min(ConstructionSupplyReservationUtility.RemainingIncludingOwn(manager, task.Target, task.ItemType, committedQuantity),
                     CountInventory(manager, candidate.Source, task.ItemType))));
         }
 
@@ -576,7 +580,7 @@ public static class DroneSchedulingUtility
     }
 
     private static int RetargetingCandidateQuantity(EntityManager manager,
-        in DroneTaskCandidateDecisionElement candidate, Entity registry, int carryingCapacity)
+        in DroneTaskCandidateDecisionElement candidate, Entity registry, int carryingCapacity, int committedQuantity)
     {
         if (!IsRetargetingWorker(manager, candidate.Assignment, out var assignment, out int cargoQuantity)) return 0;
         if (assignment.Worker != candidate.Worker || assignment.Revision != candidate.AssignmentRevision) return 0;
@@ -613,6 +617,6 @@ public static class DroneSchedulingUtility
             task.ItemType != candidate.ItemType || task.Target != candidate.Destination) return 0;
         if (!IsSite(manager, candidate.Destination)) return 0;
         return math.min(quantity, ConstructionSupplyReservationUtility.RemainingIncludingOwn(manager,
-            candidate.Destination, candidate.ItemType, candidate.CommittedQuantity));
+            candidate.Destination, candidate.ItemType, committedQuantity));
     }
 }

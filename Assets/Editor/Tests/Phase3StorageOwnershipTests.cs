@@ -75,7 +75,7 @@ public class Phase3StorageOwnershipTests : EcsWorldTestFixture
 
         SyncAllSpatialIndices();
 
-        // 1. DecisionGroup: BuildingItemInputDecisionSystem 실행
+        // 1. BuildingDecisionGroup: BuildingItemInputDecisionSystem 실행
         _buildingInputDecisionHandle.Update(_world.Unmanaged);
 
         var decision = _entityManager.GetComponentData<BuildingItemInputDecision>(item);
@@ -84,13 +84,13 @@ public class Phase3StorageOwnershipTests : EcsWorldTestFixture
         Assert.AreEqual(storage, decision.TargetBuilding, "대상 창고 일치");
         Assert.AreEqual(-1, decision.TargetSlotIndex, "Reservation 전에는 -1이어야 함");
 
-        // 2. ReservationGroup: BuildingStorageInputReservationSystem 실행
+        // 2. BuildingReservationGroup: BuildingStorageInputReservationSystem 실행
         _storageReservationHandle.Update(_world.Unmanaged);
 
         decision = _entityManager.GetComponentData<BuildingItemInputDecision>(item);
         Assert.AreEqual(0, decision.TargetSlotIndex, "빈 창고이므로 0번 슬롯 배정 성공");
 
-        // 3. StateApplyGroup: BuildingItemStorageApplySystem 실행
+        // 3. BuildingStateApplyGroup: BuildingItemStorageApplySystem 실행
         _storageApplyHandle.Update(_world.Unmanaged);
 
         // 창고 버퍼 확인
@@ -108,7 +108,7 @@ public class Phase3StorageOwnershipTests : EcsWorldTestFixture
         var req = _entityManager.GetComponentData<TransferOwnershipRequest>(item);
         Assert.AreEqual(storage, req.TargetOwner, "창고 엔티티로 소유권 이전 요청");
 
-        // 4. StateApplyGroup: ItemOwnershipApplySystem 실행
+        // 4. BuildingStateApplyGroup: ItemOwnershipApplySystem 실행
         _ownershipApplyHandle.Update(_world.Unmanaged);
 
         Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item), "Consume-on-Apply로 요청 비활성화");
@@ -165,7 +165,7 @@ public class Phase3StorageOwnershipTests : EcsWorldTestFixture
 
         SyncAllSpatialIndices();
 
-        // 1. DecisionGroup: BuildingItemOutputDecisionSystem 실행
+        // 1. BuildingDecisionGroup: BuildingItemOutputDecisionSystem 실행
         _buildingOutputDecisionHandle.Update(_world.Unmanaged);
 
         var outputDecision = _entityManager.GetComponentData<BuildingItemOutputDecision>(storage);
@@ -174,7 +174,7 @@ public class Phase3StorageOwnershipTests : EcsWorldTestFixture
         Assert.AreEqual(item, outputDecision.ItemToOutput, "방출 대상은 버퍼의 0번 아이템");
         Assert.AreEqual(new int2(2, 0), outputDecision.TargetBeltPosition, "대상 벨트 위치 일치");
 
-        // 2. StateApplyGroup: BuildingItemStorageApplySystem 실행
+        // 2. BuildingStateApplyGroup: BuildingItemStorageApplySystem 실행
         _storageApplyHandle.Update(_world.Unmanaged);
 
         // 창고 버퍼에서 제거 확인
@@ -194,7 +194,7 @@ public class Phase3StorageOwnershipTests : EcsWorldTestFixture
         var req = _entityManager.GetComponentData<TransferOwnershipRequest>(item);
         Assert.AreEqual(Entity.Null, req.TargetOwner);
 
-        // 3. StateApplyGroup: ItemOwnershipApplySystem 실행
+        // 3. BuildingStateApplyGroup: ItemOwnershipApplySystem 실행
         _ownershipApplyHandle.Update(_world.Unmanaged);
 
         var ownership = _entityManager.GetComponentData<ItemOwnership>(item);
@@ -226,13 +226,13 @@ public class Phase3StorageOwnershipTests : EcsWorldTestFixture
 
         SyncAllSpatialIndices();
 
-        // 1. DecisionGroup 실행: 둘 다 입고 가능 판정 (TargetSlotIndex = -1)
+        // 1. BuildingDecisionGroup 실행: 둘 다 입고 가능 판정 (TargetSlotIndex = -1)
         _buildingInputDecisionHandle.Update(_world.Unmanaged);
 
         Assert.IsTrue(_entityManager.GetComponentData<BuildingItemInputDecision>(item1).CanDeposit);
         Assert.IsTrue(_entityManager.GetComponentData<BuildingItemInputDecision>(item2).CanDeposit);
 
-        // 2. ReservationGroup 실행: 슬롯 경합 해결
+        // 2. BuildingReservationGroup 실행: 슬롯 경합 해결
         _storageReservationHandle.Update(_world.Unmanaged);
 
         var d1 = _entityManager.GetComponentData<BuildingItemInputDecision>(item1);
@@ -253,7 +253,7 @@ public class Phase3StorageOwnershipTests : EcsWorldTestFixture
         Assert.AreEqual(1, successCount, "정확히 1개의 아이템만 슬롯 0을 선점해야 함");
         Assert.AreEqual(1, failCount, "경합에서 밀린 1개의 아이템은 배정 실패 처리되어야 함");
 
-        // 3. StateApplyGroup 실행
+        // 3. BuildingStateApplyGroup 실행
         _storageApplyHandle.Update(_world.Unmanaged);
         _ownershipApplyHandle.Update(_world.Unmanaged);
 

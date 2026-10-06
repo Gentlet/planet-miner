@@ -13,21 +13,23 @@ using Unity.Transforms;
 /// </summary>
 public class ConstructionClearanceTests : EcsWorldTestFixture
 {
-    private StateApplyGroup _apply;
+    private BuildingSimulationGroup _building;
 
     [SetUp]
     public override void SetUp()
     {
         base.SetUp();
         CreateGameplayPrefabDatabases();
-        _apply = _world.GetOrCreateSystemManaged<StateApplyGroup>();
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>());
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionLifecycleApplySystem>());
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskLifecycleApplySystem>());
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingLifecycleApplySystem>());
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemLifecycleApplySystem>());
-        _apply.SortSystems();
+        _building = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();
+        var apply = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
+        _building.AddSystemToUpdateList(apply);
+        _building.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>());
+        apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionLifecycleApplySystem>());
+        apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
+        apply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingLifecycleApplySystem>());
+        apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemLifecycleApplySystem>());
+        apply.SortSystems();
+        _building.SortSystems();
     }
 
     [TestCase(DirectionEnum.Up, true)]
@@ -36,7 +38,7 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
     {
         Entity site = CreateSite(new int2(5, 5), new int2(2, 1), direction, required: 1);
         CreateItem(new int2(6, 5));
-        _apply.Update();
+        _building.Update();
         Assert.AreEqual(blocked, IsBlocked(site));
         Assert.IsTrue(_entityManager.Exists(site), "자재 미충족 현장은 차단 여부와 무관하게 남는다.");
     }
@@ -47,13 +49,13 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
         // 맵 재구축 없이 실물 좌표만 바꿔 차단 판단이 이전 틱 인덱스에 의존하지 않는지 분리한다.
         Entity site = CreateSite(int2.zero, new int2(1, 1), required: 1);
         Entity item = CreateItem(new int2(8, 8));
-        _apply.Update();
+        _building.Update();
         Assert.IsFalse(IsBlocked(site));
         _entityManager.SetComponentData(item, new GridPosition(int2.zero));
-        _apply.Update();
+        _building.Update();
         Assert.IsTrue(IsBlocked(site));
         _entityManager.SetComponentData(item, new GridPosition(new int2(8, 8)));
-        _apply.Update();
+        _building.Update();
         Assert.IsFalse(IsBlocked(site));
     }
 
@@ -67,7 +69,7 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
         Assert.IsTrue(ItemOwnershipApplySystem.TryTransferItem(_entityManager, item, ItemTypeEnum.Iron,
             Entity.Null, holder, 0, new int2(2, 2), ecb));
         ecb.Playback(_entityManager);
-        _apply.Update();
+        _building.Update();
         Assert.IsFalse(_entityManager.Exists(site));
         Assert.IsTrue(_entityManager.Exists(item));
         Assert.AreEqual(holder, _entityManager.GetComponentData<ItemOwnership>(item).Owner);
@@ -80,7 +82,7 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
         Entity item = CreateItem(int2.zero);
         _entityManager.SetComponentEnabled<DestroyItemRequest>(item, true);
 
-        _apply.Update();
+        _building.Update();
 
         Assert.IsFalse(_entityManager.Exists(item));
         Assert.IsFalse(_entityManager.Exists(site));
@@ -92,7 +94,7 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
         Entity site = CreateSite(int2.zero, new int2(1, 1));
         Entity request = _entityManager.CreateEntity(typeof(SpawnItemRequest));
         _entityManager.SetComponentData(request, new SpawnItemRequest(ItemTypeEnum.Iron, int2.zero));
-        _apply.Update();
+        _building.Update();
         Assert.IsFalse(_entityManager.Exists(site), "거부한 World Spawn은 완공을 막지 않는다.");
         Assert.IsFalse(_entityManager.Exists(request));
         using var items = _entityManager.CreateEntityQuery(ComponentType.ReadOnly<ItemIdentity>(),
@@ -112,7 +114,7 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
         Entity request = _entityManager.CreateEntity(typeof(SpawnItemRequest));
         _entityManager.SetComponentData(request, new SpawnItemRequest(ItemTypeEnum.Iron, new int2(x, y)));
 
-        _apply.Update();
+        _building.Update();
 
         Assert.IsFalse(_entityManager.Exists(request));
         Assert.IsTrue(_entityManager.Exists(site));
@@ -138,7 +140,7 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
         _entityManager.SetComponentData(building, new GridPosition(new int2(3, 0)));
         Entity item = CreateItem(new int2(9, 9), building);
         _entityManager.GetBuffer<StoredItemElement>(building).Add(new StoredItemElement(item, ItemTypeEnum.Iron, 0));
-        _apply.Update();
+        _building.Update();
         Assert.IsFalse(_entityManager.Exists(building));
         Assert.IsFalse(_entityManager.Exists(site));
         Assert.IsTrue(_entityManager.GetComponentData<ItemOwnership>(item).IsWorldItem);
@@ -151,9 +153,9 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
     {
         Entity request = _entityManager.CreateEntity(typeof(SpawnItemRequest));
         _entityManager.SetComponentData(request, new SpawnItemRequest(ItemTypeEnum.Iron, new int2(10, 10)));
-        _apply.Update();
+        _building.Update();
         Entity site = CreateSite(int2.zero, new int2(1, 1), flags: ConstructionSiteFlags.AwaitingItemClearance);
-        _apply.Update();
+        _building.Update();
         Assert.IsFalse(_entityManager.Exists(site));
         using var items = _entityManager.CreateEntityQuery(ComponentType.ReadOnly<ItemIdentity>(),
             ComponentType.ReadOnly<ItemOwnership>(), ComponentType.ReadOnly<GridPosition>());

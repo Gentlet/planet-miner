@@ -51,7 +51,7 @@ public struct DroneWorkerObservation : IComponentData
 /// 부착 엔티티: DroneWorker가 있는 드론 수행자 엔티티다.
 /// 생성: 후속 수행자 등록 시 빈 상태로 붙여야 하며 실제 등록 Producer는 아직 없다.
 /// 이용: Decision의 DroneTaskDecisionSystem과 Reservation의 ConstructionSupplyReservationSystem이 유휴·현재 배정 여부를 검사한다.
-/// StateApply의 DroneTaskAssignmentPublishSystem이 EndStateApply에 연결하고 DroneTaskLifecycleApplySystem은 행동·무효화 처리 중 필요 시 Null로 해제한다.
+/// StateApply의 DroneTaskAssignmentPublishSystem이 EndSimulation에 연결하고 DroneTaskLifecycleApplySystem은 행동·무효화 처리 중 필요 시 Null로 해제한다.
 /// 제거: 연결 해제는 Assignment를 Null로 설정하는 것이며 컴포넌트는 유지한다. 수행자 엔티티 삭제 시 함께 사라진다.
 /// </summary>
 public struct DroneWorkerAssignment : IComponentData

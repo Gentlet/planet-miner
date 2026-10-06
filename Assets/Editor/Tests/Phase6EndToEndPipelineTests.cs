@@ -29,24 +29,26 @@ public class Phase6EndToEndPipelineTests : EcsWorldTestFixture
         // 2. 최상위 시뮬레이션 그룹 및 Phase 하위 그룹 구성
         _simulationGroup = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
         var commandGroup = _world.GetOrCreateSystemManaged<CommandGroup>();
-        var decisionGroup = _world.GetOrCreateSystemManaged<DecisionGroup>();
-        var reservationGroup = _world.GetOrCreateSystemManaged<ReservationGroup>();
-        var executionGroup = _world.GetOrCreateSystemManaged<ExecutionGroup>();
-        var stateApplyGroup = _world.GetOrCreateSystemManaged<StateApplyGroup>();
+        var buildingGroup = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();
+        var decisionGroup = _world.GetOrCreateSystemManaged<BuildingDecisionGroup>();
+        var reservationGroup = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
+        var executionGroup = _world.GetOrCreateSystemManaged<BuildingExecutionGroup>();
+        var stateApplyGroup = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
         var synchronizationGroup = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
 
         _simulationGroup.AddSystemToUpdateList(commandGroup);
-        _simulationGroup.AddSystemToUpdateList(decisionGroup);
-        _simulationGroup.AddSystemToUpdateList(reservationGroup);
-        _simulationGroup.AddSystemToUpdateList(executionGroup);
-        _simulationGroup.AddSystemToUpdateList(stateApplyGroup);
+        _simulationGroup.AddSystemToUpdateList(buildingGroup);
         _simulationGroup.AddSystemToUpdateList(synchronizationGroup);
+        buildingGroup.AddSystemToUpdateList(decisionGroup);
+        buildingGroup.AddSystemToUpdateList(reservationGroup);
+        buildingGroup.AddSystemToUpdateList(executionGroup);
+        buildingGroup.AddSystemToUpdateList(stateApplyGroup);
 
         // 3. Phase 1: CommandGroup
         commandGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterRecipeCommandSystem>());
         commandGroup.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>());
 
-        // 4. Phase 2: DecisionGroup
+        // 4. Phase 2: BuildingDecisionGroup
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerDecisionSystem>());
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<StorageItemOutputDecisionSystem>());
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<ProductItemOutputDecisionSystem>());
@@ -56,22 +58,22 @@ public class Phase6EndToEndPipelineTests : EcsWorldTestFixture
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BeltMovementDecisionSystem>());
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemInputDecisionSystem>());
 
-        // 5. Phase 3: ReservationGroup
+        // 5. Phase 3: BuildingReservationGroup
         reservationGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BeltDestinationReservationSystem>());
         reservationGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingStorageInputReservationSystem>());
 
-        // 6. Phase 4: ExecutionGroup
+        // 6. Phase 4: BuildingExecutionGroup
         executionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerExecutionSystem>());
         executionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterExecutionSystem>());
         executionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BeltMovementExecutionSystem>());
 
-        // 7. Phase 5: StateApplyGroup
+        // 7. Phase 5: BuildingStateApplyGroup
         stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
         stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterStateApplySystem>());
         stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<RoutingApplySystem>());
         stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemLifecycleApplySystem>());
         stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
-        stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>());
+        buildingGroup.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>());
 
         // 8. Phase 6: SynchronizationGroup
         synchronizationGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<ResourceSpatialSyncSystem>());
@@ -89,6 +91,7 @@ public class Phase6EndToEndPipelineTests : EcsWorldTestFixture
         reservationGroup.SortSystems();
         executionGroup.SortSystems();
         stateApplyGroup.SortSystems();
+        buildingGroup.SortSystems();
         synchronizationGroup.SortSystems();
     }
 
@@ -220,8 +223,8 @@ public class Phase6EndToEndPipelineTests : EcsWorldTestFixture
         _world.GetOrCreateSystem<BeltSpatialSyncSystem>().Update(_world.Unmanaged);
         _world.GetOrCreateSystem<ItemSpatialSyncSystem>().Update(_world.Unmanaged);
 
-        var reservationGroup = _world.GetOrCreateSystemManaged<ReservationGroup>();
-        var stateApplyGroup = _world.GetOrCreateSystemManaged<StateApplyGroup>();
+        var reservationGroup = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
+        var stateApplyGroup = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
         var syncGroup = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
 
         reservationGroup.Update();

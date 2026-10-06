@@ -8,7 +8,7 @@ using Unity.Rendering;
 using Unity.Transforms;
 
 /// <summary>
-/// 역할·목적: 정렬된 여섯 phase의 취소·철거·완공 이후 드론 수명주기에 대한 NUnit EditMode 회귀 검증.
+/// 역할·목적: 정렬된 건물→드론 그룹과 세 ECB 경계의 취소·철거·완공 이후 드론 수명주기 EditMode 회귀 검증.
 /// 입력·검사: 경로·관측·행동 신호는 테스트 입력이고 인계/예약 전이는 제품 시스템이 반영한다. 완공 후 예약 0 적재품은 방어 fixture이며 정상 유효 예약을 남긴 선완공/실제 이동의 증거는 아니다.
 /// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
@@ -16,10 +16,14 @@ public class DroneLifecycleIntegrationTests : EcsWorldTestFixture
 {
     private GameSimulationGroup _simulation;
     private CommandGroup _command;
-    private DecisionGroup _decision;
-    private ReservationGroup _reservation;
-    private ExecutionGroup _execution;
-    private StateApplyGroup _apply;
+    private DroneDecisionGroup _decision;
+    private DroneReservationGroup _reservation;
+    private DroneExecutionGroup _execution;
+    private DroneStateApplyGroup _apply;
+    private BuildingSimulationGroup _building;
+    private BuildingStateApplyGroup _buildingApply;
+    private DroneSimulationGroup _drone;
+    private SimulationCommitGroup _commit;
     private SynchronizationGroup _synchronization;
     private double _elapsed;
 
@@ -33,35 +37,50 @@ public class DroneLifecycleIntegrationTests : EcsWorldTestFixture
         _entityManager.SetComponentData(capacity, new DroneCapacityState { CarryingCapacity = 2 });
         _simulation = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
         _command = _world.GetOrCreateSystemManaged<CommandGroup>();
-        _decision = _world.GetOrCreateSystemManaged<DecisionGroup>();
-        _reservation = _world.GetOrCreateSystemManaged<ReservationGroup>();
-        _execution = _world.GetOrCreateSystemManaged<ExecutionGroup>();
-        _apply = _world.GetOrCreateSystemManaged<StateApplyGroup>();
+        _decision = _world.GetOrCreateSystemManaged<DroneDecisionGroup>();
+        _reservation = _world.GetOrCreateSystemManaged<DroneReservationGroup>();
+        _execution = _world.GetOrCreateSystemManaged<DroneExecutionGroup>();
+        _apply = _world.GetOrCreateSystemManaged<DroneStateApplyGroup>();
+        _building = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();
+        var buildingDecision = _world.GetOrCreateSystemManaged<BuildingDecisionGroup>();
+        var buildingReservation = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
+        var buildingExecution = _world.GetOrCreateSystemManaged<BuildingExecutionGroup>();
+        _buildingApply = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
+        _drone = _world.GetOrCreateSystemManaged<DroneSimulationGroup>();
+        _commit = _world.GetOrCreateSystemManaged<SimulationCommitGroup>();
         _synchronization = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
         _simulation.AddSystemToUpdateList(_command);
-        _simulation.AddSystemToUpdateList(_decision);
-        _simulation.AddSystemToUpdateList(_reservation);
-        _simulation.AddSystemToUpdateList(_execution);
-        _simulation.AddSystemToUpdateList(_apply);
+        _simulation.AddSystemToUpdateList(_building);
+        _simulation.AddSystemToUpdateList(_drone);
+        _simulation.AddSystemToUpdateList(_commit);
         _simulation.AddSystemToUpdateList(_synchronization);
+        _building.AddSystemToUpdateList(buildingDecision);
+        _building.AddSystemToUpdateList(buildingReservation);
+        _building.AddSystemToUpdateList(buildingExecution);
+        _building.AddSystemToUpdateList(_buildingApply);
+        _building.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>());
+        _drone.AddSystemToUpdateList(_decision);
+        _drone.AddSystemToUpdateList(_reservation);
+        _drone.AddSystemToUpdateList(_execution);
+        _drone.AddSystemToUpdateList(_apply);
+        _commit.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>());
 
         _command.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionCancelCommandSystem>());
         _command.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingDemolitionCommandSystem>());
         _command.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>());
         _decision.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskDecisionSystem>());
         _decision.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneItemTransferDecisionSystem>());
-        _decision.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemSpawnAdmissionDecisionSystem>());
+        buildingDecision.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemSpawnAdmissionDecisionSystem>());
         _reservation.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionSupplyReservationSystem>());
         _execution.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskExecutionSystem>());
         _execution.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneItemTransferExecutionSystem>());
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>());
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionLifecycleApplySystem>());
+        _buildingApply.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionLifecycleApplySystem>());
         _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskAssignmentPublishSystem>());
         _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskLifecycleApplySystem>());
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingLifecycleApplySystem>());
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemLifecycleApplySystem>());
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
+        _buildingApply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingLifecycleApplySystem>());
+        _buildingApply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemLifecycleApplySystem>());
+        _buildingApply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
+        _buildingApply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
         _synchronization.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingSpatialSyncSystem>());
         _synchronization.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemSpatialSyncSystem>());
         _synchronization.AddSystemToUpdateList(_world.GetOrCreateSystem<BeltSpatialSyncSystem>());
@@ -71,8 +90,81 @@ public class DroneLifecycleIntegrationTests : EcsWorldTestFixture
         _reservation.SortSystems();
         _execution.SortSystems();
         _apply.SortSystems();
+        buildingDecision.SortSystems();
+        buildingReservation.SortSystems();
+        buildingExecution.SortSystems();
+        _buildingApply.SortSystems();
+        _building.SortSystems();
+        _drone.SortSystems();
+        _commit.SortSystems();
         _synchronization.SortSystems();
         _simulation.SortSystems();
+    }
+
+    [Test]
+    public void BuildingDeposit_IsCollectedByAnExistingAssignmentInTheSameSortedTick()
+    {
+        Entity source = CreateStorage(new int2(1, 0), 1, 1);
+        Entity site = CreateSite(new int2(10, 0), 1, 2);
+        Entity worker = CreateWorker();
+        Entity assignment = WaitForInitialAssignment(worker, site, source);
+        Entity previousStock = Stored(source)[0];
+        using (var ecb = new EntityCommandBuffer(Allocator.TempJob))
+        {
+            Assert.IsTrue(ItemOwnershipApplySystem.TryTransferItem(_entityManager, previousStock,
+                ItemTypeEnum.Iron, source, Entity.Null, 0, new int2(50, 0), ecb));
+            ecb.Playback(_entityManager);
+        }
+        Entity incoming = CreateItem(Entity.Null, new int2(1, 0));
+        _entityManager.AddComponentData(incoming, new BuildingItemInputDecision(source, true, 0));
+        _entityManager.SetComponentEnabled<BuildingItemInputDecision>(incoming, true);
+        _entityManager.SetComponentEnabled<BeltMovementState>(incoming, true);
+
+        Entity collection = PerformCurrentAction(assignment);
+
+        AssertResult(collection, DroneItemTransferStatusEnum.Completed, 1);
+        AssertStored(worker, new[] { incoming });
+        Assert.AreEqual(0, Stored(source).Length);
+        Assert.AreEqual(1, Requirement(site).ReservedQuantity);
+        Assert.AreEqual(0, Requirement(site).DeliveredQuantity);
+        Assert.IsFalse(_entityManager.IsComponentEnabled<BuildingItemInputDecision>(incoming));
+        Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(incoming));
+        Assert.IsFalse(_entityManager.IsComponentEnabled<BeltMovementState>(incoming));
+        Assert.IsTrue(_entityManager.HasComponent<DisableRendering>(incoming));
+        Assert.IsTrue(_entityManager.GetComponentData<ItemOwnership>(previousStock).IsWorldItem);
+    }
+
+    [Test]
+    public void BuildingOutputSpace_IsUsedByRecoveryCargoInTheSameSortedTick()
+    {
+        using (var registryQuery = _entityManager.CreateEntityQuery(ComponentType.ReadOnly<ItemRegistry>()))
+        {
+            var configs = _entityManager.GetBuffer<ItemConfigElement>(registryQuery.GetSingletonEntity());
+            configs[(int)ItemTypeEnum.Iron] = new ItemConfigElement(ItemTypeEnum.Iron, 2);
+        }
+        Entity item = CreateItem(Entity.Null, new int2(5, 0));
+        CreateSite(new int2(5, 0), 1, 1);
+        Entity storage = CreateStorage(new int2(1, 0), 1, 0);
+        _entityManager.SetComponentData(storage, new Storage(1));
+        Entity worker = CreateWorker();
+        Entity assignment = WaitForInitialAssignment(worker, storage, item);
+        AssertResult(PerformCurrentAction(assignment), DroneItemTransferStatusEnum.Completed, 1);
+        Entity outgoing = AddItem(storage, new int2(1, 0));
+        Entity retained = AddItem(storage, new int2(1, 0));
+        int2 outputCell = new int2(2, 0);
+        Entities.CreateBelt(outputCell, DirectionEnum.Right);
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<BeltSpatialSyncSystem>());
+        _entityManager.AddComponentData(storage, new BuildingItemOutputDecision(true, outgoing, outputCell));
+        _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(storage, true);
+
+        Entity stored = PerformCurrentAction(assignment);
+
+        AssertResult(stored, DroneItemTransferStatusEnum.Completed, 1);
+        AssertStored(storage, new[] { retained, item });
+        Assert.AreEqual(0, Stored(worker).Length);
+        Assert.IsTrue(_entityManager.GetComponentData<ItemOwnership>(outgoing).IsWorldItem);
+        Assert.AreEqual(outputCell, _entityManager.GetComponentData<GridPosition>(outgoing).Value);
+        Assert.AreEqual(DroneTaskAssignmentStateEnum.Completed, Assignment(assignment).State);
     }
 
     [Test]
@@ -141,7 +233,7 @@ public class DroneLifecycleIntegrationTests : EcsWorldTestFixture
         Entity heldWorker = CreateWorker();
         Entity heldItem = AddItem(heldWorker, int2.zero);
         _entityManager.SetComponentData(heldWorker, new DroneCargoState { Origin = DroneCargoOriginEnum.Supply });
-        Tick(); // 공급 작업 자체는 실제 Decision/Execution/EndStateApply에서 생성한다.
+        Tick(); // 공급 작업 자체는 실제 Decision/Execution/EndSimulation에서 생성한다.
 
         // 예약 0인 기존 운반 배정의 방어 연결만 초기 fixture로 준비한다.
         // 정상 D/R/P의 미충족량 계약에서는 다른 유효 예약이 남은 현장의 선완공은 발생하지 않는다.
@@ -153,12 +245,17 @@ public class DroneLifecycleIntegrationTests : EcsWorldTestFixture
         Entity completed = PerformCurrentAction(regularAssignment);
 
         AssertResult(completed, DroneItemTransferStatusEnum.Completed, 1);
+        Assert.IsTrue(_entityManager.Exists(completingSite), "이번 드론 공급은 다음 건물 단계에서 완공에 반영한다.");
+        Assert.IsTrue(_entityManager.Exists(completingItem));
+        Assert.AreEqual(1, Requirement(completingSite).DeliveredQuantity);
+        Assert.AreEqual(0, Requirement(completingSite).ReservedQuantity);
+        AssertCargo(heldWorker, new[] { heldItem }, DroneCargoOriginEnum.Supply);
+        Tick(); // 건물 종료 ECB에서 현장 삭제를 확정한 뒤 같은 틱 드론이 무효화를 판단한다.
         Assert.IsFalse(_entityManager.Exists(completingSite));
         Assert.IsFalse(_entityManager.Exists(completingItem));
         Assert.IsTrue(HasCompletedStorageAt(new int2(10, 0)));
         AssertCargo(heldWorker, new[] { heldItem }, DroneCargoOriginEnum.Supply);
         Assert.AreEqual(0, Reservation(heldAssignment).RemainingQuantity);
-        Tick(); // 완공 삭제는 앞선 EndStateApply 이후에 보인다.
         Assert.AreEqual(DroneTaskAssignmentStateEnum.Retargeting, Assignment(heldAssignment).State);
 
         WaitForRetarget(heldAssignment, nextSite, DroneActionKindEnum.SupplyConstructionSite, 1);
@@ -268,10 +365,9 @@ public class DroneLifecycleIntegrationTests : EcsWorldTestFixture
 
     private void FinishTickAfterCommand()
     {
-        _decision.Update();
-        _reservation.Update();
-        _execution.Update();
-        _apply.Update();
+        _building.Update();
+        _drone.Update();
+        _commit.Update();
         _synchronization.Update();
     }
 

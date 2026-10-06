@@ -39,4 +39,4 @@ DroneConfig의 이동 속도·배터리·충전·스테이션 범위 등 다른 
 
 확정한 정책에 따라 새 World에 적재량 상태가 정확히 하나 게시되고, 기존 배정 판단이 그 값을 읽어 수량을 제한해야 한다. 반복 초기화는 기존 상태를 변경하지 않아야 하며 실패 처리는 임의 기본값으로 감추지 않는다. 설정 부재/실패와 초기 상태가 이미 있는 경우도 선별 검증으로 확인한다.
 
-현재 완료 범위와 처리 계약은 [드론 컴포넌트 문서](../CodeMemory/Components/DroneLogistics.md)를 따른다. 앞선 [142개 회귀](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneSafeDropAndJournalRemoval-Verification.md)와 [신규 통합 4개](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneLifecycleIntegration-Verification.md)는 서로 다른 실행 기록이다.
+현재 완료 범위와 처리 계약은 [드론 컴포넌트 문서](../CodeMemory/Components/DroneLogistics.md)를 따른다. 건물·드론 분리 이후 컴파일·선별 EditMode 및 일회 Play Mode의 범위는 [도메인 분리 검증](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDroneDomainSplit-Verification.md)에 기록했다. 그 Play Mode는 공통 적재량·수행자·관측·경로 결과·행동 신호를 검증 입력으로 제공했으므로 제품 초기화 Writer의 실행 증거가 아니다. 앞선 [142개 회귀](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneSafeDropAndJournalRemoval-Verification.md)와 [신규 통합 4개](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneLifecycleIntegration-Verification.md)는 이전 구조의 서로 다른 실행 기록이다.
