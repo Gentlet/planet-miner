@@ -1,5 +1,7 @@
 # PlanetMiner Architecture V2 - Implementation Tasks & Roadmap
 
+> 현재 코드와의 관계 (2026-10-06): 이 문서는 설계 배경/규약 또는 개발 마일스톤 기록이다. 현재 실행은 Command→Building→Drone→Commit→Synchronization이며 세 ECB 경계를 사용한다. 본문의 전역 6페이즈·이전 심볼·완료 표시는 당시 설계/작업 범위로 읽고, 구현 판단은 [AGENTS.md](../../AGENTS.md)와 [현재 컴포넌트 계약](../CodeMemory/Components/README.md)을 우선한다. 개발 Phase 번호와 런타임 그룹을 구분한다.
+
 > 본 문서는 `Architecture V2 Plan_0.2.md`를 바탕으로, 실제 구현을 위해 단계별 세부 작업(Task)과 진행 상태를 추적하는 체크리스트 문서입니다.
 > 
 > **핵심 원칙**: 

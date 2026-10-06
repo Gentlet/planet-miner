@@ -1,5 +1,7 @@
 # PlanetMiner Architecture V2 Plan
 
+> 현재 코드와의 관계 (2026-10-06): 이 문서는 설계 배경/규약 또는 개발 마일스톤 기록이다. 현재 실행은 Command→Building→Drone→Commit→Synchronization이며 세 ECB 경계를 사용한다. 본문의 전역 6페이즈·이전 심볼·완료 표시는 당시 설계/작업 범위로 읽고, 구현 판단은 [AGENTS.md](../../AGENTS.md)와 [현재 컴포넌트 계약](../CodeMemory/Components/README.md)을 우선한다. 개발 Phase 번호와 런타임 그룹을 구분한다.
+
 > 목적: 현재 PlanetMiner의 기능과 도메인 개념은 최대한 재사용하되,  
 > **시스템 간 의존성·실행 순서 의존·상태 변경 경로의 복잡성**을 줄이는 방향으로 아키텍처를 새로 설계한다.
 

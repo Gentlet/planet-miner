@@ -9,15 +9,18 @@ using Unity.Transforms;
 
 /// <summary>
 /// 역할·목적: 행동 신호의 실물 보존·예약/결과 정산에 대한 NUnit EditMode 회귀 검증.
-/// 입력·검사: 수행자/배정/관측은 fixture로 준비한다. 이전 틱 실물/공간 상한·접수 순서·무효 행동을 검사하며 실제 이동/경로/배터리는 실행하지 않는다.
+/// 입력·검사: 수행자/배정/관측은 fixture로 준비한다. 건물 확정 후 실물/공간 상한·접수 순서·무효 행동을 검사하며 실제 이동/경로/배터리는 실행하지 않는다.
 /// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class DroneItemTransferTests : EcsWorldTestFixture
 {
-    private StateApplyGroup _apply;
-    private DecisionGroup _decision;
-    private ExecutionGroup _execution;
-    private ReservationGroup _reservation;
+    private BuildingSimulationGroup _building;
+    private BuildingStateApplyGroup _buildingApply;
+    private DroneStateApplyGroup _apply;
+    private SimulationCommitGroup _commit;
+    private DroneDecisionGroup _decision;
+    private DroneExecutionGroup _execution;
+    private DroneReservationGroup _reservation;
     private Entity _capacity;
 
     [SetUp]
@@ -34,19 +37,27 @@ public class DroneItemTransferTests : EcsWorldTestFixture
         }
         _capacity = _entityManager.CreateEntity(typeof(DroneCapacityState));
         _entityManager.SetComponentData(_capacity, new DroneCapacityState { CarryingCapacity = 3 });
-        _apply = _world.GetOrCreateSystemManaged<StateApplyGroup>();
+        _building = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();
+        _buildingApply = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
+        _buildingApply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
+        _building.AddSystemToUpdateList(_buildingApply);
+        _building.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>());
+        _buildingApply.SortSystems();
+        _building.SortSystems();
+        _commit = _world.GetOrCreateSystemManaged<SimulationCommitGroup>();
+        _commit.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>());
+        _commit.SortSystems();
+        _apply = _world.GetOrCreateSystemManaged<DroneStateApplyGroup>();
         // 등록 순서에 기대지 않고 실제 시스템의 순서 계약으로 정렬한다.
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>());
         _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskLifecycleApplySystem>());
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
         _apply.SortSystems();
-        _decision = _world.GetOrCreateSystemManaged<DecisionGroup>();
+        _decision = _world.GetOrCreateSystemManaged<DroneDecisionGroup>();
         _decision.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneItemTransferDecisionSystem>());
         _decision.SortSystems();
-        _execution = _world.GetOrCreateSystemManaged<ExecutionGroup>();
+        _execution = _world.GetOrCreateSystemManaged<DroneExecutionGroup>();
         _execution.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneItemTransferExecutionSystem>());
         _execution.SortSystems();
-        _reservation = _world.GetOrCreateSystemManaged<ReservationGroup>();
+        _reservation = _world.GetOrCreateSystemManaged<DroneReservationGroup>();
         _reservation.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionSupplyReservationSystem>());
         _reservation.SortSystems();
     }
@@ -87,7 +98,8 @@ public class DroneItemTransferTests : EcsWorldTestFixture
         AssertStored(secondStorage, new[] { item });
         Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item));
         storeEcb.Playback(_entityManager);
-        _apply.Update();
+        _building.Update();
+        ApplyDroneAndCommit();
         AssertStored(secondStorage, new[] { item });
 
         using var dropEcb = new EntityCommandBuffer(Allocator.TempJob);
@@ -97,7 +109,8 @@ public class DroneItemTransferTests : EcsWorldTestFixture
         Assert.IsTrue(_entityManager.GetComponentData<ItemOwnership>(item).IsWorldItem);
         Assert.IsTrue(_entityManager.HasComponent<DisableRendering>(item));
         dropEcb.Playback(_entityManager);
-        _apply.Update();
+        _building.Update();
+        ApplyDroneAndCommit();
 
         Assert.IsFalse(_entityManager.HasComponent<DisableRendering>(item));
         Assert.AreEqual(new int2(-2, 6), _entityManager.GetComponentData<GridPosition>(item).Value);
@@ -146,10 +159,10 @@ public class DroneItemTransferTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void LastClearanceItemRecovered_CompletesTheSiteInTheSameApply()
+    public void LastClearanceItemRecovered_CompletesTheSiteOnTheNextBuildingTick()
     {
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionLifecycleApplySystem>());
-        _apply.SortSystems();
+        _buildingApply.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionLifecycleApplySystem>());
+        _buildingApply.SortSystems();
         Entity site = CreateSite(0);
         var siteData = _entityManager.GetComponentData<ConstructionSite>(site);
         siteData.Flags |= ConstructionSiteFlags.AwaitingItemClearance;
@@ -168,10 +181,14 @@ public class DroneItemTransferTests : EcsWorldTestFixture
         TransferTick();
 
         AssertResult(request, DroneItemTransferStatusEnum.Completed, 1);
-        Assert.IsFalse(_entityManager.Exists(site));
+        Assert.IsTrue(_entityManager.Exists(site), "이번 드론 회수 결과는 다음 건물 단계에서 완공에 반영한다.");
         Assert.IsTrue(_entityManager.Exists(item));
         AssertStored(worker, new[] { item });
         Assert.AreEqual(DroneCargoOriginEnum.Recovery, _entityManager.GetComponentData<DroneCargoState>(worker).Origin);
+        TransferTick();
+        Assert.IsFalse(_entityManager.Exists(site));
+        Assert.IsTrue(_entityManager.Exists(item));
+        AssertStored(worker, new[] { item });
     }
 
     [TestCase(0)]
@@ -287,10 +304,10 @@ public class DroneItemTransferTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void LastSupplyInSortedStateApply_CompletesBuildingAndConsumesSuppliedItemsAtTheSamePlayback()
+    public void LastSupply_CompletesBuildingAndConsumesSuppliedItemsAtTheNextBuildingBoundary()
     {
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionLifecycleApplySystem>());
-        _apply.SortSystems();
+        _buildingApply.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionLifecycleApplySystem>());
+        _buildingApply.SortSystems();
         Entity site = CreateSite(1);
         Entity worker = CreateWorker(1, DroneCargoOriginEnum.Supply);
         Entity item = Stored(worker)[0];
@@ -300,6 +317,12 @@ public class DroneItemTransferTests : EcsWorldTestFixture
         TransferTick();
 
         AssertResult(request, DroneItemTransferStatusEnum.Completed, 1);
+        Assert.IsTrue(_entityManager.Exists(site));
+        Assert.IsTrue(_entityManager.Exists(item));
+        AssertStored(site, new[] { item });
+        Assert.AreEqual(1, Requirement(site).DeliveredQuantity);
+        Assert.AreEqual(0, Requirement(site).ReservedQuantity);
+        TransferTick();
         Assert.IsFalse(_entityManager.Exists(site));
         Assert.IsFalse(_entityManager.Exists(item));
         Assert.AreEqual(0, Stored(worker).Length);
@@ -516,11 +539,11 @@ public class DroneItemTransferTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void SameTickBeltDeposit_BecomesCollectibleOnlyOnTheNextTick()
+    public void SameTickBeltDeposit_IsCollectibleAfterTheBuildingBoundary()
     {
         _world.GetOrCreateSystem<BeltSpatialSyncSystem>();
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
-        _apply.SortSystems();
+        _buildingApply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
+        _buildingApply.SortSystems();
         Entity source = CreateStorage(0);
         Entity item = CreateItem(Entity.Null);
         _entityManager.AddComponentData(item, new BuildingItemInputDecision(source, true, 0));
@@ -533,30 +556,23 @@ public class DroneItemTransferTests : EcsWorldTestFixture
 
         TransferTick();
 
-        AssertResult(request, DroneItemTransferStatusEnum.Unavailable, 0);
-        AssertStored(source, new[] { item });
-        Assert.AreEqual(0, Stored(worker).Length);
-        Assert.AreEqual(0, Requirement(site).ReservedQuantity);
+        AssertResult(request, DroneItemTransferStatusEnum.Completed, 1);
+        AssertStored(worker, new[] { item });
+        Assert.AreEqual(0, Stored(source).Length);
+        Assert.AreEqual(1, Requirement(site).ReservedQuantity);
         Assert.IsFalse(_entityManager.IsComponentEnabled<BuildingItemInputDecision>(item));
         Assert.IsFalse(_entityManager.IsComponentEnabled<BeltMovementState>(item));
         Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item));
 
-        Entity retryAssignment = CreateAssignment(worker, source, site, 1, DroneActionKindEnum.CollectFromStorage);
-        Entity retry = Submit(retryAssignment);
-        TransferTick();
-
-        AssertResult(retry, DroneItemTransferStatusEnum.Completed, 1);
-        AssertStored(worker, new[] { item });
-        Assert.AreEqual(0, Stored(source).Length);
     }
 
     [Test]
-    public void NewlyDepositedItemAndFreshlyCollectedCargo_AreUsedOnlyByLaterTickActions()
+    public void NewlyDepositedItem_IsCollectedThisTick_WhileSupplyAndCompletionWaitForLaterTicks()
     {
         _world.GetOrCreateSystem<BeltSpatialSyncSystem>();
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionLifecycleApplySystem>());
-        _apply.SortSystems();
+        _buildingApply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
+        _buildingApply.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionLifecycleApplySystem>());
+        _buildingApply.SortSystems();
         Entity source = CreateStorage(0);
         Entity item = CreateItem(Entity.Null);
         _entityManager.AddComponentData(item, new BuildingItemInputDecision(source, true, 0));
@@ -566,7 +582,7 @@ public class DroneItemTransferTests : EcsWorldTestFixture
         Entity worker = CreateWorker();
         Entity assignment = CreateAssignment(worker, source, site, 1, DroneActionKindEnum.CollectFromStorage);
         Entity collection = Submit(assignment);
-        // 두 신호를 먼저 접수해도 Decision 시점의 재고와 현재 행동만 유효하다.
+        // 건물 입고품은 같은 틱 수집하지만 드론 단계 안의 수집→공급 연쇄는 허용하지 않는다.
         DroneActionReadyRequest readyToSupply = Ready(assignment, 2);
         readyToSupply.Action.Kind = DroneActionKindEnum.SupplyConstructionSite;
         readyToSupply.Action.Target = site;
@@ -576,48 +592,37 @@ public class DroneItemTransferTests : EcsWorldTestFixture
 
         TransferTick();
 
-        AssertResult(collection, DroneItemTransferStatusEnum.Unavailable, 0);
+        AssertResult(collection, DroneItemTransferStatusEnum.Completed, 1);
         AssertResult(supply, DroneItemTransferStatusEnum.Rejected, 0);
-        AssertStored(source, new[] { item });
-        Assert.IsTrue(_entityManager.Exists(site));
-        Assert.AreEqual(0, Stored(worker).Length);
-        Assert.AreEqual(0, Reservation(assignment).RemainingQuantity);
-
-        Entity retryAssignment = CreateAssignment(worker, source, site, 1, DroneActionKindEnum.CollectFromStorage);
-        Entity retryCollect = Submit(retryAssignment);
-        DroneActionReadyRequest prematureSupply = Ready(retryAssignment, 2);
-        prematureSupply.Action.Kind = DroneActionKindEnum.SupplyConstructionSite;
-        prematureSupply.Action.Target = site;
-        Entity retrySupply = DroneActionRequestUtility.Submit(_entityManager, prematureSupply);
-        TransferTick();
-
-        AssertResult(retryCollect, DroneItemTransferStatusEnum.Completed, 1);
-        AssertResult(retrySupply, DroneItemTransferStatusEnum.Rejected, 0);
         AssertStored(worker, new[] { item });
+        Assert.IsTrue(_entityManager.Exists(site));
         Assert.AreEqual(0, Stored(source).Length);
         Assert.AreEqual(0, Requirement(site).DeliveredQuantity);
-        Assert.AreEqual(1UL, Assignment(retryAssignment).LastAppliedActionSequence);
+        Assert.AreEqual(1, Reservation(assignment).RemainingQuantity);
+        Assert.AreEqual(1UL, Assignment(assignment).LastAppliedActionSequence);
 
-        Entity finalSupply = Submit(retryAssignment, 2);
+        Entity finalSupply = Submit(assignment, 2);
         TransferTick();
 
         AssertResult(finalSupply, DroneItemTransferStatusEnum.Completed, 1);
+        Assert.IsTrue(_entityManager.Exists(item));
+        Assert.IsTrue(_entityManager.Exists(site));
+        AssertStored(site, new[] { item });
+        Assert.AreEqual(0, Stored(worker).Length);
+        Assert.AreEqual(DroneTaskAssignmentStateEnum.Completed, Assignment(assignment).State);
+        Assert.AreEqual(2UL, Assignment(assignment).LastAppliedActionSequence);
+        TransferTick();
         Assert.IsFalse(_entityManager.Exists(item));
         Assert.IsFalse(_entityManager.Exists(site));
-        Assert.AreEqual(0, Stored(worker).Length);
-        Assert.AreEqual(DroneTaskAssignmentStateEnum.Completed, Assignment(retryAssignment).State);
-        Assert.AreEqual(2UL, Assignment(retryAssignment).LastAppliedActionSequence);
         using var buildings = _entityManager.CreateEntityQuery(
             ComponentType.ReadOnly<BuildingType>(), ComponentType.ReadOnly<Storage>());
         Assert.AreEqual(2, buildings.CalculateEntityCount(), "기존 공급원과 새 완공 창고가 존재한다.");
     }
 
     [Test]
-    public void CollectionPlan_DoesNotSubstituteNewStockWhenItsOriginalItemLeavesThroughTheBelt()
+    public void CollectionPlan_DoesNotIncludeStockAddedAfterDroneExecution()
     {
-        Entity source = CreateStorage(1);
-        Entity plannedItem = Stored(source)[0];
-        PrepareBeltOutput(source, plannedItem);
+        Entity source = CreateStorage(0);
         Entity site = CreateSite(1);
         Entity worker = CreateWorker();
         Entity assignment = CreateAssignment(worker, source, site, 1, DroneActionKindEnum.CollectFromStorage);
@@ -625,21 +630,19 @@ public class DroneItemTransferTests : EcsWorldTestFixture
         _decision.Update();
         _execution.Update();
 
-        // Execution에서 읽지 못한 새 입고를 준비한다. 기존 실물은 실제 벨트 출고가 반영한다.
+        // 드론 계획 준비 이후 외부 변경을 주입하여 계획 외 실물을 추가하지 않는 방어 계약을 검사한다.
         Entity newStock = CreateItem(source);
         _entityManager.GetBuffer<StoredItemElement>(source).Add(new StoredItemElement(newStock, ItemTypeEnum.Iron, 0));
-        _apply.Update();
+        ApplyDroneAndCommit();
 
         AssertResult(request, DroneItemTransferStatusEnum.Unavailable, 0);
-        Assert.IsTrue(_entityManager.GetComponentData<ItemOwnership>(plannedItem).IsWorldItem);
-        Assert.IsTrue(_entityManager.IsComponentEnabled<BeltMovementState>(plannedItem));
         AssertStored(source, new[] { newStock });
         Assert.AreEqual(0, Stored(worker).Length);
         Assert.AreEqual(0, Requirement(site).ReservedQuantity);
     }
 
     [Test]
-    public void SpaceFreedBySameTickBeltOutput_IsAvailableForStorageOnlyOnTheNextTick()
+    public void SpaceFreedBySameTickBeltOutput_IsAvailableAfterTheBuildingBoundary()
     {
         Entity storage = CreateStorage(2, 1);
         Entity outgoing = Stored(storage)[0];
@@ -651,43 +654,34 @@ public class DroneItemTransferTests : EcsWorldTestFixture
 
         TransferTick();
 
-        AssertResult(request, DroneItemTransferStatusEnum.Unavailable, 0);
+        AssertResult(request, DroneItemTransferStatusEnum.Completed, 1);
         Assert.IsTrue(_entityManager.GetComponentData<ItemOwnership>(outgoing).IsWorldItem);
-        Assert.AreEqual(1, Stored(storage).Length);
-        AssertStored(worker, new[] { cargo });
-        Assert.AreEqual(DroneTaskAssignmentStateEnum.Retargeting, Assignment(assignment).State);
-
-        Entity retryAssignment = CreateAssignment(worker, cargo, storage, 1, DroneActionKindEnum.StoreCargo);
-        Entity retry = Submit(retryAssignment);
-        TransferTick();
-
-        AssertResult(retry, DroneItemTransferStatusEnum.Completed, 1);
         Assert.AreEqual(2, Stored(storage).Length);
         Assert.AreEqual(storage, _entityManager.GetComponentData<ItemOwnership>(cargo).Owner);
         Assert.AreEqual(0, Stored(worker).Length);
     }
 
     [Test]
-    public void CompetingDeposits_ShareTheOriginalFreeSpaceBudget_DespiteSameTickBeltOutput()
+    public void CompetingDeposits_ShareSpaceConfirmedByTheBuildingBoundary()
     {
         Entity storage = CreateStorage(1, 1);
         Entity outgoing = Stored(storage)[0];
         PrepareBeltOutput(storage, outgoing);
         Entity firstWorker = CreateWorker(1, DroneCargoOriginEnum.Supply);
-        Entity secondWorker = CreateWorker(1, DroneCargoOriginEnum.Supply);
+        Entity secondWorker = CreateWorker(2, DroneCargoOriginEnum.Supply);
         Entity firstItem = Stored(firstWorker)[0];
-        Entity secondItem = Stored(secondWorker)[0];
+        Entity[] secondItems = Stored(secondWorker);
         Entity firstAssignment = CreateAssignment(firstWorker, firstItem, storage, 1, DroneActionKindEnum.StoreCargo);
-        Entity secondAssignment = CreateAssignment(secondWorker, secondItem, storage, 1, DroneActionKindEnum.StoreCargo);
+        Entity secondAssignment = CreateAssignment(secondWorker, secondItems[0], storage, 2, DroneActionKindEnum.StoreCargo);
         Entity earlier = Submit(secondAssignment);
         Entity later = Submit(firstAssignment);
 
         TransferTick();
 
-        AssertResult(earlier, DroneItemTransferStatusEnum.Completed, 1);
+        AssertResult(earlier, DroneItemTransferStatusEnum.Completed, 2);
         AssertResult(later, DroneItemTransferStatusEnum.Unavailable, 0);
         Assert.IsTrue(_entityManager.GetComponentData<ItemOwnership>(outgoing).IsWorldItem);
-        AssertStored(storage, new[] { secondItem });
+        AssertStored(storage, secondItems);
         AssertStored(firstWorker, new[] { firstItem });
         Assert.AreEqual(0, Stored(secondWorker).Length);
         Assert.AreEqual(DroneTaskAssignmentStateEnum.Retargeting, Assignment(firstAssignment).State);
@@ -735,10 +729,10 @@ public class DroneItemTransferTests : EcsWorldTestFixture
         AssertCollectionNotApplied(source, worker, site, assignment, request, originals);
         _execution.Update();
         // 앞선 단계가 원본 변경을 ECB로 우회 기록하지 않았는지도 확인한다.
-        _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>().Update();
+        _world.GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>().Update();
         AssertCollectionNotApplied(source, worker, site, assignment, request, originals);
 
-        _apply.Update();
+        ApplyDroneAndCommit();
 
         AssertResult(request, DroneItemTransferStatusEnum.Completed, 3);
         AssertStored(worker, originals);
@@ -829,10 +823,18 @@ public class DroneItemTransferTests : EcsWorldTestFixture
 
     private void TransferTick()
     {
-        // 계획을 준비한 뒤 Ownership/Lifecycle 경계에 인계한다. 추가 Playback으로 같은 틱 새 실물의 가시화를 앞당기지 않는다.
+        // 건물 결과를 확정한 다음 드론 입력을 준비한다. 드론 실행 중 새 적재품은 기존 계획에 추가하지 않는다.
+        _buildingApply.SortSystems();
+        _building.Update();
         _decision.Update();
         _execution.Update();
+        ApplyDroneAndCommit();
+    }
+
+    private void ApplyDroneAndCommit()
+    {
         _apply.Update();
+        _commit.Update();
     }
 
     private void PrepareBeltOutput(Entity storage, Entity item)
@@ -841,8 +843,8 @@ public class DroneItemTransferTests : EcsWorldTestFixture
         int2 outputPosition = new int2(1, 0);
         Entities.CreateBelt(outputPosition, DirectionEnum.Right);
         Simulation.UpdateAndComplete(sync);
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
-        _apply.SortSystems();
+        _buildingApply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
+        _buildingApply.SortSystems();
         _entityManager.AddComponentData(storage, new BuildingItemOutputDecision(true, item, outputPosition));
         _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(storage, true);
     }

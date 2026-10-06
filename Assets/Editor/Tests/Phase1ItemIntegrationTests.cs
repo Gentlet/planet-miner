@@ -14,7 +14,7 @@ public class Phase1ItemIntegrationTests : EcsWorldTestFixture
     private SystemHandle _lifecycleHandle;
     private SystemHandle _ownershipHandle;
     private SystemHandle _spatialSyncHandle;
-    private EndStateApplyEntityCommandBufferSystem _endStateApplyEcb;
+    private EndBuildingEntityCommandBufferSystem _endStateApplyEcb;
     private WorldInvariantValidationSystem _invariantValidationSystem;
 
     [SetUp]
@@ -26,7 +26,7 @@ public class Phase1ItemIntegrationTests : EcsWorldTestFixture
         _lifecycleHandle = _world.GetOrCreateSystem(typeof(ItemLifecycleApplySystem));
         _ownershipHandle = _world.GetOrCreateSystem(typeof(ItemOwnershipApplySystem));
         _spatialSyncHandle = _world.GetOrCreateSystem(typeof(ItemSpatialSyncSystem));
-        _endStateApplyEcb = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
+        _endStateApplyEcb = _world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>();
         _invariantValidationSystem = _world.GetOrCreateSystemManaged<WorldInvariantValidationSystem>();
     }
 

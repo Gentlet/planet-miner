@@ -5,7 +5,7 @@ using Unity.Entities;
 /// 역할·목적: 외부 드론 행동 완료 신호의 World 접수 순번과 요청→결과 소비 수명을 소유한다.
 /// 입력·출력: 주 스레드에서 Submit이 행동 요청/인계 계획 버퍼를 즉시 만들고 ReceiptSequence를 부여한다. 실제 수행부 호출은 후속 연결이다.
 /// 이용: 인계 Decision/Execution이 준비한 계획을 DroneTaskLifecycleApplySystem이 정산한 뒤 외부 수행부가 TryConsumeResult로 결과를 읽는다.
-/// 수명·가시화: 접수 순번 상태는 World 수명 동안 유지한다. 요청 제거/결과 게시는 EndStateApply, 결과 확인 후 엔티티 삭제는 외부 소비 경계다. 실물을 직접 변경하지 않는다.
+/// 수명·가시화: 접수 순번 상태는 World 수명 동안 유지한다. 요청 제거/결과 게시는 EndSimulation, 결과 확인 후 엔티티 삭제는 외부 소비 경계다. 실물을 직접 변경하지 않는다.
 /// </summary>
 public static class DroneActionRequestUtility
 {
@@ -31,7 +31,7 @@ public static class DroneActionRequestUtility
         return entity;
     }
 
-    /// <summary>EndStateApply 이후 공개된 결과를 외부 수행부가 읽고 요청/결과 엔티티를 소비한다.</summary>
+    /// <summary>EndSimulation 이후 공개된 결과를 외부 수행부가 읽고 요청/결과 엔티티를 소비한다.</summary>
     public static bool TryConsumeResult(EntityManager manager, Entity entity, out DroneItemTransferResult result)
     {
         result = default;

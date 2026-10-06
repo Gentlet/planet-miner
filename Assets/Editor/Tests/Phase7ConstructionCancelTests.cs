@@ -15,7 +15,7 @@ public class Phase7ConstructionCancelTests : EcsWorldTestFixture
     private SystemHandle _cancelCommandSystem;
     private SystemHandle _lifecycleApplySystem;
     private EndCommandEntityCommandBufferSystem _endCommandEcb;
-    private EndStateApplyEntityCommandBufferSystem _endStateApplyEcb;
+    private EndBuildingEntityCommandBufferSystem _endStateApplyEcb;
 
     [SetUp]
     public override void SetUp()
@@ -25,7 +25,7 @@ public class Phase7ConstructionCancelTests : EcsWorldTestFixture
         _cancelCommandSystem = _world.GetOrCreateSystem<ConstructionCancelCommandSystem>();
         _lifecycleApplySystem = _world.GetOrCreateSystem<ConstructionLifecycleApplySystem>();
         _endCommandEcb = _world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
-        _endStateApplyEcb = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
+        _endStateApplyEcb = _world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>();
     }
 
     private void RunCancelPhase()

@@ -5,7 +5,7 @@ namespace PlanetMiner.Tests
     /// <summary>
     /// 역할·목적: 테스트가 시간·Update·Job 완료·ECB 재생을 명시적으로 제어할 실행 helper.
     /// 호출·입출력: 테스트 World의 SystemHandle/그룹을 실행해 상태를 남긴다. 단일 Update는 Job 완료/ECB 재생을 자동 수행하지 않는다.
-    /// 수명·범위: World는 Fixture가 소유/해제하고 Driver는 참조만 보관한다. 그룹 builder는 선택 시스템의 실제 SortSystems/두 ECB 경계를 구성한다.
+    /// 수명·범위: World는 Fixture가 소유/해제하고 Driver는 참조만 보관한다. 그룹 builder는 선택 시스템의 실제 SortSystems/Command·건물 ECB 경계를 구성한다.
     /// </summary>
     public sealed class TestSimulationDriver
     {
@@ -40,7 +40,12 @@ namespace PlanetMiner.Tests
             state.Dependency.Complete();
         }
 
-        public void Playback(EndStateApplyEntityCommandBufferSystem ecbSystem)
+        public void Playback(EndBuildingEntityCommandBufferSystem ecbSystem)
+        {
+            ecbSystem.Update();
+        }
+
+        public void Playback(EndSimulationEntityCommandBufferSystem ecbSystem)
         {
             ecbSystem.Update();
         }
@@ -50,23 +55,25 @@ namespace PlanetMiner.Tests
             ecbSystem.Update();
         }
 
-        /// <summary>제작기 생성·물류 통합 검증. 각 그룹의 실제 정렬과 두 ECB 경계를 사용한다.</summary>
+        /// <summary>제작기 생성·물류 통합 검증. 건물 하위 그룹의 실제 정렬과 Command·건물 ECB 경계를 사용한다.</summary>
         public GameSimulationGroup CreateCrafterPipeline()
         {
             // 등록 순서만으로 phase/선후 관계를 추정하지 않는다. 각 그룹과 루트의 SortSystems로 실제 정렬을 적용한다.
             var simulation = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
             var command = _world.GetOrCreateSystemManaged<CommandGroup>();
-            var decision = _world.GetOrCreateSystemManaged<DecisionGroup>();
-            var reservation = _world.GetOrCreateSystemManaged<ReservationGroup>();
-            var execution = _world.GetOrCreateSystemManaged<ExecutionGroup>();
-            var apply = _world.GetOrCreateSystemManaged<StateApplyGroup>();
+            var building = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();
+            var decision = _world.GetOrCreateSystemManaged<BuildingDecisionGroup>();
+            var reservation = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
+            var execution = _world.GetOrCreateSystemManaged<BuildingExecutionGroup>();
+            var apply = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
             var sync = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
             simulation.AddSystemToUpdateList(command);
-            simulation.AddSystemToUpdateList(decision);
-            simulation.AddSystemToUpdateList(reservation);
-            simulation.AddSystemToUpdateList(execution);
-            simulation.AddSystemToUpdateList(apply);
+            simulation.AddSystemToUpdateList(building);
             simulation.AddSystemToUpdateList(sync);
+            building.AddSystemToUpdateList(decision);
+            building.AddSystemToUpdateList(reservation);
+            building.AddSystemToUpdateList(execution);
+            building.AddSystemToUpdateList(apply);
 
             command.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterRecipeCommandSystem>());
             command.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingDemolitionCommandSystem>());
@@ -88,7 +95,7 @@ namespace PlanetMiner.Tests
             apply.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterStateApplySystem>());
             apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionLifecycleApplySystem>());
             apply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingLifecycleApplySystem>());
-            apply.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>());
+            building.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>());
             sync.AddSystemToUpdateList(_world.GetOrCreateSystem<BeltSpatialSyncSystem>());
             sync.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingSpatialSyncSystem>());
             sync.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemSpatialSyncSystem>());
@@ -99,31 +106,34 @@ namespace PlanetMiner.Tests
             reservation.SortSystems();
             execution.SortSystems();
             apply.SortSystems();
+            building.SortSystems();
             sync.SortSystems();
             simulation.SortSystems();
             return simulation;
         }
 
-        /// <summary>자원 생성/채굴 통합 테스트용 실제 6단계 실행 경계. 추가 Playback은 사용하지 않는다.</summary>
+        /// <summary>자원 생성/채굴 통합 테스트용 Command→건물→Synchronization 실행 경계. 추가 Playback은 사용하지 않는다.</summary>
         public GameSimulationGroup CreateResourceGenerationPipeline(bool includeMining = false)
         {
             var simulation = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
             var command = _world.GetOrCreateSystemManaged<CommandGroup>();
-            var decision = _world.GetOrCreateSystemManaged<DecisionGroup>();
-            var reservation = _world.GetOrCreateSystemManaged<ReservationGroup>();
-            var execution = _world.GetOrCreateSystemManaged<ExecutionGroup>();
-            var apply = _world.GetOrCreateSystemManaged<StateApplyGroup>();
+            var building = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();
+            var decision = _world.GetOrCreateSystemManaged<BuildingDecisionGroup>();
+            var reservation = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
+            var execution = _world.GetOrCreateSystemManaged<BuildingExecutionGroup>();
+            var apply = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
             var sync = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
             simulation.AddSystemToUpdateList(command);
-            simulation.AddSystemToUpdateList(decision);
-            simulation.AddSystemToUpdateList(reservation);
-            simulation.AddSystemToUpdateList(execution);
-            simulation.AddSystemToUpdateList(apply);
+            simulation.AddSystemToUpdateList(building);
             simulation.AddSystemToUpdateList(sync);
+            building.AddSystemToUpdateList(decision);
+            building.AddSystemToUpdateList(reservation);
+            building.AddSystemToUpdateList(execution);
+            building.AddSystemToUpdateList(apply);
             command.AddSystemToUpdateList(_world.GetOrCreateSystem<ChunkLoadCommandSystem>());
             command.AddSystemToUpdateList(_world.GetOrCreateSystem<ResourceGenerationCommandSystem>());
             command.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>());
-            apply.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>());
+            building.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>());
             sync.AddSystemToUpdateList(_world.GetOrCreateSystem<ResourceSpatialSyncSystem>());
             if (includeMining)
             {
@@ -133,8 +143,10 @@ namespace PlanetMiner.Tests
             }
             command.SortSystems();
             decision.SortSystems();
+            reservation.SortSystems();
             execution.SortSystems();
             apply.SortSystems();
+            building.SortSystems();
             sync.SortSystems();
             simulation.SortSystems();
             return simulation;

@@ -81,10 +81,10 @@ public class Phase2BeltIntegrationTests : EcsWorldTestFixture
         _beltSpatialSyncHandle.Update(_world.Unmanaged);
         _itemSpatialSyncHandle.Update(_world.Unmanaged);
 
-        // 2. DecisionGroup (Phase 2)
+        // 2. BuildingDecisionGroup (Phase 2)
         _beltDecisionHandle.Update(_world.Unmanaged);
 
-        // 3. ExecutionGroup (Phase 4)
+        // 3. BuildingExecutionGroup (Phase 4)
         _beltExecutionHandle.Update(_world.Unmanaged);
 
         // 4. SynchronizationGroup (Phase 6: 이동된 위치 재동기화 및 Invariant 검증)

@@ -32,7 +32,7 @@ public enum ConstructionSiteFlags : byte
 /// 이용: DroneTaskDecisionSystem은 공급·회수 대상을 찾고, ConstructionCancelCommandSystem은 취소를 표시한다.
 /// ConstructionLifecycleApplySystem(StateApply)은 현재 월드 실물로 차단 플래그를 갱신하고 도착 자재의 충족 여부로 완공을 판단한다.
 /// BuildingSpatialSyncSystem(Synchronization)은 현장도 건물 크기만큼 점유 등록한다. 진행도/도착 비율은 보관하지 않는다.
-/// 제거: 취소 시 EndCommand, 완공 건물 생성 성공 시 자재와 함께 EndStateApply에서 현장을 삭제한다. 생성 실패 시 보존한다.
+/// 제거: 취소 시 EndCommand, 완공 건물 생성 성공 시 자재와 함께 EndBuilding에서 현장을 삭제한다. 생성 실패 시 보존한다.
 /// </summary>
 public struct ConstructionSite : IComponentData
 {
@@ -67,7 +67,7 @@ public struct ConstructionMaterialRequirementElement : IBufferElementData
     public ItemTypeEnum ItemType;
     public int RequiredQuantity;  // 완공에 필요한 총 수량
     public int DeliveredQuantity; // 현장에 도착/수령된 실제 수량
-    public int ReservedQuantity;  // 활성 개별 예약 + 아직 공개되지 않은 배정 후보의 현장 예약 합계.
+    public int ReservedQuantity;  // 활성 개별 예약 + 아직 배정으로 인계되지 않은 공개 대기 현장 예약 합계.
 
     // 순수 계산 프로퍼티 (상태 부작용 없음)
     public int RemainingRequired => math.max(0, RequiredQuantity - DeliveredQuantity);

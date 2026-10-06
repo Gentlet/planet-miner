@@ -2,14 +2,12 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 역할·목적: Decision의 배정 후보에 Reservation의 선택·예약 결과와 Publish의 공개 대기 기록을 함께 보관한다.
+/// 역할·목적: Decision이 계산한 신규 배정·적재품 재배정 후보를 한 틱 동안 보관한다.
 /// 부착 엔티티: 수행자·작업·배정과 별도인 World 단일 후보 관리 엔티티의 버퍼다.
 /// 생성: DroneSchedulingUtility.GetOrCreateCandidates가 버퍼를 준비하고 Decision의 DroneTaskDecisionSystem이 신규·적재 재배정 후보를 작성한다.
-/// 이용: Reservation의 ConstructionSupplyReservationSystem이 Quantity/Selected/CommittedQuantity를 확정한다.
-/// StateApply의 DroneTaskAssignmentPublishSystem이 최종 재검사·롤백 후 배정과 개별 예약의 EndStateApply 공개를 기록하고 Published를 갱신한다.
-/// 제거: 다음 Decision이 공개된 항목·예약 없는 항목을 제거한다. 미공개 CommittedQuantity는 다음 Reservation이 실제 예약을 해제할 때까지 보존한다.
-/// 버퍼와 관리 엔티티는 유지한다. 미공개 예약이 남은 항목의 수명은 한 틱의 순수 판단 결과보다 길 수 있다.
-/// CommittedQuantity는 아직 배정 revision의 개별 예약으로 인계되지 않은 현장 예약량이며 공개 전에는 이 버퍼가 예약 근거다.
+/// 이용: Reservation의 ConstructionSupplyReservationSystem이 읽기 검사한 후보를 선택하여 별도 DroneTaskPendingPublicationElement에 복사한다.
+/// 제거: 다음 Decision 시작에 Clear한다. 버퍼와 관리 엔티티는 유지한다.
+/// Quantity는 판단 당시 수량 상한이다. 실제 선택 수량·미공개 예약·ECB 공개 기록은 이 버퍼에 쓰지 않는다.
 /// Assignment가 있으면 같은 배정의 적재품 재배정 후보이며 NextAction은 공급·보관·방출 목적을 나타낸다.
 /// </summary>
 [InternalBufferCapacity(0)]
@@ -27,7 +25,4 @@ public struct DroneTaskCandidateDecisionElement : IBufferElementData
     public ItemTypeEnum ItemType;
     public uint WorkerObservationRevision;
     public int Quantity;
-    public int CommittedQuantity;
-    public bool Selected;
-    public bool Published; // Publish가 ECB에 기록했음을 표시한다. 실제 Assignment는 EndStateApply에 실체화된다.
 }

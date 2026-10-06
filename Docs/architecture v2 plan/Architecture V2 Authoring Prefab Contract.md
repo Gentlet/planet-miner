@@ -1,5 +1,7 @@
 # Architecture V2 Authoring & Prefab Database Common Contract
 
+> 현재 코드와의 관계 (2026-10-06): 이 문서는 설계 배경/규약 또는 개발 마일스톤 기록이다. 현재 실행은 Command→Building→Drone→Commit→Synchronization이며 세 ECB 경계를 사용한다. 본문의 전역 6페이즈·이전 심볼·완료 표시는 당시 설계/작업 범위로 읽고, 구현 판단은 [AGENTS.md](../../AGENTS.md)와 [현재 컴포넌트 계약](../CodeMemory/Components/README.md)을 우선한다. 개발 Phase 번호와 런타임 그룹을 구분한다.
+
 **문서 버전**: 1.0  
 **상태**: 확정 (Approved)  
 **적용 대상**: SubScene Authoring, Baker, Prefab Database, 런타임 스폰 시스템 (Item, Building, Resource, Drone)

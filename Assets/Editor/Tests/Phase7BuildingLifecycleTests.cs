@@ -15,7 +15,7 @@ using UnityEngine.TestTools;
 public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
 {
     private SystemHandle _lifecycleSystem;
-    private EndStateApplyEntityCommandBufferSystem _ecbSystem;
+    private EndBuildingEntityCommandBufferSystem _ecbSystem;
 
     [SetUp]
     public override void SetUp()
@@ -23,7 +23,7 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
         base.SetUp();
         CreateGameplayPrefabDatabases();
         _lifecycleSystem = _world.GetOrCreateSystem<BuildingLifecycleApplySystem>();
-        _ecbSystem = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
+        _ecbSystem = _world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>();
     }
 
     private void RunLifecyclePhase()

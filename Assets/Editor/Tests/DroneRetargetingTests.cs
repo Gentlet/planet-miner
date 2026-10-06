@@ -14,10 +14,13 @@ using Unity.Transforms;
 /// </summary>
 public class DroneRetargetingTests : EcsWorldTestFixture
 {
-    private DecisionGroup _decision;
-    private ReservationGroup _reservation;
-    private ExecutionGroup _execution;
-    private StateApplyGroup _apply;
+    private DroneDecisionGroup _decision;
+    private DroneReservationGroup _reservation;
+    private DroneExecutionGroup _execution;
+    private DroneStateApplyGroup _apply;
+    private BuildingSimulationGroup _building;
+    private BuildingStateApplyGroup _buildingApply;
+    private SimulationCommitGroup _commit;
 
     [SetUp]
     public override void SetUp()
@@ -30,23 +33,31 @@ public class DroneRetargetingTests : EcsWorldTestFixture
         foreach (ItemTypeEnum type in Enum.GetValues(typeof(ItemTypeEnum))) config.Add(new ItemConfigElement(type, 2));
         Entity capacity = _entityManager.CreateEntity(typeof(DroneCapacityState));
         _entityManager.SetComponentData(capacity, new DroneCapacityState { CarryingCapacity = 3 });
-        _decision = _world.GetOrCreateSystemManaged<DecisionGroup>();
+        _decision = _world.GetOrCreateSystemManaged<DroneDecisionGroup>();
         _decision.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskDecisionSystem>());
         _decision.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneItemTransferDecisionSystem>());
-        _reservation = _world.GetOrCreateSystemManaged<ReservationGroup>();
+        _reservation = _world.GetOrCreateSystemManaged<DroneReservationGroup>();
         _reservation.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionSupplyReservationSystem>());
-        _execution = _world.GetOrCreateSystemManaged<ExecutionGroup>();
+        _execution = _world.GetOrCreateSystemManaged<DroneExecutionGroup>();
         _execution.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskExecutionSystem>());
         _execution.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneItemTransferExecutionSystem>());
-        _apply = _world.GetOrCreateSystemManaged<StateApplyGroup>();
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>());
+        _apply = _world.GetOrCreateSystemManaged<DroneStateApplyGroup>();
         _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskAssignmentPublishSystem>());
         _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskLifecycleApplySystem>());
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
+        _buildingApply = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
+        _buildingApply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
+        _building = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();
+        _building.AddSystemToUpdateList(_buildingApply);
+        _building.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>());
+        _commit = _world.GetOrCreateSystemManaged<SimulationCommitGroup>();
+        _commit.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>());
         _decision.SortSystems();
         _reservation.SortSystems();
         _execution.SortSystems();
         _apply.SortSystems();
+        _buildingApply.SortSystems();
+        _building.SortSystems();
+        _commit.SortSystems();
     }
 
     [Test]
@@ -280,7 +291,7 @@ public class DroneRetargetingTests : EcsWorldTestFixture
             _entityManager.SetComponentData(newSite, site);
         }
         _execution.Update();
-        _apply.Update();
+        ApplyDroneAndCommit();
 
         Assert.AreEqual(0, Requirement(oldSite).ReservedQuantity);
         Assert.AreEqual(invalidateBeforePublish ? 0 : 2, Requirement(newSite).ReservedQuantity);
@@ -395,8 +406,8 @@ public class DroneRetargetingTests : EcsWorldTestFixture
     public void CargoInsideRotatedSite_WaitsForOutsideDestinationAndArrival_BeforeDropping(
         DirectionEnum direction, int startX, int startY, int dropX, int dropY)
     {
-        _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionLifecycleApplySystem>());
-        _apply.SortSystems();
+        _buildingApply.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionLifecycleApplySystem>());
+        _buildingApply.SortSystems();
         Entity site = CreateSite(int2.zero, 1, 1);
         _entityManager.SetComponentData(site, new BuildingFootprint(new int2(2, 1)));
         _entityManager.SetComponentData(site, new Direction(direction));
@@ -499,7 +510,7 @@ public class DroneRetargetingTests : EcsWorldTestFixture
             _reservation.Update();
             _execution.Update();
             CreateSite(dropPosition, 2, 1);
-            _apply.Update();
+            ApplyDroneAndCommit();
         }
         else
         {
@@ -521,11 +532,18 @@ public class DroneRetargetingTests : EcsWorldTestFixture
 
     private void Tick()
     {
-        // 관리 네 phase만 진행한다. 이동/관측 갱신과 경로 응답은 별도 fixture 입력이다.
+        // 건물 반영을 확정한 다음 드론 관리 네 phase를 진행한다. 이동/관측/경로는 fixture 입력이다.
+        _building.Update();
         _decision.Update();
         _reservation.Update();
         _execution.Update();
+        ApplyDroneAndCommit();
+    }
+
+    private void ApplyDroneAndCommit()
+    {
         _apply.Update();
+        _commit.Update();
     }
 
     private Entity CreateSite(int2 position, ulong stamp, int required)

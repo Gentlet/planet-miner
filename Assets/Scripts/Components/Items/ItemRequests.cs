@@ -5,7 +5,7 @@ using Unity.Mathematics;
 /// 역할·목적: 신규 실물의 월드·일반 보관·생산품 목적지를 구분한다.
 /// 부착 엔티티: 열거형 자체는 부착하지 않고 SpawnItemRequest.Destination에 포함한다.
 /// 생성·이용: 요청 Producer가 선택하고 ItemSpawnAdmissionDecisionSystem(Decision)과 ItemLifecycleApplySystem(StateApply)이 목적지별 승인·Owner·버퍼를 결정한다.
-/// 제거: 이를 담은 요청 엔티티가 EndStateApply에서 삭제되면 함께 사라진다.
+/// 제거: 이를 담은 요청 엔티티가 EndBuilding에서 삭제되면 함께 사라진다.
 /// </summary>
 public enum ItemSpawnDestination : byte
 {
@@ -19,7 +19,7 @@ public enum ItemSpawnDestination : byte
 /// 부착 엔티티: 새로 만들 실물과 별도인 요청 엔티티다. 채굴/제작 생산은 이 요청 대신 ProductResult를 사용한다.
 /// 생성: 외부 Producer가 Admission 전에 실체화하는 계약이며 현재 제품 코드의 외부 입력 Producer는 없다.
 /// 이용: ItemSpawnAdmissionDecisionSystem(Decision)이 철거 예정 입고·활성 현장 내부 World 스폰을 비활성화한다. ItemLifecycleApplySystem(StateApply)이 목적지 버퍼/현장 위치를 검사하고 등록 프리팹으로 생성한다.
-/// 제거: 거부·생성 처리한 요청은 EndStateApply에서 삭제한다. 프리팹 누락은 대체 생성 없이 SimulationFatalError를 기록하며 요청을 재시도하지 않는다.
+/// 제거: 거부·생성 처리한 요청은 EndBuilding에서 삭제한다. 프리팹 누락은 대체 생성 없이 SimulationFatalError를 기록하며 요청을 재시도하지 않는다.
 /// 나중에 생성하는 Producer는 이미 승인된 철거/현장 금지 계약을 스스로 준수해야 한다. Position은 월드 셀, TargetSlotIndex는 목적지 보관/출력 슬롯이다.
 /// </summary>
 public struct SpawnItemRequest : IRequestComponent, IEnableableComponent
@@ -63,7 +63,7 @@ public struct SpawnItemRequest : IRequestComponent, IEnableableComponent
 /// 부착 엔티티: 삭제할 아이템 실물 엔티티다.
 /// 생성: ItemLifecycleUtility가 비활성으로 준비한다. CrafterExecutionSystem(Execution) 등 소비 Producer가 소유 버퍼에서 실물 참조를 먼저 제거한 뒤 활성화한다.
 /// 이용: ItemLifecycleApplySystem(StateApply)이 활성 실물을 삭제한다. 인계·반환·완공 검사는 활성 Destroy 실물을 유효 재고/차단/반환으로 세지 않는다.
-/// 제거: 실제 실물과 컴포넌트를 EndStateApply에 함께 삭제한다. 소유 버퍼 정리는 요청 Consumer가 대신 수행하지 않는다.
+/// 제거: 실제 실물과 컴포넌트를 EndBuilding에 함께 삭제한다. 소유 버퍼 정리는 요청 Consumer가 대신 수행하지 않는다.
 /// </summary>
 public struct DestroyItemRequest : IEnableableRequest
 {

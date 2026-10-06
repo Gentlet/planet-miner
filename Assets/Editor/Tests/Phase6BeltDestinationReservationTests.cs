@@ -387,7 +387,7 @@ public class Phase6BeltDestinationReservationTests : EcsWorldTestFixture
         Simulation.UpdateAndComplete(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
         Simulation.UpdateAndComplete(_world.GetOrCreateSystem<RoutingApplySystem>());
         Simulation.UpdateAndComplete(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
-        Simulation.Playback(_world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>());
+        Simulation.Playback(_world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>());
         Simulation.UpdateAndComplete(_itemSpatialSyncHandle);
     }
 

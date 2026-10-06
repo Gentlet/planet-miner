@@ -5,7 +5,7 @@ using Unity.Entities;
 /// 부착 엔티티: BuildingType=Belt인 완공 건물 엔티티다.
 /// 생성: BuildingLifecycleUtility가 설정 속도를 GameConstants.MaxBeltSpeed 상한으로 제한하여 건물 생성 ECB에 붙인다.
 /// 이용: BeltSpatialSyncSystem(Synchronization)이 Speed를 인덱스에 복사하고 BeltMovementDecisionSystem(Decision)이 벨트 이동 판단에 읽는다.
-/// 제거: BuildingLifecycleApplySystem(StateApply)이 철거를 기록하여 EndStateApply에서 벨트 엔티티와 함께 삭제한다.
+/// 제거: BuildingLifecycleApplySystem(StateApply)이 철거를 기록하여 EndBuilding에서 벨트 엔티티와 함께 삭제한다.
 /// </summary>
 public struct BeltComponent : IComponentData
 {

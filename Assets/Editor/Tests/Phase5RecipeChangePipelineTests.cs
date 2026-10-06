@@ -18,7 +18,7 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
     private SystemHandle _buildingSpatialSyncHandle;
     private SystemHandle _beltSpatialSyncHandle;
     private EndCommandEntityCommandBufferSystem _endCommandEcb;
-    private EndStateApplyEntityCommandBufferSystem _endStateApplyEcb;
+    private EndBuildingEntityCommandBufferSystem _endStateApplyEcb;
 
     [SetUp]
     public override void SetUp()
@@ -37,7 +37,7 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
         _buildingSpatialSyncHandle = _world.GetOrCreateSystem(typeof(BuildingSpatialSyncSystem));
         _beltSpatialSyncHandle = _world.GetOrCreateSystem(typeof(BeltSpatialSyncSystem));
         _endCommandEcb = _world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
-        _endStateApplyEcb = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
+        _endStateApplyEcb = _world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>();
     }
 
     private Entity CreateCrafter(int2 position, int recipeId = 1)
@@ -124,7 +124,7 @@ public class Phase5RecipeChangePipelineTests : EcsWorldTestFixture
         Assert.IsFalse(filter.IsItemAllowed(ItemTypeEnum.Iron_Ore));
         Assert.IsFalse(_entityManager.Exists(reqEntity), "Recipe change request must be consumed.");
 
-        // Act 2: Phase 2 DecisionGroup 실행 (BuildingItemInputDecisionSystem)
+        // Act 2: Phase 2 BuildingDecisionGroup 실행 (BuildingItemInputDecisionSystem)
         _inputDecisionHandle.Update(_world.Unmanaged);
 
         // Assert 3: 새 레시피의 재료(Copper_Ore)이고 필터가 허용하더라도,

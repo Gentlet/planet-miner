@@ -20,7 +20,7 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
     private EndCommandEntityCommandBufferSystem _endCommand;
     private SystemHandle _lifecycleApplySystem;
     private SystemHandle _spatialSyncSystem;
-    private EndStateApplyEntityCommandBufferSystem _ecbSystem;
+    private EndBuildingEntityCommandBufferSystem _ecbSystem;
 
     [SetUp]
     public override void SetUp()
@@ -31,7 +31,7 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         _endCommand = _world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
         _lifecycleApplySystem = _world.GetOrCreateSystem<BuildingLifecycleApplySystem>();
         _spatialSyncSystem = _world.GetOrCreateSystem<BuildingSpatialSyncSystem>();
-        _ecbSystem = _world.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
+        _ecbSystem = _world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>();
     }
 
     private void RunDemolishPhase()
@@ -500,7 +500,7 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         RequestDemolish(demolishOwners ? producer : productOutputBelt);
         RunDemolitionCommandPhase();
 
-        var decisionGroup = _world.GetOrCreateSystemManaged<DecisionGroup>();
+        var decisionGroup = _world.GetOrCreateSystemManaged<BuildingDecisionGroup>();
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<SplitterDecisionSystem>());
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<MergerDecisionSystem>());
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<StorageItemOutputDecisionSystem>());
@@ -521,14 +521,14 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
             Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(productItem));
         }
 
-        var stateApplyGroup = _world.GetOrCreateSystemManaged<StateApplyGroup>();
+        var stateApplyGroup = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
         stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<RoutingApplySystem>());
         stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
         stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
         stateApplyGroup.AddSystemToUpdateList(_lifecycleApplySystem);
-        stateApplyGroup.AddSystemToUpdateList(_ecbSystem);
         stateApplyGroup.SortSystems();
         stateApplyGroup.Update();
+        Simulation.Playback(_ecbSystem);
         Assert.AreEqual(sourcePosition, _entityManager.GetComponentData<GridPosition>(routedItem).Value);
         Assert.IsTrue(_entityManager.IsComponentEnabled<BeltMovementState>(routedItem));
         Assert.AreEqual(!demolishOwners, _entityManager.Exists(router));
