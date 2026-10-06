@@ -5,6 +5,11 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
 
+/// <summary>
+/// 역할·목적: 자원 프리팹 생성·준비 대기·완료 알림·채굴 고갈에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: ECS 설정/프리팹/청크 요청으로 참조 누락/수정 재시도와 두 ECB 전후를 검사한다. 실제 자산 Baker/장면 표시는 실행하지 않는다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
+/// </summary>
 public class Phase4ResourceAuthoringAndSpawnTests : EcsWorldTestFixture
 {
     [SetUp]
@@ -319,6 +324,7 @@ public class Phase4ResourceAuthoringAndSpawnTests : EcsWorldTestFixture
 
     private void AssertCompletesOnce(GameSimulationGroup simulation)
     {
+        // 청크 재요청으로 완료 알림/Tracker 반영 사이에도 스폰이 중복 기록되지 않는지 확인한다.
         var probe = _world.GetOrCreateSystemManaged<ResourceGenerationBeforePlaybackProbe>();
         var command = _world.GetOrCreateSystemManaged<CommandGroup>();
         command.AddSystemToUpdateList(probe);
@@ -351,6 +357,11 @@ public class Phase4ResourceAuthoringAndSpawnTests : EcsWorldTestFixture
     }
 }
 
+/// <summary>
+/// 역할·목적: 자원 생성 기록 후·EndCommand 재생 전의 자원 실물/완료 알림 개수를 관측한다.
+/// fixture가 수동 등록하는 SystemBase로 제품 상태를 쓰지 않고 재생 전/후 검사에 로컬 관측 값을 제공한다.
+/// 시스템/관측 필드는 테스트 World 수명에 한정하며 World Dispose 때 해제된다.
+/// </summary>
 [DisableAutoCreation]
 [UpdateInGroup(typeof(CommandGroup))]
 [UpdateAfter(typeof(ResourceGenerationCommandSystem))]

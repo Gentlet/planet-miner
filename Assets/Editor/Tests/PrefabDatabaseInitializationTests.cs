@@ -7,6 +7,11 @@ using Unity.Transforms;
 using UnityEngine;
 using UnityEngine.TestTools;
 
+/// <summary>
+/// 역할·목적: 프리팹 DB 준비와 Simulation 실행 게이트에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: ECS DB/프리팹/로딩 상태로 Initialization/Simulation·Probe를 검사한다. 로딩 상태 fixture는 실제 SubScene 로딩/베이킹의 증거가 아니다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
+/// </summary>
 public class PrefabDatabaseInitializationTests : EcsWorldTestFixture
 {
     private PrefabDatabaseInitializationSystem _initialization;
@@ -28,6 +33,7 @@ public class PrefabDatabaseInitializationTests : EcsWorldTestFixture
 
     private void CreateValidDatabases()
     {
+        // 유효 DB를 먼저 준비하고 사례마다 조건을 훼손해 시작 게이트의 실패 원인을 분리한다.
         _buildings = TestPrefabDatabaseFactory.CreateBuildings(_entityManager);
         _items = TestPrefabDatabaseFactory.CreateItems(_entityManager);
         _resources = TestPrefabDatabaseFactory.CreateResources(_entityManager);
@@ -166,6 +172,11 @@ public class PrefabDatabaseInitializationTests : EcsWorldTestFixture
     }
 }
 
+/// <summary>
+/// 역할·목적: 테스트 GameSimulationGroup의 실행 여부를 UpdateCount로 관측한다.
+/// DisableAutoCreation 상태에서 fixture가 등록하며 로컬 카운터만 증가시키고 제품 상태는 변경하지 않는다.
+/// 시스템/카운터는 사례별 World에 한정하며 World Dispose 때 해제된다.
+/// </summary>
 [DisableAutoCreation]
 public partial class PrefabInitializationProbeSystem : SystemBase
 {

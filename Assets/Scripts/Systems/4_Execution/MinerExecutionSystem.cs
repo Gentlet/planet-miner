@@ -4,18 +4,11 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 채굴기의 진행도를 누적하고 채굴 완료 시 ProductResult를 기록하는 시스템.
-/// 
-/// [책임]
-/// - ExecutionGroup(Phase 4)에서 실행.
-/// - MinerDecision이 활성화된 채굴기를 대상으로 채굴 진행도(Progress)를 시간(DeltaTime * MiningSpeed)에 따라 누적.
-/// - [내부 버퍼 모델]:
-///   - 실행 가능한 틱마다 최대 한 번, Progress >= 1.0f이면 1을 차감하고 ProductResult 1개를 기록.
-///     초과 작업량은 다음 틱으로 보존하므로 차감 후에도 Progress가 1 이상일 수 있다.
-///   - ProductResult는 같은 프레임의 StateApply 단계에서 ItemLifecycleApplySystem이 소비하여 실제 Item Entity와 ProductItemElement로 변환.
-///   - 버퍼에 들어간 아이템은 이후 Phase 2/5의 기존 출고 시스템(ProductItemOutputDecisionSystem / BuildingItemStorageApplySystem)에 의해 외부 벨트로 방출.
-///   - ResourceConfig의 IsResourceInfinite가 false인 경우 ResourceNode의 Amount를 1 차감하며, 고갈 시 자원 엔티티를 파괴.
-/// - 자원 엔티티 파괴만 기존 EndStateApplyEntityCommandBufferSystem을 통해 처리.
+/// 역할·목적: Execution에서 승인된 채굴을 진행하고 한 틱에 최대 하나의 생산 결과를 기록한다.
+/// 입력·생성자: MinerDecisionSystem의 대상/허용 결정, 채굴 속도와 ResourceConfig의 무한 자원 설정.
+/// 출력·소유권: MinerState.Progress, 유한 ResourceNode.Amount와 채굴기의 ProductResult를 쓴다. 초과 진행량은 다음 틱으로 보존한다.
+/// 이용·정리: ItemLifecycleApplySystem이 결과를 실물/ProductItemElement로 바꾸고 결과 버퍼를 비운다. 미소비 결과가 있으면 추가 채굴하지 않는다.
+/// 가시화: 고갈 자원 삭제만 EndStateApply ECB에 기록하며 공간 인덱스는 이후 Synchronization에서 갱신한다.
 /// </summary>
 [UpdateInGroup(typeof(ExecutionGroup))]
 [BurstCompile]
@@ -63,6 +56,7 @@ public partial struct MinerExecutionSystem : ISystem
             ECB = ecb
         };
 
+        // 여러 채굴기가 같은 자원을 선택할 수 있으므로 공유 매장량은 순차 적용하고 각 Execute가 최신 Amount를 재검사한다.
         var jobHandle = job.Schedule(_minerQuery, state.Dependency);
         ecbSystem.AddJobHandleForProducer(jobHandle);
         state.Dependency = jobHandle;

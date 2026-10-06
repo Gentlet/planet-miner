@@ -5,6 +5,11 @@ using Unity.Entities;
 using UnityEngine;
 using UnityEngine.TestTools;
 
+/// <summary>
+/// 역할·목적: 월드 설정 유효성 검사와 초기화 한 번 게시에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 잘못된 resourceType/수량 상한과 초기화 호출로 부분 게시 방지·설정 엔티티 유일성을 검사한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
+/// </summary>
 public class Phase4WorldGenerationConfigTests : EcsWorldTestFixture
 {
     [TestCase("255")]
@@ -12,6 +17,7 @@ public class Phase4WorldGenerationConfigTests : EcsWorldTestFixture
     [TestCase("UnknownOre")]
     public void UndefinedResourceType_RejectsEntireConfig(string resourceType)
     {
+        // 잘못된 종류 하나가 포함된 전체 입력을 거부하여 유효 행만 부분 게시되지 않는지 확인한다.
         string json = Resources.Load<TextAsset>(WorldGenerationConfigLoader.DefaultResourcePath).text;
         json = json.Replace("Iron_Ore", resourceType);
         LogAssert.Expect(LogType.Error, new Regex(".*Invalid or unrecognized resource type.*"));

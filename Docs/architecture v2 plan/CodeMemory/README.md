@@ -2,7 +2,19 @@
 
 기준: 2026-09-26 최초 조사 이후 관련 영역을 갱신했으며, 2026-09-30에 공사·철거·자원 ECB 및 품질 개선 계약을 현재 소스와 대조했다. 전체 파일 수를 재감사한 문서는 아니다. Unity가 생성하는 `Library/`의 C# 및 패키지 코드는 범위에 포함하지 않는다. 이 문서는 현재 파일의 역할과 연결 관계를 기록한다. 계획의 완료 표시나 과거 테스트 결과를 현재 실행 증거로 취급하지 않는다. 파일별 경로와 역할은 [CSharpFileIndex.md](CSharpFileIndex.md)를 참조한다.
 
+2026-10-04 기존 공사 운송 처리 제거를 관련 절에 반영했다. 이번 변경의 실행 결과와 한계는 [공사 운송 제거 검증 기록](../V2%20Quality%20Evaluation%20Plan/Results/ConstructionTransportRemoval-Verification.md)에 기록하며, 아래의 이전 검증 기록과 구분한다.
+
 ## 실행 경계
+
+2026-10-06 안전 방출 정책은 현장 내부의 새 월드 생성/드론 방출을 금지하고 예정 위치 기록을 제거했다. Construction은 DroneLifecycle 뒤 현재 월드 Owner/GridPosition과 활성 Destroy만 읽는다. 방출은 현재 셀이 현장 밖이면 그 셀을 선택하고 안이면 Direct/IsDropPositionSearch로 외부 평가자의 가장 가까운 실제 도달 가능한 현장 외부 셀을 기다린다. None/Unreachable은 적재 대기이며 목표 DropPosition은 실제 위치 원본이 아니다. 프로젝트 ECS102/드론22, 단일 파일·이전 틱 인계·공통 Ownership API를 유지한다. 현재 근거는 [안전 방출·기록 제거 검증](../V2%20Quality%20Evaluation%20Plan/Results/DroneSafeDropAndJournalRemoval-Verification.md), 앞선 기록은 당시 근거다. 실제 수행부·관측/경로/공통 능력 Writer는 후속이다.
+
+2026-10-05 드론 생성·경로 명령을 Execution으로 분리했다. 배치는 현장·요구만 생성한다. Decision은 작업 생성·종료와 경로 의도·후보를 만들고, Reservation은 현장 예약을 정산한다. Execution은 확정된 작업 생성·경로 명령을 소비하고 순번과 EndStateApply ECB 기록을 소유한다. Lifecycle Apply는 종료 의도의 상태·연결·삭제 보류를 반영하고 Publish는 최종 재검사·롤백·배정 공개를 유지한다. 작업·경로 엔티티는 EndStateApply에 실체화되어 다음 틱부터 판단에 쓰인다. [계약](../../CodeMemory/Components/DroneLogistics.md), [Execution 분리 검증](../V2%20Quality%20Evaluation%20Plan/Results/DroneExecutionSplit-Verification.md)을 참조한다. 실제 수행부는 후속이며 완공 차단은 4단계에서 연결했다.
+
+같은 날 작업·배정 무효화 판단 버퍼를 DroneTaskInvalidationDecisionElement로 이름을 바꾸고, DroneWorker를 수행자 표시로 정리했다. 최대 적재량은 World singleton DroneCapacityState에서 공통으로 읽는다. 공통 값의 초기화·연구 갱신은 후속이며 값이 없거나 0 이하이면 신규 배정은 대기한다. 연구로 증가한 값은 새 배정부터 적용하고 기존 배정 수량·예약·적재는 자동 수정하지 않는다. DroneTaskCandidateDecisionElement는 Decision 후보와 Reservation·Publish의 공개 대기 예약 기록을 함께 유지한다. 이번 실행 근거는 [공통 적재량·무효화 검증](../V2%20Quality%20Evaluation%20Plan/Results/DroneCapacityAndInvalidation-Verification.md)을 참조한다.
+
+3단계의 Submit 접수 순번·실물 인계·외부 결과 소비에 이어 이전 틱 입력 정책을 연결했다. DroneItemTransferDecisionSystem은 공통 TryValidate로 요청 자격을 판단하고 Execution의 OrderFirst 인계 시스템이 이번 물류 쓰기 전 실물 ID·수량 상한·슬롯 품목/개수를 기록한다. 둘은 원본 재고·Owner·예약·배정·행동 번호를 쓰지 않는다. StateApply는 접수 순서로 계획 실물과 현재 원본·기존 슬롯 예산을 함께 검사하고 실제 성공분만 인계·정산한다. 이번 틱 새 입고·수집 적재품과 출고로 열린 새 여유는 다음 틱부터 사용한다. 결과는 EndStateApply 이후 외부 소비하며 미소비 참조는 배정 삭제를 보류한다. 실제 관측 원본 Writer·비행·경로 계산은 후속이다. [현재 이전 틱 인계 검증](../V2%20Quality%20Evaluation%20Plan/Results/DronePreviousTickTransfer-Verification.md), [3단계 최초 인계 검증](../V2%20Quality%20Evaluation%20Plan/Results/DroneItemTransferStep3-Verification.md)을 구분한다.
+
+현재 실물 반영은 기존 ItemOwnershipApplySystem.cs의 공통 API로, 행동 접수 순서·이전 계획 검사·배정/예약/도착량/결과 정산은 기존 DroneTaskLifecycleApplySystem.cs로 통합했다. 일반 Ownership Job 이후 Lifecycle이 공통 API를 호출하며 API는 실제 Owner·출발/도착 버퍼·위치·벨트·렌더를 함께 반영하고 새 Transfer 요청을 만들지 않는다. Construction은 Lifecycle 이후 완공을 판정한다. 기존 벨트 Transfer 경로와 이전 틱 입력 정책, 드론 22개 타입은 유지하며 예정 위치 버퍼 제거 이후 프로젝트 타입은 102개다. 각 시스템 구현과 공통 API는 해당 본체 파일 하나에 함께 둔다. partial 선언은 Unity Entities 소스 생성용이며 파일 분리를 뜻하지 않는다. [현재 소유자 통합 검증](../V2%20Quality%20Evaluation%20Plan/Results/DroneTransferOwnerConsolidation-Verification.md)을 따른다.
 
 프리팹 시작 관문과 실패 정책은 [AGENTS.md](../../../AGENTS.md)의 베이킹·프리팹 규칙을 따른다. `PrefabDatabaseInitializationSystem`이 준비를 게시하기 전이나 `SimulationFatalError`가 기록된 뒤에는 `GameSimulationGroup`을 실행하지 않는다. 런타임 프리팹 fallback은 제거되었고 테스트는 명시적인 DB를 제공한다.
 
@@ -16,11 +28,11 @@ SimulationSystemGroup
       → StateApplyGroup → SynchronizationGroup
 ```
 
-- `CommandGroup`: 청크·자원 생성과 배치·철거 검증 및 레시피 변경을 처리한다. Command 구조 변경은 EndCommand에서 재생한다. 레시피는 기존 Dependency 완료 뒤 상태·잔여 입력/출력·전용 슬롯/필터를 갱신하며 무효 양수 ID는 상태 변경 전에 거부한다.
+- `CommandGroup`: 청크·자원 생성과 배치·철거 검증, 현장 취소 및 레시피 변경을 처리한다. Command 구조 변경은 EndCommand에서 재생한다. 레시피는 기존 Dependency 완료 뒤 상태·잔여 입력/출력·전용 슬롯/필터를 갱신하며 무효 양수 ID는 상태 변경 전에 거부한다.
 - `DecisionGroup`: 벨트 이동량, 건물 입출고, 채굴, 제작 가능 여부를 결정 컴포넌트에 기록한다. `CrafterDecisionSystem`은 상태 변경을 `CrafterStateDecision`으로 넘긴다.
 - `ReservationGroup`: 건물 입고의 슬롯 경합과 외부 벨트 진입 경합을 처리한다. `BeltDestinationReservationSystem`은 건물 출고·Routing 후보 중 목적지당 최대 한 개를 `PlacementStamp`와 엔티티 인덱스로 승인한다. 일반 벨트 이동은 후보에 포함하지 않는다. T형 직접 합류의 지원 범위와 공통 진입 판정은 [AGENTS.md](../../../AGENTS.md)의 물류·생산 계약을 따른다.
 - `ExecutionGroup`: 승인된 벨트 이동을 `BeltMovementState`·`GridPosition`·`LocalTransform`에 반영한다. 채굴/제작은 진행도를 누적하고 `ProductResult`를 기록한다. 제작 시작 시 재료 버퍼에서 아이템을 즉시 제거하고 `DestroyItemRequest`를 활성화한다.
-- `StateApplyGroup`: 건물 입출고 버퍼와 소유권 요청, 제작기 상태, 아이템 생성/삭제, 공사 취소·수령·완공 및 건물 생성·철거를 반영한다. `BuildingItemStorageApplySystem`은 `ItemOwnershipApplySystem`보다 먼저 실행하도록 지정되어 있다. `EndStateApplyEntityCommandBufferSystem`은 그룹 마지막에 구조 변경을 재생한다.
+- `StateApplyGroup`: 건물 입출고 버퍼와 소유권 요청, 제작기 상태, 아이템 생성/삭제, 공사 완공 및 건물 생성·철거를 반영한다. 기존 공사 운송 컴포넌트 기반 처리는 제거했고, 새 드론 행동 신호에 따른 실물 인계·도착량·개별 예약 정산은 DroneTaskLifecycleApplySystem에 연결했다. 실물 이전은 ItemOwnershipApplySystem의 공통 API가 담당한다. `BuildingItemStorageApplySystem`은 `ItemOwnershipApplySystem`보다 먼저 실행하도록 지정되어 있다. `EndStateApplyEntityCommandBufferSystem`은 그룹 마지막에 구조 변경을 재생한다.
 - `SynchronizationGroup`: 벨트·건물·아이템·자원 공간 인덱스를 재구축한다. `WorldInvariantValidationSystem`은 개발 빌드/Editor에서 그룹 마지막에 검증한다.
 
 같은 그룹 내 개별 시스템의 순서는 위에서 명시한 속성 외에 파일명 숫자나 이 문서의 나열 순서로 보장되지 않는다. 테스트 도우미가 개별 시스템을 직접 업데이트하는 경우와 실제 그룹 실행은 구분해야 한다.
@@ -50,15 +62,16 @@ SimulationSystemGroup
 
 ## 현재 구현 범위와 증거의 한계
 
-### 공사·철거와 품질 개선 연결 (2026-09-30 소스 대조)
+### 공사·철거와 품질 개선 연결 (2026-10-04 운송 제거 반영)
 
-- 배치 Command가 현장을 만들고, `ConstructionLifecycleApplySystem`이 내부 Job을 현장 취소→운송 취소/닫힌 현장 정산→실물 선점 재구성/운송 등록→수령→완공→닫힌 현장의 운송 종료 순서로 연결한다. 해당 Job과 공유 연산은 시스템과 같은 .cs 파일에 둔다. 독립 Material/Cancel/Completion 시스템은 현재 경로가 아니다.
-- 수령 Job은 이전 Stored 버퍼 제거·현장 등록·수량/진행을 직접 적용하고 Owner/렌더 태그/운송 결과를 EndStateApply에 기록한다. 취소는 즉시 Cancelled를 설정해 뒤의 수령/완공을 막고 기존 실물을 반환한다. Completion은 별도 요청 없이 공통 `BuildingLifecycleUtility.SpawnBuilding`을 호출하며 성공 뒤에만 자재/현장 삭제를 기록한다.
-- 2026-10-02 F-003은 세 공급원(Storage/DroneStation/MainFacility), 운송 엔티티 식별과 건별 예약 정산, 중복/재공급/소유 버퍼 인수를 구현했다. 세 타입의 공통 생성 경로는 항상 보관 구성을 갖는다. 등록 당시 공급원과 도착 시 실제 보관자를 구분하며 실제 운송 Producer는 미구현이다. 공개 입력/결과/정리 책임은 [AGENTS.md](../../../AGENTS.md), 구현·검증·한계는 [F-003 기록](../V2%20Quality%20Evaluation%20Plan/Results/F003-Verification.md)을 따른다.
-- 철거 승인과 중복 제거는 `BuildingDemolitionCommandSystem`, 적용·기존 실물 반환·비용 환급은 `BuildingLifecycleApplySystem` 책임이다. 일반 생성·생산물·철거 환급은 `ItemLifecycleUtility`의 초기화를 공유하지만 각 호출자의 ECB·실패 정책은 유지한다.
-- 2026-10-02 F-004는 기존 승인 요청과 입출고 후 소유 버퍼를 공유 조회하여 Ownership의 일반 이전, 공사 수령, 철거 반환과 유효한 Destroy의 적용 대상을 구분했다. 공사 수령만 Storage Apply 뒤로 명시하고 Ownership/Building Lifecycle의 상대 순서는 추가하지 않았다. 정책은 [AGENTS.md](../../../AGENTS.md)의 F-004 계약, 코드·컴파일·EditMode 근거와 남은 미검증 범위는 [검증 기록](../V2%20Quality%20Evaluation%20Plan/Results/F004-Verification.md)을 따른다.
+- 배치 Command가 현장을 만들고 `ConstructionCancelCommandSystem`은 같은 Command에서 취소를 처리한다. 취소와 완공은 단계별로 분리했으며 StateApply의 `ConstructionLifecycleApplySystem`은 완공 Job만 실행한다. 기존 운송 등록·실물 선점·수령·예약 정산·결과 처리 구조는 없다.
+- 취소는 즉시 Cancelled를 설정해 중복 반환을 막고 보관 실물의 Owner·렌더·좌표 복원 및 현장/요청 삭제를 EndCommand에 반영한다. 같은 틱 재배치는 기존 공간 인덱스 점유로 거부하고 Synchronization 이후 새 요청부터 검증한다. StateApply Completion은 도착량/현장 플래그를 확인한 뒤 공통 Spawn 성공 후에만 자재/현장을 EndStateApply에 삭제하며 실패 시 보존한다. 실행 근거는 [취소 Command 이동 검증](../V2%20Quality%20Evaluation%20Plan/Results/ConstructionCancelCommand-Verification.md)을 따른다.
+- `ConstructionSite.Progress` 필드와 생성자 인자는 제거했다. `ConstructionMaterialRequirementElement`의 예약량은 배정·공개 재검사·무효화와 3단계 실물 인계에서 정산하며, DroneTaskLifecycleApplySystem이 실제 공급한 수량을 DeliveredQuantity에 더한다. Storage/DroneStation/MainFacility의 공통 보관 구성은 유지한다. Progress 제거 당시 실행 근거는 [검증 기록](../V2%20Quality%20Evaluation%20Plan/Results/ConstructionProgressRemoval-Verification.md)을 따른다.
+- [F-003 기록](../V2%20Quality%20Evaluation%20Plan/Results/F003-Verification.md)은 2026-10-02 당시 공사 운송 구현과 실행 결과를 보존한 과거 기록이다. 해당 운송 컴포넌트·요청·처리는 2026-10-04 제거되어 현재 구현 근거로 적용하지 않는다. 제거 범위와 새 검증은 [공사 운송 제거 검증 기록](../V2%20Quality%20Evaluation%20Plan/Results/ConstructionTransportRemoval-Verification.md)을 따른다.
+- 철거 승인과 중복 제거는 BuildingDemolitionCommandSystem, 실제 반환/환급/파괴는 BuildingLifecycleApplySystem이 소유한다. EndCommand에서 PendingBuildingDemolition을 게시하고 요청을 모두 삭제한다. Decision은 건물 작업을 중단하며 새 아이템의 건물 입고도 ItemSpawnAdmissionDecisionSystem이 비활성화한다. Item Lifecycle/Ownership은 철거 요청과 상태를 조회하지 않는다. 실행 근거는 [철거 상태·동작 중단 검증](../V2%20Quality%20Evaluation%20Plan/Results/BuildingDemolitionStop-Verification.md)을 따른다.
+- 기존 F-004의 같은 틱 입고/출고와 철거 충돌 처리는 앞단 중단으로 대체했다. Command가 보관 실물의 이전 Transfer와 ProductResult를 소비하고 이후 Decision 후보를 막는다. 활성 Destroy 제외, 기존 내용물 반환/비용 환급 및 일반 생성 실패 계약은 유지한다. [F-004 기록](../V2%20Quality%20Evaluation%20Plan/Results/F004-Verification.md)은 당시 결과를 보존하며 현재 계약은 AGENTS 및 새 철거 상태 검증을 따른다.
 - Footprint는 현장/완공 모두 회전 전 크기를 저장하며 점유 Reader가 한 번 회전한다. 배치는 세 인덱스 Writer를 기다리고, 일반 창고 입고 예약은 품목과 수량을 함께 보관한다. 세부 계약은 [AGENTS.md](../../../AGENTS.md)를 따른다.
-- Validator는 Storage 없는 현장을 포함해 두 소유 버퍼의 중복·실존·Identity·Owner를 검사한다. 진단 파일은 World별 세션/보고 순번으로 구분한다. 검사 강화가 F-003/F-004의 생산 경계 문제 해결을 뜻하지 않는다.
+- Validator는 Storage 없는 현장을 포함해 두 소유 버퍼의 중복·실존·Identity·Owner를 검사한다. 진단 파일은 World별 세션/보고 순번으로 구분한다. 이 검사는 공사 운송·자재 수령을 수행하지 않는다.
 - 이 절은 소스 대조 결과이며 공사 전체·실제 베이킹·Play Mode 성공을 주장하지 않는다. 이슈별 새 검증과 제한은 [품질 개선 Tasks](../V2%20Quality%20Evaluation%20Plan/V2%20Quality%20Improvement%20Tasks.md)에 기록한다.
 
 ### F-037 입력 슬롯 계산·런타임 연결·통합 검증 (2026-09-29 완료)
@@ -95,5 +108,5 @@ SimulationSystemGroup
 아래 항목은 이 문서 최초 작성 시점의 범위 기록이며, 월드 생성은 위 갱신 절을 우선한다.
 
 - Routing 갱신(2026-09-30): `SplitterDecisionSystem`/`MergerDecisionSystem`이 전달 후보를 만들고, `BeltDestinationReservationSystem`이 외부 진입을 승인하며, `RoutingApplySystem`이 이동·커서를 반영하고 결정을 소비한다. 최초 작성 당시의 Routing 런타임 미구현 설명은 현재 적용하지 않는다.
-- 현재 건설 코어와 초기 청크 요청·자원 생성은 구현되어 있다. 전력·드론·연구·게임 UI 및 실제 바닥 청크 렌더링은 아직 구현되지 않았다. `BuildingTypeEnum`에 종류가 정의되어 있는 사실은 해당 기능의 런타임 구현을 뜻하지 않는다. 후속 계획은 상위 `Architecture V2 Tasks.md`를 참조한다.
+- 현재 건설의 배치·현장 취소·완공과 초기 청크 요청·자원 생성은 구현되어 있다. 공사 자재 수령·운송 예약과 전력·드론·연구·게임 UI 및 실제 바닥 청크 렌더링은 현재 구현되어 있지 않다. `BuildingTypeEnum`에 종류가 정의되어 있는 사실은 해당 기능의 런타임 구현을 뜻하지 않는다. 후속 계획은 상위 `Architecture V2 Tasks.md`를 참조한다.
 - 최초 조사 당시 테스트 수와 결과는 현재 테스트 집합의 통과 증거가 아니다. 2026-09-30 품질 개선의 새 컴파일·선별 테스트 결과와 미검증 범위는 품질 개선 Tasks의 해당 이슈에 기록한다. 테스트 메서드가 존재한다는 사실은 현재 통과 증거가 아니다.

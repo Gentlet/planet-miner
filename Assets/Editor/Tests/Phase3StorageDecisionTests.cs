@@ -4,8 +4,9 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Storage/Building 입출력 의사결정 파이프라인 통합 테스트.
-/// 벨트 이동 -> 건물 입고 연계, 다중 외향 벨트 교차 방출, 다중 타일 복합 필터링, 정체 해소 후 방출 재개를 통합 검증.
+/// 역할·목적: 벨트 이동과 건물 입출고 판단의 연결에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 동기화된 창고/벨트/아이템 맵으로 후보·다중 타일 필터·정체 재개를 검사한다. 후보와 실제 StateApply 인계는 구분한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase3StorageDecisionTests : EcsWorldTestFixture
 {
@@ -44,6 +45,7 @@ public class Phase3StorageDecisionTests : EcsWorldTestFixture
 
     private void SyncAllSpatialIndices()
     {
+        // 각 맵 Writer fence를 완료해 메인 스레드와 다음 판단이 같은 동기화 입력을 읽게 한다.
         _beltSpatialSyncHandle.Update(_world.Unmanaged);
         var beltFence = _world.EntityManager.CreateEntityQuery(typeof(BeltSpatialIndexFence)).GetSingletonRW<BeltSpatialIndexFence>();
         beltFence.ValueRW.Complete();

@@ -5,10 +5,9 @@ using Unity.Mathematics;
 using Unity.Transforms;
 
 /// <summary>
-/// Storage 소유권 이전 및 상태 전이 연동 테스트.
-/// 벨트 아이템 -> 창고 적재(버퍼 추가, 소유권 전환, 벨트 비활성화, 공간 인덱스 제외),
-/// 창고 아이템 -> 벨트 방출(버퍼 제거, 소유권 해제, 벨트 활성화 Progress=0, 공간 인덱스 복원),
-/// 슬롯 예약 경합(Reservation) 및 스택 병합 규칙을 종합 검증.
+/// 역할·목적: 저장 입출고의 예약·버퍼·Ownership/공간 등록에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 제한 슬롯과 실물을 준비해 입고 경합·스택 배정·Owner/이동 상태/공간 인덱스의 결과를 검사한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase3StorageOwnershipTests : EcsWorldTestFixture
 {
@@ -49,6 +48,7 @@ public class Phase3StorageOwnershipTests : EcsWorldTestFixture
 
     private void SyncAllSpatialIndices()
     {
+        // Owner/격자 변경과 맵 반영 시점을 구분한다. Fence 완료 이후 공간 입력을 검사한다.
         _beltSpatialSyncHandle.Update(_world.Unmanaged);
         var beltFence = _world.EntityManager.CreateEntityQuery(typeof(BeltSpatialIndexFence)).GetSingletonRW<BeltSpatialIndexFence>();
         beltFence.ValueRW.Complete();

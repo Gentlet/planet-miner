@@ -2,12 +2,12 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 채굴기(Miner)의 물리적/시간적 진행 상태 컴포넌트 (Unmanaged / Blittable).
-/// 
-/// [책임]
-/// - 채굴기의 고유 채굴 속도(MiningSpeed)와 미처리 채굴 작업량(Progress)을 소유.
-/// - 실행 가능한 틱마다 작업량을 누적하고 최대 한 번 1을 차감한다. 초과분은 1 이상 남을 수 있다.
-/// - 단일 원본(Source of Truth)으로 관리되며, Phase 4 Execution 단계에서 안전하게 누적 갱신.
+/// 역할·목적: 채굴 속도와 미처리 누적 채굴 작업량의 영속 원본이다.
+/// 부착 엔티티: BuildingType=Miner인 완공 채굴기 건물이다.
+/// 생성: BuildingLifecycleUtility가 설정 속도와 초기 Progress=0으로 붙인다.
+/// 이용: MinerDecisionSystem(Decision)이 채굴 자격을 판단하고 MinerExecutionSystem(Execution)이 실행 가능한 틱의 작업량을 누적하여 최대 한 번 1을 차감한다.
+/// 제거: 채굴 완료는 누적량 일부 소비이며 컴포넌트는 유지한다. 건물 철거/삭제 시 함께 제거한다.
+/// 출력·자원 조건으로 실행이 막히면 누적량을 보존하고 초과 Progress는 1 이상 남을 수 있다.
 /// </summary>
 public struct MinerState : IComponentData
 {

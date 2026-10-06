@@ -3,16 +3,11 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Phase 1 CommandGroup에서 실행되는 제작기(Crafter) 레시피 변경 요청 처리 시스템.
-/// 
-/// [책임]
-/// - ChangeCrafterRecipeRequest 요청 엔티티를 감지하여 레시피 변경을 원자적으로 수행.
-/// - 1. 기존 진행도 리셋 (Progress = 0, IsCraftingActive = false)
-/// - 2. 잔여 StoredItemElement 재료를 ProductItemElement(출력 버퍼)로 부산물 배출(Byproduct, Slot 1+)
-/// - 3. 새 슬롯 계산 성공 후 Storage/BuildingInputSlotElement/StorageFilter를 함께 갱신 (해제 시 0슬롯/빈 Whitelist)
-/// - 4. SelectedRecipeId와 ActiveRecipeId를 새 레시피 ID로 갱신
-/// - 5. 상태 전환: ProductItemElement에 아이템이 남아있으면 WaitingForByproductOutput, 없으면 Idle (또는 NoRecipe)
-/// - 6. 처리 완료된 ChangeCrafterRecipeRequest 엔티티 파괴 (Consume-on-Apply)
+/// 역할·목적: Command에서 제작 레시피 변경/해제 요청을 검증하고 기존 제작을 중단한다.
+/// 입력·생성자: 외부 ChangeCrafterRecipeRequest, RecipeRegistry/ItemRegistry와 제작기의 입력 구성·재료/생산 버퍼.
+/// 출력·소유권: 상태/진행도·선택 레시피·입력 슬롯/필터/용량을 즉시 갱신하고 잔여 재료를 같은 Owner의 생산 버퍼로 옮긴다. 실물을 재생성하지 않는다.
+/// 이용·정리: 이후 Decision/Execution은 변경된 레시피를 읽는다. 설정 미게시의 선택 요청은 대기하고 검증 실패/처리 요청 삭제는 EndCommand에 기록한다.
+/// 가시화: 정상 게임의 구조 변경은 EndCommand에 재생한다. ECB 시스템이 없는 호출 환경은 임시 ECB를 즉시 재생 후 해제한다.
 /// </summary>
 [UpdateInGroup(typeof(CommandGroup))]
 public partial struct CrafterRecipeCommandSystem : ISystem

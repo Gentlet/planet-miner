@@ -8,7 +8,11 @@ using Unity.Transforms;
 using UnityEngine;
 using UnityEngine.TestTools;
 
-/// <summary>실제 건물 생성물을 사용하는 입력 구성/레시피 변경/입고 회귀 검증.</summary>
+/// <summary>
+/// 역할·목적: 제작기 생성→레시피/슬롯→입고/생산→레시피 변경에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: ECS 프리팹/요청으로 생성한 제작기의 슬롯/필터·Owner·실패 보존을 검사한다. 개별 호출과 정렬 그룹 사례 및 실제 장면 베이킹을 구분한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
+/// </summary>
 public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
 {
     private Entity _recipes;
@@ -479,6 +483,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
 
     private Entity SpawnCrafter(bool withCustomPrefab = false, bool fromConstruction = false)
     {
+        // 직접 스폰과 현장 완공 경로를 분리 호출하여 ECB 이후 생성물의 런타임 초기화를 확인한다.
         Entity source = CreateCrafterSource(withCustomPrefab, fromConstruction);
         if (fromConstruction)
         {
@@ -521,7 +526,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
         if (fromConstruction)
         {
             _entityManager.AddComponentData(source, new BuildingType(BuildingTypeEnum.ConstructionSite));
-            _entityManager.AddComponentData(source, new ConstructionSite(BuildingTypeEnum.Crafter, 1f, ConstructionSiteFlags.None));
+            _entityManager.AddComponentData(source, new ConstructionSite(BuildingTypeEnum.Crafter));
             _entityManager.AddComponentData(source, new GridPosition(new int2(1, 0)));
             _entityManager.AddComponentData(source, new Direction(DirectionEnum.Up));
             _entityManager.AddComponentData(source, new BuildingFootprint(new int2(2, 2)));

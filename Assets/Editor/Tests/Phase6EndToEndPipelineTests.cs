@@ -5,15 +5,9 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Phase 6 물류 및 라우팅 전체 파이프라인 통합 검증 테스트.
-/// 채굴(Miner), 벨트(Belt), 분배(Splitter), 제작(Crafter), 합류(Merger), 창고(Storage)를
-/// 실제 GameSimulationGroup 루트 루프(Phase 1~6 전체 하위 그룹)로 구동하여 종합 검증.
-/// 
-/// [검증 시나리오]
-/// 1. End-to-End 전체 생산·물류·분배 순환 흐름: 채굴 -> 벨트 -> Splitter -> (Crafter 및 Storage A) 분배 및 가공/적재
-/// 2. 복합 목적지 경합 중재: Splitter와 Storage 출고가 단일 공유 벨트 입구를 두고 경합 시 PlacementStamp 순차 승인
-/// 3. 역류 정체 및 정상 복구: 하류 차단 시 Merger -> 중간 벨트 -> Splitter 순차 정체 및 정체 해제 시 자동 재개
-/// 4. 멀티 틱 연속 시뮬레이션 불변식 무결성: 복합 물류망 100틱 연속 가동 중 WorldInvariantValidationSystem 0 Violation
+/// 역할·목적: 복합 생산/물류/라우팅망의 경합·정체 복구에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 수동 채굴/제작/벨트/라우터/창고를 정렬 그룹으로 실행해 생산/소유권/중재/불변식을 검사한다. 실제 장면/렌더/성능 검증은 아니다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase6EndToEndPipelineTests : EcsWorldTestFixture
 {
@@ -151,6 +145,7 @@ public class Phase6EndToEndPipelineTests : EcsWorldTestFixture
 
     private void RunSimulationTicks(int tickCount, float deltaTime = 0.05f)
     {
+        // 전체 그룹으로 반복하여 상류 생산과 하류 정체가 phase 경계를 통해 전달되게 한다.
         for (int i = 0; i < tickCount; i++)
         {
             _elapsedTime += deltaTime;

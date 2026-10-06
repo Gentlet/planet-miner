@@ -2,7 +2,9 @@ using Unity.Burst;
 using Unity.Mathematics;
 
 /// <summary>
-/// 배치 검증과 실제 건물의 채굴·입출고·공간 동기화가 공유하는 점유 크기 계산.
+/// 역할·목적: 배치 검증·채굴·입출고·공간 동기화에서 동일한 회전 footprint를 계산한다.
+/// 입력·출력: 방향 적용 전 기본 크기를 최소 1칸으로 정규화하고 Left/Right이면 축을 교환한 값을 반환한다.
+/// 이용·수명: 각 Reader가 호출하는 순수 계산이며 상태·캐시·엔티티를 만들지 않는다. 반환값을 원본 Size로 저장해 이중 회전하지 않는다.
 /// </summary>
 [BurstCompile]
 public static class BuildingFootprintUtility

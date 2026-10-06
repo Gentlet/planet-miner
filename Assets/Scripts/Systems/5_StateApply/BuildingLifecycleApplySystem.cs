@@ -6,14 +6,11 @@ using Unity.Rendering;
 using Unity.Transforms;
 
 /// <summary>
-/// 완공 건물의 수명주기(생성 및 철거)를 전담하는 시스템.
-/// 
-/// [책임 및 파이프라인 순서]
-/// - StateApplyGroup(Phase 5)에서 실행:
-///   1단계 (Demolish) : Command 검증을 통과한 DemolishBuildingRequest 소비 -> 보관/생산 내용물 월드 방출, 건축 비용 자재 100% 환급 스폰, 벨트 위 아이템 정적 보존, 건물 파괴
-///   2단계 (Spawn)    : SpawnBuildingRequest 소비 -> 프리팹 DB 인스턴스화, 컴포넌트 초기화
-/// - 동일 프레임 [철거 -> 생성]이 대칭적으로 처리되며, 요청 엔티티는 단일 프레임 내에 소비(Consume-on-Apply).
-/// - EndStateApplyEntityCommandBufferSystem을 통해 ECB로 변경을 반영한다. 전체 rollback을 보장하지 않는다.
+/// 역할·목적: 완공 건물의 직접 생성 요청과 Command에서 승인된 철거를 최종 반영한다.
+/// 처리 단계: StateApply, RoutingApplySystem/BuildingItemStorageApplySystem 이후. 입력은 SpawnBuildingRequest, 대상 건물의 PendingBuildingDemolition과 설정/프리팹 DB다.
+/// 출력·소유권: 보관/생산 실물의 월드 반환, 건축 비용 환급 Spawn, 철거 벨트 위 실물 정지, 건물 생성/삭제를 담당한다.
+/// 철거 정책은 Command의 승인 계약을 유지하고 여기서는 BuildingType 소실만 방어한다. 현장 취소/완공은 각각의 공사 소유자가 처리한다.
+/// 정리·가시화: 요청 소비와 건물/승인 상태 삭제 및 구조 변경은 EndStateApply에 확정한다. Job은 철거→벨트 정리→직접 생성 순서로 기록하며 전체 rollback은 보장하지 않는다.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
 [UpdateAfter(typeof(RoutingApplySystem))]
@@ -21,7 +18,7 @@ using Unity.Transforms;
 public partial struct BuildingLifecycleApplySystem : ISystem
 {
 
-    private EntityQuery _demolishQuery;
+    private EntityQuery _pendingDemolitionQuery;
     private EntityQuery _spawnQuery;
     private EntityQuery _beltItemQuery;
     private EntityQuery _buildingPrefabDbQuery;
@@ -40,9 +37,9 @@ public partial struct BuildingLifecycleApplySystem : ISystem
 
     public void OnCreate(ref SystemState state)
     {
-
-        _demolishQuery = SystemAPI.QueryBuilder()
-            .WithAll<DemolishBuildingRequest>()
+        _pendingDemolitionQuery = SystemAPI.QueryBuilder()
+            .WithAll<PendingBuildingDemolition>()
+            .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
             .Build();
 
         _spawnQuery = SystemAPI.QueryBuilder()
@@ -82,10 +79,10 @@ public partial struct BuildingLifecycleApplySystem : ISystem
 
     public void OnUpdate(ref SystemState state)
     {
-        bool hasDemolishRequests = !_demolishQuery.IsEmptyIgnoreFilter;
+        bool hasPendingDemolition = !_pendingDemolitionQuery.IsEmptyIgnoreFilter;
         bool hasSpawnRequests = !_spawnQuery.IsEmptyIgnoreFilter;
 
-        if (!hasDemolishRequests && !hasSpawnRequests)
+        if (!hasPendingDemolition && !hasSpawnRequests)
         {
             return;
         }
@@ -114,8 +111,8 @@ public partial struct BuildingLifecycleApplySystem : ISystem
 
         var currentDep = state.Dependency;
 
-        // 1단계: 철거 요청 일괄 처리
-        if (hasDemolishRequests)
+        // 외부 요청은 이미 EndCommand에 소비됐다. 여기서는 승인 상태만 읽어 실제 반환/삭제를 기록한다.
+        if (hasPendingDemolition)
         {
             var demolishedBeltPositions = new NativeList<int2>(Allocator.TempJob);
 
@@ -135,7 +132,7 @@ public partial struct BuildingLifecycleApplySystem : ISystem
                 ItemPrefabBufferLookup = _itemPrefabBufferLookup,
                 DemolishedBeltPositions = demolishedBeltPositions
             };
-            currentDep = demolishJob.Schedule(_demolishQuery, currentDep);
+            currentDep = demolishJob.Schedule(_pendingDemolitionQuery, currentDep);
 
             // 벨트 철거 시 벨트 위 아이템의 최신 GridPosition을 대조하여 BeltMovementState 안전 비활성화 (공간 인덱스 의존 및 타이밍 오차 배제)
             var cleanupJob = new DemolishBeltItemCleanupJob
@@ -201,7 +198,7 @@ public partial struct DemolishBeltItemCleanupJob : IJobEntity
 }
 
 /// <summary>
-/// DemolishBuildingRequest를 소비하여 완공 건물을 철거하고 내용물 및 건설 재료를 반환하는 단일 워커 Burst Job.
+/// PendingBuildingDemolition 상태를 소비하여 완공 건물을 철거하고 내용물 및 건설 재료를 반환하는 단일 워커 Burst Job.
 /// </summary>
 [BurstCompile]
 public partial struct DemolishBuildingApplyJob : IJobEntity
@@ -233,35 +230,30 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
 
     public NativeList<int2> DemolishedBeltPositions;
 
-    public void Execute(Entity requestEntity, in DemolishBuildingRequest request)
+    public void Execute(Entity buildingEntity, in PendingBuildingDemolition pending)
     {
         // 정책 검증과 중복 제거는 Command에서 끝난다. 여기서는 대상 소실만 방어한다.
-        if (request.TargetBuilding == Entity.Null)
+        if (!BuildingTypeLookup.HasComponent(buildingEntity))
         {
-            ECB.DestroyEntity(requestEntity);
+            ECB.RemoveComponent<PendingBuildingDemolition>(buildingEntity);
             return;
         }
 
-        if (!BuildingTypeLookup.HasComponent(request.TargetBuilding))
-        {
-            ECB.DestroyEntity(requestEntity);
-            return;
-        }
-
-        var buildingType = BuildingTypeLookup[request.TargetBuilding].Type;
+        var buildingType = BuildingTypeLookup[buildingEntity].Type;
 
         // 3. 건물 좌표 확인
         int2 sitePos = int2.zero;
-        if (GridPosLookup.HasComponent(request.TargetBuilding))
+        if (GridPosLookup.HasComponent(buildingEntity))
         {
-            sitePos = GridPosLookup[request.TargetBuilding].Value;
+            sitePos = GridPosLookup[buildingEntity].Value;
         }
         float3 worldPos = new float3(sitePos.x, sitePos.y, 0f);
 
-        // 4. 건물 내부 보관 자재(StoredItemElement) 전수 반환 (WorldItem 전환, DisableRendering 제거, 바닥 방출)
-        if (StoredBufferLookup.HasBuffer(request.TargetBuilding))
+        // 기존 보관품은 새 환급품으로 대체하지 않는다. 같은 실물을 건물 위치에 반환하고
+        // 활성 Destroy 실물은 반환에서 제외해 소비 예정 아이템을 되살리지 않는다.
+        if (StoredBufferLookup.HasBuffer(buildingEntity))
         {
-            var storedItems = StoredBufferLookup[request.TargetBuilding];
+            var storedItems = StoredBufferLookup[buildingEntity];
             for (int i = 0; i < storedItems.Length; i++)
             {
                 Entity item = storedItems[i].ItemEntity;
@@ -283,9 +275,9 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
         }
 
         // 5. 건물 내부 생산품(ProductItemElement) 전수 반환 (WorldItem 전환, DisableRendering 제거, 바닥 방출)
-        if (ProductBufferLookup.HasBuffer(request.TargetBuilding))
+        if (ProductBufferLookup.HasBuffer(buildingEntity))
         {
-            var productItems = ProductBufferLookup[request.TargetBuilding];
+            var productItems = ProductBufferLookup[buildingEntity];
             for (int i = 0; i < productItems.Length; i++)
             {
                 Entity item = productItems[i].ItemEntity;
@@ -312,7 +304,8 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
             DemolishedBeltPositions.Add(sitePos);
         }
 
-        // 7. 건설 재료(건축 비용) 100% 신규 스폰 환급
+        // 기존 내용물 반환과 건축 비용 환급을 구분한다. 비용만 설정 수량대로 새 실물을 만들며
+        // 이전 틱에 생산 과정에서 선소비한 재료까지 추가 보상하지 않는다.
         if (HasConfig && ConfigEntity != Entity.Null && MaterialBufferLookup.HasBuffer(ConfigEntity))
         {
             var materialDb = MaterialBufferLookup[ConfigEntity];
@@ -349,10 +342,9 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
         }
 
         // 8. 건물 엔티티 파괴 (동일 틱 Phase 6 공간 동기화 시 건물 공간 점유 자동 해제)
-        ECB.DestroyEntity(request.TargetBuilding);
+        ECB.DestroyEntity(buildingEntity);
 
-        // 9. 요청 엔티티 소비 (Consume-on-Apply)
-        ECB.DestroyEntity(requestEntity);
+
     }
 
 

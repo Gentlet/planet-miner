@@ -9,9 +9,11 @@ using Unity.Mathematics;
 using UnityEngine;
 
 /// <summary>
-/// Architecture V2 전용 데이터 무결성(Invariant) 검증 시스템.
-/// 모든 6대 Phase의 상태 반영 및 동기화가 완전히 끝난 프레임 맨 마지막(SynchronizationGroup, OrderLast = true)에 실행.
-/// 위반 감지 시 콘솔 에러 출력 없이 파일로 진단 로그를 저장하고 Debug.Break()로 에디터를 일시정지.
+/// 역할·목적: Editor/Development Build에서 Synchronization 마지막에 아이템·벨트·소유 버퍼·자원 및 미소비 요청/결정의 정합성을 검사한다.
+/// 입력·생성자: 여섯 phase가 반영한 ECS 원본과 SpatialSyncSystem의 공간 인덱스. 직접 맵 조회 전 네 Fence를 완료한다.
+/// 출력·소유권: 위반 누적 수와 세션별 진단 파일을 기록하고 Debug.Break를 호출한다. 도메인 상태를 복구하거나 요청을 대신 소비하지 않는다.
+/// 이용·정리: 개발자/테스트가 로그와 누적 수를 확인한다. 검사 주기는 프레임 간격으로 조정하며 임시 검사용 컨테이너는 검사 뒤 해제한다.
+/// 가시화: EndStateApply 재생과 공간 Writer 완료 뒤의 상태만 검사한다. 진단 순번은 누적 위반 수 초기화와 별도로 유지하며 ECB 기록은 없다.
 /// </summary>
 [UpdateInGroup(typeof(SynchronizationGroup), OrderLast = true)]
 public partial class WorldInvariantValidationSystem : SystemBase
@@ -79,22 +81,22 @@ public partial class WorldInvariantValidationSystem : SystemBase
             resourceFenceRw.ValueRW.Complete();
         }
 
-        // Phase 1: Item & Spatial Invariant 검증
+        // 월드 실물과 공간 인덱스의 양방향 정합성.
         ValidateItemAndSpatialInvariants();
 
-        // Phase 1: 미소비(Unconsumed) 1회성 Request 잔류 검증
+        // 정상 소비돼야 하는 일반 이전/삭제 요청의 잔류 검사. 여기서 대신 소비하지 않는다.
         ValidateRequestLifecycleInvariants();
 
-        // Phase 2: Belt & Item Movement Invariant 검증
+        // 벨트 이동 계획 소비와 위치/간격 검사.
         ValidateBeltInvariants();
 
-        // Phase 3: Storage Buffer & Item Invariant 검증
+        // 소유 버퍼/Owner 참조와 보관 슬롯 규칙 검사.
         ValidateStorageInvariants();
 
-        // Phase 3: 미소비 확정 입출력 Decision 잔류 검증
+        // 승인된 입출고/라우팅 결정의 잔류 검사.
         ValidateStorageDecisionInvariants();
 
-        // Phase 4: Resource & Spatial Invariant 검증
+        // 자원 원본과 자원 공간 인덱스의 양방향 정합성.
         ValidateResourceSpatialInvariants();
     }
 
@@ -247,10 +249,10 @@ public partial class WorldInvariantValidationSystem : SystemBase
     }
 
     /// <summary>
-    /// Phase 2 벨트 건물 및 아이템 이동 무결성(Invariant)을 검증.
+    /// 현재 벨트 건물과 실물 이동의 정합성을 Synchronization 마지막에 검증한다.
     /// - 1. 미소비(Unconsumed) 이동 계획(PlannedProgress) 잔류 감시
     /// - 2. 고아 벨트 아이템(벨트 없는 위치에서 활성화된 아이템) 감시
-    /// - 3. 동일 벨트 타일 내 최대 수용량(4개) 초과 및 최소 간격(ItemSpacing 0.25f) 침범 감시
+    /// - 3. GameConstants의 타일 수용량 초과 및 ItemSpacing 침범 감시
     /// - 4. 연속된 타일 경계 횡단 간격(Boundary Gap) 침범 감시
     /// </summary>
     private void ValidateBeltInvariants()
@@ -985,7 +987,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
     }
 
     /// <summary>
-    /// Phase 4 자원 노드(ResourceNode) 및 자원 공간 인덱스(ResourceSpatialIndex) 정합성을 검증.
+    /// 현재 자원 노드(ResourceNode)와 자원 공간 인덱스(ResourceSpatialIndex)의 정합성을 검증한다.
     /// - 1. ResourceNode가 부착된 엔티티가 ResourceSpatialIndex에 올바른 GridPosition으로 등록되어 있는지 검증
     /// - 2. ResourceSpatialIndex에 등록된 엔티티가 월드에 실존하고 ResourceNode를 가지고 있는지 검증
     /// </summary>

@@ -8,7 +8,9 @@ using UnityEngine;
 using UnityEngine.TestTools;
 
 /// <summary>
-/// Task 7.3 공통 건물 생성 경로(BuildingLifecycleApplySystem) 단위/통합 테스트.
+/// 역할·목적: 직접 건물 스폰 요청 소비와 런타임 초기화에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 테스트가 만든 ECS 프리팹/설정/요청으로 컴포넌트·버퍼·기본 footprint·실패 소비를 검사한다. 런타임 UI/자재 운송 Producer는 실행하지 않는다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
 {
@@ -26,6 +28,7 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
 
     private void RunLifecyclePhase()
     {
+        // 요청 소비/인스턴스화의 같은 ECB를 재생한 뒤 공통/종류별 초기 상태를 검사한다.
         Simulation.UpdateAndComplete(_lifecycleSystem);
         Simulation.Playback(_ecbSystem);
     }

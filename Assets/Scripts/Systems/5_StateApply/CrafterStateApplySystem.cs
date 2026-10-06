@@ -2,16 +2,10 @@ using Unity.Burst;
 using Unity.Entities;
 
 /// <summary>
-/// CrafterDecisionSystem이 계산한 상태 전이 결정을 CrafterState에 최종 반영하는 State Owner 시스템.
-///
-/// [책임]
-/// - StateApplyGroup(Phase 5)에서 실행.
-/// - 활성화된 CrafterStateDecision.NextStatus를 CrafterState.Status에 반영.
-/// - Consume-on-Apply 원칙에 따라 반영 후 CrafterStateDecision을 즉시 비활성화.
-///
-/// [Architecture V2]
-/// - Decision: CrafterState Read Only -> CrafterStateDecision.NextStatus 산출 및 활성화
-/// - StateApply: CrafterStateDecision.NextStatus -> CrafterState.Status 확정 후 비활성화
+/// 역할·목적: StateApply에서 제작 Decision의 다음 상태를 영속 CrafterState.Status로 확정한다.
+/// 입력·생성자: CrafterDecisionSystem이 제작기 엔티티에 기록한 활성 CrafterStateDecision.NextStatus.
+/// 출력·소유권: Status만 갱신하며 진행도/활성 제작 여부/재료 소비는 Command와 Execution의 책임을 유지한다.
+/// 정리·가시화: 적용 뒤 결정을 즉시 비활성화하고 다음 Decision/입고 판단이 확정 상태를 읽는다. ECB 구조 변경은 없다.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
 [BurstCompile]

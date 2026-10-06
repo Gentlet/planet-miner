@@ -6,9 +6,9 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Crafter Decision & Execution System 통합 단위/파이프라인 검증 테스트.
-/// - CrafterDecisionSystem: 레시피 유효성, 입력 재료 보유량, 출력 버퍼 수용 공간 판정
-/// - CrafterExecutionSystem: 제작 착수 시 재료 선소비, 진행도 누적, ProductResult 기록
+/// 역할·목적: 제작 판단/진행·다중 부산물·출력 정체에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 레시피/아이템 설정·재료/출력 슬롯을 준비해 비활성 Decision·진행/생산 결과·슬롯별 실물과 차단을 검사한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase5CrafterExecutionTests : EcsWorldTestFixture
 {
@@ -47,6 +47,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
 
     private void RunExecutionPhase(float deltaTime)
     {
+        // 재료 소비/결과 기록의 ECB 경계를 진행한다. 생산 실물 생성은 뒤의 Lifecycle 호출과 구분한다.
         Simulation.Update(_crafterExecutionHandle, deltaTime);
         Simulation.Playback(_endStateApplyEcb);
     }

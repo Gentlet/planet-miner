@@ -13,7 +13,10 @@ public enum ResourcePrefabLoadMode
 }
 
 /// <summary>
-/// 자원 노드 프리팹 데이터베이스 서브씬 Authoring 컴포넌트.
+/// 역할·목적: Inspector 목록 또는 Resources/Prefabs/Resource에서 자원 품목→노드 프리팹 DB를 베이킹한다.
+/// 부착 대상: SubScene의 DB Authoring GameObject. Baker는 별도 DB 엔티티에 ResourcePrefabDatabase/ResourcePrefabElement를 게시한다.
+/// 이용: PrefabDatabaseInitializationSystem의 필수 원형 검사와 ResourceGenerationCommandSystem의 청크 자원 생성이 참조한다.
+/// 수명·경계: 원형 참조만 제공하며 노드 품목/잔량/위치는 ResourceGenerationUtility가 생성 시 초기화한다. DB는 World 동안 불변으로 사용하는 계약이다.
 /// </summary>
 [DisallowMultipleComponent]
 public class ResourcePrefabDatabaseAuthoring : MonoBehaviour
@@ -21,6 +24,7 @@ public class ResourcePrefabDatabaseAuthoring : MonoBehaviour
     [Tooltip("프리팹 로드 방식 설정 (인스펙터 직접 지정 vs Resources 폴더 자동 탐색)")]
     public ResourcePrefabLoadMode LoadMode = ResourcePrefabLoadMode.InspectorList;
 
+    /// <summary>Inspector에서 자원 품목과 노드 원형을 연결하는 베이킹 입력 값. 생성된 자원 엔티티나 잔량 상태가 아니다.</summary>
     [System.Serializable]
     public struct ResourcePrefabEntry
     {
@@ -65,6 +69,7 @@ public class ResourcePrefabDatabaseAuthoring : MonoBehaviour
         }
     }
 
+    /// <summary>선택된 로드 모드의 원형을 Renderable 엔티티 참조로 등록한다. 실제 노드 생성과 필수 DB 검증은 런타임 경계가 담당한다.</summary>
     public class ResourcePrefabDatabaseBaker : Baker<ResourcePrefabDatabaseAuthoring>
     {
         public override void Bake(ResourcePrefabDatabaseAuthoring authoring)

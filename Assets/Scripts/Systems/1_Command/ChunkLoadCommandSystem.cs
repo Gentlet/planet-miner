@@ -3,14 +3,11 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 청크 로드 요청을 소비하여 중복을 O(1)로 제거하고,
-/// 신규 청크를 대기 상태로 등록하고, 이전 EndCommand에서 게시된 완료 알림을 확정하는 수명주기 소유자.
-/// 
-/// [책임]
-/// - CommandGroup(Phase 1)에서 실행되어 모든 외부 청크 로드 요청(초기 부트스트랩, 카메라 이동 등)을 일괄 처리.
-/// - 이미 생성된 청크 좌표는 안전하게 조용히 드롭(Idempotent Drop).
-/// - 대기 중인 요청도 병합하며, 완료 알림이 도착하기 전에는 생성 완료로 취급하지 않음.
-/// - 처리 완료된 요청 버퍼는 Consume-on-Apply 원칙에 따라 즉시 비움(Clear).
+/// 역할·목적: Command에서 청크 로드 요청을 중복 제거하고 청크 생성 수명주기를 소유한다.
+/// 입력·생성자: 초기 부트스트랩/외부 입력의 요청 큐와 ResourceGenerationCommandSystem이 EndCommand에 게시한 완료 알림.
+/// 출력·소유권: GeneratedChunkTracker의 완료 Map/대기 Pending과 준비/완료 버퍼를 갱신한다. 새 좌표는 준비 대기에만 등록한다.
+/// 이용·정리: ResourceGenerationCommandSystem이 준비 버퍼를 소비한다. 요청/완료 알림은 Clear하고 대기는 실제 완료 알림을 받을 때 해제한다.
+/// 가시화: 이 시스템은 직접 엔티티를 스폰하지 않는다. Tracker의 Persistent 집합은 시스템 종료 시 해제하며 아직 대기 중인 청크를 완료로 간주하지 않는다.
 /// </summary>
 [UpdateInGroup(typeof(CommandGroup))]
 public partial struct ChunkLoadCommandSystem : ISystem

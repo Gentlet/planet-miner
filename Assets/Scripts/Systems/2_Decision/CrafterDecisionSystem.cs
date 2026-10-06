@@ -4,26 +4,18 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 제작기(Crafter)의 제작 조건(선택된 레시피, 입력 재료 완비 여부, 출력 버퍼 여유 공간)을 판정하는 의사결정 시스템.
-/// 
-/// [책임]
-/// - DecisionGroup(Phase 2)에서 실행.
-/// - RecipeRegistry 엔티티의 읽기 전용 설정 버퍼에서 선택된 레시피(SelectedRecipeId)를 조회.
-/// - [제작/출력 판정]:
-///   1. 미착수 상태(!IsCraftingActive): StoredItemElement에 레시피 필요 재료가 모두 구비되어 있는지 확인하여 CanStartCraft 결정.
-///   2. 진행 중 상태(IsCraftingActive && Progress < 1.0f): CanAdvance = true 및 NextStatus = Crafting 결정.
-///   3. 완료 상태(IsCraftingActive && Progress >= 1.0f): ProductItemElement에 주생산품/부산품 수용 공간(1스택 한도)이 있는지 검사하여
-///      공간이 있으면 CanProduceOutput = true, 만석이면 NextStatus = WaitingForOutput 결정.
-/// - CrafterState Read Only, Persistent State(Status) 직접 수정 금지.
-/// - 실행 결정은 CrafterDecision, 상태 전이 결정은 CrafterStateDecision으로 분리해 기록.
-/// - CrafterStateDecision은 StateApplyGroup의 CrafterStateApplySystem에서 실제 CrafterState.Status로 반영 후 비활성화.
-/// - CrafterDecision 활성 상태는 Phase 4 Execution 처리 여부만 의미.
+/// 역할·목적: Decision에서 제작 착수·진행·출력 가능 여부와 다음 제작 상태를 판단한다.
+/// 입력·생성자: Command가 확정한 선택 레시피, RecipeRegistry, 기존 재료/생산품과 Execution의 미소비 ProductResult.
+/// 출력·소유권: 제작기의 CrafterDecision/CrafterStateDecision과 enable 상태만 갱신한다. 재료·진행도 원본은 쓰지 않는다.
+/// 이용: CrafterExecutionSystem이 선소비/진행/생산 결과를, CrafterStateApplySystem이 NextStatus를 반영한다.
+/// 정리·가시화: 제작 결정은 다음 틱 갱신하고 상태 결정은 Apply 후 비활성화한다. 미소비 결과와 잔여 부산품은 중복 생산을 차단한다.
 /// </summary>
 [UpdateInGroup(typeof(DecisionGroup))]
 [BurstCompile]
 public partial struct CrafterDecisionSystem : ISystem
 {
     private EntityQuery _crafterQuery;
+    private ComponentLookup<PendingBuildingDemolition> _pendingDemolitionLookup;
     private BufferLookup<RecipeConfigElement> _recipeConfigLookup;
     private BufferLookup<RecipeIngredientElement> _recipeIngredientLookup;
     private BufferLookup<RecipeOutputElement> _recipeOutputLookup;
@@ -32,6 +24,7 @@ public partial struct CrafterDecisionSystem : ISystem
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
+        _pendingDemolitionLookup = state.GetComponentLookup<PendingBuildingDemolition>(true);
         _recipeConfigLookup = state.GetBufferLookup<RecipeConfigElement>(true);
         _recipeIngredientLookup = state.GetBufferLookup<RecipeIngredientElement>(true);
         _recipeOutputLookup = state.GetBufferLookup<RecipeOutputElement>(true);
@@ -57,6 +50,7 @@ public partial struct CrafterDecisionSystem : ISystem
             return;
         }
 
+        _pendingDemolitionLookup.Update(ref state);
         _recipeConfigLookup.Update(ref state);
         _recipeIngredientLookup.Update(ref state);
         _recipeOutputLookup.Update(ref state);
@@ -81,6 +75,7 @@ public partial struct CrafterDecisionSystem : ISystem
         var job = new CrafterDecisionJob
         {
             RecipeRegistryEntity = recipeRegistryEntity,
+            PendingDemolitionLookup = _pendingDemolitionLookup,
             RecipeConfigLookup = _recipeConfigLookup,
             RecipeIngredientLookup = _recipeIngredientLookup,
             RecipeOutputLookup = _recipeOutputLookup,
@@ -102,6 +97,9 @@ public partial struct CrafterDecisionJob : IJobEntity
     public Entity RecipeRegistryEntity;
 
     [ReadOnly]
+    public ComponentLookup<PendingBuildingDemolition> PendingDemolitionLookup;
+
+    [ReadOnly]
     public BufferLookup<RecipeConfigElement> RecipeConfigLookup;
 
     [ReadOnly]
@@ -119,6 +117,7 @@ public partial struct CrafterDecisionJob : IJobEntity
     public BufferLookup<ItemConfigElement> ItemConfigLookup;
 
     public void Execute(
+        Entity building,
         ref CrafterDecision decision,
         EnabledRefRW<CrafterDecision> decisionEnabled,
         ref CrafterStateDecision stateDecision,
@@ -128,6 +127,20 @@ public partial struct CrafterDecisionJob : IJobEntity
         in DynamicBuffer<ProductItemElement> productItems,
         in DynamicBuffer<ProductResult> productResults)
     {
+        if (PendingDemolitionLookup.HasComponent(building))
+        {
+            decision.CanCraft = false;
+            decision.CanStartCraft = false;
+            decision.CanAdvance = false;
+            decision.CanProduceOutput = false;
+            decision.RecipeId = state.SelectedRecipeId;
+            decision.RecipeIndex = -1;
+            stateDecision.NextStatus = state.Status;
+            stateDecisionEnabled.ValueRW = false;
+            decisionEnabled.ValueRW = false;
+            return;
+        }
+
         // 0. 부산물/잔여 배출물 대기 상태 처리 (WaitingForByproductOutput)
         if (state.Status == CrafterStatusEnum.WaitingForByproductOutput)
         {
@@ -233,6 +246,8 @@ public partial struct CrafterDecisionJob : IJobEntity
             }
         }
 
+        // 이번 Execution에서 처음 완료될 진행도도 현재 Decision에서는 진행 중이다.
+        // 출력 승인은 Progress가 완료된 상태를 다음 Decision이 읽을 때 정하며, 출력 전체 공간을 확보한 뒤 결과를 기록한다.
         // 3. 제작 진행 상태에 따른 의사결정 분기
         if (state.IsCraftingActive)
         {

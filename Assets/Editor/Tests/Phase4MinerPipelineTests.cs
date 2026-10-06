@@ -4,10 +4,9 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Miner Decision & Execution System 통합 파이프라인 검증 테스트 (내부 버퍼 모델).
-/// - MinerDecisionSystem: 하부 자원 감지, 내부 버퍼 여유 검사, 다중 자원 우선순위
-/// - MinerExecutionSystem: 진행도 누적, 채굴 완료 시 ProductResult 기록, 자원 차감 및 고갈 파괴
-/// - BuildingItemOutput 파이프라인 연계: 채굴기 버퍼의 아이템이 외향 벨트로 정상 방출되는 전체 2단계 파이프라인 검증
+/// 역할·목적: 채굴 판단/진행·자원 소비·생산 결과의 실물 생성에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 자원/채굴기/버퍼/시간 입력으로 종류 충돌·무한 자원·스택 경계·delta time 상한을 검사한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase4MinerPipelineTests : EcsWorldTestFixture
 {
@@ -64,6 +63,7 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
 
     private void RunStateApplyPhase()
     {
+        // 생산 결과 소비·실물 생성·소유권의 ECB 경계를 진행한다. Execution만으로 실체화를 검사하지 않는다.
         // 1. 직전 Phase에서 기록된 구조적 변경 반영
         _endStateApplyEcb.Update();
 

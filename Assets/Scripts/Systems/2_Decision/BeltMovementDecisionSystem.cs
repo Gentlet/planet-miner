@@ -5,16 +5,11 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 /// <summary>
-/// 벨트 위 아이템의 이동 가능 거리를 계산하고 막힘(Backpressure) 상태를 판정하는 의사결정 시스템.
-/// 
-/// [책임]
-/// - DecisionGroup(Phase 2)에서 실행.
-/// - 현재 벨트의 속도, 선행 아이템과의 간격(ItemSpacing), 다음 타일의 벨트 유무 및 정체 여부를 계산하여
-///   이번 프레임에 전진할 거리인 PlannedMovement와 IsBlocked 플래그를 BeltMovementDecision에 기록.
-/// - [상태-의사결정 분리]: 상태 컴포넌트(BeltMovementState)는 오직 읽기(in)만 수행하고,
-///   산출물은 BeltMovementDecision에 기록하고 BeltMovementState는 읽기 전용으로 유지.
-/// - [엄격한 책임 분리]: 이 시스템은 좌표나 진행률(Progress, GridPosition)을 수정하지 않으며,
-///   실제 위치 반영은 ExecutionGroup의 BeltMovementExecutionSystem에서 수행.
+/// 역할·목적: Decision에서 활성 월드 아이템이 벨트 위에서 전진할 거리와 정체 여부를 계산한다.
+/// 입력·생성자: Synchronization의 벨트/아이템 인덱스, 이동 상태, 소유권과 Command의 철거 승인 상태.
+/// 출력·소유권: 아이템의 BeltMovementDecision.PlannedProgress/IsBlocked만 갱신한다. 위치·진행도 원본은 쓰지 않는다.
+/// 이용·정리: BeltMovementExecutionSystem이 계획을 적용하고 PlannedProgress를 소비한다. 결정 컴포넌트는 실물에 남는다.
+/// 공간 인덱스 Reader를 Fence에 등록하며 다음 셀에 벨트가 없으면 현재 셀 끝까지만 전진한다. ECB 구조 변경은 없다.
 /// </summary>
 [UpdateInGroup(typeof(DecisionGroup))]
 [BurstCompile]
@@ -22,12 +17,14 @@ public partial struct BeltMovementDecisionSystem : ISystem
 {
     private ComponentLookup<BeltMovementState> _beltMovementStateLookup;
     private ComponentLookup<ItemOwnership> _itemOwnershipLookup;
+    private ComponentLookup<PendingBuildingDemolition> _pendingBuildingDemolitionLookup;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         _beltMovementStateLookup = state.GetComponentLookup<BeltMovementState>(true);
         _itemOwnershipLookup = state.GetComponentLookup<ItemOwnership>(true);
+        _pendingBuildingDemolitionLookup = state.GetComponentLookup<PendingBuildingDemolition>(true);
     }
 
     [BurstCompile]
@@ -59,6 +56,7 @@ public partial struct BeltMovementDecisionSystem : ISystem
 
         _beltMovementStateLookup.Update(ref state);
         _itemOwnershipLookup.Update(ref state);
+        _pendingBuildingDemolitionLookup.Update(ref state);
 
         var job = new BeltMovementDecisionJob
         {
@@ -66,7 +64,8 @@ public partial struct BeltMovementDecisionSystem : ISystem
             BeltMap = beltIndex.Map,
             ItemMap = itemIndex.Map,
             BeltMovementStateLookup = _beltMovementStateLookup,
-            ItemOwnershipLookup = _itemOwnershipLookup
+            ItemOwnershipLookup = _itemOwnershipLookup,
+            PendingBuildingDemolitionLookup = _pendingBuildingDemolitionLookup
         };
 
         // Reader 의존성: Belt 및 Item의 마지막 Writer가 끝난 뒤 읽기 실행
@@ -102,6 +101,9 @@ public partial struct BeltMovementDecisionJob : IJobEntity
     [ReadOnly]
     public ComponentLookup<ItemOwnership> ItemOwnershipLookup;
 
+    [ReadOnly]
+    public ComponentLookup<PendingBuildingDemolition> PendingBuildingDemolitionLookup;
+
     public void Execute(
         Entity entity,
         ref BeltMovementDecision decision,
@@ -119,6 +121,14 @@ public partial struct BeltMovementDecisionJob : IJobEntity
 
         // 2. 현재 타일에 벨트가 존재하지 않으면 이동 불가 (바닥에 멈춤)
         if (!BeltMap.TryGetValue(gridPos.Value, out BeltInfo currentBelt))
+        {
+            decision.PlannedProgress = 0.0f;
+            decision.IsBlocked = true;
+            return;
+        }
+
+        // Command에서 철거가 승인된 벨트는 공간 인덱스에 남아 있어도 동작하지 않는다.
+        if (PendingBuildingDemolitionLookup.HasComponent(currentBelt.Entity))
         {
             decision.PlannedProgress = 0.0f;
             decision.IsBlocked = true;
@@ -176,6 +186,16 @@ public partial struct BeltMovementDecisionJob : IJobEntity
             float planned = math.min(desiredMove, distanceToTileEnd);
             decision.PlannedProgress = planned;
             decision.IsBlocked = (planned < desiredMove - GameConstants.AlignmentEpsilon || distanceToTileEnd <= GameConstants.AlignmentEpsilon);
+            return;
+        }
+
+        if (PendingBuildingDemolitionLookup.HasComponent(nextBelt.Entity))
+        {
+            // Execution은 인덱스의 벨트로 진행도 1에서 넘어가므로 경계 직전에 멈춘다.
+            float distanceBeforeBoundary = math.max(0.0f, (1.0f - GameConstants.AlignmentEpsilon) - state.Progress);
+            float planned = math.min(desiredMove, distanceBeforeBoundary);
+            decision.PlannedProgress = planned;
+            decision.IsBlocked = (planned < desiredMove - GameConstants.AlignmentEpsilon || distanceBeforeBoundary <= GameConstants.AlignmentEpsilon);
             return;
         }
 

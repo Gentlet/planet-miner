@@ -4,8 +4,11 @@ using Unity.Mathematics;
 using Unity.Transforms;
 
 /// <summary>
-/// 월드 시드 및 청크 좌표 기반의 결정론적(Deterministic) 자원 광맥 배치 계산 유틸리티.
-/// 청크 경계를 넘나드는 광맥(Cross-chunk patches)도 청크 로드 순서와 무관하게 일관되게 생성합니다.
+/// 역할·목적: 시드와 후보 청크/자원 종류로 광맥을 계산하고 타깃 청크 안의 자원 실물만 생성 기록한다.
+/// 입력·출력: 자원 설정과 등록 프리팹/해결된 참조 배열을 읽어 위치·품목·잔량·Transform을 호출자의 ECB에 기록한다.
+/// 이용: ResourceGenerationCommandSystem이 청크 생성 요청에서 호출한다. 필요한 프리팹 조회 실패는 생성 기록 전에 false로 반환한다.
+/// 수명·경계: 후보별 RNG는 시드 해시로 재생성하고 주변 후보 청크를 평가하므로 로드 순서가 광맥 경계를 바꾸지 않는다.
+/// 임시 참조 배열은 호출 범위에서 Dispose하며 자원 생성은 EndCommand Playback에 확정한다.
 /// </summary>
 public static class ResourceGenerationUtility
 {
@@ -143,6 +146,7 @@ public static class ResourceGenerationUtility
         if (!IsValidConfig(config))
             return;
 
+        // 같은 후보 광맥의 난수 흐름을 타깃 청크마다 재현한다. 어느 청크를 먼저 요청했는지 전역 RNG에 의존하지 않는다.
         var random = new Random(HashSeed(worldSeed, candidateChunk, config.ResourceType));
 
         if (random.NextFloat() > math.saturate(config.Weight))
@@ -173,6 +177,7 @@ public static class ResourceGenerationUtility
 
                 int2 cell = patchCenter + offset;
 
+                // 광맥 전체를 동일하게 계산하되 이번 청크 부분만 실체화한다. 설정/광맥이 겹친 셀은 첫 품목 하나만 생성한다.
                 if (!ChunkUtility.IsInsideChunk(cell, targetChunkCoord) || !occupied.Add(cell))
                     continue;
 

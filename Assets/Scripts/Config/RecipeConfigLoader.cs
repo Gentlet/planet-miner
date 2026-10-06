@@ -5,12 +5,14 @@ using UnityEngine;
 
 namespace PlanetMiner.Config
 {
+    /// <summary>레시피 JSON의 최상위 목록 DTO. 파싱용 managed 입력이며 ECS 레지스트리 원본이 아니다.</summary>
     [Serializable]
     public class RecipeConfigJsonData
     {
         public List<RecipeJsonEntry> recipes = new List<RecipeJsonEntry>();
     }
 
+    /// <summary>레시피 ID·주생산품·조건·재료·부산물의 JSON 입력. 출력/재료는 게시 전 평탄한 목록 범위로 변환한다.</summary>
     [Serializable]
     public class RecipeJsonEntry
     {
@@ -23,6 +25,7 @@ namespace PlanetMiner.Config
         public List<RecipeOutputJsonEntry> byproducts = new List<RecipeOutputJsonEntry>();
     }
 
+    /// <summary>품목 문자열과 재료 요구량의 파싱 입력. 제작기의 실제 보관 실물이나 소비 결과가 아니다.</summary>
     [Serializable]
     public class RecipeIngredientJsonEntry
     {
@@ -30,6 +33,7 @@ namespace PlanetMiner.Config
         public int amount = 1;
     }
 
+    /// <summary>품목 문자열과 부산물 수량의 파싱 입력. 생산 결과/실물 생성 요청과 구분한다.</summary>
     [Serializable]
     public class RecipeOutputJsonEntry
     {
@@ -37,7 +41,10 @@ namespace PlanetMiner.Config
         public int amount = 1;
     }
 
-    /// <summary>게시 전 파싱 결과. 일반 C# 목록이며 별도의 unmanaged 메모리를 소유하지 않는다.</summary>
+    /// <summary>
+    /// 게시 전 파싱 결과의 레시피/재료/출력 목록. RecipeConfigLoader가 만들고 PublishConfig가 ECS 버퍼로 복사한다.
+    /// managed 입력이며 별도 unmanaged 메모리나 ECS 엔티티에 부착되는 영속 상태가 아니다.
+    /// </summary>
     public sealed class RecipeConfigData
     {
         public readonly List<RecipeConfigElement> Recipes = new List<RecipeConfigElement>();
@@ -45,7 +52,13 @@ namespace PlanetMiner.Config
         public readonly List<RecipeOutputElement> Outputs = new List<RecipeOutputElement>();
     }
 
-    /// <summary>기존 JSON 해석과 기본값을 유지하며 레시피를 World 소유 버퍼로 한 번 게시한다.</summary>
+    /// <summary>
+    /// 역할·목적: Resources 레시피 JSON을 해석해 재료/출력 범위를 만들고 World 소유 버퍼에 한 번 게시한다.
+    /// conditions는 현재 DTO 입력 필드만 있으며 비트 변환은 연결하지 않고 ConditionFlags=0으로 게시한다.
+    /// 입력·출력: Resources 누락/빈 자료 또는 null 파싱 결과는 기존 기본 레시피를 사용한다. 게시 전 범위를 검증한다.
+    /// 이용: RecipeInitSystem(Initialization)과 설정 테스트가 호출한다. 런타임 Reader는 RecipeRegistry와 ECS 버퍼를 사용한다.
+    /// 수명·실패: 기존 레지스트리는 교체하지 않는다. 복사 중 실패하면 이번에 만든 미완성 엔티티만 회수하고 예외를 전달한다.
+    /// </summary>
     public static class RecipeConfigLoader
     {
         public const string DefaultResourcePath = "Config/CrafterRecipeConfig";
@@ -176,6 +189,7 @@ namespace PlanetMiner.Config
                 throw new ArgumentNullException(nameof(config));
             }
 
+            // 원본 목록의 범위를 검증한 뒤에만 World 수명 레지스트리를 만든다. 잘못된 평탄화 범위를 런타임 Reader에 게시하지 않는다.
             ValidateRanges(config);
             Entity registryEntity = entityManager.CreateEntity(
                 typeof(RecipeRegistry), typeof(RecipeConfigElement),

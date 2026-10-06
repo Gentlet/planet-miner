@@ -2,18 +2,16 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Rendering;
+using Unity.Transforms;
+using Unity.Mathematics;
 
 /// <summary>
-/// 아이템 소유권 상태 적용 시스템 (State Owner).
-/// 
-/// [책임]
-/// - StateApplyGroup(Phase 5)에서 실행.
-/// - TransferOwnershipRequest를 처리하여 ItemOwnership의 단일 원본(Source of Truth)을 갱신.
-/// - 소유권 전환(수납 <-> 방출)에 따라 DisableRendering 컴포넌트를 추가/제거하여 렌더링 표시 상태 동기화.
-/// - 단일 워커 Burst Job(ItemOwnershipApplyJob)으로 소유권 변경 순차 적용.
-/// - Consume-on-Apply 원칙에 따라 처리 즉시 TransferOwnershipRequest를 비활성화.
-/// - 처리 표시는 EndStateApply까지 유지하여 다른 인계 경계가 같은 틱의 Transfer를 식별한다.
-/// - Destroy 대상과 철거 소유 버퍼에 남은 실물은 요청만 소비하고 최종 변경을 해당 수명주기 경로에 맡긴다.
+/// 역할·목적: 아이템 Owner 원본과 소유권에 따른 렌더 상태를 반영하는 공통 실물 소유자.
+/// 처리 단계: StateApply. 일반 TransferOwnershipRequest는 단일 워커 Job으로 적용하며 선행 저장/라우팅 경계가 버퍼·위치를 정한다.
+/// 출력·소유권: 일반 요청은 Owner/렌더를 반영하고, TryTransferItem은 성공 실물의 보관 버퍼·Owner·위치·벨트 정지·렌더를 함께 반영한다.
+/// DroneTaskLifecycleApplySystem은 일반 Ownership 이후 이 API를 호출하며 품목·수량·대상·슬롯 선택과 드론 정산은 호출자가 담당한다.
+/// 정리·가시화: Transfer는 처리 후 비활성화한다. 렌더의 구조 변경은 EndStateApply, 일반 DestroyItemRequest 실물 삭제는 ItemLifecycleApplySystem이 담당한다.
+/// 활성 Destroy 실물은 이전하지 않으며 철거 건물의 이전 Transfer 차단은 Command가 담당한다.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
 [BurstCompile]
@@ -21,27 +19,19 @@ public partial struct ItemOwnershipApplySystem : ISystem
 {
     private EntityStorageInfoLookup _entityStorageInfoLookup;
     private ComponentLookup<DestroyItemRequest> _destroyRequestLookup;
-    private BufferLookup<StoredItemElement> _storedBufferLookup;
-    private BufferLookup<ProductItemElement> _productBufferLookup;
     private EntityQuery _requestQuery;
-    private EntityQuery _demolishQuery;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         _entityStorageInfoLookup = state.GetEntityStorageInfoLookup();
         _destroyRequestLookup = state.GetComponentLookup<DestroyItemRequest>(true);
-        _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
-        _productBufferLookup = state.GetBufferLookup<ProductItemElement>(true);
 
         _requestQuery = SystemAPI.QueryBuilder()
             .WithAllRW<ItemOwnership>()
             .WithAllRW<TransferOwnershipRequest>()
             .Build();
 
-        _demolishQuery = SystemAPI.QueryBuilder()
-            .WithAll<DemolishBuildingRequest>()
-            .Build();
     }
 
     [BurstCompile]
@@ -53,27 +43,139 @@ public partial struct ItemOwnershipApplySystem : ISystem
     {
         _entityStorageInfoLookup.Update(ref state);
         _destroyRequestLookup.Update(ref state);
-        _storedBufferLookup.Update(ref state);
-        _productBufferLookup.Update(ref state);
 
         var ecbSystem = state.World.GetOrCreateSystemManaged<EndStateApplyEntityCommandBufferSystem>();
         var ecb = ecbSystem.CreateCommandBuffer();
-        var demolitionRequests = _demolishQuery.ToComponentDataListAsync<DemolishBuildingRequest>(
-            Allocator.TempJob, state.Dependency, out var demolitionRequestsHandle);
-
         var job = new ItemOwnershipApplyJob
         {
             EntityStorageInfoLookup = _entityStorageInfoLookup,
             DestroyRequestLookup = _destroyRequestLookup,
-            StoredBufferLookup = _storedBufferLookup,
-            ProductBufferLookup = _productBufferLookup,
-            DemolitionRequests = demolitionRequests,
             ECB = ecb
         };
 
-        var handle = job.Schedule(_requestQuery, demolitionRequestsHandle);
-        state.Dependency = demolitionRequests.Dispose(handle);
+        var handle = job.Schedule(_requestQuery, state.Dependency);
+        state.Dependency = handle;
         ecbSystem.AddJobHandleForProducer(state.Dependency);
+    }
+
+    /// <summary>
+    /// 활성 일반 Transfer의 예정 소유자를 포함한 조회 값. ItemOwnership의 원본을 여기서 변경하지 않는다.
+    /// TryTransferItem은 별도로 실제 Owner 일치를 검사하므로 예정 소유자만 보고 실물을 중복 이전하지 않는다.
+    /// </summary>
+    public static Entity EffectiveOwner(EntityManager manager, Entity item)
+    {
+        if (!manager.Exists(item)) return Entity.Null;
+        if (!manager.HasComponent<ItemOwnership>(item)) return Entity.Null;
+        if (manager.HasComponent<TransferOwnershipRequest>(item) &&
+            manager.IsComponentEnabled<TransferOwnershipRequest>(item))
+        {
+            return manager.GetComponentData<TransferOwnershipRequest>(item).TargetOwner;
+        }
+        return manager.GetComponentData<ItemOwnership>(item).Owner;
+    }
+
+    /// <summary>계획의 실물이 아직 존재하며 예상 소유자에게 있는지 확인한다.</summary>
+    public static bool CanTransferItem(EntityManager manager, Entity item, ItemTypeEnum type, Entity expectedOwner)
+    {
+        if (!IsActiveTransferEntity(manager, item)) return false;
+        if (!manager.HasComponent<ItemIdentity>(item)) return false;
+        if (!manager.HasComponent<ItemOwnership>(item)) return false;
+        if (!manager.HasComponent<GridPosition>(item)) return false;
+        if (manager.HasComponent<DestroyItemRequest>(item) &&
+            manager.IsComponentEnabled<DestroyItemRequest>(item)) return false;
+        return manager.GetComponentData<ItemIdentity>(item).Type == type &&
+               EffectiveOwner(manager, item) == expectedOwner;
+    }
+
+    /// <summary>
+    /// 일반 이전 요청 적용 이후 호출하는 공통 실물 반영 경계.
+    /// 수량·대상·슬롯 선택은 호출자가 소유하며, 성공한 한 실물의 버퍼·소유권·위치를 함께 반영한다.
+    /// 구조 변경은 같은 EndStateApply ECB에 기록한다. 새 Transfer 요청을 다시 발행하지 않는다.
+    /// </summary>
+    public static bool TryTransferItem(EntityManager manager, Entity item, ItemTypeEnum type,
+        Entity sourceOwner, Entity targetOwner, int slotIndex, int2 position, EntityCommandBuffer ecb)
+    {
+        if (sourceOwner == targetOwner) return false;
+        if (!CanTransferItem(manager, item, type, sourceOwner)) return false;
+        var ownership = manager.GetComponentData<ItemOwnership>(item);
+        // 조회용 예정 소유자만 일치하는 상태는 아직 공통 반영 경계를 지난 실물이 아니다.
+        if (ownership.Owner != sourceOwner) return false;
+        int sourceIndex = -1;
+        if (sourceOwner != Entity.Null)
+        {
+            if (!IsActiveTransferEntity(manager, sourceOwner)) return false;
+            if (!manager.HasBuffer<StoredItemElement>(sourceOwner)) return false;
+            sourceIndex = FindStoredItem(manager.GetBuffer<StoredItemElement>(sourceOwner, true), item, type);
+            if (sourceIndex < 0) return false;
+        }
+        // 버퍼를 쓰기 전에 출발 참조의 유일성과 도착 버퍼/슬롯/중복을 모두 확인한다.
+        // 실패 시 출발 버퍼만 제거된 실물이 남지 않도록 검사를 실제 변경보다 먼저 끝낸다.
+        if (targetOwner != Entity.Null)
+        {
+            if (!IsActiveTransferEntity(manager, targetOwner)) return false;
+            if (!manager.HasBuffer<StoredItemElement>(targetOwner)) return false;
+            if (slotIndex < 0) return false;
+            if (ContainsStoredItem(manager.GetBuffer<StoredItemElement>(targetOwner, true), item)) return false;
+        }
+
+        // 아이템 엔티티를 재생성하지 않고 같은 실물의 출발/도착 참조와 Owner를 바꾼다.
+        // 인계 수량은 이 API의 성공 횟수로 호출자가 정산하며 새 Transfer 요청을 중복 발행하지 않는다.
+        if (sourceOwner != Entity.Null)
+            manager.GetBuffer<StoredItemElement>(sourceOwner).RemoveAt(sourceIndex);
+        if (targetOwner != Entity.Null)
+        {
+            manager.GetBuffer<StoredItemElement>(targetOwner).Add(new StoredItemElement
+            {
+                ItemEntity = item, ItemType = type, SlotIndex = slotIndex
+            });
+        }
+        manager.SetComponentData(item, new GridPosition(position));
+        if (manager.HasComponent<LocalTransform>(item))
+        {
+            var transform = manager.GetComponentData<LocalTransform>(item);
+            transform.Position = new float3(position.x, position.y, transform.Position.z);
+            manager.SetComponentData(item, transform);
+        }
+        if (manager.HasComponent<BeltMovementState>(item))
+            manager.SetComponentEnabled<BeltMovementState>(item, false);
+
+        // 실물 값은 즉시 반영하고 렌더 태그의 구조 변경만 같은 EndStateApply ECB에 기록한다.
+        // 월드 회수는 숨기고 월드 방출은 표시한다. 수납 장소 간 이동은 기존 숨김을 유지한다.
+        if (sourceOwner == Entity.Null) ecb.AddComponent<DisableRendering>(item);
+        else if (targetOwner == Entity.Null) ecb.RemoveComponent<DisableRendering>(item);
+        manager.SetComponentData(item, targetOwner == Entity.Null
+            ? ItemOwnership.WorldItem : ItemOwnership.Stored(targetOwner));
+        if (manager.HasComponent<TransferOwnershipRequest>(item))
+            manager.SetComponentEnabled<TransferOwnershipRequest>(item, false);
+        return true;
+    }
+
+    private static bool IsActiveTransferEntity(EntityManager manager, Entity entity)
+    {
+        if (entity == Entity.Null) return false;
+        if (!manager.Exists(entity)) return false;
+        return !manager.HasComponent<Disabled>(entity) && !manager.HasComponent<Prefab>(entity);
+    }
+
+    private static int FindStoredItem(DynamicBuffer<StoredItemElement> items, Entity item, ItemTypeEnum type)
+    {
+        int index = -1;
+        for (int i = 0; i < items.Length; i++)
+        {
+            if (items[i].ItemEntity != item) continue;
+            if (index >= 0 || items[i].ItemType != type) return -1;
+            index = i;
+        }
+        return index;
+    }
+
+    private static bool ContainsStoredItem(DynamicBuffer<StoredItemElement> items, Entity item)
+    {
+        for (int i = 0; i < items.Length; i++)
+        {
+            if (items[i].ItemEntity == item) return true;
+        }
+        return false;
     }
 }
 
@@ -87,9 +189,6 @@ public partial struct ItemOwnershipApplyJob : IJobEntity
     public EntityStorageInfoLookup EntityStorageInfoLookup;
 
     [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyRequestLookup;
-    [ReadOnly] public BufferLookup<StoredItemElement> StoredBufferLookup;
-    [ReadOnly] public BufferLookup<ProductItemElement> ProductBufferLookup;
-    [ReadOnly] public NativeList<DemolishBuildingRequest> DemolitionRequests;
 
     public EntityCommandBuffer ECB;
 
@@ -102,14 +201,6 @@ public partial struct ItemOwnershipApplyJob : IJobEntity
         if (DestroyRequestLookup.HasComponent(entity) && DestroyRequestLookup.IsComponentEnabled(entity))
         {
             requestEnabled.ValueRW = false;
-            return;
-        }
-
-        // 입출고 적용 후에도 철거 대상 버퍼에 남은 실물은 철거 경로만 최종 반환한다.
-        if (DemolishBuildingRequestLookup.ContainsBufferedItem(
-                entity, DemolitionRequests, StoredBufferLookup, ProductBufferLookup))
-        {
-            ConsumeRequest(entity, request, requestEnabled);
             return;
         }
 
@@ -135,20 +226,6 @@ public partial struct ItemOwnershipApplyJob : IJobEntity
         }
         // 수신자가 유효하지 않은(파괴된) 유령 엔티티인 경우 소유권 변경을 무시하고 Drop
 
-        ConsumeRequest(entity, request, requestEnabled);
-    }
-
-    private void ConsumeRequest(Entity entity, RefRW<TransferOwnershipRequest> request,
-        EnabledRefRW<TransferOwnershipRequest> requestEnabled)
-    {
-        var consumedRequest = request.ValueRO;
-        consumedRequest.ProcessedInStateApply = true;
-        request.ValueRW = consumedRequest;
         requestEnabled.ValueRW = false;
-
-        // 표시의 수명은 현재 StateApply뿐이다. 다음 틱의 정상 인계를 막지 않는다.
-        consumedRequest.ProcessedInStateApply = false;
-        ECB.SetComponent(entity, consumedRequest);
     }
 }
-

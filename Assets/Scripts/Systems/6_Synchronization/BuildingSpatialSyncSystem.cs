@@ -5,15 +5,11 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 /// <summary>
-/// 월드의 건물 엔티티들을 BuildingSpatialIndex에 동기화하는 시스템.
-/// 
-/// [책임]
-/// - SynchronizationGroup(Phase 6)에서 실행되어 비동기 잡 체인으로 공간 인덱스를 Clear하고
-///   현재 월드에 배치된 유효한 건물([BuildingType, BuildingFootprint, GridPosition, Direction])을
-///   회전 스왑이 적용된 다중 타일 단위로 일괄 등록.
-/// - BuildingSpatialIndexFence를 통해 이전 Phase의 Reader 잡들이 모두 완료된 후 쓰기를 시작하며,
-///   Map.Capacity 확장과 같은 메인 스레드 재할당 시에만 제한적으로 Complete()를 호출.
-/// - ISystem/Burst 기반 병렬 Job으로 Spatial Index 갱신.
+/// 역할·목적: Synchronization에서 현장/완공 건물의 회전 footprint 전체 점유를 BuildingSpatialIndex로 재구축한다.
+/// 입력·생성자: 배치/완공/철거가 반영한 BuildingType·방향 적용 전 BuildingFootprint·GridPosition·Direction.
+/// 출력·소유권: 시스템 소유 Persistent 맵을 Clear→병렬 등록하고 Fence에 최종 Writer를 게시한다. 건물 원본을 변경하지 않는다.
+/// 이용·가시화: 다음 배치 검증/건물 입고 판단이 Fence를 통해 현재 점유를 읽는다. Command 삭제 직후의 이전 점유는 이 재구축 전까지 남는다.
+/// 정리: 대상이 없어도 Clear한다. 용량은 건물 수가 아닌 점유 면적 합으로 확보하고 재할당/종료 전 Fence를 완료한 뒤 종료 시 맵을 Dispose한다.
 /// </summary>
 [UpdateInGroup(typeof(SynchronizationGroup))]
 [BurstCompile]
@@ -95,6 +91,7 @@ public partial struct BuildingSpatialSyncSystem : ISystem
             index.Map.Capacity = math.max(1024, requiredCapacity * 2);
         }
 
+        // 회전은 footprint 면적을 바꾸지 않는다. 등록은 회전된 셀을 사용하며 맵 Clear는 기존 Reader/Writer를 Fence로 기다린다.
         // Writer 의존성: 마지막 Writer와 이전 모든 Readers 완료 대기
         var writerDep = fence.GetWriterDependency();
 

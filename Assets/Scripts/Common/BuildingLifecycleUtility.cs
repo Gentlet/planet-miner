@@ -4,12 +4,10 @@ using Unity.Mathematics;
 using Unity.Transforms;
 
 /// <summary>
-/// 완공 건물 엔티티 생성 및 컴포넌트 초기화를 공통으로 처리하는 유틸리티 (Unmanaged / Burst 호환).
-/// 
-/// [책임]
-/// - BuildingLifecycleApplySystem(SpawnBuildingRequest 소비) 및 ConstructionLifecycleApplySystem(현장 완공 전환)에서 공유.
-/// - 등록된 프리팹만 인스턴스화한다. DB/항목 누락은 Null 반환 및 시뮬레이션 중단.
-/// - 공통 컴포넌트(BuildingType, Footprint, GridPosition, Direction, Stamp, LocalTransform) 및 타입별 필수 컴포넌트 원자적 주입.
+/// 역할·목적: 직접 생성과 현장 완공이 같은 완공 건물 초기화 경계를 사용하게 한다.
+/// 입력·출력: 종류·위치·기본 크기·설정/DB Lookup을 받아 호출자의 ECB에 공통/종류별 런타임 구성을 기록한다.
+/// 이용: BuildingLifecycleApplySystem과 ConstructionLifecycleApplySystem이 호출한다. DB/항목 누락은 오류 기록 후 Null을 반환하며 대체 엔티티를 만들지 않는다.
+/// 수명·가시화: 반환 Entity는 지연 생성 참조이며 실제 건물은 EndStateApply에 실체화한다. 요청/현장/자재 소비와 실패 보존 정책은 호출자가 소유한다.
 /// </summary>
 public static class BuildingLifecycleUtility
 {
@@ -78,6 +76,7 @@ public static class BuildingLifecycleUtility
             return Entity.Null;
         }
 
+        // 프리팹 확보 전에는 건물 생성 명령을 기록하지 않는다. 공사 완료 호출자는 Null을 보고 현장/자재를 보존할 수 있다.
         newBuilding = ecb.Instantiate(prefabEntity);
 
         ecb.AddComponent(newBuilding, new BuildingType(targetType));
@@ -117,6 +116,7 @@ public static class BuildingLifecycleUtility
                 ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);
                 break;
 
+            // 레시피가 정해지기 전에는 재료를 받지 않는다. Command의 레시피 변경이 품목별 슬롯을 구성한다.
             case BuildingTypeEnum.Crafter:
                 ecb.AddComponent(building, new CrafterState(selectedRecipeId: 0, speed: speed > 0f ? speed : 1.0f));
                 ecb.AddComponent<CrafterDecision>(building);

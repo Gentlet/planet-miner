@@ -4,12 +4,9 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Splitter 분배 파이프라인 및 라우팅 순환 단위 테스트.
-/// - Forward -> Right -> Left 3방향 라운드로빈 순환 및 커서 전진 검증
-/// - 차단 포트 우회 분배(Work-conserving) 및 실제 배출 포트 기준 커서 갱신 검증
-/// - 전체 출구 차단 시 아이템 보존 및 커서 동결 검증
-/// - 차단 해제 시 분배 재개 검증
-/// - 다중 입력 벨트 중 PlacementStamp 우선순위 기준선 자동 선택 검증
+/// 역할·목적: Splitter 출력 순환·우회·정체/복구·기준 벨트에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: Forward/Right/Left 출구와 입력으로 Decision→Reservation→RoutingApply의 실물/커서를 검사한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase6SplitterPipelineTests : EcsWorldTestFixture
 {
@@ -49,6 +46,7 @@ public class Phase6SplitterPipelineTests : EcsWorldTestFixture
 
     private void RunPipeline()
     {
+        // 맵→판단→예약→전달→재등록으로 막힌 출구 우회와 커서 전진을 검사한다.
         _beltSpatialSyncHandle.Update(_world.Unmanaged);
         _itemSpatialSyncHandle.Update(_world.Unmanaged);
         _splitterDecisionHandle.Update(_world.Unmanaged);

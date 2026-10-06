@@ -5,14 +5,11 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 /// <summary>
-/// 벨트 건물 엔티티들을 BeltSpatialIndex에 동기화하는 시스템.
-/// 
-/// [책임]
-/// - SynchronizationGroup(Phase 6)에서 실행되어 비동기 잡 체인으로 공간 인덱스를 Clear하고
-///   현재 월드에 배치된 유효한 벨트 건물([GridPosition, Direction, BeltComponent])을 일괄 등록.
-/// - BeltSpatialIndexFence를 통해 이전 Phase의 Reader 잡들이 모두 완료된 후 쓰기를 시작하며,
-///   Map.Capacity 확장과 같은 메인 스레드 재할당 시에만 제한적으로 Complete()를 호출.
-/// - ISystem/Burst 기반 병렬 Job으로 Spatial Index 갱신.
+/// 역할·목적: Synchronization에서 현재 벨트 ECS 원본을 셀별 BeltSpatialIndex로 재구축한다.
+/// 입력·생성자: 건물 생성/방향 변경이 유지하는 GridPosition·Direction·BeltComponent. 이전 Reader/Writer는 해당 Fence가 추적한다.
+/// 출력·소유권: 이 시스템이 Persistent 맵과 Fence를 생성하고 매 틱 Clear→병렬 등록의 최종 Writer를 게시한다. 원본 컴포넌트는 쓰지 않는다.
+/// 이용·가시화: 다음 Decision/Reservation/Execution의 Reader는 게시된 Writer에 의존한다. 같은 틱 앞선 생성/철거가 맵에 즉시 반영된다고 간주하지 않는다.
+/// 정리: 대상이 없어도 Clear한다. 용량 변경/종료 때 Fence를 완료하고 시스템 종료 시 맵을 Dispose한다. ECB 기록은 없다.
 /// </summary>
 [UpdateInGroup(typeof(SynchronizationGroup))]
 [BurstCompile]
@@ -87,6 +84,7 @@ public partial struct BeltSpatialSyncSystem : ISystem
             index.Map.Capacity = math.max(1024, count * 2);
         }
 
+        // Native 맵 Clear는 ECS 값 의존성만으로 보호되지 않는다. 기존 Reader/Writer를 Fence로 함께 기다린다.
         // Writer 의존성: 마지막 Writer와 이전 모든 Readers 완료 대기
         var writerDep = fence.GetWriterDependency();
 

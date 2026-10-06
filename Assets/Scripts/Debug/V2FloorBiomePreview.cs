@@ -3,8 +3,10 @@ using Unity.Mathematics;
 using UnityEngine;
 
 /// <summary>
-/// V2 Test Scene 전용 진단 표시. ECS 바닥 선택 결과를 한 장의 색상 텍스처로 표시한다.
-/// 실제 바닥 Sprite 메쉬 렌더링은 Task 10B.6에서 구현한다.
+/// 역할·목적: V2 Test Scene에서 ECS 바닥 선택 결과를 하나의 색상 텍스처로 확인하는 진단 표시다.
+/// 부착 대상: 진단용 GameObject의 MonoBehaviour. Update는 기본 World의 월드/바닥 설정 singleton을 기다렸다가 한 번 생성한다.
+/// 입력·출력: FloorBiomeSampler의 결과를 Texture2D/Sprite/SpriteRenderer로 표시하며 ECS 셀 선택·월드 상태는 변경하지 않는다.
+/// 수명·제거: 임시 표시 오브젝트·Sprite·Texture는 OnDestroy에서 회수한다. 설정 변경을 매 프레임 재표시하거나 실제 바닥 청크를 렌더링하는 시스템은 아니다.
 /// </summary>
 public sealed class V2FloorBiomePreview : MonoBehaviour
 {
@@ -19,6 +21,7 @@ public sealed class V2FloorBiomePreview : MonoBehaviour
 
     private void Update()
     {
+        // 초기 설정 게시 전에는 대기하고, 표시를 만든 뒤에는 임시 텍스처를 반복 생성하지 않는다.
         if (previewObject != null) return;
 
         World world = World.DefaultGameObjectInjectionWorld;
@@ -81,6 +84,7 @@ public sealed class V2FloorBiomePreview : MonoBehaviour
             }
         }
 
+        // CPU 픽셀 쓰기는 여기서 끝낸다. 이후 표시는 정적 Sprite로 유지하고 ECS 원본을 대신하는 캐시로 사용하지 않는다.
         texture.Apply(false, true);
         sprite = Sprite.Create(texture, new Rect(0, 0, size, size), new Vector2(0.5f, 0.5f), 1f);
         sprite.name = "V2 Floor Biome Preview";

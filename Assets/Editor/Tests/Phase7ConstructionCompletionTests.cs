@@ -4,7 +4,9 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// Task 7.5 공사 완료 및 건물 전환 단위/통합 테스트.
+/// 역할·목적: 자재 충족·현재 바닥 차단·완공 실패 보존에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 도착량/실물/DB를 준비해 Construction Apply/ECB의 생성·소비·중단을 검사한다. 드론 이동/신호 Producer는 실행하지 않는다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
 {
@@ -22,12 +24,7 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
 
     private void RunCompletionPhase()
     {
-        Simulation.UpdateAndComplete(_lifecycleApplySystem);
-        Simulation.Playback(_ecbSystem);
-    }
-
-    private void RunMaterialApplyPhase()
-    {
+        // fixture 도착량/실물에 완공 Apply를 실행한다. 생성 성공 뒤 같은 ECB에서 현장/자재가 삭제되어야 한다.
         Simulation.UpdateAndComplete(_lifecycleApplySystem);
         Simulation.Playback(_ecbSystem);
     }
@@ -51,7 +48,7 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
         _entityManager.AddComponentData(site, new GridPosition(pos));
         _entityManager.AddComponentData(site, new Direction(dir));
         _entityManager.AddComponentData(site, stamp);
-        _entityManager.AddComponentData(site, new ConstructionSite(targetType, 0f, flags));
+        _entityManager.AddComponentData(site, new ConstructionSite(targetType, flags));
         _entityManager.AddBuffer<ConstructionMaterialRequirementElement>(site);
         _entityManager.AddBuffer<StoredItemElement>(site);
         return site;
@@ -65,14 +62,6 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
         var buffer = _entityManager.GetBuffer<StoredItemElement>(site);
         buffer.Add(new StoredItemElement(item, type, 0));
         return item;
-    }
-
-    private Entity RequestSupply(Entity site, Entity source, Entity item, ItemTypeEnum type)
-    {
-        Entity delivery = Entities.CreateConstructionMaterialDelivery(site, source, item, type);
-        var request = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(delivery, source));
-        return request;
     }
 
     [Test]
@@ -112,16 +101,20 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
         reqBuffer.Add(new ConstructionMaterialRequirementElement(ItemTypeEnum.Iron, 1, deliveredQuantity: 1));
         var item = StoreMaterialItem(site, ItemTypeEnum.Iron);
 
-        // 2. 1차 실행: 플래그 활성 상태
+        // 현재 실물이 차단 원본이며 플래그는 완공 시스템이 매번 갱신한다.
+        Entity floorItem = _entityManager.CreateEntity(typeof(ItemIdentity), typeof(ItemOwnership), typeof(GridPosition));
+        _entityManager.SetComponentData(floorItem, new ItemIdentity(ItemTypeEnum.Iron));
+        _entityManager.SetComponentData(floorItem, ItemOwnership.WorldItem);
+        _entityManager.SetComponentData(floorItem, new GridPosition(new int2(3, 3)));
+
+        // 2. 1차 실행: 바닥 실물이 남은 상태
         RunCompletionPhase();
 
         Assert.IsTrue(_entityManager.Exists(site), "바닥 청소 대기 중에는 완공으로 전환되지 않아야 함");
         Assert.IsTrue(_entityManager.Exists(item), "자재가 소비되지 않아야 함");
 
-        // 3. 바닥 청소 완료로 플래그 해제
-        var siteData = _entityManager.GetComponentData<ConstructionSite>(site);
-        siteData.Flags = ConstructionSiteFlags.None;
-        _entityManager.SetComponentData(site, siteData);
+        // 3. 바닥 실물 제거. 플래그는 수동으로 해제하지 않는다.
+        _entityManager.DestroyEntity(floorItem);
 
         // 4. 2차 실행: 플래그 해제 후 정상 완공
         RunCompletionPhase();
@@ -152,12 +145,14 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
         Assert.IsTrue(_entityManager.Exists(iron1));
         Assert.IsTrue(_entityManager.Exists(iron2));
 
-        // 3. Copper 자재 공급 및 수령 (모든 자재가 충족되므로 즉시 완공 전환)
-        Entity source = Entities.CreateConstructionMaterialSource();
-        Entity copperItem = Entities.CreateStoredConstructionMaterial(source, ItemTypeEnum.Copper);
-        RequestSupply(site, source, copperItem, ItemTypeEnum.Copper);
+        // 3. Copper까지 도착한 현장 상태를 직접 준비한 뒤 완공을 평가한다.
+        Entity copperItem = StoreMaterialItem(site, ItemTypeEnum.Copper);
+        var updatedRequirements = _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site);
+        var copperRequirement = updatedRequirements[1];
+        copperRequirement.DeliveredQuantity = 1;
+        updatedRequirements[1] = copperRequirement;
 
-        RunMaterialApplyPhase();
+        RunCompletionPhase();
 
         // 4. 모든 자재 충족 후 완공 및 모든 자재 파괴 확인
         Assert.IsFalse(_entityManager.Exists(site));
@@ -199,11 +194,10 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
         Assert.IsTrue(_entityManager.Exists(siteLoop), "ConstructionSite로의 순환 전환은 차단되어야 함");
     }
 
-    [TestCase(0, false)]
-    [TestCase(1, false)]
-    [TestCase(2, false)]
-    [TestCase(2, true)]
-    public void SpawnRejected_PreservesSiteAndMaterials_AndStopsNextTick(int databaseFailure, bool supplyLastMaterial)
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    public void SpawnRejected_PreservesSiteAndMaterials_AndStopsNextTick(int databaseFailure)
     {
         Entity database = _entityManager.CreateEntityQuery(typeof(BuildingPrefabDatabase)).GetSingletonEntity();
         if (databaseFailure == 0)
@@ -222,19 +216,9 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
 
         Entity site = CreateSite(BuildingTypeEnum.Miner, new int2(4, 6));
         Entity first = StoreMaterialItem(site, ItemTypeEnum.Iron);
-        Entity second;
+        Entity second = StoreMaterialItem(site, ItemTypeEnum.Iron);
         _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site).Add(
-            new ConstructionMaterialRequirementElement(ItemTypeEnum.Iron, 2, supplyLastMaterial ? 1 : 2));
-        if (supplyLastMaterial)
-        {
-            Entity source = Entities.CreateConstructionMaterialSource();
-            second = Entities.CreateStoredConstructionMaterial(source, ItemTypeEnum.Iron);
-            RequestSupply(site, source, second, ItemTypeEnum.Iron);
-        }
-        else
-        {
-            second = StoreMaterialItem(site, ItemTypeEnum.Iron);
-        }
+            new ConstructionMaterialRequirementElement(ItemTypeEnum.Iron, 2, deliveredQuantity: 2));
 
         var group = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
         var apply = _world.GetOrCreateSystemManaged<StateApplyGroup>();

@@ -4,13 +4,9 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 자원 채굴 → 스폰 → 벨트 이송 → 창고 적재 End-to-End 전체 파이프라인 통합 검증 테스트.
-/// 시스템 간 직접 호출 없이 오직 GameSimulationGroup(Phase 1~6)의 데이터 파이프라인만으로 전체 게임 루프를 완주.
-/// 
-/// [검증 시나리오]
-/// 1. 단일 광물 완주: 채굴(1.0s) -> 채굴기 버퍼 -> 외향 벨트 방출 -> 벨트 3칸 이동 -> 창고 입고 및 슬롯 보관 완료.
-/// 2. 연속 채굴 스트림 흐름: 지속적 생산 -> 벨트 위 복수 광물 줄지어 이송(ItemSpacing 간격 유지) -> 창고 순차 적재.
-/// 3. 창고 만석 역류 정체(Backpressure): 창고 만석 -> 벨트 종단 정체 -> 후속 벨트 아이템 연쇄 정체 -> 채굴기 버퍼 적재 후 채굴 중단.
+/// 역할·목적: 채굴→생산→벨트→창고와 만석 정체 전파에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 수동 ECS 물류망을 정렬된 GameSimulationGroup으로 반복 실행해 실물/불변식을 검사한다. 실제 장면/입력/렌더/성능의 전체 게임 검증은 아니다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
 {
@@ -94,6 +90,7 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
 
     private void RunSimulationTicks(int tickCount, float deltaTime = 0.05f)
     {
+        // 그룹 내부 phase/ECB를 진행해 임의 Playback으로 생산/물류 가시화를 앞당기지 않는다.
         for (int i = 0; i < tickCount; i++)
         {
             _elapsedTime += deltaTime;

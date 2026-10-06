@@ -5,14 +5,11 @@ using Unity.Mathematics;
 using Unity.Transforms;
 
 /// <summary>
-/// 승인된 라우팅 전달 결정(RoutingTransferDecision)을 실제 아이템 이동 및 영속 상태에 반영하는 시스템.
-/// 
-/// [책임]
-/// - StateApplyGroup (Phase 5)에서 실행.
-/// - ReservationGroup을 통과하여 활성 상태를 유지한 RoutingTransferDecision을 일괄 소비.
-/// - 대상 아이템의 위치(GridPosition), 방향(Direction), 이동 진행도(BeltMovementState 0.0f), LocalTransform을 대상 벨트 시작점으로 갱신.
-/// - Splitter/Merger의 영속 라우팅 상태(OutputCursor / InputCursor 등)를 실제 배출 포트 기준으로 갱신.
-/// - RoutingTransferDecision을 비활성화하여 프레임 결정을 완전 소비.
+/// 역할·목적: StateApply에서 Reservation을 통과한 분배/합류 전달을 실물 위치와 영속 라우팅 상태에 반영한다.
+/// 입력·생성자: Splitter/Merger Decision의 RoutingTransferDecision 중 BeltDestinationReservationSystem이 유지한 활성 후보.
+/// 출력·소유권: 실물 GridPosition/Direction/벨트 진행도/LocalTransform과 라우터 기준선·커서를 즉시 갱신한다. Owner/생산 버퍼는 쓰지 않는다.
+/// 이용: 최신 위치는 이후 철거/Ownership·드론 인계 검사가 읽고 다음 Decision은 성공한 포트 이후의 커서를 사용한다.
+/// 정리·가시화: 적용 여부와 관계없이 전달 결정을 비활성화한다. ECB 기록은 없고 공간 인덱스는 Synchronization에서 갱신한다.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
 [UpdateBefore(typeof(ItemOwnershipApplySystem))]
@@ -133,6 +130,7 @@ public partial struct RoutingApplyJob : IJobEntity
                 TransformLookup[item] = LocalTransform.FromPosition(new float3(visualPos.x, visualPos.y, 0f));
             }
 
+            // 실물 전달 조건을 통과했을 때만 기준선과 커서를 전진한다. 후보 생성/경합 탈락만으로 포트 순서를 소비하지 않는다.
             // 4. Splitter 영속 라우팅 상태 갱신
             if (SplitterRoutingStateLookup.HasComponent(routerEntity) &&
                 GridPositionLookup.HasComponent(routerEntity))

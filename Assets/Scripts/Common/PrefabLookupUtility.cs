@@ -3,7 +3,9 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 프리팹 데이터베이스 버퍼 조회를 위한 Burst 호환 순수 유틸리티.
+/// 역할·목적: 게시된 건물·아이템·자원 프리팹 DB 버퍼에서 종류가 일치하는 첫 참조를 조회한다.
+/// 입력·출력: 누락/Null이면 false와 Null을 반환한다. 건물 조회는 방향 적용 전 기본 footprint도 반환한다.
+/// 이용·수명: 생성 시스템과 BuildingLifecycleUtility가 사용하는 순수 조회다. 생존·Prefab/필수 구성 검증은 Initialization이 담당하며 별도 캐시를 만들지 않는다.
 /// </summary>
 [BurstCompile]
 public static class PrefabLookupUtility

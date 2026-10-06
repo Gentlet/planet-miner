@@ -2,12 +2,11 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 채굴기(Miner)의 채굴 의사결정 컴포넌트 (Enableable).
-/// 
-/// [책임]
-/// - Phase 2 Decision 단계에서 채굴 조건(하부 자원 실존, 내부 버퍼 공간 여유)을 판정하여 상태를 설정.
-/// - 채굴 조건이 만족되면 CanMine = true로 활성화되며, 대상 자원 엔티티를 기록.
-/// - 외부 벨트로의 배출은 채굴기에 부착된 BuildingItemOutputDecision 및 출고 시스템이 전담.
+/// 역할·목적: 채굴기의 하부 자원·출력 여유를 검사하여 이번 틱 채굴 자격과 대상 자원을 전달한다.
+/// 부착 엔티티: MinerState와 ProductItemElement/ProductResult를 가진 채굴기 건물이다.
+/// 생성: BuildingLifecycleUtility가 비활성으로 준비하고 MinerDecisionSystem(Decision)이 조건에 따라 값과 enable 상태를 설정한다.
+/// 이용: MinerExecutionSystem(Execution)이 활성 결정을 읽어 채굴 진행·자원 차감·ProductResult를 기록한다. 출고는 별도 BuildingItemOutputDecision 경로다.
+/// 제거: 매 틱 Decision이 다시 작성/비활성화하며 실행 후 컴포넌트를 삭제하지 않는다. 건물 삭제 시 함께 제거한다.
 /// </summary>
 public struct MinerDecision : IComponentData, IEnableableComponent
 {

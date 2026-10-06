@@ -6,10 +6,16 @@ using Unity.Mathematics;
 using UnityEngine;
 using UnityEngine.TestTools;
 
+/// <summary>
+/// 역할·목적: 바닥 설정 게시·셀 선택 결정성·검증 실패에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: Resources 설정/좌표로 공동 게시·청크 경계 선택·잘못된 설정/스프라이트 거부를 검사한다. 실제 바닥 렌더링은 실행하지 않는다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
+/// </summary>
 public class Phase4FloorBiomeGenerationTests : EcsWorldTestFixture
 {
     private Entity PublishDefault()
     {
+        // Resources 검증과 ECS 게시를 준비한다. 셀 선택은 실제 바닥 표시 결과와 구분한다.
         Assert.IsTrue(WorldGenerationConfigLoader.TryLoadConfigFromResources(
             WorldGenerationConfigLoader.DefaultResourcePath,
             out uint seed, out int initialSize, out var resources, out var floor));

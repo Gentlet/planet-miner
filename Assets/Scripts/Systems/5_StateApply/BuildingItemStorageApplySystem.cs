@@ -6,19 +6,11 @@ using Unity.Mathematics;
 using Unity.Transforms;
 
 /// <summary>
-/// 창고 아이템의 입고 및 출고 상태 전이를 일괄 적용하는 시스템.
-/// 
-/// [책임]
-/// - StateApplyGroup(Phase 5)에서 ItemOwnershipApplySystem 직전에 실행.
-/// - 단일 워커 스레드 Burst Job(BuildingItemInputApplyJob, BuildingItemOutputApplyJob)을 순차적으로 스케줄링하여
-///   버퍼 조작과 컴포넌트 상태 전이를 StateApply 단계에서 적용.
-/// - [입고]: 슬롯 예약이 완료된 아이템(CanDeposit == true && TargetSlotIndex >= 0)을 창고 버퍼(DynamicBuffer<StoredItemElement>)에 적재하고,
-///           BeltMovementState를 비활성화한 뒤 TransferOwnershipRequest(TargetOwner = 창고)를 발행.
-/// - [출고]: 출고가 확정된 건물(CanOutput == true)의 버퍼에서 대상 아이템(ItemToOutput)을 제거하고,
-///           GridPosition, Direction, BeltMovementState(Progress = 0.0f), LocalTransform을 벨트 시작점으로 복원한 뒤
-///           TransferOwnershipRequest(TargetOwner = Entity.Null)를 발행하여 월드 아이템으로 전환.
-/// - [엄격한 단일 책임 분리]: 이 시스템은 창고 버퍼와 월드 상태 전이만 처리하며,
-///   최종 소유권(ItemOwnership) 갱신은 뒤이어 실행되는 ItemOwnershipApplySystem에 위임.
+/// 역할·목적: StateApply에서 예약된 건물 입고와 벨트 출고를 기존 실물에 반영한다.
+/// 입력·생성자: 입고/출고 Decision과 두 Reservation의 승인 슬롯/대상, 현재 보관/생산 버퍼와 벨트 인덱스.
+/// 출력·소유권: 보관 버퍼를 추가/제거하고 출고 위치·방향·벨트 상태를 갱신한다. TransferOwnershipRequest를 활성화하여 Owner/렌더는 ItemOwnershipApplySystem에 넘긴다.
+/// 입고 Job 뒤 출고 Job을 연결하고 인덱스 Reader를 Fence에 등록한다. 활성 Destroy 실물은 인계에서 제외한다.
+/// 정리·가시화: 성공/거부된 유효 인계 결정은 비활성화한다. 이 시스템은 ECB를 기록하지 않으며 렌더 구조 변경은 Ownership의 EndStateApply에 확정한다.
 /// </summary>
 [UpdateInGroup(typeof(StateApplyGroup))]
 [UpdateBefore(typeof(ItemOwnershipApplySystem))]
@@ -84,6 +76,7 @@ public partial struct BuildingItemStorageApplySystem : ISystem
         _directionLookup.Update(ref state);
         _transformLookup.Update(ref state);
 
+        // 같은 저장 버퍼/실물 상태의 쓰기를 직렬로 연결한다. Owner/렌더 반영은 뒤의 일반 Ownership에 동일 실물로 전달한다.
         // 1. [입고 Job 스케줄링]
         var inputJob = new BuildingItemInputApplyJob
         {

@@ -3,6 +3,11 @@ using PlanetMiner.Tests;
 using Unity.Entities;
 using Unity.Mathematics;
 
+/// <summary>
+/// 역할·목적: 청크 좌표 변환과 요청/Tracker 수명주기에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 음수/양수 좌표와 청크 요청으로 Bootstrap/ChunkLoadCommand의 중복 제거·기생성 처리를 검사한다. 요청 등록과 자원 실물 완료는 구분한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
+/// </summary>
 public class Phase4ChunkLifecycleTests : EcsWorldTestFixture
 {
     [Test]
@@ -51,6 +56,7 @@ public class Phase4ChunkLifecycleTests : EcsWorldTestFixture
     [Test]
     public void Test04_ChunkLoadCommandSystem_DeduplicatesPendingChunksWithoutCompletingThem()
     {
+        // 요청 중복 제거와 생성 완료는 다른 상태다. Command만으로 청크가 완성된 것으로 해석하지 않는다.
         var loadSystem = _world.GetOrCreateSystem(typeof(ChunkLoadCommandSystem));
 
         // 요청 큐에 중복 좌표 포함 3건 인큐

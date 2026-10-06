@@ -4,22 +4,11 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 제작기(Crafter)의 재료 선소비, 제작 진행도 누적, 완성품/부산품 생산 결과를 기록하는 실행 시스템.
-/// 
-/// [책임]
-/// - ExecutionGroup(Phase 4)에서 실행.
-/// - 활성화된 CrafterDecision만 실행 대상으로 처리.
-/// - 레시피 변경·해제, 작업 취소, 잔여 입력의 출력 이관, 입력 슬롯/필터 갱신은 CrafterRecipeCommandSystem 책임.
-///   이 시스템은 Command가 확정한 레시피와 Decision의 실행 결정을 사용한다.
-/// - [재료 선소비]:
-///   - 신규 제작 착수(CanStartCraft == true && !IsCraftingActive) 시, StoredItemElement에서 레시피 재료를
-///     RemoveAt으로 즉시 제거 후 DestroyItemRequest 발행, Storage Buffer 정합성 유지.
-/// - 진행도 누적:
-///   - (DeltaTime * Speed) / CraftTime 비율로 Progress를 누적.
-/// - [출력 대기 및 배출]:
-///   - Progress >= 1.0f 도달 후 출력 버퍼에 공간이 확보되면(CanProduceOutput == true),
-///     ProductResult(Slot 0 주생산품, Slot 1 이상 부산품)를 기록하고 IsCraftingActive = false 및 Progress = 0.0f로 리셋.
-///   - ProductResult는 같은 프레임 StateApply의 ItemLifecycleApplySystem이 실제 Item Entity와 ProductItemElement로 변환.
+/// 역할·목적: Execution에서 선택 레시피의 재료를 선소비하고 제작 진행과 생산 결과를 반영한다.
+/// 입력·생성자: Command의 레시피 선택/중단 상태, CrafterDecisionSystem의 착수·진행·출력 결정과 RecipeRegistry.
+/// 출력·소유권: StoredItemElement를 먼저 제거하고 실물 DestroyItemRequest를 활성화한다. CrafterState의 진행/작업 여부와 ProductResult를 쓴다.
+/// 이용·정리: ItemLifecycleApplySystem이 소비 실물을 삭제하고 생산 결과를 실물/출력 버퍼로 변환 후 비운다. Status 반영은 CrafterStateApplySystem의 책임이다.
+/// 가시화: 값 변경은 Execution Job에서 반영하며 실물 생성/삭제는 EndStateApply에서 확정한다. 레시피 변경·잔여 재료 반환은 여기서 처리하지 않는다.
 /// </summary>
 [UpdateInGroup(typeof(ExecutionGroup))]
 [BurstCompile]
@@ -137,6 +126,7 @@ public partial struct CrafterExecutionJob : IJobEntity
         // =========================================================================
         if (decision.CanStartCraft && !state.IsCraftingActive)
         {
+            // 소유 버퍼 참조를 먼저 제거하여 소비 실물이 재선택되지 않게 하고, 실제 삭제는 ItemLifecycle과 EndStateApply에 맡긴다.
             // 레시피 필요 재료를 StoredItemElement에서 차감하고 DestroyItemRequest 발행
             for (int i = 0; i < recipe.IngredientCount; i++)
             {

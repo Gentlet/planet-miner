@@ -4,15 +4,13 @@ using PlanetMiner.Tests;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Rendering;
+using Unity.Transforms;
 
 /// <summary>
-/// Task 7.8 건설 코어 수명주기 전체 파이프라인 통합 검증 테스트.
-/// 
-/// [책임 및 범위]
-/// - 실제 6대 Phase 시뮬레이션 루프(GameSimulationGroup: Command -> Decision -> Reservation -> Execution -> StateApply -> Synchronization) 상에서
-///   건설 수명주기(배치 -> 현장 실체화 -> 자재 공급 -> 완공 스폰 -> 가동 -> 철거/환급 및 취소) 전체가 자율적 연속성과 데이터 불변식을 보장하는지 종합 검증.
-/// - 2-Sync Point 아키텍처(EndCommandEntityCommandBufferSystem, EndStateApplyEntityCommandBufferSystem)와
-///   StateApply 순서(물류 적용 -> 철거)가 실제 통합 루프에서 완벽히 협력하는지 확인.
+/// 역할·목적: 배치→현장→완공→물류→철거·취소 통합에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: 정렬된 여섯 phase/두 ECB를 실행하되 도착 실물/수량은 fixture로 준비한다. 자재 운송/실제 장면은 실행하지 않고 같은 틱 철거 뒤 인덱스 갱신 전 재배치 거부를 검사한다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
 {
@@ -54,6 +52,7 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         commandGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingPlacementCommandSystem>());
         commandGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterRecipeCommandSystem>());
         commandGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingDemolitionCommandSystem>());
+        commandGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionCancelCommandSystem>());
         commandGroup.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>());
 
         // 5. Phase 2: DecisionGroup
@@ -65,6 +64,7 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<MergerDecisionSystem>());
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BeltMovementDecisionSystem>());
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemInputDecisionSystem>());
+        decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemSpawnAdmissionDecisionSystem>());
 
         // 6. Phase 3: ReservationGroup
         reservationGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BeltDestinationReservationSystem>());
@@ -159,12 +159,36 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         return reqEntity;
     }
 
-    private Entity RequestSupply(Entity site, Entity source, Entity item, ItemTypeEnum type)
+    private Entity PrepareDeliveredMaterial(Entity site, ItemTypeEnum type)
     {
-        Entity delivery = Entities.CreateConstructionMaterialDelivery(site, source, item, type);
-        var request = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(request, new SupplyConstructionMaterialRequest(delivery, source));
-        return request;
+        // 운송 없이 실물/Owner/현장 버퍼·도착량을 함께 준비하는 건설 수명주기 테스트의 입력 경계다.
+        int2 position = _entityManager.GetComponentData<GridPosition>(site).Value;
+        Entity item = _entityManager.CreateEntity(
+            typeof(ItemIdentity), typeof(ItemOwnership), typeof(GridPosition),
+            typeof(LocalTransform), typeof(DisableRendering));
+        _entityManager.SetComponentData(item, new ItemIdentity(type));
+        _entityManager.SetComponentData(item, ItemOwnership.Stored(site));
+        _entityManager.SetComponentData(item, new GridPosition(position));
+        _entityManager.SetComponentData(item,
+            LocalTransform.FromPosition(new float3(position.x, position.y, 0f)));
+        _entityManager.GetBuffer<StoredItemElement>(site).Add(new StoredItemElement(item, type, 0));
+
+        var requirements = _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site);
+        int requirementIndex = -1;
+        for (int i = 0; i < requirements.Length; i++)
+        {
+            if (requirements[i].ItemType == type)
+            {
+                requirementIndex = i;
+                break;
+            }
+        }
+        Assert.GreaterOrEqual(requirementIndex, 0, "준비할 자재는 현장 요구 품목이어야 한다.");
+        var requirement = requirements[requirementIndex];
+        requirement.DeliveredQuantity++;
+        requirements[requirementIndex] = requirement;
+
+        return item;
     }
 
     private Entity RequestCancel(Entity site)
@@ -222,15 +246,11 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
             }
         }
 
-        // 3. Act: 자재 공급 (Miner 자재 요구량: Iron 2개)
-        Entity firstSource = Entities.CreateConstructionMaterialSource();
-        Entity secondSource = Entities.CreateConstructionMaterialSource();
-        Entity mat1 = Entities.CreateStoredConstructionMaterial(firstSource, ItemTypeEnum.Iron, minerPos - new int2(1, 0));
-        Entity mat2 = Entities.CreateStoredConstructionMaterial(secondSource, ItemTypeEnum.Iron, minerPos - new int2(1, 1));
-        RequestSupply(siteEntity, firstSource, mat1, ItemTypeEnum.Iron);
-        RequestSupply(siteEntity, secondSource, mat2, ItemTypeEnum.Iron);
+        // 3. Arrange: Miner 자재 Iron 2개가 도착한 현장 상태를 준비한다.
+        PrepareDeliveredMaterial(siteEntity, ItemTypeEnum.Iron);
+        PrepareDeliveredMaterial(siteEntity, ItemTypeEnum.Iron);
 
-        // 1틱 실행 -> 자재 수령 및 완공 전환 (점유 공백 없이 Miner 스폰)
+        // 1틱 실행 -> 완공 전환 (점유 공백 없이 Miner 스폰)
         RunSimulationTicks(1);
 
         // Assert 2: 현장 소멸 및 완공 Miner 스폰 확인
@@ -284,7 +304,7 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test02_CancelWins_PartialSupply_ToCancellation_RefundsWorldItemsAndReleasesSpatial()
+    public void Test02_CancelConstruction_WithPartialMaterials_ReturnsWorldItemsAndReleasesSpatial()
     {
         // 1. Arrange: Storage 배치 요청 (자재 요구량: Iron 3개)
         int2 storagePos = new int2(20, 20);
@@ -294,37 +314,45 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         var siteQuery = _entityManager.CreateEntityQuery(typeof(ConstructionSite), typeof(GridPosition));
         var siteEntity = siteQuery.GetSingletonEntity();
 
-        // 2. Act: 자재 1개만 공급
-        Entity firstSource = Entities.CreateConstructionMaterialSource();
-        Entity mat1 = Entities.CreateStoredConstructionMaterial(firstSource, ItemTypeEnum.Iron, storagePos);
-        RequestSupply(siteEntity, firstSource, mat1, ItemTypeEnum.Iron);
+        // 2. Arrange: 자재 1개만 도착한 현장 상태를 준비한다.
+        Entity mat1 = PrepareDeliveredMaterial(siteEntity, ItemTypeEnum.Iron);
         RunSimulationTicks(1);
 
-        // 자재 1개가 보관 상태로 들어갔는지 확인
+        // 요구량 미충족 상태에서는 현장과 보관 자재가 유지된다.
         var storedBuffer = _entityManager.GetBuffer<StoredItemElement>(siteEntity);
         Assert.AreEqual(1, storedBuffer.Length);
         Assert.AreEqual(ItemOwnership.Stored(siteEntity), _entityManager.GetComponentData<ItemOwnership>(mat1));
 
-        // 3. Act: 동일 틱에 [추가 자재 공급 요청]과 [취소 요청]을 동시에 인큐
-        Entity rejectedSource = Entities.CreateConstructionMaterialSource();
-        Entity mat2 = Entities.CreateStoredConstructionMaterial(rejectedSource, ItemTypeEnum.Iron, storagePos);
-        RequestSupply(siteEntity, rejectedSource, mat2, ItemTypeEnum.Iron);
-        RequestCancel(siteEntity);
+        // 3. 취소와 같은 위치의 재배치를 함께 요청한다. 배치 검증은 이전 점유를 읽는다.
+        Entity cancelRequest = RequestCancel(siteEntity);
+        Entity sameTickPlacement = RequestPlacement(BuildingTypeEnum.Storage, storagePos);
 
-        // 1틱 실행 -> Cancel Wins 정책 적용
+        // 1틱 실행 -> 현장 취소 및 자재 반환
         RunSimulationTicks(1);
 
         // Assert: 현장 엔티티 파괴, 기납입 자재는 WorldItem으로 방출
         Assert.IsFalse(_entityManager.Exists(siteEntity), "취소된 현장은 파괴되어야 함");
+        Assert.IsFalse(_entityManager.Exists(cancelRequest));
+        Assert.IsFalse(_entityManager.Exists(sameTickPlacement));
+        Assert.AreEqual(0, siteQuery.CalculateEntityCount(), "같은 틱의 재배치는 기존 공간 점유로 거부되어야 함");
         Assert.AreEqual(ItemOwnership.WorldItem, _entityManager.GetComponentData<ItemOwnership>(mat1), "기납입 자재는 WorldItem으로 바닥에 방출되어야 함");
-        Assert.AreEqual(rejectedSource, _entityManager.GetComponentData<ItemOwnership>(mat2).Owner,
-            "취소된 현장으로 공급한 실물은 공급원에 보존되어야 함");
 
         // 공간 인덱스 점유 해제 확인
         var buildingMap = _entityManager.CreateEntityQuery(typeof(BuildingSpatialIndex)).GetSingleton<BuildingSpatialIndex>().Map;
         Assert.IsFalse(buildingMap.ContainsKey(storagePos), "취소 후 공간 인덱스 점유는 즉시 해제되어야 함");
 
         Assert.AreEqual(0, _invariantValidationSystem.TotalViolationCount, "취소 과정에서 Invariant 위반이 없어야 함");
+        // Synchronization 이후 새 요청은 비워진 점유를 사용하고, 반환품 때문에 완공 정리 대기한다.
+        Entity nextTickPlacement = RequestPlacement(BuildingTypeEnum.Storage, storagePos);
+        RunSimulationTicks(1);
+        Assert.IsFalse(_entityManager.Exists(nextTickPlacement));
+        Assert.AreEqual(1, siteQuery.CalculateEntityCount());
+        Entity replacementSite = siteQuery.GetSingletonEntity();
+        Assert.AreNotEqual(siteEntity, replacementSite);
+        Assert.AreEqual(ConstructionSiteFlags.AwaitingItemClearance,
+            _entityManager.GetComponentData<ConstructionSite>(replacementSite).Flags);
+        Assert.AreEqual(ItemOwnership.WorldItem, _entityManager.GetComponentData<ItemOwnership>(mat1));
+        Assert.AreEqual(0, _invariantValidationSystem.TotalViolationCount);
         siteQuery.Dispose();
     }
 
@@ -407,10 +435,8 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         Assert.AreEqual(tilePos, _entityManager.GetComponentData<GridPosition>(siteEntity).Value);
         Assert.AreEqual(ConstructionSiteFlags.None, _entityManager.GetComponentData<ConstructionSite>(siteEntity).Flags, "바닥이 정리되었으므로 AwaitingItemClearance 플래그가 없어야 함");
 
-        // 4. Act: 신규 Belt 자재 공급 및 완공
-        Entity source = Entities.CreateConstructionMaterialSource();
-        Entity mat = Entities.CreateStoredConstructionMaterial(source, ItemTypeEnum.Iron, tilePos - new int2(1, 0));
-        RequestSupply(siteEntity, source, mat, ItemTypeEnum.Iron);
+        // 4. Arrange / Act: 신규 Belt 자재의 도착 상태를 준비한 뒤 완공한다.
+        PrepareDeliveredMaterial(siteEntity, ItemTypeEnum.Iron);
         RunSimulationTicks(1);
 
         // Assert: 완공된 Belt가 타일을 정상 점유

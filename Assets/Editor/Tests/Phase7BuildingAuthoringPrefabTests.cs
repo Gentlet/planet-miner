@@ -8,7 +8,9 @@ using UnityEngine;
 using UnityEngine.TestTools;
 
 /// <summary>
-/// Task 7.3.1 건물 Authoring, 프리팹 DB 및 정의 연결 단위/통합 테스트.
+/// 역할·목적: 건물 설정 검증·해금 조회·Authoring 목록에 대한 NUnit EditMode 회귀 검증.
+/// 입력·검사: Loader/lookup과 임시 GameObject로 설정/Resources 참조를 확인하고 사례에서 GameObject를 정리한다. 실제 SubScene 베이킹/건물 가동은 실행하지 않는다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase7BuildingAuthoringPrefabTests : EcsWorldTestFixture
 {
@@ -94,6 +96,7 @@ public class Phase7BuildingAuthoringPrefabTests : EcsWorldTestFixture
     [Test]
     public void Test06_PopulateFromResources_LoadsAllExistingBuildingPrefabs()
     {
+        // 임시 Authoring 목록의 Resources 참조만 확인한다. 실제 ECS 베이킹/완공물 생성과 구분한다.
         var go = new GameObject("TestBuildingPrefabAuthoring");
         var authoring = go.AddComponent<BuildingPrefabDatabaseAuthoring>();
 

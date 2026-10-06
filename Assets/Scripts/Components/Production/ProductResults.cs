@@ -1,17 +1,12 @@
 using Unity.Entities;
 
 /// <summary>
-/// 생산 건물의 Execution 결과를 StateApply 단계로 전달하는 임시 생산 결과 버퍼 요소.
-/// 
-/// [책임]
-/// - Execution 단계에서 생산이 완료되면 생산 건물의 DynamicBuffer<ProductResult>에 결과를 기록.
-/// - StateApply 단계의 ItemLifecycleApplySystem이 결과를 소비하여 실제 Item Entity를 생성하고
-///   생산 건물의 DynamicBuffer<ProductItemElement>에 반영.
-/// - Buffer가 비어 있으면 처리할 생산 결과가 없음을 의미.
-/// - Count를 통해 한 종류의 생산 결과가 여러 개 생성되는 경우를 표현 가능.
-/// - SlotIndex는 생산 건물 내부 출력 정책(예: 0=주 생산물, 1=부산물)에 사용.
-/// - 같은 틱 Command에서 생산 건물의 철거가 승인되면 결과를 생성 없이 폐기한다.
-///   선소비한 제작 재료나 광물은 보상하지 않는다.
+/// 역할·목적: 이번 실행에서 완료한 생산의 품목·실물 개수·출력 슬롯을 StateApply에 전달하는 임시 결과다.
+/// 부착 엔티티: Miner·Crafter 생산 건물의 버퍼이며 아이템 실물이나 영속 생산품 목록이 아니다.
+/// 생성: BuildingLifecycleUtility가 빈 버퍼를 붙이고 MinerExecutionSystem/CrafterExecutionSystem(Execution)이 생산 완료 시 결과를 추가한다.
+/// 이용: ItemLifecycleApplySystem(StateApply)이 Count개의 실물을 생성하여 ProductItemElement에 등록한다. 채굴/제작 Decision도 아직 반영되지 않은 결과를 출력 여유 계산에 포함한다.
+/// 제거: ItemLifecycle이 결과를 처리한 뒤 버퍼를 Clear한다. BuildingDemolitionCommandSystem(Command)은 철거 승인 때 기존 결과를 Clear하며 이미 선소비한 재료/광물을 보상하지 않는다.
+/// 버퍼 자체는 건물 삭제까지 유지한다. Count는 스택 하나의 수량이 아니라 생성할 개별 아이템 엔티티 수다.
 /// </summary>
 [InternalBufferCapacity(4)]
 public struct ProductResult : IBufferElementData

@@ -6,18 +6,11 @@ using Unity.Mathematics;
 using Unity.Transforms;
 
 /// <summary>
-/// BeltMovementDecisionSystem에서 결정된 PlannedProgress를 소비하여
-/// 아이템의 진행 상태(BeltMovementState), 그리드 좌표(GridPosition),
-/// 실제 렌더링 위치(LocalTransform)를 전진 및 갱신하는 실행 시스템.
-/// 
-/// [책임]
-/// - ExecutionGroup(Phase 4)에서 실행.
-/// - DecisionGroup에서 산출된 BeltMovementDecision.PlannedProgress를 실제 Progress에 가산.
-/// - 타일 경계 횡단(newProgress >= 1.0f) 시 GridPosition을 전진시키고 Progress를 새 타일 기준으로 보정.
-/// - 그리드 중심과 방향, 진행률을 결합하여 LocalTransform.Position을 정확한 2D 월드 좌표로 갱신.
-/// - Consume-on-Execution 원칙에 따라 처리가 끝난 PlannedProgress를 0.0f로 소비(초기화).
-/// - BeltSpatialIndexFence에 Reader JobHandle을 등록하여 SynchronizationGroup과의 데이터 경합을 비차단 방식으로 제어.
-/// - ComponentLookup 없이 쿼리(ref/in) 기반 병렬 Job으로 이동 상태 반영.
+/// 역할·목적: Execution에서 Decision의 전진 계획을 활성 월드 실물의 실제 이동 상태에 반영한다.
+/// 입력·생성자: BeltMovementDecisionSystem의 PlannedProgress와 Synchronization의 벨트 인덱스.
+/// 출력·소유권: BeltMovementState.Progress, GridPosition과 LocalTransform을 함께 갱신한다. 소유권/렌더 태그는 쓰지 않는다.
+/// 정리: PlannedProgress는 적용 전에 0으로 소비하여 같은 계획을 반복 실행하지 않는다. 다음 셀에 벨트가 없으면 종단에서 멈춘다.
+/// 가시화: 값은 Job 완료 후 Reader에 보이며 아이템 인덱스는 Synchronization에서 재구축한다. ECB 구조 변경은 없다.
 /// </summary>
 [UpdateInGroup(typeof(ExecutionGroup))]
 [BurstCompile]

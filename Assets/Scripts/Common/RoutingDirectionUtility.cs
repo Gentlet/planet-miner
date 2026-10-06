@@ -1,7 +1,10 @@
 using Unity.Mathematics;
 
 /// <summary>
-/// Splitter/Merger의 상대 방향 규칙을 계산하는 Burst 호환 유틸리티.
+/// 역할·목적: Splitter/Merger의 상대 포트·인접 방향·배치 순서 계산을 같은 규칙으로 처리한다.
+/// 입력·출력: forward와 포트/좌표로 방향을 계산하고 성공한 전달 뒤 다음 순환 커서를 반환한다.
+/// 이용: 라우팅 Decision/Reservation/Apply가 호출한다. 계산 자체는 후보 선택이나 커서 원본을 쓰지 않는다.
+/// 수명: 상태/엔티티/캐시를 만들지 않는 순수 값 계산이며 포트 순서와 커서의 실제 반영은 호출자의 단계가 소유한다.
 /// </summary>
 public static class RoutingDirectionUtility
 {
