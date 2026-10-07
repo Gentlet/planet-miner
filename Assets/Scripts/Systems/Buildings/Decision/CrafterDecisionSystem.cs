@@ -16,6 +16,7 @@ public partial struct CrafterDecisionSystem : ISystem
 {
     private EntityQuery _crafterQuery;
     private ComponentLookup<PendingBuildingDemolition> _pendingDemolitionLookup;
+    private ComponentLookup<DestroyItemRequest> _destroyItemRequestLookup;
     private BufferLookup<RecipeConfigElement> _recipeConfigLookup;
     private BufferLookup<RecipeIngredientElement> _recipeIngredientLookup;
     private BufferLookup<RecipeOutputElement> _recipeOutputLookup;
@@ -25,6 +26,7 @@ public partial struct CrafterDecisionSystem : ISystem
     public void OnCreate(ref SystemState state)
     {
         _pendingDemolitionLookup = state.GetComponentLookup<PendingBuildingDemolition>(true);
+        _destroyItemRequestLookup = state.GetComponentLookup<DestroyItemRequest>(true);
         _recipeConfigLookup = state.GetBufferLookup<RecipeConfigElement>(true);
         _recipeIngredientLookup = state.GetBufferLookup<RecipeIngredientElement>(true);
         _recipeOutputLookup = state.GetBufferLookup<RecipeOutputElement>(true);
@@ -51,6 +53,7 @@ public partial struct CrafterDecisionSystem : ISystem
         }
 
         _pendingDemolitionLookup.Update(ref state);
+        _destroyItemRequestLookup.Update(ref state);
         _recipeConfigLookup.Update(ref state);
         _recipeIngredientLookup.Update(ref state);
         _recipeOutputLookup.Update(ref state);
@@ -76,6 +79,7 @@ public partial struct CrafterDecisionSystem : ISystem
         {
             RecipeRegistryEntity = recipeRegistryEntity,
             PendingDemolitionLookup = _pendingDemolitionLookup,
+            DestroyItemRequestLookup = _destroyItemRequestLookup,
             RecipeConfigLookup = _recipeConfigLookup,
             RecipeIngredientLookup = _recipeIngredientLookup,
             RecipeOutputLookup = _recipeOutputLookup,
@@ -98,6 +102,9 @@ public partial struct CrafterDecisionJob : IJobEntity
 
     [ReadOnly]
     public ComponentLookup<PendingBuildingDemolition> PendingDemolitionLookup;
+
+    [ReadOnly]
+    public ComponentLookup<DestroyItemRequest> DestroyItemRequestLookup;
 
     [ReadOnly]
     public BufferLookup<RecipeConfigElement> RecipeConfigLookup;
@@ -292,27 +299,8 @@ public partial struct CrafterDecisionJob : IJobEntity
         else
         {
             // 신규 제작 대기 상태: StoredItemElement에 레시피 필요 재료가 완비되었는지 검사
-            bool hasAllIngredients = true;
-
-            for (int i = 0; i < recipe.IngredientCount; i++)
-            {
-                var ingredient = ingredients[recipe.IngredientStart + i];
-                int foundCount = 0;
-
-                for (int s = 0; s < storedItems.Length; s++)
-                {
-                    if (storedItems[s].ItemType == ingredient.ItemType)
-                    {
-                        foundCount++;
-                    }
-                }
-
-                if (foundCount < ingredient.Amount)
-                {
-                    hasAllIngredients = false;
-                    break;
-                }
-            }
+            bool hasAllIngredients = RecipeConfigLookupUtility.HasRequiredIngredients(
+                recipe, ingredients, storedItems, DestroyItemRequestLookup);
 
             if (hasAllIngredients)
             {

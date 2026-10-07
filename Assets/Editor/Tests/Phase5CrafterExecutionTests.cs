@@ -98,6 +98,62 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         Assert.AreEqual(1, _entityManager.GetBuffer<StoredItemElement>(crafter).Length);
     }
 
+    [TestCase(1, false, 3)]
+    [TestCase(2, true, 0)]
+    [TestCase(3, true, 1)]
+    public void AllIngredientsAreCheckedBeforeConsumption(int copperAmount, bool canStart, int remainingAmount)
+    {
+        // 기본 드론 레시피: Iron_Stick 2 + Copper_Stick 2. 뒤 재료 부족 시 앞 재료도 보존한다.
+        RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
+        Entity crafter = CreateCrafter(recipeId: 5);
+        CreateStoredItem(crafter, ItemTypeEnum.Iron_Stick);
+        CreateStoredItem(crafter, ItemTypeEnum.Iron_Stick);
+        for (int i = 0; i < copperAmount; i++)
+        {
+            CreateStoredItem(crafter, ItemTypeEnum.Copper_Stick);
+        }
+
+        RunDecisionPhase();
+        var decision = _entityManager.GetComponentData<CrafterDecision>(crafter);
+        Assert.AreEqual(canStart, decision.CanStartCraft);
+        if (!canStart)
+        {
+            // 승인 뒤 재고가 부족해진 경우에도 Execution 자체가 부분 소비를 막아야 한다.
+            _entityManager.SetComponentData(crafter, new CrafterDecision(true, recipeId: 5));
+            _entityManager.SetComponentEnabled<CrafterDecision>(crafter, true);
+        }
+
+        using var originalItems = _entityManager.GetBuffer<StoredItemElement>(crafter).ToNativeArray(Allocator.Temp);
+        RunExecutionPhase(deltaTime: 0.1f);
+
+        var state = _entityManager.GetComponentData<CrafterState>(crafter);
+        Assert.AreEqual(canStart, state.IsCraftingActive);
+        Assert.AreEqual(canStart ? 0.025f : 0.0f, state.Progress, 0.0001f);
+        Assert.AreEqual(remainingAmount, _entityManager.GetBuffer<StoredItemElement>(crafter).Length);
+
+        int deletionRequests = 0;
+        for (int i = 0; i < originalItems.Length; i++)
+        {
+            if (_entityManager.IsComponentEnabled<DestroyItemRequest>(originalItems[i].ItemEntity))
+            {
+                deletionRequests++;
+            }
+        }
+        Assert.AreEqual(canStart ? 4 : 0, deletionRequests);
+
+        RunStateApplyPhase();
+        int survivingItems = 0;
+        for (int i = 0; i < originalItems.Length; i++)
+        {
+            if (_entityManager.Exists(originalItems[i].ItemEntity))
+            {
+                survivingItems++;
+            }
+        }
+        Assert.AreEqual(remainingAmount, survivingItems);
+        Assert.AreEqual(0, _entityManager.GetBuffer<ProductResult>(crafter).Length);
+    }
+
     [Test]
     public void Test07_MultipleByproducts_SpawnsAllOutputsToRespectiveSlots()
     {

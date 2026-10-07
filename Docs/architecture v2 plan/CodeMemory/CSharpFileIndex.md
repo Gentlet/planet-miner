@@ -90,8 +90,8 @@
 | `Assets/Scripts/Components/World/ResourceGenerationConfigComponents.cs` | `ResourceGenerationConfigElement` 정의. |
 | `Assets/Scripts/Components/World/WorldGenerationConfigComponents.cs` | `ResourceGenerationSettings` 정의. |
 | `Assets/Scripts/Common/RoutingDirectionUtility.cs` | Splitter/Merger 포트 순서, 회전, 인접 방향, 연결 방향, 커서 갱신을 계산한다. |
-| `Assets/Scripts/Common/RecipeConfigLookupUtility.cs` | 읽기 전용 레시피 버퍼의 ID/주생산품 첫 일치 조회. |
-| `Assets/Scripts/Config/RecipeConfigLoader.cs` | JSON/Resources 레시피를 파싱하고 World 소유 버퍼로 1회 게시한다. 기본 5개 레시피를 제공한다. |
+| `Assets/Scripts/Common/RecipeConfigLookupUtility.cs` | 읽기 전용 레시피 버퍼의 ID/주생산품 첫 일치 조회와 Decision/Execution의 전체 재료 소비 가능 여부 검사. |
+| `Assets/Scripts/Config/RecipeConfigLoader.cs` | JSON/Resources 레시피를 파싱하고 World 소유 버퍼로 1회 게시한다. 중복 재료와 JSON 수량의 int 범위 초과를 거부하며 기본 5개 레시피를 제공한다. |
 | `Assets/Scripts/Phases/CommandGroup.cs` | 명령 처리 그룹을 선언한다. |
 | `Assets/Scripts/Phases/Buildings/BuildingDecisionGroup.cs` | 건물 단계 시작에 확정 상태를 읽어 벨트·입출고·채굴·제작·라우팅 후보를 계산한다. |
 | `Assets/Scripts/Phases/Buildings/BuildingExecutionGroup.cs` | 건물 Reservation 뒤에 승인된 벨트 이동·채굴·제작을 한 번 실행한다. |
@@ -128,7 +128,7 @@
 | --- | --- |
 | `Assets/Scripts/Systems/Initialization/PrefabDatabaseInitializationSystem.cs` | SubScene 로딩 이후 세 DB를 검증하고 게임 시작 허용 또는 중단을 게시한다. |
 | `Assets/Scripts/Systems/Initialization/ItemConfigInitSystem.cs` | StreamingAssets의 스택 설정을 읽어 `ItemRegistry`와 아이템 버퍼를 한 번 게시한다. |
-| `Assets/Scripts/Systems/Initialization/RecipeInitSystem.cs` | `RecipeRegistry`와 레시피·재료·출력 버퍼를 한 번 게시한다. |
+| `Assets/Scripts/Systems/Initialization/RecipeInitSystem.cs` | `RecipeRegistry`와 레시피·재료·출력 버퍼를 한 번 게시한다. 입력 검증 실패는 설정 미게시·오류 로그·즉시 SimulationFatalError로 처리한다. |
 | `Assets/Scripts/Systems/Command/CrafterRecipeCommandSystem.cs` | 새 입력 슬롯 계산 검증 후 진행도·슬롯 수·품목 배정·필터를 갱신하고 잔여 재료를 스택 구분을 유지해 Product로 옮긴다. Decision 데이터는 수정하지 않는다. |
 | `Assets/Scripts/Systems/Buildings/Decision/BeltMovementDecisionSystem.cs` | 벨트 속도, 프레임 시간, 같은/다음 타일의 아이템 간격을 이용해 `PlannedProgress`를 계산한다. |
 | `Assets/Scripts/Systems/Buildings/Decision/BuildingItemInputDecisionSystem.cs` | 벨트 끝에서 다음 셀의 건물, Storage, 필터, 제작기 부산물 대기 상태를 검사한다. |
@@ -166,8 +166,8 @@
 | `Assets/Editor/Tests/Phase3StorageOwnershipTests.cs` | 입출고 소유권과 단일 남은 슬롯 경합, 스택 병합/새 슬롯. |
 | `Assets/Editor/Tests/Phase4EndToEndPipelineTests.cs` | 채굴→벨트→저장 루프와 연속 생산/역압. |
 | `Assets/Editor/Tests/Phase4MinerPipelineTests.cs` | 자원/출력 여유가 없는 경우의 차단, 무한 자원, 품목 불일치, 스택과 시간 상한. |
-| `Assets/Editor/Tests/Phase5CrafterExecutionTests.cs` | 비활성 결정의 실행 제외, 다중 부산물 생성과 전체 용량 판정. |
-| `Assets/Editor/Tests/Phase5RecipeConfigTests.cs` | 실제 레시피 설정 로드와 부산물 1개/2개의 JSON 출력 구성. |
+| `Assets/Editor/Tests/Phase5CrafterExecutionTests.cs` | 비활성 결정의 실행 제외, 다중 부산물 생성과 전체 용량 판정, 재료 부족 시 무소비·정확/초과 재고의 소비와 삭제. |
+| `Assets/Editor/Tests/Phase5RecipeConfigTests.cs` | 실제 레시피 설정 로드와 부산물 1개/2개의 JSON 출력 구성, 중복 재료/수량 범위 초과의 게시 거부와 초기화 중단. |
 | `Assets/Editor/Tests/Phase5CrafterInputSlotTests.cs` | F-037 1단계: 슬롯 계산의 올림, 중복 합산, 품목 구분, 상한/실패 및 Burst Job 호출. |
 | `Assets/Editor/Tests/Phase5CrafterInputPipelineTests.cs` | F-037: 개별 회귀 15개와 실제 정렬 Command→Building→Synchronization 통합 4개. 직접 Spawn/공사 완료 × 기본/사용자 지정 ECS 테스트 프리팹, 미선택 차단·입고·선소비·생산·후속 출고·레시피 변경/해제 및 불변식. |
 | `Assets/Editor/Tests/Phase5RecipeChangePipelineTests.cs` | 레시피 변경 잔여물 배출, 입고 차단과 재개. |

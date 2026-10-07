@@ -1,7 +1,11 @@
+using System;
+using System.Text.RegularExpressions;
 using NUnit.Framework;
 using PlanetMiner.Config;
 using PlanetMiner.Tests;
 using Unity.Entities;
+using UnityEngine;
+using UnityEngine.TestTools;
 
 /// <summary>
 /// 역할·목적: 레시피 JSON의 재료/주생산품/부산물 매핑에 대한 NUnit EditMode 회귀 검증.
@@ -103,4 +107,51 @@ public class Phase5RecipeConfigTests : EcsWorldTestFixture
         Assert.AreEqual(2, primary.Amount);
     }
 
+    [TestCase(1, 1)]
+    [TestCase(2, 3)]
+    [TestCase(int.MaxValue, 1)]
+    public void DuplicateIngredients_RejectPublicationAndStopInitialization(int firstAmount, int secondAmount)
+    {
+        var config = new RecipeConfigData();
+        config.Recipes.Add(new RecipeConfigElement { Id = 10, IngredientCount = 2, OutputCount = 1 });
+        config.Ingredients.Add(new RecipeIngredientElement(ItemTypeEnum.Iron_Ore, firstAmount));
+        config.Ingredients.Add(new RecipeIngredientElement(ItemTypeEnum.Iron_Ore, secondAmount));
+        config.Outputs.Add(new RecipeOutputElement(ItemTypeEnum.Iron, 1));
+
+        Assert.Throws<ArgumentException>(() => RecipeConfigLoader.PublishConfig(_entityManager, config));
+        using var registryQuery = _entityManager.CreateEntityQuery(typeof(RecipeRegistry));
+        Assert.IsTrue(registryQuery.IsEmptyIgnoreFilter);
+
+        string ingredientsJson = $@"{{ ""itemType"": ""Iron_Ore"", ""amount"": {firstAmount} }},
+            {{ ""itemType"": ""Iron_Ore"", ""amount"": {secondAmount} }}";
+        string json = CreateRecipeJson(ingredientsJson);
+        LogAssert.Expect(LogType.Error, new Regex(@"^\[RecipeInitSystem\] Recipe 10 contains duplicate ingredient 'Iron_Ore'\."));
+
+        Assert.AreEqual(Entity.Null, RecipeInitSystem.InitializeRecipeRegistry(_entityManager, json));
+        using var errorQuery = _entityManager.CreateEntityQuery(typeof(SimulationFatalError));
+        Assert.AreEqual(1, errorQuery.CalculateEntityCount());
+        Assert.IsTrue(registryQuery.IsEmptyIgnoreFilter);
+
+        var initialization = _world.GetOrCreateSystemManaged<RecipeInitSystem>();
+        initialization.Update();
+        Assert.IsFalse(initialization.Enabled);
+        Assert.IsTrue(registryQuery.IsEmptyIgnoreFilter, "Failed initialization must not retry with default recipes.");
+    }
+
+    [Test]
+    public void IngredientAmountOutsideIntRange_StopsInitializationWithoutSmallCostFallback()
+    {
+        string json = CreateRecipeJson(@"{ ""itemType"": ""Iron_Ore"", ""amount"": 2147483648 }");
+        LogAssert.Expect(LogType.Error, new Regex(@"^\[RecipeInitSystem\] Recipe 10 ingredient 'Iron_Ore' amount 2147483648 is outside the Int32 range\."));
+
+        Assert.AreEqual(Entity.Null, RecipeInitSystem.InitializeRecipeRegistry(_entityManager, json));
+        using var registryQuery = _entityManager.CreateEntityQuery(typeof(RecipeRegistry));
+        using var errorQuery = _entityManager.CreateEntityQuery(typeof(SimulationFatalError));
+        Assert.IsTrue(registryQuery.IsEmptyIgnoreFilter);
+        Assert.AreEqual(1, errorQuery.CalculateEntityCount());
+    }
+
+    private static string CreateRecipeJson(string ingredientsJson)
+        => @"{ ""recipes"": [{ ""id"": 10, ""outputItemType"": ""Iron"", ""craftTime"": 1,
+            ""ingredients"": [" + ingredientsJson + @"] }] }";
 }
