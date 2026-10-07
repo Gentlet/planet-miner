@@ -130,6 +130,7 @@ Decision은 생성·무효화·경로 의도와 후보만 작성한다. Executio
 `BuildingConfigLoader`는 `requiredResearch` 변환 전에 UTF-8 길이가 기존 `FixedString32Bytes.Capacity`(29)를 넘는지 검사한다. 초과하면 파싱을 실패시키고 두 out 목록을 null로 유지하여 게시하지 않는다.
 
 - 2026-10-02 F-008: Item/Recipe 설정은 시작 시 한 번 게시하고 World 종료까지 읽기 전용으로 유지한다. 자동 초기화는 필요한 버퍼를 가진 사전 등록 Registry를 사용하고 비활성화한다. 공개 초기화/Recipe 게시 API는 기존 Registry가 있으면 입력 처리·새 엔티티 생성 전에 명확히 거부한다. 게임 중 재로드, 게시된 설정의 직접 수정·삭제·재등록은 지원하지 않는다.
+- 2026-10-07 F-014: 같은 레시피의 중복 재료 품목은 합산하지 않고 설정 오류로 거부한다. JSON 재료 수량은 `long`으로 읽어 런타임 `int` 범위를 확인하며, 파싱과 공개 게시 경계가 중복을 거부한다. `RecipeInitSystem`의 입력 검증 실패는 설정 미게시·오류 로그·즉시 `SimulationFatalError`로 게임 시뮬레이션 전체를 차단한다. 자동 Init은 중단 오류 뒤 재시도하지 않는다. 유효한 설정의 입력 슬롯 계산은 기존 Utility를 재사용한다.
 - 설정 버퍼와 엔티티는 ECS가 소유한다. Init 시스템과 외부 호출자는 설정 메모리를 따로 보관하거나 Dispose하지 않으며, Init 시스템만 제거해도 설정은 남는다. World 종료의 tracked Job 완료 경계를 재사용하고, 읽는 Job은 읽기 전용 BufferLookup과 state.Dependency를 등록한다. 버퍼를 프레임마다 복사하거나 Init 내부 필드를 조회하지 않는다.
 - ItemConfigElement는 품목 번호와 같은 인덱스에 저장하며 ItemRegistry.DefaultMaxStack을 유지한다. RecipeConfigElement는 같은 엔티티의 RecipeIngredientElement/RecipeOutputElement 버퍼 내 시작 위치·개수를 가진다. RecipeConfigLookupUtility는 기존 ID/주생산품 첫 일치 조회를 제공한다. 입력 순서, 주생산품 슬롯 0, 기존 기본값·파싱 정책은 유지하며, 게시 실패 시 그 호출이 만든 미완성 엔티티만 회수한다.
 
@@ -162,7 +163,7 @@ Decision은 생성·무효화·경로 의도와 후보만 작성한다. Executio
 - 2026-09-30 사용자 확정: 일반 벨트끼리의 T형 직접 합류는 자동 경합 중재·사전 대기·교착 해소 보장 대상에서 제외한다. 합류/분배 중재는 Merger/Splitter의 역할이며 이를 일반 벨트 예약으로 확장하지 않는다. 현재 외향 벨트의 바로 뒤 셀은 출처 건물 또는 라우터이므로, 해당 출력 셀에 추가 일반 벨트가 직접 진입하는 측면 합류도 통합 예약 구현의 근거로 삼지 않는다. 이 정책이 기존 겹침을 복구하거나 불변식 위반을 면제한다는 뜻은 아니다.
 - 분배/합류: `SplitterDecisionSystem`은 입력 벨트 기준 forward→right→left, `MergerDecisionSystem`은 출력 벨트 기준 back→left→right 순환 후보를 선택한다. 예약을 통과한 `RoutingTransferDecision`은 `RoutingApplySystem`이 실제 이동과 커서 갱신에 사용한다. 설치 우선순위는 `PlacementStamp`와 해당 비교 구현을 따른다.
 - 채굴: Decision이 footprint 아래 첫 유효 자원과 동일 품목 1스택 출력 여유를 검사한다. Execution은 진행도·자원량과 `ProductResult`를 갱신하며 유한 자원 고갈은 ECB로 삭제한다. `ResourceConfig` 부재 시 기본은 유한 자원이다.
-- 제작: `CrafterDecisionSystem`이 실행 결정과 `CrafterStateDecision`을 나누어 기록한다. Execution은 재료를 선소비하고 진행/출력 결과를 만들며, `CrafterStateApplySystem`이 상태를 반영한다. 출력은 주생산품과 모든 부산물 슬롯의 여유를 함께 검사한다.
+- 제작: `CrafterDecisionSystem`이 실행 결정과 `CrafterStateDecision`을 나누어 기록한다. Decision과 Execution은 기존 `RecipeConfigLookupUtility.HasRequiredIngredients`로 모든 유일한 재료 요구량과 비활성 `DestroyItemRequest`를 가진 보관 실물을 검사한다. Execution은 전체 확인이 성공한 뒤에만 재료를 선소비하고 진행/출력 결과를 만들며, 부족하면 버퍼·삭제 요청·진행도를 변경하지 않는다. `CrafterStateApplySystem`이 상태를 반영한다. 출력은 주생산품과 모든 부산물 슬롯의 여유를 함께 검사한다.
 - 레시피 변경: `CrafterRecipeCommandSystem`이 새 입력 슬롯 계산을 검증한 뒤 진행을 초기화하고 슬롯 수·배정·필터를 함께 갱신한다. 남은 입력 재료는 기존 입력 슬롯 구분을 유지하여 생산물 버퍼의 빈 후속 슬롯으로 옮긴다. 설정 미게시 시 선택 요청을 대기시키고, 무효 레시피/계산 실패는 기존 상태를 보존한다. 해제는 0슬롯/빈 Whitelist이며 설정 없이도 처리한다. `WaitingForByproductOutput` 동안 입고와 새 제작을 막는다. Execution은 이 변경을 다시 처리하지 않고 확정된 레시피와 실행 결정으로 선소비·진행·생산 결과를 기록한다.
 
 ## 주요 폴더와 테스트 탐색

@@ -7,6 +7,7 @@ using Unity.Mathematics;
 /// 역할·목적: Execution에서 선택 레시피의 재료를 선소비하고 제작 진행과 생산 결과를 반영한다.
 /// 입력·생성자: Command의 레시피 선택/중단 상태, CrafterDecisionSystem의 착수·진행·출력 결정과 RecipeRegistry.
 /// 출력·소유권: StoredItemElement를 먼저 제거하고 실물 DestroyItemRequest를 활성화한다. CrafterState의 진행/작업 여부와 ProductResult를 쓴다.
+/// 착수 실패: 모든 재료의 유일한 요구량과 소비 가능한 실물을 먼저 검사하며 부족하면 아무 재료도 소비하지 않는다.
 /// 이용·정리: ItemLifecycleApplySystem이 소비 실물을 삭제하고 생산 결과를 실물/출력 버퍼로 변환 후 비운다. Status 반영은 CrafterStateApplySystem의 책임이다.
 /// 가시화: 값 변경은 Execution Job에서 반영하며 실물 생성/삭제는 EndBuilding에서 확정한다. 레시피 변경·잔여 재료 반환은 여기서 처리하지 않는다.
 /// </summary>
@@ -126,6 +127,12 @@ public partial struct CrafterExecutionJob : IJobEntity
         // =========================================================================
         if (decision.CanStartCraft && !state.IsCraftingActive)
         {
+            // 모든 재료를 먼저 확인한다. 실패하면 부분 소비·삭제 요청·진행도를 기록하지 않는다.
+            if (!RecipeConfigLookupUtility.HasRequiredIngredients(recipe, ingredients, storedItems, DestroyItemRequestLookup))
+            {
+                return;
+            }
+
             // 소유 버퍼 참조를 먼저 제거하여 소비 실물이 재선택되지 않게 하고, 실제 삭제는 ItemLifecycle과 EndBuilding에 맡긴다.
             // 레시피 필요 재료를 StoredItemElement에서 차감하고 DestroyItemRequest 발행
             for (int i = 0; i < recipe.IngredientCount; i++)
@@ -135,18 +142,21 @@ public partial struct CrafterExecutionJob : IJobEntity
 
                 for (int s = storedItems.Length - 1; s >= 0 && remainingToConsume > 0; s--)
                 {
-                    if (storedItems[s].ItemType == ingredient.ItemType)
+                    var storedItem = storedItems[s];
+                    if (storedItem.ItemType != ingredient.ItemType)
                     {
-                        Entity itemEntity = storedItems[s].ItemEntity;
-                        storedItems.RemoveAt(s);
-
-                        if (DestroyItemRequestLookup.HasComponent(itemEntity))
-                        {
-                            DestroyItemRequestLookup.SetComponentEnabled(itemEntity, true);
-                        }
-
-                        remainingToConsume--;
+                        continue;
                     }
+
+                    Entity itemEntity = storedItem.ItemEntity;
+                    if (!RecipeConfigLookupUtility.CanConsumeStoredItem(itemEntity, DestroyItemRequestLookup))
+                    {
+                        continue;
+                    }
+
+                    storedItems.RemoveAt(s);
+                    DestroyItemRequestLookup.SetComponentEnabled(itemEntity, true);
+                    remainingToConsume--;
                 }
             }
 

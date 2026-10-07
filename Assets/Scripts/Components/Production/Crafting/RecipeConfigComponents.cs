@@ -82,20 +82,30 @@ public struct RecipeConfigElement : IBufferElementData
         return false;
     }
 
+    /// <summary>품목이 유일하고 수량이 양수일 때만 요구량을 반환한다. 중복을 첫 행의 비용으로 취급하지 않는다.</summary>
     public bool TryFindIngredient(DynamicBuffer<RecipeIngredientElement> ingredients, ItemTypeEnum itemType, out int requiredAmount)
     {
+        requiredAmount = 0;
+        bool found = false;
         for (int i = 0; i < IngredientCount; i++)
         {
             var ingredient = ingredients[IngredientStart + i];
-            if (ingredient.ItemType == itemType)
+            if (ingredient.ItemType != itemType)
             {
-                requiredAmount = ingredient.Amount;
-                return true;
+                continue;
             }
+
+            if (found || ingredient.Amount <= 0)
+            {
+                requiredAmount = 0;
+                return false;
+            }
+
+            requiredAmount = ingredient.Amount;
+            found = true;
         }
 
-        requiredAmount = 0;
-        return false;
+        return found;
     }
 }
 
