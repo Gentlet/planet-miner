@@ -29,7 +29,6 @@ public class DroneItemTransferTests : EcsWorldTestFixture
         base.SetUp();
         CreateGameplayPrefabDatabases();
         Entity registry = _entityManager.CreateEntity(typeof(ItemRegistry));
-        _entityManager.SetComponentData(registry, new ItemRegistry { DefaultMaxStack = 2 });
         var config = _entityManager.AddBuffer<ItemConfigElement>(registry);
         foreach (ItemTypeEnum type in Enum.GetValues(typeof(ItemTypeEnum)))
         {

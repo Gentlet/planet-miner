@@ -1,7 +1,5 @@
 {
-  "DefaultMaxStack": 50,
   "Items": [
-    { "ItemType": "None", "MaxStack": 0 },
     { "ItemType": "Iron_Ore", "MaxStack": 50 },
     { "ItemType": "Copper_Ore", "MaxStack": 50 },
     { "ItemType": "Coal", "MaxStack": 50 },

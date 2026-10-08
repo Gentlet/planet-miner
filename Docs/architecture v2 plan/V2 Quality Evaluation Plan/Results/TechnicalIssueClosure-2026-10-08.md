@@ -45,6 +45,8 @@
 
 판정: 실패 전달 구현은 F-011에서 끝났고 남은 범위는 선택 검증이다. 사용자 방침에 따라 이번 활성 개선 추적을 종료한다. 검증 공백이 모두 해소됐다는 의미는 아니다. 향후 선택 실행은 실제 Config를 삭제/편집하지 않는 격리 방식으로 파일 부재·읽기/파싱 실패·빈 목록/필수 누락을 확인하는 범위이며 새 fixture/assertion을 현재 필수 작업으로 남기지 않는다.
 
+F-007 후속 주석(2026-10-08): 위 종료 재검토 시점의 정상 Item 공통값/품목별 기본값 규칙은 최신 사용자 선택과 F-007 구현으로 제거됐다. 현재 실제 모든 품목의 명시적 양수 MaxStack을 요구하고 무효 값·이름·None·중복·누락도 기존 실패 전달을 재사용한다. F-009의 선택 검증 종료는 유지하며 삭제된 기본값 테스트 복원이나 새 테스트를 필수로 두지 않는다. 위 Item 2/2·Recipe 7/7는 F-007 이후 입력/API의 새 실행 증거가 아니다. 이번에는 문서만 변경했으며 [관련 영향 정리](F007-Verification.md#2026-10-08-관련-이슈-후속-정리)를 따른다.
+
 ## F-021 — 실제 베이킹 근거를 반영하고 나머지 선택 검증 추적 종료
 
 [Q08](Q08.md)의 기존 테스트는 실제 Baker 회귀를 검출하지 못하는 범위였다. 현재도 [Phase1ItemAuthoringPrefabTests](../../../../Assets/Editor/Tests/Phase1ItemAuthoringPrefabTests.cs)의 PopulateFromResources와 [Phase7BuildingAuthoringPrefabTests](../../../../Assets/Editor/Tests/Phase7BuildingAuthoringPrefabTests.cs)의 임시 Authoring 목록 수집은 실제 Bake가 아니다. [Phase4ResourceAuthoringAndSpawnTests](../../../../Assets/Editor/Tests/Phase4ResourceAuthoringAndSpawnTests.cs)는 수동 ECS 자원/DB를 준비한다. 이들과 F-011 프리팹 초기화 15/15를 실제 Baker 실행으로 바꾸어 설명하지 않는다.

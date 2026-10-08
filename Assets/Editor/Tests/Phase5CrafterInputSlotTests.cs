@@ -153,7 +153,6 @@ public class Phase5CrafterInputSlotTests : EcsWorldTestFixture
         new CalculateSlotsJob
         {
             Ingredients = _entityManager.GetBuffer<RecipeIngredientElement>(_recipe, true),
-            ItemRegistry = _entityManager.GetComponentData<ItemRegistry>(_items),
             Items = _entityManager.GetBuffer<ItemConfigElement>(_items, true),
             Slots = slots,
             Error = error
@@ -171,7 +170,6 @@ public class Phase5CrafterInputSlotTests : EcsWorldTestFixture
         var ingredients = _entityManager.GetBuffer<RecipeIngredientElement>(_recipe, true);
         bool success = BuildingInputSlotUtility.TryCalculate(
             ingredients, 0, ingredients.Length,
-            _entityManager.GetComponentData<ItemRegistry>(_items),
             _entityManager.GetBuffer<ItemConfigElement>(_items, true), out var slots, out var error);
         Assert.IsTrue(success, error.ToString());
         Assert.AreEqual(BuildingInputSlotCalculationErrorEnum.None, error);
@@ -183,7 +181,6 @@ public class Phase5CrafterInputSlotTests : EcsWorldTestFixture
         var ingredients = _entityManager.GetBuffer<RecipeIngredientElement>(_recipe, true);
         bool success = BuildingInputSlotUtility.TryCalculate(
             ingredients, 0, ingredients.Length,
-            _entityManager.GetComponentData<ItemRegistry>(_items),
             _entityManager.GetBuffer<ItemConfigElement>(_items, true), out var slots, out var error);
         Assert.IsFalse(success);
         Assert.AreEqual(expectedError, error);
@@ -211,7 +208,6 @@ public class Phase5CrafterInputSlotTests : EcsWorldTestFixture
         // 실패용 Registry를 직접 구성해 품목/스택 오류가 기본값으로 숨겨지지 않는지 확인한다.
         // 잘못된 입력 행은 이 유틸리티 실패 검증에서만 직접 구성한다.
         _items = _entityManager.CreateEntity(typeof(ItemRegistry));
-        _entityManager.SetComponentData(_items, new ItemRegistry { DefaultMaxStack = 50 });
         var entries = _entityManager.AddBuffer<ItemConfigElement>(_items);
         for (int i = 0; i <= (int)ItemTypeEnum.Copper; i++)
         {
@@ -232,7 +228,6 @@ public class Phase5CrafterInputSlotTests : EcsWorldTestFixture
     private struct CalculateSlotsJob : IJob
     {
         [ReadOnly] public DynamicBuffer<RecipeIngredientElement> Ingredients;
-        public ItemRegistry ItemRegistry;
         [ReadOnly] public DynamicBuffer<ItemConfigElement> Items;
         public NativeReference<FixedList512Bytes<BuildingInputSlotElement>> Slots;
         public NativeReference<BuildingInputSlotCalculationErrorEnum> Error;
@@ -240,7 +235,7 @@ public class Phase5CrafterInputSlotTests : EcsWorldTestFixture
         public void Execute()
         {
             BuildingInputSlotUtility.TryCalculate(
-                Ingredients, 0, Ingredients.Length, ItemRegistry, Items, out var slots, out var error);
+                Ingredients, 0, Ingredients.Length, Items, out var slots, out var error);
             Slots.Value = slots;
             Error.Value = error;
         }

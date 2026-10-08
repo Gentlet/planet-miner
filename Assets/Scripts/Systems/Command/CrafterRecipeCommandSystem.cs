@@ -54,7 +54,6 @@ public partial struct CrafterRecipeCommandSystem : ISystem
         state.Dependency.Complete();
         bool hasRecipeRegistry = SystemAPI.TryGetSingletonEntity<RecipeRegistry>(out var recipeRegistryEntity);
         bool hasItemRegistry = SystemAPI.TryGetSingletonEntity<ItemRegistry>(out var itemRegistryEntity);
-        SystemAPI.TryGetSingleton<ItemRegistry>(out var itemRegistry);
 
         var ecbSystem = state.World.GetExistingSystemManaged<EndCommandEntityCommandBufferSystem>();
         EntityCommandBuffer ecb;
@@ -123,7 +122,7 @@ public partial struct CrafterRecipeCommandSystem : ISystem
                     var recipe = recipes[recipeIndex];
                     if (!BuildingInputSlotUtility.TryCalculate(
                             _recipeIngredientLookup[recipeRegistryEntity], recipe.IngredientStart,
-                            recipe.IngredientCount, itemRegistry, _itemConfigLookup[itemRegistryEntity],
+                            recipe.IngredientCount, _itemConfigLookup[itemRegistryEntity],
                             out slots, out var error))
                     {
                         UnityEngine.Debug.LogError($"[CrafterRecipeCommandSystem] Invalid input slots for recipe {newRecipeId}: {error}. Recipe change rejected.");

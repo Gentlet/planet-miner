@@ -188,8 +188,7 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
         // 이 슬롯 기록은 런타임 Storage의 복제 원본이 아니라 이번 행동에 허용할 공간 상한이다.
         // 뒤의 출고로 공간이 늘어도 상한을 확장하지 않고, 실제 성공분만 Lifecycle의 슬롯 예산에서 차감한다.
         if (DroneSchedulingUtility.FindStorageSlot(manager, storage, type, registry) < 0) return 0;
-        int maxStack = manager.GetComponentData<ItemRegistry>(registry)
-            .GetMaxStack(manager.GetBuffer<ItemConfigElement>(registry, true), type);
+        int maxStack = ItemRegistry.GetMaxStack(manager.GetBuffer<ItemConfigElement>(registry, true), type);
         int slotCount = math.min(manager.GetComponentData<Storage>(storage).SlotCount, GameConstants.MaxStorageSlots);
         var stored = manager.GetBuffer<StoredItemElement>(storage, true);
         bool hasInputSlots = manager.HasBuffer<BuildingInputSlotElement>(storage);

@@ -448,8 +448,7 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         if (!manager.Exists(registry)) return -1;
         if (!manager.HasComponent<ItemRegistry>(registry)) return -1;
         if (!manager.HasBuffer<ItemConfigElement>(registry)) return -1;
-        int maxStack = manager.GetComponentData<ItemRegistry>(registry)
-            .GetMaxStack(manager.GetBuffer<ItemConfigElement>(registry, true), assignment.ItemType);
+        int maxStack = ItemRegistry.GetMaxStack(manager.GetBuffer<ItemConfigElement>(registry, true), assignment.ItemType);
         for (int i = 0; i < budget.Count; i++)
         {
             var slot = budget[i];

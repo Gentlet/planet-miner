@@ -120,21 +120,22 @@ Decision은 생성·무효화·경로 의도와 후보만 작성한다. Executio
 
 | 설정 입력 | 게시 시스템 / 데이터 |
 | --- | --- |
-| `Assets/StreamingAssets/ItemConfig.json` | `ItemConfigInitSystem` → `ItemRegistry` / `ItemConfigElement` 버퍼. 유효한 공통값·품목별 예외 규칙을 유지하며 파일/파싱 실패는 중단 오류다. |
+| `Assets/StreamingAssets/ItemConfig.json` | `ItemConfigInitSystem` → `ItemRegistry` 태그 / `ItemConfigElement` 버퍼. None을 제외한 모든 품목의 명시적 양수 MaxStack이 필수이며 파일/파싱/검증 실패는 중단 오류다. |
 | `Assets/Resources/Config/CrafterRecipeConfig.json` | `RecipeInitSystem` / `RecipeConfigLoader` → `RecipeRegistry`와 레시피·재료·출력 버퍼. 전체 초기화는 ID 1~5를 요구하며 파일 실패 뒤 기본 레시피로 대체하지 않는다. |
 | `Assets/Resources/Config/BuildingConfig.json` | `BuildingConfigInitSystem` / `BuildingConfigLoader` → `BuildingConfigElement`, `BuildingConstructionMaterialElement`, 호환용 `BuildingRuntimeConfigElement`. 검증 실패 시 게시하지 않는다. |
 | `Assets/Resources/Config/WorldGenerationConfig.json` | `WorldGenerationConfigLoadSystem` / `WorldGenerationConfigLoader` → 자원 설정과 `FloorGenerationSettings`, `FloorBiomeElement`, `FloorVariantElement`를 같은 엔티티에 게시한다. 자원·바닥·Sprite 참조 검증 실패 시 부분 게시하지 않는다. |
 
 `BuildingConfigLoadSystem.cs`에는 실제 로더인 managed `BuildingConfigInitSystem`과, `BuildingConfig`를 요구하고 한 번 실행 후 비활성화되는 `BuildingConfigLoadSystem`이 함께 있다. 이름만 보고 로드 책임을 잘못 배정하지 않는다. 기존 전력·드론·연구·시작 아이템 JSON의 존재는 현재 로더가 사용한다는 증거가 아니다.
 
-- 2026-10-08 F-011: 현재 네 설정 로드 경로와 프리팹 준비는 파일 누락·읽기/파싱 실패·필수 데이터 누락을 로그·해당 설정 미게시·즉시 `SimulationFatalError`로 처리한다. 앱 종료·자동 재시도는 추가하지 않는다. 건물은 None/Count/ConstructionSite를 제외한 11종, 레시피는 ID 1~5가 필수다. 자원과 바닥은 같은 엔티티의 전체 구성을 요구한다. 정상 설정의 빈 건축 자재·기본 footprint·아이템 공통값/품목별 기본 규칙은 유지한다. 격리 테스트는 Init 없이 필요한 최소 데이터를 명시적으로 게시한다. 배치와 공통 Spawn은 설정 부재를 허용하지 않으며 Spawn의 대상 종류 누락도 거부한다. 검증 범위는 [F-011 기록](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/F011-Verification.md>)을 따른다.
+- 2026-10-08 F-011: 현재 네 설정 로드 경로와 프리팹 준비는 파일 누락·읽기/파싱 실패·필수 데이터 누락을 로그·해당 설정 미게시·즉시 `SimulationFatalError`로 처리한다. 앱 종료·자동 재시도는 추가하지 않는다. 건물은 None/Count/ConstructionSite를 제외한 11종, 레시피는 ID 1~5가 필수다. 자원과 바닥은 같은 엔티티의 전체 구성을 요구한다. 정상 설정의 빈 건축 자재·기본 footprint는 유지한다. 당시 아이템의 공통값/품목별 기본 규칙은 후속 F-007에서 전체 명시 설정으로 변경했다. 격리 테스트는 Init 없이 필요한 최소 데이터를 명시적으로 게시한다. 배치와 공통 Spawn은 설정 부재를 허용하지 않으며 Spawn의 대상 종류 누락도 거부한다. 검증 범위는 [F-011 기록](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/F011-Verification.md>)을 따른다.
+- 2026-10-08 F-007: Item 설정은 None을 제외한 실제 9품목의 MaxStack을 JSON에 모두 작성하며 0·음수·누락 값·빈/무효 이름·숫자 이름·None 항목·중복을 오류로 거부한다. 이름 대소문자는 무시한다. `GetDefaultMaxStackFor`와 `DefaultMaxStack`은 제거했으며 설정 부재를 50으로 보충하지 않는다. `ItemRegistry.GetMaxStack`은 원본 버퍼를 읽는 정적 조회이고 None·범위 밖·인덱스 불일치는 용량 0이다. enum None과 숫자 순서를 유지하기 위해 버퍼 0번에만 내부 None/0을 둔다. 자동 Init의 사전 등록 검사도 전체 인덱스·실제 품목의 양수 값·내부 None/0을 요구한다. 일반 창고는 빈 슬롯 선택 전에 0 이하 한도를 거부하며 기존 F-031 예약 품목/수량·F-037 전용 슬롯·F-008 1회 게시 계약은 유지한다. 검증과 실행 미확인 범위는 [F-007 기록](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/F007-Verification.md>)을 따른다.
 
 `BuildingConfigLoader`는 `requiredResearch` 변환 전에 UTF-8 길이가 기존 `FixedString32Bytes.Capacity`(29)를 넘는지 검사한다. 초과하면 파싱을 실패시키고 두 out 목록을 null로 유지하여 게시하지 않는다.
 
 - 2026-10-02 F-008: Item/Recipe 설정은 시작 시 한 번 게시하고 World 종료까지 읽기 전용으로 유지한다. 자동 초기화는 필요한 버퍼를 가진 사전 등록 Registry를 사용하고 비활성화한다. 공개 초기화/Recipe 게시 API는 기존 Registry가 있으면 입력 처리·새 엔티티 생성 전에 명확히 거부한다. 게임 중 재로드, 게시된 설정의 직접 수정·삭제·재등록은 지원하지 않는다.
 - 2026-10-07 F-014: 같은 레시피의 중복 재료 품목은 합산하지 않고 설정 오류로 거부한다. JSON 재료 수량은 `long`으로 읽어 런타임 `int` 범위를 확인하며, 파싱과 공개 게시 경계가 중복을 거부한다. `RecipeInitSystem`의 입력 검증 실패는 설정 미게시·오류 로그·즉시 `SimulationFatalError`로 게임 시뮬레이션 전체를 차단한다. 자동 Init은 중단 오류 뒤 재시도하지 않는다. 유효한 설정의 입력 슬롯 계산은 기존 Utility를 재사용한다.
 - 설정 버퍼와 엔티티는 ECS가 소유한다. Init 시스템과 외부 호출자는 설정 메모리를 따로 보관하거나 Dispose하지 않으며, Init 시스템만 제거해도 설정은 남는다. World 종료의 tracked Job 완료 경계를 재사용하고, 읽는 Job은 읽기 전용 BufferLookup과 state.Dependency를 등록한다. 버퍼를 프레임마다 복사하거나 Init 내부 필드를 조회하지 않는다.
-- ItemConfigElement는 품목 번호와 같은 인덱스에 저장하며 ItemRegistry.DefaultMaxStack을 유지한다. RecipeConfigElement는 같은 엔티티의 RecipeIngredientElement/RecipeOutputElement 버퍼 내 시작 위치·개수를 가진다. RecipeConfigLookupUtility는 기존 ID/주생산품 첫 일치 조회를 제공한다. 입력 순서, 주생산품 슬롯 0, 기존 기본값·파싱 정책은 유지하며, 게시 실패 시 그 호출이 만든 미완성 엔티티만 회수한다.
+- ItemConfigElement는 품목 번호와 같은 인덱스에 저장하며 ItemRegistry 태그가 같은 엔티티의 원본 버퍼를 식별한다. 품목별 기본값이나 별도 원본 캐시는 없다. RecipeConfigElement는 같은 엔티티의 RecipeIngredientElement/RecipeOutputElement 버퍼 내 시작 위치·개수를 가진다. RecipeConfigLookupUtility는 기존 ID/주생산품 첫 일치 조회를 제공한다. 레시피 입력 순서, 주생산품 슬롯 0, 기존 기본값·파싱 정책은 유지하며, 게시 실패 시 그 호출이 만든 미완성 엔티티만 회수한다.
 
 1. `InitialChunkLoadBootstrapSystem`이 월드 설정의 `InitialChunkSize`로 원점 주변 N×N 청크를 `ChunkLoadRequestQueue`에 한 번 넣는다.
 2. `ChunkLoadCommandSystem`이 `GeneratedChunkTracker.Map`(완료)과 `Pending`(접수/반영 대기)으로 중복을 제거하고 `GeneratedChunkReadyElement`로 넘긴다. 이 Tracker는 생성 수명주기이며 공간 점유 인덱스가 아니다.

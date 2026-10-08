@@ -54,11 +54,9 @@ public partial struct MinerDecisionSystem : ISystem
         _pendingDemolitionLookup.Update(ref state);
         _itemConfigLookup.Update(ref state);
 
-        ItemRegistry itemRegistry = default;
         Entity itemRegistryEntity = Entity.Null;
         if (SystemAPI.HasSingleton<ItemRegistry>())
         {
-            itemRegistry = SystemAPI.GetSingleton<ItemRegistry>();
             itemRegistryEntity = SystemAPI.GetSingletonEntity<ItemRegistry>();
         }
 
@@ -67,7 +65,6 @@ public partial struct MinerDecisionSystem : ISystem
             ResourceMap = resIndex.Map,
             ResourceNodeLookup = _resourceNodeLookup,
             PendingDemolitionLookup = _pendingDemolitionLookup,
-            ItemRegistry = itemRegistry,
             ItemRegistryEntity = itemRegistryEntity,
             ItemConfigLookup = _itemConfigLookup
         };
@@ -95,9 +92,6 @@ public partial struct MinerDecisionJob : IJobEntity
 
     [ReadOnly]
     public ComponentLookup<PendingBuildingDemolition> PendingDemolitionLookup;
-
-    [ReadOnly]
-    public ItemRegistry ItemRegistry;
 
     public Entity ItemRegistryEntity;
 
@@ -149,7 +143,7 @@ public partial struct MinerDecisionJob : IJobEntity
         }
 
         // 2. 내부 출력 버퍼(ProductItemElement) 여유 공간 확인 (1스택 한도)
-        int maxStack = 50;
+        int maxStack = 0;
         if (resourceType != ItemTypeEnum.None && ItemConfigLookup.HasBuffer(ItemRegistryEntity))
         {
             maxStack = ItemRegistry.GetMaxStack(ItemConfigLookup[ItemRegistryEntity], resourceType);

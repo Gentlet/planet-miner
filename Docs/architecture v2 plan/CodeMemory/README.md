@@ -44,7 +44,7 @@ SimulationSystemGroup
 
 ## 주요 흐름
 
-1. `ItemConfigInitSystem`은 `StreamingAssets/ItemConfig.json` 또는 기본값을 `ItemRegistry`와 `ItemConfigElement` 버퍼로 게시한다. `RecipeInitSystem`은 `Resources/Config/CrafterRecipeConfig` 또는 기본 레시피를 `RecipeRegistry`와 레시피·재료·출력 버퍼로 게시한다. 시작 시 1회 게시·World 소유 수명·중복 게시 거부 계약은 AGENTS.md의 초기화 절을 따른다.
+1. `ItemConfigInitSystem`은 `StreamingAssets/ItemConfig.json`의 실제 모든 품목에 명시적 양수 MaxStack을 요구하며 검증 후 `ItemRegistry` 태그와 `ItemConfigElement` 버퍼로 게시한다. None 설정·공통/품목별 기본값 보충은 없다. `RecipeInitSystem`은 `Resources/Config/CrafterRecipeConfig`를 `RecipeRegistry`와 레시피·재료·출력 버퍼로 게시한다. 로드 실패 차단·시작 시 1회 게시·World 소유 수명·중복 게시 거부 계약은 AGENTS.md의 초기화 절을 따른다.
 2. 월드 아이템 생성 요청과 Miner/Crafter의 `ProductResult`는 `ItemLifecycleApplySystem`에서 아이템 엔티티가 된다. 요청의 Storage/Product 목적지에 대상 버퍼가 없으면 아이템을 만들지 않고 요청을 소비한다. F-005의 Command 철거 검증·StateApply 생성 폐기 계약은 [AGENTS.md](../../../AGENTS.md)의 실행 단계 규칙을 따른다.
 3. `BeltMovementDecisionSystem`은 벨트 속도와 앞 아이템 간격으로 이동량을 계산하고 `BeltMovementExecutionSystem`이 이동과 위치를 확정한다. 별도로 출고·Routing Decision과 `BeltDestinationReservationSystem`은 `BeltEntryUtility`의 같은 공간 판정을 사용하며, 예약은 외부 진입 후보 사이의 경합을 중재한다.
 4. 벨트 끝 아이템의 입고는 `BuildingItemInputDecisionSystem` → `BuildingStorageInputReservationSystem` → `BuildingItemStorageApplySystem` → `ItemOwnershipApplySystem` 순서로 처리한다. 일반 저장품 및 생산품 출고는 서로 다른 Decision 시스템이 작성하고 공통 Apply 시스템이 처리한다.

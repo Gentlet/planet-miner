@@ -67,11 +67,9 @@ public partial struct CrafterDecisionSystem : ISystem
             return;
         }
 
-        ItemRegistry itemRegistry = default;
         Entity itemRegistryEntity = Entity.Null;
         if (SystemAPI.HasSingleton<ItemRegistry>())
         {
-            itemRegistry = SystemAPI.GetSingleton<ItemRegistry>();
             itemRegistryEntity = SystemAPI.GetSingletonEntity<ItemRegistry>();
         }
 
@@ -83,7 +81,6 @@ public partial struct CrafterDecisionSystem : ISystem
             RecipeConfigLookup = _recipeConfigLookup,
             RecipeIngredientLookup = _recipeIngredientLookup,
             RecipeOutputLookup = _recipeOutputLookup,
-            ItemRegistry = itemRegistry,
             ItemRegistryEntity = itemRegistryEntity,
             ItemConfigLookup = _itemConfigLookup
         };
@@ -114,9 +111,6 @@ public partial struct CrafterDecisionJob : IJobEntity
 
     [ReadOnly]
     public BufferLookup<RecipeOutputElement> RecipeOutputLookup;
-
-    [ReadOnly]
-    public ItemRegistry ItemRegistry;
 
     public Entity ItemRegistryEntity;
 
@@ -244,7 +238,7 @@ public partial struct CrafterDecisionJob : IJobEntity
 
             int maxStack = (hasItemRegistry && output.ItemType != ItemTypeEnum.None)
                 ? ItemRegistry.GetMaxStack(ItemConfigLookup[ItemRegistryEntity], output.ItemType)
-                : 50;
+                : 0;
 
             if (countInSlot + output.Amount > maxStack)
             {

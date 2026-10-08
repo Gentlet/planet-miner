@@ -50,11 +50,9 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
         _inputSlotLookup.Update(ref state);
         _itemConfigLookup.Update(ref state);
 
-        ItemRegistry itemRegistry = default;
         Entity itemRegistryEntity = Entity.Null;
         if (!_itemRegistryQuery.IsEmptyIgnoreFilter)
         {
-            itemRegistry = _itemRegistryQuery.GetSingleton<ItemRegistry>();
             itemRegistryEntity = _itemRegistryQuery.GetSingletonEntity();
         }
 
@@ -69,7 +67,6 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
             StorageLookup = _storageLookup,
             StoredBufferLookup = _storedBufferLookup,
             InputSlotLookup = _inputSlotLookup,
-            ItemRegistry = itemRegistry,
             ItemRegistryEntity = itemRegistryEntity,
             ItemConfigLookup = _itemConfigLookup,
             PendingAdditions = pendingAdditions
@@ -104,9 +101,6 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
 
     [ReadOnly]
     public BufferLookup<BuildingInputSlotElement> InputSlotLookup;
-
-    [ReadOnly]
-    public ItemRegistry ItemRegistry;
 
     public Entity ItemRegistryEntity;
 
@@ -162,10 +156,18 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
         }
 
         ItemTypeEnum itemType = itemIdentity.Type;
-        int maxStack = 50;
+        int maxStack = 0;
         if (hasItemConfig)
         {
             maxStack = ItemRegistry.GetMaxStack(ItemConfigLookup[ItemRegistryEntity], itemType);
+        }
+        // 빈 슬롯도 한 개의 실물을 수용할 양수 한도가 필요하다. 설정 부재를 기본값으로 보충하지 않는다.
+        if (maxStack <= 0)
+        {
+            inputDecision.CanDeposit = false;
+            inputDecision.TargetSlotIndex = -1;
+            inputDecisionEnabled.ValueRW = false;
+            return;
         }
 
         // FixedList512Bytes를 사용하여 unsafe 코드 없이 스택 기반 O(1) 슬롯 점유 집계 (GameConstants.MaxStorageSlots 상한 준수)

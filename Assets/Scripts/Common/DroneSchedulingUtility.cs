@@ -226,8 +226,7 @@ public static class DroneSchedulingUtility
             return false;
         }
 
-        maxStack = manager.GetComponentData<ItemRegistry>(registry)
-            .GetMaxStack(manager.GetBuffer<ItemConfigElement>(registry, true), type);
+        maxStack = ItemRegistry.GetMaxStack(manager.GetBuffer<ItemConfigElement>(registry, true), type);
         if (maxStack <= 0)
         {
             return false;
