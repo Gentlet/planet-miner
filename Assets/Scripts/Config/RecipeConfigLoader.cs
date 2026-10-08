@@ -55,7 +55,7 @@ namespace PlanetMiner.Config
     /// <summary>
     /// 역할·목적: Resources 레시피 JSON을 해석해 재료/출력 범위를 만들고 World 소유 버퍼에 한 번 게시한다.
     /// conditions는 현재 DTO 입력 필드만 있으며 비트 변환은 연결하지 않고 ConditionFlags=0으로 게시한다.
-    /// 입력·출력: 파일 누락/빈 자료/파싱 실패는 거부한다. 전체 초기화는 필수 ID 1~5를 요구하고 명시적 부분 게시 API는 격리 구성에 사용한다.
+    /// 입력·출력: 정식 품목명·실제 주생산품을 요구하고 작성된 부산물도 검증한다. 전체 초기화는 필수 ID 1~5를 요구하며 부분 게시 API는 격리 구성에 사용한다.
     /// 이용: RecipeInitSystem(Initialization)과 설정 테스트가 호출한다. 런타임 Reader는 RecipeRegistry와 ECS 버퍼를 사용한다.
     /// 수명·실패: 기존 레지스트리는 교체하지 않는다. 복사 중 실패하면 이번에 만든 미완성 엔티티만 회수하고 예외를 전달한다.
     /// </summary>
@@ -124,7 +124,7 @@ namespace PlanetMiner.Config
                         {
                             throw new ArgumentException($"Recipe {entry.id} contains a null ingredient.", nameof(json));
                         }
-                        Enum.TryParse(ingredient.itemType, true, out ItemTypeEnum itemType);
+                        ItemTypeEnum itemType = ParseItemType(ingredient.itemType, entry.id, "ingredient");
                         if (ingredient.amount < int.MinValue || ingredient.amount > int.MaxValue)
                         {
                             throw new ArgumentException($"Recipe {entry.id} ingredient '{itemType}' amount {ingredient.amount} is outside the Int32 range.", nameof(json));
@@ -135,7 +135,7 @@ namespace PlanetMiner.Config
                 }
 
                 // 각 레시피의 출력 슬롯 0은 주생산품이며, 이후 슬롯은 JSON 순서의 부산물이다.
-                Enum.TryParse(entry.outputItemType, true, out ItemTypeEnum primaryType);
+                ItemTypeEnum primaryType = ParseItemType(entry.outputItemType, entry.id, "primary output");
                 config.Outputs.Add(new RecipeOutputElement(primaryType, entry.outputAmount > 0 ? entry.outputAmount : 1));
                 if (entry.byproducts != null)
                 {
@@ -145,7 +145,7 @@ namespace PlanetMiner.Config
                         {
                             throw new ArgumentException($"Recipe {entry.id} contains a null byproduct.", nameof(json));
                         }
-                        Enum.TryParse(output.itemType, true, out ItemTypeEnum itemType);
+                        ItemTypeEnum itemType = ParseItemType(output.itemType, entry.id, "byproduct");
                         config.Outputs.Add(new RecipeOutputElement(itemType, output.amount > 0 ? output.amount : 1, true));
                     }
                 }
@@ -153,8 +153,57 @@ namespace PlanetMiner.Config
                 config.Recipes.Add(recipe);
             }
 
-            ValidateIngredientUniqueness(config);
+            ValidateConfig(config);
             return config;
+        }
+
+        private static ItemTypeEnum ParseItemType(string value, int recipeId, string role)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                throw new ArgumentException($"Recipe {recipeId} has an empty {role} item name.", "json");
+            }
+            if (!Enum.TryParse(value, true, out ItemTypeEnum itemType) ||
+                !Enum.IsDefined(typeof(ItemTypeEnum), itemType) ||
+                !string.Equals(value.Trim(), itemType.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException($"Recipe {recipeId} has an unknown {role} item name '{value}'.", "json");
+            }
+
+            ValidateItemType(itemType, $"Recipe {recipeId} {role}");
+            return itemType;
+        }
+
+        /// <summary>사전 등록된 원본 버퍼도 게시 입력과 같은 품목·출력 계약으로 검사한다. 수정하거나 복사하지 않는다.</summary>
+        public static void ValidateRegisteredConfig(
+            DynamicBuffer<RecipeConfigElement> recipes,
+            DynamicBuffer<RecipeIngredientElement> ingredients,
+            DynamicBuffer<RecipeOutputElement> outputs)
+        {
+            for (int i = 0; i < recipes.Length; i++)
+            {
+                var recipe = recipes[i];
+                ValidateRecipeRange(recipe, ingredients.Length, outputs.Length);
+                var ingredientTypes = new HashSet<ItemTypeEnum>();
+                for (int ingredientIndex = 0; ingredientIndex < recipe.IngredientCount; ingredientIndex++)
+                {
+                    ValidateIngredientUniqueness(recipe.Id,
+                        ingredients[recipe.IngredientStart + ingredientIndex].ItemType, ingredientTypes);
+                }
+                for (int outputIndex = 0; outputIndex < recipe.OutputCount; outputIndex++)
+                {
+                    ValidateOutputRole(recipe.Id, outputs[recipe.OutputStart + outputIndex], outputIndex);
+                }
+            }
+
+            for (int i = 0; i < ingredients.Length; i++)
+            {
+                ValidateItemType(ingredients[i].ItemType, $"Ingredient at index {i}");
+            }
+            for (int i = 0; i < outputs.Length; i++)
+            {
+                ValidateOutput(outputs[i], i);
+            }
         }
 
         /// <summary>전체 제품 초기화에서 사용하는 필수 목록이다. 잠긴 레시피도 데이터 자체는 시작 시 존재해야 한다.</summary>
@@ -237,7 +286,7 @@ namespace PlanetMiner.Config
         /// 읽는 시스템을 실행하기 전에 한 번 게시한다. 기존 설정을 덮어쓰거나 추가 게시하지 않는다.
         /// 파싱 결과를 버퍼로 복사하므로 호출자가 목록을 보관/해제할 필요가 없다.
         /// 반환 엔티티와 버퍼는 World 종료까지 유지하며 Init 시스템 제거 시에도 해제하지 않는다.
-        /// 같은 레시피의 중복 재료는 설정 오류로 거부하며 부분 레지스트리를 만들지 않는다.
+        /// 품목·필수 주생산품·부산물 및 중복 재료를 전체 검증한 뒤에만 레지스트리를 만든다.
         /// </summary>
         public static Entity PublishConfig(EntityManager entityManager, RecipeConfigData config)
         {
@@ -252,9 +301,8 @@ namespace PlanetMiner.Config
                 throw new ArgumentNullException(nameof(config));
             }
 
-            // 원본 목록의 범위를 검증한 뒤에만 World 수명 레지스트리를 만든다. 잘못된 평탄화 범위를 런타임 Reader에 게시하지 않는다.
-            ValidateRanges(config);
-            ValidateIngredientUniqueness(config);
+            // 전체 입력을 검증한 뒤에만 World 수명 레지스트리를 만든다. 후반 부산물 오류도 부분 게시하지 않는다.
+            ValidateConfig(config);
             Entity registryEntity = entityManager.CreateEntity(
                 typeof(RecipeRegistry), typeof(RecipeConfigElement),
                 typeof(RecipeIngredientElement), typeof(RecipeOutputElement));
@@ -291,37 +339,87 @@ namespace PlanetMiner.Config
             }
         }
 
-        private static void ValidateIngredientUniqueness(RecipeConfigData config)
+        private static void ValidateConfig(RecipeConfigData config)
         {
             foreach (var recipe in config.Recipes)
             {
+                ValidateRecipeRange(recipe, config.Ingredients.Count, config.Outputs.Count);
                 var ingredientTypes = new HashSet<ItemTypeEnum>();
                 for (int i = 0; i < recipe.IngredientCount; i++)
                 {
-                    var ingredient = config.Ingredients[recipe.IngredientStart + i];
-                    if (!ingredientTypes.Add(ingredient.ItemType))
-                    {
-                        throw new ArgumentException($"Recipe {recipe.Id} contains duplicate ingredient '{ingredient.ItemType}'.", nameof(config));
-                    }
+                    ValidateIngredientUniqueness(recipe.Id,
+                        config.Ingredients[recipe.IngredientStart + i].ItemType, ingredientTypes);
                 }
+                for (int i = 0; i < recipe.OutputCount; i++)
+                {
+                    ValidateOutputRole(recipe.Id, config.Outputs[recipe.OutputStart + i], i);
+                }
+            }
+
+            // 참조 범위 밖의 행도 같은 버퍼로 복사하므로 모든 행의 품목을 검증한다.
+            for (int i = 0; i < config.Ingredients.Count; i++)
+            {
+                ValidateItemType(config.Ingredients[i].ItemType, $"Ingredient at index {i}");
+            }
+            for (int i = 0; i < config.Outputs.Count; i++)
+            {
+                ValidateOutput(config.Outputs[i], i);
             }
         }
 
-        private static void ValidateRanges(RecipeConfigData config)
+        private static void ValidateRecipeRange(RecipeConfigElement recipe, int ingredientCount, int outputCount)
         {
-            foreach (var recipe in config.Recipes)
+            if (recipe.IngredientStart < 0 || recipe.IngredientCount < 0 ||
+                (long)recipe.IngredientStart + recipe.IngredientCount > ingredientCount)
             {
-                if (recipe.IngredientStart < 0 || recipe.IngredientCount < 0 ||
-                    (long)recipe.IngredientStart + recipe.IngredientCount > config.Ingredients.Count)
-                {
-                    throw new ArgumentException("Recipe ingredient range is outside the supplied buffer.", nameof(config));
-                }
+                throw new ArgumentException("Recipe ingredient range is outside the supplied buffer.", "config");
+            }
+            if (recipe.OutputStart < 0 || recipe.OutputCount < 0 ||
+                (long)recipe.OutputStart + recipe.OutputCount > outputCount)
+            {
+                throw new ArgumentException("Recipe output range is outside the supplied buffer.", "config");
+            }
+            if (recipe.OutputCount == 0)
+            {
+                throw new ArgumentException($"Recipe {recipe.Id} requires a primary output.", "config");
+            }
+        }
 
-                if (recipe.OutputStart < 0 || recipe.OutputCount < 0 ||
-                    (long)recipe.OutputStart + recipe.OutputCount > config.Outputs.Count)
-                {
-                    throw new ArgumentException("Recipe output range is outside the supplied buffer.", nameof(config));
-                }
+        private static void ValidateIngredientUniqueness(int recipeId, ItemTypeEnum itemType, HashSet<ItemTypeEnum> ingredientTypes)
+        {
+            if (!ingredientTypes.Add(itemType))
+            {
+                throw new ArgumentException($"Recipe {recipeId} contains duplicate ingredient '{itemType}'.", "config");
+            }
+        }
+
+        private static void ValidateItemType(ItemTypeEnum itemType, string role)
+        {
+            if (itemType == ItemTypeEnum.None)
+            {
+                throw new ArgumentException($"{role} cannot use None as an item.", "config");
+            }
+            if (!Enum.IsDefined(typeof(ItemTypeEnum), itemType))
+            {
+                throw new ArgumentException($"{role} has an undefined item type '{(int)itemType}'.", "config");
+            }
+        }
+
+        private static void ValidateOutput(RecipeOutputElement output, int outputIndex)
+        {
+            ValidateItemType(output.ItemType, $"Output at index {outputIndex}");
+            if (output.Amount <= 0)
+            {
+                throw new ArgumentException($"Output at index {outputIndex} requires a positive amount.", "config");
+            }
+        }
+
+        private static void ValidateOutputRole(int recipeId, RecipeOutputElement output, int outputIndex)
+        {
+            // 슬롯 0은 주생산품, 후속 슬롯은 선택적인 부산물이다. None 행으로 빈 슬롯을 표현하지 않는다.
+            if (output.IsByproduct != (outputIndex > 0))
+            {
+                throw new ArgumentException($"Recipe {recipeId} requires a primary output in slot 0 and byproducts in later slots.", "config");
             }
         }
     }

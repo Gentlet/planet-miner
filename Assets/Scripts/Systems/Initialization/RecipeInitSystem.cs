@@ -5,7 +5,7 @@ using Unity.Entities;
 /// <summary>
 /// 역할·목적: Initialization에서 레시피와 재료/출력 목록을 한 번 게시한다.
 /// 입력·생성: RecipeConfigLoader의 Resources 설정 또는 사전 등록 API의 JSON을 검증한다.
-/// 출력·소유권: RecipeRegistry와 세 설정 버퍼를 즉시 게시한다. 기존 Registry의 필수 버퍼를 확인하고 중복 게시 API 호출은 거부한다.
+/// 출력·소유권: RecipeRegistry와 세 설정 버퍼를 즉시 게시한다. 기존 Registry의 버퍼·품목·출력·필수 ID를 확인하고 중복 게시 API 호출은 거부한다.
 /// 이용: 레시피 Command, 제작 Decision/Execution과 입력 슬롯/검증 경계가 읽기 전용 설정을 이용한다.
 /// 정리·가시화: 성공 후 시스템을 비활성화하고 설정 엔티티는 World 수명 동안 보존한다. ECB와 런타임 설정 교체를 사용하지 않는다.
 /// 실패: 파싱/게시 검증 오류는 로그와 즉시 SimulationFatalError로 게임 시뮬레이션을 차단하고 재시도하지 않는다.
@@ -36,7 +36,11 @@ public partial class RecipeInitSystem : SystemBase
 
             try
             {
-                RecipeConfigLoader.ValidateRequiredRecipes(EntityManager.GetBuffer<RecipeConfigElement>(registryEntity, true));
+                var recipes = EntityManager.GetBuffer<RecipeConfigElement>(registryEntity, true);
+                RecipeConfigLoader.ValidateRegisteredConfig(recipes,
+                    EntityManager.GetBuffer<RecipeIngredientElement>(registryEntity, true),
+                    EntityManager.GetBuffer<RecipeOutputElement>(registryEntity, true));
+                RecipeConfigLoader.ValidateRequiredRecipes(recipes);
             }
             catch (ArgumentException exception)
             {
