@@ -7,7 +7,7 @@ using Unity.Mathematics;
 /// 역할·목적: 단일/묶음 배치의 회전 점유·자원 필요·해금·바닥 실물 여부를 검증한다.
 /// 입력·출력: 직전 동기화의 공간 인덱스와 후보/설정을 읽고 후보별 승인/거부 값을 쓴다. 월드 상태와 인덱스를 변경하지 않는다.
 /// 이용: BuildingPlacementCommandSystem(Command)과 테스트가 호출한다. 런타임 UI 프리뷰 Producer는 미구현이다.
-/// 수명·경계: 묶음 호출마다 임시 claimedCells를 만들어 내부 충돌을 검사한 뒤 Dispose한다. 별도 요청 묶음 간의 영속 선점이나 조기 공간 동기화가 아니다.
+/// 수명·경계: 묶음 내부 claimedCells와 Command가 전달한 최종 승인 셀을 함께 검사한다. 외부 승인 셀은 읽기만 하며 영속 예약이나 조기 공간 동기화가 아니다.
 /// </summary>
 [BurstCompile]
 public static class BuildingPlacementValidationUtility
@@ -118,7 +118,8 @@ public static class BuildingPlacementValidationUtility
         in NativeParallelHashMap<int2, Entity>.ReadOnly resourceMap,
         in NativeParallelMultiHashMap<int2, Entity>.ReadOnly itemMap,
         NativeArray<PlacementValidationResult> results,
-        Allocator allocator = Allocator.Temp)
+        Allocator allocator = Allocator.Temp,
+        NativeParallelHashSet<int2> approvedCells = default)
     {
         var claimedCells = new NativeParallelHashSet<int2>(math.max(16, candidates.Length * 4), allocator);
         bool anyFailed = false;
@@ -151,7 +152,8 @@ public static class BuildingPlacementValidationUtility
                 for (int x = 0; x < effectiveSize.x; x++)
                 {
                     int2 cell = candidate.OriginPosition + new int2(x, y);
-                    if (claimedCells.Contains(cell))
+                    if (claimedCells.Contains(cell) ||
+                        (approvedCells.IsCreated && approvedCells.Contains(cell)))
                     {
                         internallyConflict = true;
                         break;
@@ -208,7 +210,8 @@ public static class BuildingPlacementValidationUtility
         in NativeParallelMultiHashMap<int2, Entity>.ReadOnly itemMap,
         NativeArray<PlacementValidationResult> results,
         in DynamicBuffer<BuildingConfigElement> configBuffer,
-        Allocator allocator = Allocator.Temp)
+        Allocator allocator = Allocator.Temp,
+        NativeParallelHashSet<int2> approvedCells = default)
     {
         var claimedCells = new NativeParallelHashSet<int2>(math.max(16, candidates.Length * 4), allocator);
         bool anyFailed = false;
@@ -243,7 +246,8 @@ public static class BuildingPlacementValidationUtility
                 for (int x = 0; x < effectiveSize.x; x++)
                 {
                     int2 cell = candidate.OriginPosition + new int2(x, y);
-                    if (claimedCells.Contains(cell))
+                    if (claimedCells.Contains(cell) ||
+                        (approvedCells.IsCreated && approvedCells.Contains(cell)))
                     {
                         internallyConflict = true;
                         break;
@@ -295,7 +299,8 @@ public static class BuildingPlacementValidationUtility
         in NativeParallelMultiHashMap<int2, Entity>.ReadOnly itemMap,
         NativeArray<PlacementValidationResult> results,
         in NativeArray<BuildingConfigElement> configs,
-        Allocator allocator = Allocator.Temp)
+        Allocator allocator = Allocator.Temp,
+        NativeParallelHashSet<int2> approvedCells = default)
     {
         var claimedCells = new NativeParallelHashSet<int2>(math.max(16, candidates.Length * 4), allocator);
         bool anyFailed = false;
@@ -330,7 +335,8 @@ public static class BuildingPlacementValidationUtility
                 for (int x = 0; x < effectiveSize.x; x++)
                 {
                     int2 cell = candidate.OriginPosition + new int2(x, y);
-                    if (claimedCells.Contains(cell))
+                    if (claimedCells.Contains(cell) ||
+                        (approvedCells.IsCreated && approvedCells.Contains(cell)))
                     {
                         internallyConflict = true;
                         break;
@@ -367,6 +373,21 @@ public static class BuildingPlacementValidationUtility
                 {
                     results[i] = new PlacementValidationResult(PlacementValidationCode.BatchAllOrNothingRolledBack);
                 }
+            }
+        }
+    }
+
+    /// <summary>Command가 최종 승인해 ECB에 기록하는 후보의 회전 셀을 등록한다. Strict로 거부한 후보에는 호출하지 않는다.</summary>
+    public static void ClaimApprovedPlacement(
+        in PlacementCandidate candidate,
+        NativeParallelHashSet<int2> approvedCells)
+    {
+        int2 effectiveSize = BuildingFootprintUtility.GetEffectiveSize(candidate.FootprintSize, candidate.Direction);
+        for (int y = 0; y < effectiveSize.y; y++)
+        {
+            for (int x = 0; x < effectiveSize.x; x++)
+            {
+                approvedCells.Add(candidate.OriginPosition + new int2(x, y));
             }
         }
     }

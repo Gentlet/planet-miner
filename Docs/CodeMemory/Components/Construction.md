@@ -2,7 +2,7 @@
 
 [전체 색인](README.md) · [건물 공통 컴포넌트](Buildings.md)
 
-2026-10-06 건물·드론 도메인 분리 이후의 현재 소스를 설명한다. 공사 ECS 타입은 기존 5개다. 확정 규칙은 [건설·드론 공급 명세](../../Specifications/ConstructionAndDroneSupply.md), 현재 입력·완공 시점의 근거와 한계는 [도메인 분리 검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDroneDomainSplit-Verification.md)을 따른다. [안전 방출·기록 제거 검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneSafeDropAndJournalRemoval-Verification.md)은 이전 실행 구조의 당시 근거다.
+2026-10-08 배치 접수 순서·요청 간 중재와 2026-10-06 건물·드론 도메인 분리 이후의 현재 소스를 설명한다. 공사 ECS 타입은 접수번호 상태를 포함해 6개다. 확정 규칙은 [건설·드론 공급 명세](../../Specifications/ConstructionAndDroneSupply.md), 현재 입력·완공 시점의 근거와 한계는 [도메인 분리 검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDroneDomainSplit-Verification.md)을 따른다. [안전 방출·기록 제거 검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneSafeDropAndJournalRemoval-Verification.md)은 이전 실행 구조의 당시 근거다.
 
 DroneLifecycle 행동 정산·공통 Ownership 인계·Direct 재배정은 유지한다. 방출 목표는 현장 밖만 허용하고 현장 내부의 새 월드 Spawn도 앞단/최종 Apply에서 거부한다. Construction은 현재 월드 Owner/GridPosition과 활성 Destroy만 조회해 차단을 설정·해제한다. 예정 월드 위치 결과 버퍼는 제거했으며 실제 수행부·경로·관측 원본 Writer는 후속이다.
 
@@ -24,18 +24,25 @@ ConstructionSite.Progress와 도착 비율 기획은 제거했다. [Progress 제
 
 ## BuildingPlacementRequest
 
-- **종류·부착 대상·목적:** 일반 `IComponentData`. 별도 배치 요청 엔티티의 헤더로 `Flags`에 묶음 승인 정책, `RequestTick`에 배치 순서 기준 Tick을 담는다. `IRequestComponent`나 enableable 타입으로 선언되어 있지는 않다.
-- **생성:** 현재 게임플레이 Producer는 연결되지 않았다. 테스트는 이 컴포넌트와 `PlacementRequestCandidateElement` 버퍼를 같은 엔티티에 생성한다. 실제 배치 시스템의 쿼리도 둘을 모두 요구하므로 헤더만 있는 엔티티는 이 처리 루프의 대상이 아니다.
+- **종류·부착 대상·목적:** 일반 `IComponentData`. 별도 요청 헤더에 `Flags`(묶음 정책), `RequestTick`(Stamp 기본 Tick), `ReceiptSequence`(실제 접수 순서)를 담는다. `IRequestComponent`나 enableable 타입으로 선언되어 있지는 않다.
+- **생성:** 플레이어 입력은 사전 확인 후 `BuildingPlacementRequestUtility.Submit`에 헤더와 후보 묶음을 전달한다. Submit은 World 접수번호를 발급해 요청·후보를 같은 엔티티에 만든다. 현재 런타임 UI는 연결되지 않았으며 기존 테스트 Producer는 같은 Submit API로 변경했다. 헤더만 있는 엔티티는 Command의 처리 대상이 아니다.
 - **읽기·승인:** Command의 `BuildingPlacementCommandSystem`이 Building/Resource/Item 공간 인덱스의 마지막 Writer 완료를 기다린 뒤 현재 맵을 읽는다. 유틸리티는 크기, 건물/현장 점유, Miner 하부 자원, 해금, 바닥 아이템을 검사한다. StrictAllOrNothing은 후보 하나라도 실패하면 묶음의 유효 후보도 취소하며, AllowPartialPlacement는 유효 후보만 남긴다.
-- **처리 범위:** 임시 `claimedCells`는 요청 하나의 후보 묶음 안에서만 공유한다. 여러 요청 엔티티 전체의 영속 선점 저장소가 아니다. 바닥 아이템은 배치를 막지 않고 현장에 AwaitingItemClearance를 설정한다. 동일 Belt 위 Belt 후보는 현장 대신 기존 Belt의 Direction 갱신을 기록한다.
-- **순서·반영:** 유효 후보의 현장·요구 버퍼·Stamp 생성과 원래 요청 삭제를 EndCommand ECB에 기록한다. 헤더 Tick이 0이면 시스템 내부 Tick을 사용하되 후보별 Tick이 우선한다. 배치 검증 결과는 처리 중 임시 배열이며 지속 결과 컴포넌트를 게시하지 않는다.
+- **처리 범위:** 묶음 내부 `claimedCells`와 Command 전체의 `approvedCells`는 별도 임시 데이터다. Validation은 앞 요청의 최종 승인 셀을 읽고 Command가 묶음 정책 확정 뒤 승인 후보만 공유한다. Strict 실패는 선점을 남기거나 앞 승인 셀을 해제하지 않는다. 기존 벨트 방향 변경도 앞 요청 최종 승인 우선이며, Partial은 뒤 요청의 다른 유효 후보만 승인한다. 두 목록은 공간 맵을 변경하거나 ECS 원본을 대체하지 않는다. 바닥 아이템은 차단하지 않고 AwaitingItemClearance를 설정한다.
+- **순서·반영:** ReceiptSequence 오름차순과 요청 내부 후보 순서로 처리한다. 번호 0/중복은 오류 기록 후 요청 전체를 거부·소비하며 Query/Entity 순서로 보완하지 않는다. 현장·요구 버퍼·Stamp/벨트 방향과 요청 삭제는 EndCommand ECB에 기록한다. 헤더 Tick이 0이면 시스템 내부 Tick, 후보 Tick이 양수이면 이를 우선하지만 접수 순서를 바꾸지 않는다. 기존 Stamp.Order는 요청 내부 후보 인덱스로 유지한다(F-041 별도).
 - **수명:** 처리가 시작된 요청은 빈 후보/성공/실패에 관계없이 EndCommand에 삭제된다. 필수 Fence·인덱스가 없거나 맵이 생성되지 않은 경우 시스템이 진행하지 않으므로 그때 요청은 남는다. 재사용·비활성화 과정은 없다.
 - **근거:** [정의](../../../Assets/Scripts/Components/Construction/BuildingPlacementRequests.cs), [소비·생성](../../../Assets/Scripts/Systems/Command/BuildingPlacementCommandSystem.cs), [묶음 검증](../../../Assets/Scripts/Common/BuildingPlacementValidationUtility.cs), [테스트 생성](../../../Assets/Editor/Tests/Phase7PlacementCommandTests.cs).
+
+## BuildingPlacementReceiptSequence
+
+- **종류·부착 대상·목적:** `IComponentData`. 요청과 별도의 World 단일 엔티티에서 다음 양수 접수번호 `NextValue`만 보관한다. 공간 예약이나 PlacementStamp 원본이 아니다.
+- **생성·쓰기:** Submit이 최초 접수 때 NextValue=1로 생성하거나 기존 singleton을 재사용한다. 요청/후보 준비 성공 뒤 번호를 증가시키며 외부 요청의 ReceiptSequence 입력은 덮어쓴다. 0 또는 ulong.MaxValue 상태는 예외로 접수 전에 거부한다.
+- **읽기·수명:** Submit만 다음 번호를 읽고 쓴다. Command는 요청에 복사한 번호만 읽으므로 번호 발급 상태나 UI 내부를 참조하지 않는다. 개별 요청 소비 뒤에도 World 종료까지 유지한다.
+- **근거:** [정의](../../../Assets/Scripts/Components/Construction/BuildingPlacementRequests.cs), [접수 API](../../../Assets/Scripts/Common/BuildingPlacementRequestUtility.cs).
 
 ## PlacementRequestCandidateElement
 
 - **종류·부착 대상·목적:** `IBufferElementData`. 배치 요청 엔티티에서 후보별 `TargetType`, 방향 적용 전 `FootprintSize`, 좌하단 `OriginPosition`, `Direction`, 개별 `RequestTick`을 보관한다. 요청 하나에 후보 여러 개를 담을 수 있다.
-- **생성:** Producer가 헤더와 함께 채워야 한다. 현재 확인한 직접 생성은 배치 테스트이며 런타임 UI/블루프린트 Producer는 없다. 후보 자체는 현장 또는 건물에 부착하는 버퍼가 아니다.
+- **생성:** 플레이어 입력이 Submit에 헤더와 후보 묶음을 함께 전달한다. 현재 연결된 호출자는 테스트이며 런타임 UI/블루프린트 Producer는 없다. 후보 자체는 현장 또는 건물에 부착하는 버퍼가 아니다.
 - **읽기:** Command는 이 버퍼를 임시 `PlacementCandidate` 배열로 변환해 검증한다. 이 변환에는 Tick이 포함되지 않으며, 승인 이후 원본 후보의 RequestTick을 읽어 Stamp를 정한다. 기본 크기의 유효성 및 방향 회전은 배치 검증 유틸리티가 처리한다.
 - **후보 순서:** 버퍼의 앞선 유효 후보가 해당 묶음의 점유 셀을 선점한다. 승인 현장의 Stamp.Order는 후보의 원래 인덱스다. 개별 Tick이 양수이면 요청 헤더/시스템 Tick보다 우선하지만 후보 처리 순서를 Tick으로 정렬하지는 않는다.
 - **소비·결과:** 유효한 후보는 현장의 BuildingType/Footprint/GridPosition/Direction/ConstructionSite/PlacementStamp 및 두 버퍼로 변환된다. 기존 같은 타입 벨트 덮어쓰기는 방향만 바꾼다. 버퍼는 개별 Remove/Clear로 소비하지 않고 요청 엔티티와 함께 EndCommand에 제거된다.

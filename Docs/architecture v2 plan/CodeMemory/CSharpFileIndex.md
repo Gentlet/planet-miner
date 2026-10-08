@@ -16,6 +16,7 @@
 | `Assets/Scripts/Common/BuildingInputSlotUtility.cs` | 재료 목록의 요구량/최대 스택으로 건물 공통 품목 전용 입력 슬롯을 계산하고 실패 사유를 반환한다. Crafter 레시피 변경에서 사용한다. |
 | `Assets/Scripts/Common/BuildingConfigLookupUtility.cs` | 건물 통합/호환 런타임 설정 조회, footprint·해금·건설 자재 조회를 제공한다. |
 | `Assets/Scripts/Common/BuildingFootprintUtility.cs` | 점유 크기의 최소 1칸 정규화와 방향 회전을 계산하며 BuildingFootprint 확장 메서드도 제공한다. |
+| `Assets/Scripts/Common/BuildingPlacementRequestUtility.cs` | 플레이어 배치 묶음의 World 접수번호를 발급하고 요청/후보를 함께 준비한다. 최종 승인과 임시 셀 중재는 기존 Command가 담당한다. |
 | `Assets/Scripts/Common/BuildingTypeExtensions.cs` | 건물 종류의 Burst 호환 FixedString 변환을 제공한다. |
 | `Assets/Scripts/Common/ItemTypeExtensions.cs` | 아이템 종류의 Burst 호환 FixedString 변환을 제공한다. |
 | `Assets/Scripts/Common/ItemLifecycleUtility.cs` | 일반 Spawn·생산물·철거 환급의 프리팹 런타임 초기화를 호출자의 ECB에 기록한다. 조회/실패 정책/버퍼 등록은 호출자가 소유한다. |
@@ -33,7 +34,7 @@
 | `Assets/Scripts/Components/Buildings/PlacementStamp.cs` | `PlacementStamp` 정의. |
 | `Assets/Scripts/Components/Common/GridComponents.cs` | `DirectionEnum`, `GridPosition`, `Direction` 정의. |
 | `Assets/Scripts/Components/Common/IRequestComponent.cs` | `IRequestComponent`, `IEnableableRequest` 정의. |
-| `Assets/Scripts/Components/Construction/BuildingPlacementRequests.cs` | `BuildingPlacementRequest`, `PlacementRequestCandidateElement` 정의. |
+| `Assets/Scripts/Components/Construction/BuildingPlacementRequests.cs` | `BuildingPlacementRequest`, `PlacementRequestCandidateElement`, World 접수번호 원본 `BuildingPlacementReceiptSequence` 정의. |
 | `Assets/Scripts/Components/Construction/ConstructionComponents.cs` | 현장/자재 요구 데이터. Reservation/Publish/Lifecycle이 예약·실제 도착량을 정산하고 Construction이 현재 월드 Owner/GridPosition·활성 Destroy로 차단을 갱신한다. |
 | `Assets/Scripts/Components/Construction/ConstructionRequests.cs` | 현장 취소 요청 `CancelConstructionRequest`만 정의한다. |
 | `Assets/Scripts/Components/Construction/ConstructionSupplyReservation.cs` | Reservation이 일반 해제·확보하고 Publish가 최종 재검사 후 공개한다. |

@@ -11,12 +11,12 @@
 | 분류 | 전체 | 완료 | 미완료 |
 | --- | ---: | ---: | ---: |
 | P1 | 5 | 5 | 0 |
-| P2 | 33 | 14 | 19 |
+| P2 | 33 | 16 | 17 |
 | P3 | 2 | 2 | 0 |
 | 판단 보류 | 4 | 3 | 1 |
-| 합계 | 44 | 24 | 20 |
+| 합계 | 44 | 26 | 18 |
 
-- 2026-10-02 기준 **44 개 중 24 개 완료**, 20 개 미완료다. F-003·F-004·F-008을 포함한 아래 실제 체크 상태를 집계한다. F-019의 실제 Baker 검증은 F-021에 남아 있고, F-029의 일반 T형 합류 제외 및 F-030의 속도 상한 정책을 유지한다. 항목별 변경·검증 근거와 제한을 확인한다.
+- 2026-10-08 현재 **44개 중 26개 완료**, 18개 미완료다. 아래 실제 체크 상태를 집계하며 기존 2026-10-02 집계 이후 F-014·F-027 완료를 반영했다. F-023·F-026의 회귀 근거/경계 갱신과 F-041의 남은 결정 축소는 추가 완료로 중복 집계하지 않는다. F-019의 실제 Baker 검증은 F-021에 남아 있고, F-029의 일반 T형 합류 제외 및 F-030의 속도 상한 정책을 유지한다. 항목별 변경·검증 근거와 제한을 확인한다.
 - 항목 하나를 선택해 원본 평가와 현재 소스를 확인하고, 해당 문제의 개선·검증까지 작은 단위로 진행한다. 아래 나열 순서는 강제 의존 순서가 아니다.
 - 각 항목의 설명은 평가 당시 근거를 요약했다. 코드 확인, 조건부 영향 추정, 실행 미확인을 원본에서 구분한다. 특히 P1 5건의 실패 반례는 평가에서 실행 재현하지 않았다.
 - `결정 필요`는 아직 채택하지 않은 정책이다. 현재 소스·최신 사용자 지시로 해결되지 않는 해당 항목의 선택만 사용자에게 확인한다. 다른 항목의 결정을 모두 기다릴 필요는 없다.
@@ -339,6 +339,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 - 작업: `BuildingFootprint.Size`의 표현 계약을 일관되게 적용하고 모든 Writer/Reader에서 회전이 한 번만 반영되게 한다.
 - 완료 기준: 비정사각형 4방향의 직접 Spawn→Sync와 Placement→현장 Sync→완료→Sync가 정확히 같은 기대 셀 집합을 점유한다. 생산자별 임시 보정에 의존하지 않는다.
 - 2026-09-30 처리 결과: BuildingFootprint.Size를 방향 적용 전 기본 크기로 통일했다. Placement는 축별 최소 1 정규화만 저장하고 공통 Spawn은 기존 request→Config→기본 규격 선택값을 회전 없이 저장한다. Completion은 현장 Size를 그대로 전달하고 Validator/Sync/Miner/두 Output Reader가 GetEffectiveSize로 한 번 회전한다. (2,3)은 Up/Down=(2,3), Right/Left=(3,2)이며 원점+각 축 범위의 셀 집합이 배치 검증·현장·완공·직접 Spawn에 동일함을 코드 추적했다. F-022의 크기 출처 권위는 유지한다. 기존 Test09의 결함을 기대하던 값/이름만 기본 크기 계약으로 수정했으며 assertion 추가는 없다. 컴파일 및 Editor ready, 테스트 어셈블리 최신성 확인([컴파일](../../../Logs/QualityImprovement/Selected14/F023-status.json)); 기존 Test09 1/1 통과([결과](../../../Logs/QualityImprovement/Selected14/F023-tests.json)). 실제 4방향 전체 셀·Placement→Completion 통합 실행은 미검증이다.
+- F-027 회귀 근거 (2026-10-08): Phase7PlacementCommandTests.Test10_SeparateRequests_ReceiptOrderPreventsDuplicateFootprints의 8사례에서 (2,3) Right 후보의 Placement→EndCommand 현장→Sync가 (3,2)의 정확한 6셀과 같은 현장 엔티티를 등록함을 확인했다. 8건은 Strict/Partial·겹침 위치 조합이며 8방향 또는 4방향 검증이 아니다. 기존 완료의 회귀 근거를 보강하며 전체 4방향·직접 Spawn·비정사각형 Completion 경로까지 실행했다고 해석하지 않는다. F-022의 크기 출처 문제도 별도다. [F-027 검증 기록](Results/F027-Verification.md).
 
 ### F-025 — 활성 빌드 장면 DB의 오래된 직렬화 연결
 
@@ -355,15 +356,17 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 - 작업: 공간 조회 전 필요한 인덱스의 준비·완료 계약을 적용한다.
 - 완료 기준: 각 Fence에 미완료 Writer를 둔 배치 조회와 Validator 없는 실행에서 안전성을 검증한다. 다른 시스템의 완료 부수효과나 강제 Map 재구축에 의존하지 않는다.
 - 2026-09-30 처리 결과: BuildingPlacementCommandSystem이 세 SpatialIndexFence를 준비 조건으로 요구하고 Map 접근 전에 GetReaderDependency의 세 Writer 핸들을 결합해 Complete한다. 메인 스레드 조회 완료 뒤에 후속 Writer가 스케줄되므로 별도 Reader Job 등록은 필요 없다. 다른 Reader 전체 완료·World 완료·Map 재구축·Validator 순서 의존을 추가하지 않았다. Writer의 실제 미완료 여부와 무관하게 호출하는 경계를 코드 확인했다. 컴파일 completed/failed:false/errors:[], Editor ready 및 최신 Assembly-CSharp 확인([로그](../../../Logs/QualityImprovement/Selected14/F026-status.json)). 지연 Writer 주입/Validator 없는 배치 실행은 미실행이다.
+- F-027 영향 (2026-10-08): 필요한 세 Writer 완료를 유지하고 아직 ECB 반영 전인 앞 요청의 승인 셀은 Command 소유 임시 approvedCells로 별도 전달한다. Fence 완료가 미생성 현장의 점유를 Map에 게시한다고 가정하지 않는다. F-027의 일반 배치/Sync 회귀 통과를 지연 Writer 강제 주입·Validator 없는 실행의 증거로 확대하지 않으며 이 실행 제한은 유지한다. [F-027 검증 기록](Results/F027-Verification.md).
 
 ### F-027 — 별도 배치 요청 간 같은 셀 중복 승인
 
-- [ ] 완료 — **P2** · [최초 평가: Q12](Results/Q12.md) · [배치 평가: Q23](Results/Q23.md)
+- [x] 완료 — **P2** · [최초 평가: Q12](Results/Q12.md) · [배치 평가: Q23](Results/Q23.md)
 - 문제: 요청 내부 claimedCells만 있어 같은 프레임의 별도 요청이 동일 셀을 각각 승인하고 Sync에서 한 현장이 가려질 수 있다.
 - F-026·F-023 영향 (2026-09-30 코드 확인): 배치의 세 인덱스 Writer 완료와 기본 크기 저장 계약은 반영됐다. Fence 완료는 같은 Command에서 아직 Playback되지 않은 다른 요청의 승인 점유를 Map에 추가하지 않는다. claimedCells는 여전히 각 ValidateBatchPlacement 호출 안에서 생성·해제되므로, 남은 범위는 요청 간 공유할 승인 대기 점유와 Strict/Partial 처리다. F-041의 요청 간 순서와 함께 검토하되 동기화·회전 문제를 다시 구현하지 않는다.
 - 작업: Command 처리 전체에서 승인 대기 점유를 공유하고 요청 단위 Strict/Partial 정책과 결합한다.
 - 완료 기준: 별도 요청의 동일 셀·부분 footprint 겹침과 Strict/Partial 조합에서 ECB 후 현장 수와 Sync의 셀→Entity가 일치하며 중복 점유가 없다.
-- 결정 필요: 요청 간 우선순위. F-041의 설치 순서와 함께 검토하되 공간 인덱스를 제2 원본 상태로 만들지 않는다.
+- 2026-10-08 사용자 확정: 플레이어만 사전 확인 후 요청하며 실제 접수 순서에서 앞 요청의 최종 승인을 우선한다. 기존 벨트 방향 변경에도 같은 규칙을 적용한다. Strict/Partial은 요청 단위 의미를 유지한다.
+- 2026-10-08 구현·검증: Submit이 World 접수번호를 발급하고 Command가 번호 순서로 처리한다. Validation은 묶음 내부 선점과 Command 전체의 최종 승인 셀을 함께 확인한다. Strict 실패는 공유 선점을 남기지 않고 기존 벨트 변경도 승인 셀을 공유한다. Query/Entity/RequestTick으로 접수 순서를 대체하지 않으며 F-026·F-023과 EndCommand/최종 Sync 경계를 유지한다. F-041의 Stamp 발급·후속 물류 동률 처리는 변경하지 않는다. 최종 컴파일 completed/failed:false/errors:[], Editor ready 및 실행/테스트 어셈블리 최신성을 확인했다. 배치 18(신규 회귀 11 포함)·기존 공사 통합 4·EndCommand 가시성 1·배치→드론 작업 공개 1, 총 24/24 선별 EditMode 통과. Play Mode·실제 UI/입력·베이킹·성능과 접수번호 오류/접수 실패 예외 경계는 실행 미검증이다. [구현·검증 기록](Results/F027-Verification.md).
 
 ### F-028 — Fence 메타데이터 RW 선언의 추가 Reader 의존
 
@@ -428,10 +431,12 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 - 문제: 같은 tick의 별도 요청이 같은 Order를 발급하고, 목적지 예약과 Routing 연결 선택이 서로 다른 동률 처리에 의존한다.
 - F-029 영향 (2026-09-30): 출고·Routing의 기존 설치 순서 우선정책 유지는 확정했다. 새 후보 종류 우선권이나 라운드로빈을 이 항목에서 다시 설계하지 않는다. 다만 이번 Test03은 서로 다른 Tick의 양쪽 승패를 확인한 것이며 Stamp 동률·누락·Entity 재사용 검증은 아니다.
 - F-026·F-023 영향 (2026-09-30 코드 확인): 배치의 Writer 대기와 footprint 표현 수정은 Stamp 발급 규칙을 변경하지 않았다. Order는 여전히 각 요청의 후보 인덱스 i로 발급되므로 같은 tick의 별도 요청에서 중복될 수 있다. F-027과 같은 요청 처리 경계를 검토하되, 이 항목은 비중첩 요청에서도 필요한 Stamp 유일성/동순위 의미와 후속 소비자의 tie 규칙에 집중한다.
-- 현재 남은 차이: 목적지 예약은 Stamp 동률에서 `SourceEntity.Index`를 비교하고, Routing 기준 연결 선택은 방향 순회 중 먼저 선택한 후보를 유지한다. `BuildingPlacementCommandSystem`의 요청별 후보 인덱스 기반 Order 발급도 그대로여서 F-041은 미완료다.
+- 현재 남은 차이: 목적지 예약은 Stamp 동률에서 `SourceEntity.Index`를 비교하고, Routing 기준 연결 선택은 방향 순회 중 먼저 선택한 후보를 유지한다. 드론의 `ComparePlacement`는 Stamp 동률이면 0을 반환한다. `BuildingPlacementCommandSystem`의 요청별 후보 인덱스 기반 Order 발급과 Completion의 그대로 승계도 유지돼 F-041은 미완료다.
 - 남은 작업: tick 내 중복 Stamp 발급과 동일 Stamp의 의미·tie key를 공개 계약으로 정하고 발급·보존·소비를 일치시킨다. 기본 설치 순서 정책은 유지한다.
+- F-027로 확정·해결한 범위 (2026-10-08): 새 현장 생성과 기존 벨트 방향 변경의 요청 간 승인 순서는 World ReceiptSequence에 따른 실제 접수 순서 우선으로 확정하고 구현했다. 접수번호 발급·Command 정렬·승인 셀 공유는 F-027 완료 범위이며 다시 우선순위 설계 대상으로 삼지 않는다.
+- 남은 범위: ReceiptSequence는 요청 소비와 함께 제거되며 현장/완공의 PlacementStamp로 승계하지 않는다. 같은 Tick의 별도 비중첩 요청에서 Order=0 같은 Stamp 중복은 남고, 세 소비자의 동률 처리도 변경되지 않았다. 현재 승인 순서가 후속 물류의 설치 순서까지 전달됐다고 보지 않는다. [F-027 영향 정리](Results/F027-Verification.md).
 - 완료 기준: 별도 비중첩 요청, tick 조합, 후보 수 변경, Entity 재사용 이력에서 site→completion의 Stamp와 후속 경합 결과가 선택한 정책과 일치한다.
-- 결정 필요: 동시 요청의 순서·동순위·tie key. Query/Entity 순서를 임의의 새 게임 규칙으로 채택하지 않는다.
+- 결정 필요: 후속 물류용 설치 Stamp에 접수 순서를 어떻게 표현/승계할지, 기존 Tick·요청 내부 Order의 동순위를 허용할지와 공통 tie key를 무엇으로 할지다. 배치 승인에서 앞 접수 우선이라는 확정 규칙을 다시 묻지 않는다. 기존 명시 RequestTick과 설치 순서 우선정책을 존중하고 Query/Entity 순서·새 후보 종류 우선권·공정성 규칙을 임의로 채택하지 않는다.
 
 ### F-042 — Stored 버퍼 없는 현장의 부분 수령 승인
 

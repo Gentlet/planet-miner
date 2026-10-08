@@ -51,14 +51,7 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
 
     private Entity CreatePlacementRequest(PlacementFlags flags, params PlacementRequestCandidateElement[] candidates)
     {
-        var reqEntity = _entityManager.CreateEntity(typeof(BuildingPlacementRequest));
-        _entityManager.SetComponentData(reqEntity, new BuildingPlacementRequest(flags));
-        var buffer = _entityManager.AddBuffer<PlacementRequestCandidateElement>(reqEntity);
-        for (int i = 0; i < candidates.Length; i++)
-        {
-            buffer.Add(candidates[i]);
-        }
-        return reqEntity;
+        return BuildingPlacementRequestUtility.Submit(_entityManager, new BuildingPlacementRequest(flags), candidates);
     }
 
     private void SetupBuildingConfig(params (BuildingTypeEnum type, float speed, int storage, bool unlocked, (ItemTypeEnum item, int qty)[] mats)[] configs)
@@ -258,6 +251,112 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
         Assert.AreEqual(0U, stamp.Order);
 
         Assert.IsFalse(_entityManager.Exists(req));
+    }
+
+    [TestCase(PlacementFlags.StrictAllOrNothing, PlacementFlags.StrictAllOrNothing, true)]
+    [TestCase(PlacementFlags.StrictAllOrNothing, PlacementFlags.AllowPartialPlacement, true)]
+    [TestCase(PlacementFlags.AllowPartialPlacement, PlacementFlags.StrictAllOrNothing, true)]
+    [TestCase(PlacementFlags.AllowPartialPlacement, PlacementFlags.AllowPartialPlacement, true)]
+    [TestCase(PlacementFlags.StrictAllOrNothing, PlacementFlags.StrictAllOrNothing, false)]
+    [TestCase(PlacementFlags.StrictAllOrNothing, PlacementFlags.AllowPartialPlacement, false)]
+    [TestCase(PlacementFlags.AllowPartialPlacement, PlacementFlags.StrictAllOrNothing, false)]
+    [TestCase(PlacementFlags.AllowPartialPlacement, PlacementFlags.AllowPartialPlacement, false)]
+    public void Test10_SeparateRequests_ReceiptOrderPreventsDuplicateFootprints(
+        PlacementFlags firstFlags, PlacementFlags laterFlags, bool sameOrigin)
+    {
+        SetupBuildingConfig((BuildingTypeEnum.Storage, 1f, 4, true, null));
+        Entity first = CreatePlacementRequest(firstFlags,
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(2, 3), int2.zero, DirectionEnum.Right, 500UL));
+        int2 overlappingOrigin = sameOrigin ? int2.zero : new int2(2, 1);
+        Entity later = CreatePlacementRequest(laterFlags,
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(2, 2), overlappingOrigin, DirectionEnum.Up, 1UL),
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(8, 8)));
+        // 먼저 접수한 요청을 다른 archetype으로 옮겨 Query 배열 순서를 접수 순서의 근거로 삼지 않는다.
+        _entityManager.AddComponentData(first, new Direction(DirectionEnum.Right));
+
+        UpdateCommandPhase();
+
+        bool allowPartial = laterFlags == PlacementFlags.AllowPartialPlacement;
+        using var sites = _entityManager.CreateEntityQuery(typeof(ConstructionSite));
+        Assert.AreEqual(allowPartial ? 2 : 1, sites.CalculateEntityCount());
+        Assert.IsFalse(_entityManager.Exists(first));
+        Assert.IsFalse(_entityManager.Exists(later));
+        UpdateBuildingSpatialIndex();
+
+        Entity winner = _buildingMap[int2.zero].Entity;
+        Assert.AreEqual(500UL, _entityManager.GetComponentData<PlacementStamp>(winner).Tick);
+        Assert.AreEqual(allowPartial ? 7 : 6, _buildingMap.Count());
+        for (int y = 0; y < 2; y++)
+        {
+            for (int x = 0; x < 3; x++)
+            {
+                Assert.AreEqual(winner, _buildingMap[new int2(x, y)].Entity);
+            }
+        }
+
+        Assert.IsFalse(_buildingMap.ContainsKey(new int2(3, 1)));
+        Assert.AreEqual(allowPartial, _buildingMap.ContainsKey(new int2(8, 8)));
+    }
+
+    [Test]
+    public void Test11_StrictFailure_DoesNotKeepTentativeCellsOrReleaseEarlierApproval()
+    {
+        CreatePlacementRequest(PlacementFlags.StrictAllOrNothing,
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), int2.zero));
+        CreatePlacementRequest(PlacementFlags.StrictAllOrNothing,
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(2, 0)),
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), int2.zero));
+        CreatePlacementRequest(PlacementFlags.StrictAllOrNothing,
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(2, 0)),
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), int2.zero));
+        // 세 번째도 앞 승인과 충돌해 전체 거부한다. 실패 묶음의 빈 셀은 네 번째가 사용할 수 있다.
+        CreatePlacementRequest(PlacementFlags.StrictAllOrNothing,
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(2, 0)));
+
+        UpdateCommandPhase();
+
+        using var sites = _entityManager.CreateEntityQuery(typeof(ConstructionSite));
+        Assert.AreEqual(2, sites.CalculateEntityCount());
+        UpdateBuildingSpatialIndex();
+        Assert.AreEqual(2, _buildingMap.Count());
+        Assert.AreEqual(0U, _entityManager.GetComponentData<PlacementStamp>(_buildingMap[int2.zero].Entity).Order);
+        Assert.IsTrue(_buildingMap.ContainsKey(new int2(2, 0)));
+        Assert.AreNotEqual(_buildingMap[int2.zero].Entity, _buildingMap[new int2(2, 0)].Entity);
+    }
+
+    [TestCase(PlacementFlags.StrictAllOrNothing)]
+    [TestCase(PlacementFlags.AllowPartialPlacement)]
+    public void Test12_SeparateBeltDirectionRequests_FirstApprovalWins(PlacementFlags laterFlags)
+    {
+        Entity belt = _entityManager.CreateEntity(typeof(BuildingType), typeof(BuildingFootprint), typeof(GridPosition), typeof(Direction));
+        _entityManager.SetComponentData(belt, new BuildingType(BuildingTypeEnum.Belt));
+        _entityManager.SetComponentData(belt, new BuildingFootprint(new int2(1, 1)));
+        _entityManager.SetComponentData(belt, new GridPosition(int2.zero));
+        _entityManager.SetComponentData(belt, new Direction(DirectionEnum.Up));
+        _buildingMap.Add(int2.zero, new BuildingInfo(belt, BuildingTypeEnum.Belt, DirectionEnum.Up));
+        CreatePlacementRequest(PlacementFlags.StrictAllOrNothing,
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, new int2(1, 1), int2.zero, DirectionEnum.Right));
+        CreatePlacementRequest(laterFlags,
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, new int2(1, 1), int2.zero, DirectionEnum.Down),
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(8, 8)));
+
+        UpdateCommandPhase();
+
+        bool allowPartial = laterFlags == PlacementFlags.AllowPartialPlacement;
+        Assert.AreEqual(DirectionEnum.Right, _entityManager.GetComponentData<Direction>(belt).dir);
+        using var sites = _entityManager.CreateEntityQuery(typeof(ConstructionSite));
+        Assert.AreEqual(allowPartial ? 1 : 0, sites.CalculateEntityCount());
+        UpdateBuildingSpatialIndex();
+        Assert.AreEqual(belt, _buildingMap[int2.zero].Entity);
+        Assert.AreEqual(DirectionEnum.Right, _buildingMap[int2.zero].Direction);
+        Assert.AreEqual(allowPartial ? 2 : 1, _buildingMap.Count());
+    }
+
+    private void UpdateBuildingSpatialIndex()
+    {
+        _spatialSyncHandle.Update(_world.Unmanaged);
+        using var fenceQuery = _entityManager.CreateEntityQuery(typeof(BuildingSpatialIndexFence));
+        fenceQuery.GetSingleton<BuildingSpatialIndexFence>().Complete();
     }
 
     [Test]

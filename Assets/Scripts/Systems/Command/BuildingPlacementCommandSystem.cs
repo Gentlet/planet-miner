@@ -1,20 +1,37 @@
+using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
 using Unity.Transforms;
+using UnityEngine;
 
 /// <summary>
 /// 역할·목적: 외부 배치 요청을 검증해 현장과 자재 요구량을 만들고 기존 벨트의 방향 변경을 처리한다.
 /// 처리 단계: Command. 입력은 BuildingPlacementRequest/후보 버퍼, 건물 설정과 직전 Synchronization의 공간 인덱스다.
 /// 출력·소유권: 현장 생성, PlacementStamp와 요구/보관 버퍼 초기화, 벨트 Direction 변경만 EndCommand에 기록한다.
 /// StrictAllOrNothing은 요청 묶음 전체를 거부하고 부분 배치 정책은 승인 후보만 기록한다. 드론 작업/순번 생성은 담당하지 않는다.
+/// 요청 간 중재: Submit의 ReceiptSequence 순서로 처리하고 최종 승인 후보의 셀만 임시 공유한다. 기존 벨트 방향 변경도 첫 승인 우선이다.
 /// 정리·가시화: 처리한 요청/후보는 EndCommand에서 삭제하고 생성 현장도 이때 실체화한다. 공간 점유 등록은 Synchronization까지 기다린다.
 /// </summary>
 [UpdateInGroup(typeof(CommandGroup))]
 public partial struct BuildingPlacementCommandSystem : ISystem
 {
     private ulong _currentTick;
+
+    private struct PendingPlacement
+    {
+        public Entity Entity;
+        public BuildingPlacementRequest Request;
+    }
+
+    private struct ReceiptComparer : IComparer<PendingPlacement>
+    {
+        public int Compare(PendingPlacement first, PendingPlacement second)
+        {
+            return first.Request.ReceiptSequence.CompareTo(second.Request.ReceiptSequence);
+        }
+    }
 
     public void OnCreate(ref SystemState state)
     {
@@ -67,11 +84,32 @@ public partial struct BuildingPlacementCommandSystem : ISystem
             materials = rawMaterials.ToNativeArray(Allocator.Temp);
         }
 
-        // 모든 BuildingPlacementRequest 쿼리 및 처리
+        // 쿼리/Entity 순서는 접수 순서가 아니다. 후보 버퍼는 구조 변경 없이 처리 직전에 다시 얻는다.
+        using var orderedRequests = new NativeList<PendingPlacement>(Allocator.Temp);
         foreach (var (request, candidateBuffer, entity) in
                  SystemAPI.Query<RefRO<BuildingPlacementRequest>, DynamicBuffer<PlacementRequestCandidateElement>>()
                      .WithEntityAccess())
         {
+            orderedRequests.Add(new PendingPlacement { Entity = entity, Request = request.ValueRO });
+        }
+
+        orderedRequests.AsArray().Sort(new ReceiptComparer());
+        // 묶음 내부의 임시 선점과 구분한다. 최종 승인 뒤에만 쓰므로 Strict 실패가 후속 요청을 막지 않는다.
+        using var approvedCells = new NativeParallelHashSet<int2>(16, Allocator.Temp);
+        for (int requestIndex = 0; requestIndex < orderedRequests.Length; requestIndex++)
+        {
+            var pending = orderedRequests[requestIndex];
+            Entity entity = pending.Entity;
+            var request = pending.Request;
+            if (request.ReceiptSequence == 0 || HasDuplicateReceipt(orderedRequests.AsArray(), requestIndex))
+            {
+                // 접수 계약을 우회한 입력에는 Query/Entity 기반 임의 우선순위를 부여하지 않는다.
+                Debug.LogError("Building placement request rejected: missing or duplicate receipt sequence. Use BuildingPlacementRequestUtility.Submit.");
+                ecb.DestroyEntity(entity);
+                continue;
+            }
+
+            var candidateBuffer = state.EntityManager.GetBuffer<PlacementRequestCandidateElement>(entity, true);
             if (candidateBuffer.IsEmpty)
             {
                 ecb.DestroyEntity(entity);
@@ -87,32 +125,34 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                 candidates[i] = candidateBuffer[i];
             }
 
-            // 직전 동기화의 점유와 이 요청 묶음 안의 후보 충돌을 검사한다.
+            // 직전 동기화의 점유·앞 요청의 최종 승인·이 묶음 내부 후보 충돌을 검사한다.
             // 같은 틱의 취소/철거가 기록됐더라도 인덱스가 갱신되기 전 점유는 그대로 사용한다.
             if (hasConfig)
             {
                 BuildingPlacementValidationUtility.ValidateBatchPlacement(
                     candidates,
-                    request.ValueRO.Flags,
+                    request.Flags,
                     buildingMap.AsReadOnly(),
                     resourceMap.AsReadOnly(),
                     itemMap.AsReadOnly(),
                     results,
-                    configs);
+                    configs,
+                    approvedCells: approvedCells);
             }
             else
             {
                 BuildingPlacementValidationUtility.ValidateBatchPlacement(
                     candidates,
-                    request.ValueRO.Flags,
+                    request.Flags,
                     buildingMap.AsReadOnly(),
                     resourceMap.AsReadOnly(),
                     itemMap.AsReadOnly(),
-                    results);
+                    results,
+                    approvedCells: approvedCells);
             }
 
             // 후보의 명시 Tick을 우선하되 버퍼 순서를 유지한다. 이 Stamp가 이후 최초 공급 우선순위의 근거가 된다.
-            ulong defaultTick = request.ValueRO.RequestTick > 0 ? request.ValueRO.RequestTick : _currentTick;
+            ulong defaultTick = request.RequestTick > 0 ? request.RequestTick : _currentTick;
 
             for (int i = 0; i < count; i++)
             {
@@ -129,6 +169,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                         {
                             // 기존 같은 타입 벨트는 새 현장/요구 자재 없이 EndCommand에서 방향만 바꾼다.
                             ecb.SetComponent(existingBuilding.Entity, new Direction(candidate.Direction));
+                            BuildingPlacementValidationUtility.ClaimApprovedPlacement(candidate, approvedCells);
                             continue;
                         }
                     }
@@ -167,6 +208,8 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                     {
                         BuildingConfigLookupUtility.PopulateRequirements(materials, candidate.TargetType, ref reqBuffer);
                     }
+
+                    BuildingPlacementValidationUtility.ClaimApprovedPlacement(candidate, approvedCells);
                 }
             }
 
@@ -184,5 +227,16 @@ public partial struct BuildingPlacementCommandSystem : ISystem
         }
 
         _currentTick++;
+    }
+
+    private static bool HasDuplicateReceipt(NativeArray<PendingPlacement> requests, int index)
+    {
+        ulong receipt = requests[index].Request.ReceiptSequence;
+        if (index > 0 && requests[index - 1].Request.ReceiptSequence == receipt)
+        {
+            return true;
+        }
+
+        return index + 1 < requests.Length && requests[index + 1].Request.ReceiptSequence == receipt;
     }
 }

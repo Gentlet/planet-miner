@@ -21,6 +21,16 @@
 
 실행 순서는 Command → EndCommand → BuildingSimulation(Decision/Reservation/Execution/StateApply·마지막 완공) → EndBuilding → DroneSimulation(Decision/Reservation/Execution/StateApply) → SimulationCommit/EndSimulation → Synchronization이다. 그룹 순서와 Job 의존성을 구분하며 NativeContainer 접근은 기존 Fence 계약을 따른다. 공간 인덱스는 중간에 재구축하지 않고 마지막 Synchronization에서 갱신한다.
 
+## 배치 요청의 접수와 승인
+
+2026-10-08 사용자 확정: 건물 배치는 플레이어만 요청한다. 입력 단계에서 가능 여부를 사전 확인한 뒤 Submit으로 접수하며, 같은 틱의 서로 다른 배치 요청은 실제 접수 순서에서 앞 요청의 최종 승인을 우선한다. 새 현장 생성과 기존 벨트 방향 변경에 같은 규칙을 적용한다.
+
+Submit은 요청/후보를 함께 준비하고 World 접수번호를 부여한다. Command는 기존 점유와 앞 요청의 최종 승인 셀을 함께 확인한다. RequestTick·Query/Entity 순서는 접수 순서를 대체하지 않는다. 런타임 플레이어 입력·UI는 후속이며 현재 테스트가 이 접수 API를 사용한다.
+
+StrictAllOrNothing은 후보 하나라도 실패하면 요청 전체를 거부하고 임시 선점을 남기지 않는다. AllowPartialPlacement는 충돌한 후보만 거부하며 다른 후보를 승인한다. 건물 footprint 일부가 겹치면 그 건물 후보 전체를 거부한다. 임시 승인 셀은 기존 배치 Command 한 번의 처리 동안만 유지하며 공간 인덱스나 영속 예약을 대체하지 않는다.
+
+현장 생성·벨트 방향 변경·요청 삭제는 기존 EndCommand에 확정한다. 같은 틱 취소·철거의 이전 인덱스 점유 정책과 마지막 Synchronization 재구축은 유지한다. 접수번호는 배치 승인 중재용이며 기존 PlacementStamp의 요청 내부 Order와 후속 물류의 동률 처리(F-041)는 별도다.
+
 ## 이번 구현 범위와 소유자
 
 Placement는 현장·자재 요구만 생성하며 드론 작업/생성 순번을 소유하지 않는다. Drone Decision은 생성·무효화·경로 생성/유지/삭제 의도와 순수 배정 후보를 작성한다. Reservation은 미공개·무효 예약을 정산한 뒤 작업 선택·현장 공급량 예약을 담당한다. Execution은 확정 명령의 생존·타입·중복·경로 스냅샷만 검사해 작업 순번과 최종 ECB 기록을 소유한다. Lifecycle은 전달받은 종료 의도를 재검사해 상태·연결·삭제 보류를 반영한다. Publish는 배정 최종 재검사·롤백·공개를 담당한다.
