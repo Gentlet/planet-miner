@@ -10,7 +10,6 @@ using UnityEngine;
 [Serializable]
 public class ItemConfigJsonData
 {
-    public int DefaultMaxStack = 50;
     public List<ItemConfigJsonEntry> Items = new List<ItemConfigJsonEntry>();
 }
 
@@ -24,7 +23,7 @@ public class ItemConfigJsonEntry
 
 /// <summary>
 /// 역할·목적: Initialization에서 품목별 최대 스택 설정을 한 번 게시한다.
-/// 입력·생성: StreamingAssets의 ItemConfig.json 또는 사전 등록 API의 JSON을 읽는다. 유효한 공통값/품목별 예외는 유지하며 읽기/파싱 실패는 중단 오류다.
+/// 입력·생성: StreamingAssets의 ItemConfig.json 또는 사전 등록 API의 JSON을 읽는다. 모든 실제 품목의 명시적 양수 값이 필수이며 읽기/파싱/검증 실패는 중단 오류다.
 /// 출력·소유권: ItemRegistry와 ItemConfigElement 버퍼를 즉시 생성한다. 유효한 기존 Registry는 보존하고 직접 중복 게시 API 호출은 거부한다.
 /// 이용: 입고 슬롯 예약, 생산 출력 공간 검사와 드론 보관 계획이 World 수명 동안 읽기 전용으로 이용한다.
 /// 정리: 초기화 뒤 비활성화하며 게시 도중 예외는 이번 호출이 만든 미완성 엔티티만 회수한다. 게시된 설정을 시스템 종료 시 삭제하지 않는다.
@@ -51,16 +50,13 @@ public partial class ItemConfigInitSystem : SystemBase
                 return;
             }
 
-            var items = EntityManager.GetBuffer<ItemConfigElement>(registryEntity, true);
-            int count = Enum.GetValues(typeof(ItemTypeEnum)).Length;
-            bool complete = items.Length == count;
-            for (int i = 0; complete && i < count; i++)
+            try
             {
-                complete = items[i].ItemType == (ItemTypeEnum)i;
+                ValidateRegisteredItems(EntityManager.GetBuffer<ItemConfigElement>(registryEntity, true));
             }
-            if (!complete)
+            catch (ArgumentException exception)
             {
-                ReportFailure(EntityManager, "The pre-registered ItemRegistry is missing its indexed item definitions.");
+                ReportFailure(EntityManager, exception.Message);
             }
 
             Enabled = false;
@@ -87,11 +83,10 @@ public partial class ItemConfigInitSystem : SystemBase
         try
         {
             string jsonText = jsonOverride ?? ReadConfigFile();
-            var items = ParseItems(jsonText, out int defaultMaxStack);
+            var items = ParseItems(jsonText);
             Entity registryEntity = entityManager.CreateEntity(typeof(ItemRegistry), typeof(ItemConfigElement));
             try
             {
-                entityManager.SetComponentData(registryEntity, new ItemRegistry { DefaultMaxStack = defaultMaxStack });
                 var buffer = entityManager.GetBuffer<ItemConfigElement>(registryEntity);
                 buffer.EnsureCapacity(items.Count);
                 foreach (var item in items)
@@ -121,7 +116,7 @@ public partial class ItemConfigInitSystem : SystemBase
             "Item configuration initialization failed. See error log.");
     }
 
-    private static List<ItemConfigElement> ParseItems(string jsonText, out int defaultMaxStack)
+    private static List<ItemConfigElement> ParseItems(string jsonText)
     {
         if (string.IsNullOrWhiteSpace(jsonText))
         {
@@ -133,35 +128,94 @@ public partial class ItemConfigInitSystem : SystemBase
             throw new ArgumentException("Parsed item configuration is null.", nameof(jsonText));
         }
 
-        defaultMaxStack = data.DefaultMaxStack > 0 ? data.DefaultMaxStack : 50;
-        var customStacks = new Dictionary<ItemTypeEnum, int>();
-        if (data.Items != null)
+        if (data.Items == null)
         {
-            foreach (var item in data.Items)
+            throw new ArgumentException("Item configuration requires an Items list.", nameof(jsonText));
+        }
+        var stacksByItemType = new Dictionary<ItemTypeEnum, int>();
+        foreach (var item in data.Items)
+        {
+            if (item == null)
             {
-                if (item == null)
-                {
-                    throw new ArgumentException("Item configuration contains a null entry.", nameof(jsonText));
-                }
-                if (Enum.TryParse<ItemTypeEnum>(item.ItemType, true, out var parsedType))
-                {
-                    customStacks[parsedType] = item.MaxStack;
-                }
+                throw new ArgumentException("Item configuration contains a null entry.", nameof(jsonText));
             }
+            if (string.IsNullOrWhiteSpace(item.ItemType))
+            {
+                throw new ArgumentException("Item configuration contains an empty item name.", nameof(jsonText));
+            }
+            if (!Enum.TryParse<ItemTypeEnum>(item.ItemType, true, out var parsedType) ||
+                !Enum.IsDefined(typeof(ItemTypeEnum), parsedType) ||
+                !string.Equals(item.ItemType.Trim(), parsedType.ToString(), StringComparison.OrdinalIgnoreCase))
+            {
+                throw new ArgumentException($"Unknown item name '{item.ItemType}'.", nameof(jsonText));
+            }
+            if (parsedType == ItemTypeEnum.None)
+            {
+                throw new ArgumentException("None is not a configurable item.", nameof(jsonText));
+            }
+            ValidateMaxStack(parsedType, item.MaxStack);
+            if (stacksByItemType.ContainsKey(parsedType))
+            {
+                throw new ArgumentException($"Duplicate item definition '{parsedType}'.", nameof(jsonText));
+            }
+            stacksByItemType.Add(parsedType, item.MaxStack);
         }
 
         int count = Enum.GetValues(typeof(ItemTypeEnum)).Length;
         var items = new List<ItemConfigElement>(count);
-        for (int i = 0; i < count; i++)
+        var missingItems = new List<string>();
+        // None은 설정 항목이 아니다. 품목 번호와 버퍼 인덱스의 기존 대응을 위해 0번만 비워 둔다.
+        items.Add(new ItemConfigElement(ItemTypeEnum.None, 0));
+        for (int i = 1; i < count; i++)
         {
             var itemType = (ItemTypeEnum)i;
-            int maxStack = customStacks.TryGetValue(itemType, out int customValue)
-                ? customValue
-                : GetDefaultMaxStackFor(itemType, defaultMaxStack);
+            if (!stacksByItemType.TryGetValue(itemType, out int maxStack))
+            {
+                missingItems.Add(itemType.ToString());
+                continue;
+            }
             items.Add(new ItemConfigElement(itemType, maxStack));
+        }
+        if (missingItems.Count > 0)
+        {
+            throw new ArgumentException($"Missing item definitions: {string.Join(", ", missingItems)}.", nameof(jsonText));
         }
 
         return items;
+    }
+
+    private static void ValidateMaxStack(ItemTypeEnum itemType, int maxStack)
+    {
+        if (maxStack <= 0)
+        {
+            throw new ArgumentException($"Item '{itemType}' requires an explicit positive MaxStack; received {maxStack}.");
+        }
+    }
+
+    private static void ValidateRegisteredItems(DynamicBuffer<ItemConfigElement> items)
+    {
+        int count = Enum.GetValues(typeof(ItemTypeEnum)).Length;
+        if (items.Length != count)
+        {
+            throw new ArgumentException("The pre-registered ItemRegistry is missing its indexed item definitions.");
+        }
+        for (int i = 0; i < count; i++)
+        {
+            var item = items[i];
+            if (item.ItemType != (ItemTypeEnum)i)
+            {
+                throw new ArgumentException($"The pre-registered ItemRegistry has an invalid item at index {i}.");
+            }
+            if (item.ItemType == ItemTypeEnum.None)
+            {
+                if (item.MaxStack != 0)
+                {
+                    throw new ArgumentException("The reserved None entry requires MaxStack 0.");
+                }
+                continue;
+            }
+            ValidateMaxStack(item.ItemType, item.MaxStack);
+        }
     }
 
     private static string ReadConfigFile()
@@ -177,32 +231,5 @@ public partial class ItemConfigInitSystem : SystemBase
             return File.ReadAllText(altPath);
         }
         throw new FileNotFoundException($"Item config file was not found at '{path}' or '{altPath}'.", path);
-    }
-
-    /// <summary>
-    /// 설정에 없는 품목의 현재 기본 스택 규칙을 반환한다. 광물/금속/드론은 각 고정 규칙을 사용한다.
-    /// 그 외 품목만 호출자가 제공한 defaultMaxStack을 사용한다.
-    /// </summary>
-    public static int GetDefaultMaxStackFor(ItemTypeEnum type, int defaultMaxStack)
-    {
-        switch (type)
-        {
-            case ItemTypeEnum.None:
-                return 0;
-            case ItemTypeEnum.Iron_Ore:
-            case ItemTypeEnum.Copper_Ore:
-            case ItemTypeEnum.Coal:
-            case ItemTypeEnum.Stone:
-                return 50;
-            case ItemTypeEnum.Iron:
-            case ItemTypeEnum.Copper:
-            case ItemTypeEnum.Iron_Stick:
-            case ItemTypeEnum.Copper_Stick:
-                return 100;
-            case ItemTypeEnum.Drone:
-                return 1;
-            default:
-                return defaultMaxStack;
-        }
     }
 }

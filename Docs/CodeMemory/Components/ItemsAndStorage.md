@@ -42,19 +42,19 @@ ECB 재생으로 구조가 변경되는 경계 전후에 기존 DynamicBuffer �
 
 ## ItemRegistry
 
-- **종류·부착 대상:** 설정 엔티티 하나에 붙는 일반 `IComponentData`. 같은 엔티티의 `ItemConfigElement` 버퍼를 사용하는 조회 기준이며 `DefaultMaxStack`을 보관한다. 개별 아이템이나 창고에 붙지 않는다.
-- **생성:** Initialization의 managed `ItemConfigInitSystem`이 유효한 `StreamingAssets/ItemConfig.json`의 공통값·품목별 예외로 Registry+버퍼를 한 번 게시한다. 파일 누락·읽기/파싱 실패는 로그·설정 미게시·즉시 SimulationFatalError다. `InitializeItemRegistry`로 사전 등록할 수 있으며 기존 Registry가 있으면 입력 처리 전에 예외로 거부한다.
+- **종류·부착 대상:** 설정 엔티티 하나에 붙는 데이터 없는 `IComponentData` 태그다. 같은 엔티티의 `ItemConfigElement` 버퍼를 식별하며 공통 기본값을 보관하지 않는다. 개별 아이템이나 창고에 붙지 않는다.
+- **생성:** Initialization의 managed `ItemConfigInitSystem`이 `StreamingAssets/ItemConfig.json`에 실제 모든 품목의 명시적 양수 MaxStack이 있는지 검증한 뒤 태그+버퍼를 한 번 게시한다. 파일 누락·읽기/파싱 실패·무효 값·품목 누락·무효 이름·None 항목·중복은 로그·설정 미게시·즉시 SimulationFatalError다. `InitializeItemRegistry`로 사전 등록할 수 있으며 기존 Registry가 있으면 입력 처리 전에 예외로 거부한다.
 - **Reader:** Command의 `CrafterRecipeCommandSystem`/`BuildingInputSlotUtility`가 입력 슬롯 수를 계산한다. Decision의 `MinerDecisionSystem`/`CrafterDecisionSystem`은 생산품 스택 한도를, Reservation의 `BuildingStorageInputReservationSystem`은 입고 슬롯 스택 한도를 읽는다. 개발용 불변식 진단도 설정을 참조한다.
-- **처리 방법:** `GetMaxStack`은 품목 enum 값을 버퍼 인덱스로 사용한다. 인덱스가 범위를 벗어나면 `DefaultMaxStack` 또는 호출자가 넘긴 fallback을 반환한다. Reader별 설정 부재 처리와 Registry의 범위 밖 fallback은 구별한다.
-- **수명·결합:** 자동 Init은 기존 Registry의 버퍼와 품목 번호에 대응하는 전체 항목 구성을 확인한다. 초기화 실패나 기존 Fatal 뒤 비활성화하며 자동 재시도하지 않는다. 설정은 World 수명 동안 읽기 전용이며 Init 제거와 함께 삭제/Dispose하지 않는다. 게시 실패 시 이번 호출의 미완성 엔티티만 회수한다.
+- **처리 방법:** 정적 `ItemRegistry.GetMaxStack`은 품목 enum 값을 원본 버퍼 인덱스로 사용한다. None·범위 밖·인덱스의 품목 불일치는 용량 0이며 정상 기본값으로 대체하지 않는다. 태그의 값 조회 API를 호출하지 않고 singleton 엔티티와 읽기 전용 버퍼로 접근한다. 생산·예약·드론·진단도 설정 부재를 50으로 보충하지 않는다.
+- **수명·결합:** 자동 Init은 기존 Registry의 전체 버퍼·품목 번호·실제 품목의 양수 값·내부 None/0을 확인한다. 실패해도 사전 등록 원본을 삭제/보충하지 않고 Fatal을 게시한다. 초기화 실패나 기존 Fatal 뒤 비활성화하며 자동 재시도하지 않는다. 설정은 World 수명 동안 읽기 전용이며 Init 제거와 함께 삭제/Dispose하지 않는다. 게시 실패 시 이번 호출의 미완성 엔티티만 회수한다.
 - **근거:** [선언·조회](../../../Assets/Scripts/Components/Items/ItemConfigComponents.cs), [게시](../../../Assets/Scripts/Systems/Initialization/ItemConfigInitSystem.cs), [입력 구성](../../../Assets/Scripts/Common/BuildingInputSlotUtility.cs), [채굴 판단](../../../Assets/Scripts/Systems/Buildings/Decision/MinerDecisionSystem.cs), [제작 판단](../../../Assets/Scripts/Systems/Buildings/Decision/CrafterDecisionSystem.cs), [입고 예약](../../../Assets/Scripts/Systems/Buildings/Reservation/BuildingStorageInputReservationSystem.cs).
 
 ## ItemConfigElement
 
 - **종류·부착 대상:** `IBufferElementData`, `InternalBufferCapacity(0)`. `ItemRegistry` 엔티티의 동적 버퍼이며 원소는 `ItemType`, `MaxStack`을 가진다. `MaxStack`은 해당 품목 한 슬롯의 실물 개수 한도다.
-- **생성:** `ItemConfigInitSystem.InitializeItemRegistry`가 enum 전체를 숫자 순으로 순회하여 품목 번호와 같은 위치에 넣는다. JSON의 품목별 값이 있으면 그것을 사용하고, 나머지는 품목별 기본값을 채운다. 생성·버퍼 채우기는 Initialization의 직접 EntityManager 작업이다.
+- **생성:** `ItemConfigInitSystem.InitializeItemRegistry`가 실제 모든 품목의 JSON 값을 검증하고 숫자 순으로 품목 번호와 같은 위치에 넣는다. 설정에 없는 품목의 값을 채우지 않는다. JSON의 None은 거부하며 버퍼 0번의 내부 None/0만 인덱스 대응을 위해 만든다. 생성·버퍼 채우기는 Initialization의 직접 EntityManager 작업이다.
 - **Reader:** `CrafterRecipeCommandSystem`의 입력 슬롯 산정, `MinerDecisionSystem`/`CrafterDecisionSystem`의 출력 여유 판단, `BuildingStorageInputReservationSystem`의 입고 예약, `WorldInvariantValidationSystem`의 용량 진단에서 읽는다. 실행 중 정상 Writer는 없다.
-- **현재 기본값:** `None=0`, 광석·석탄·돌은 50, 철·구리와 각 막대는 100, Drone은 1이다. JSON의 `DefaultMaxStack <= 0`은 50으로 바꾸며 개별 override 값은 이 파서에서 그대로 게시한다. 슬롯 계산 유틸리티는 사용하는 품목의 유효성·양수 MaxStack을 별도로 검사한다.
+- **현재 명시 설정:** 광석·석탄·돌은 50, 철·구리와 각 막대는 100, Drone은 1이다. 코드의 품목별 switch·공통 DefaultMaxStack·생략값 보충은 제거했다. 실제 품목의 0·음수·값 누락은 오류이며 사용 금지 기능으로 해석하지 않는다. 슬롯 계산 유틸리티와 일반 입고 예약은 사용하는 품목의 양수 한도를 확인한다.
 - **수명·결합:** Registry와 함께 World가 소유하며 게시 후 Clear/재로드/재등록 경로를 제공하지 않는다. 버퍼 인덱스와 `ItemType`의 대응은 입력 슬롯 계산이 검증하는 계약이며, `Storage.SlotCount`와는 다른 제한이다.
 - **근거:** [선언](../../../Assets/Scripts/Components/Items/ItemConfigComponents.cs), [파싱·게시](../../../Assets/Scripts/Systems/Initialization/ItemConfigInitSystem.cs), [슬롯 유효성](../../../Assets/Scripts/Common/BuildingInputSlotUtility.cs), [예약](../../../Assets/Scripts/Systems/Buildings/Reservation/BuildingStorageInputReservationSystem.cs).
 

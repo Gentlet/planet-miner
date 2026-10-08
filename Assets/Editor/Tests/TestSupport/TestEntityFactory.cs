@@ -53,10 +53,18 @@ namespace PlanetMiner.Tests
             if (items.IsEmptyIgnoreFilter)
             {
                 Entity entity = _entityManager.CreateEntity(typeof(ItemRegistry), typeof(ItemConfigElement));
-                _entityManager.SetComponentData(entity, new ItemRegistry { DefaultMaxStack = 50 });
                 var buffer = _entityManager.GetBuffer<ItemConfigElement>(entity);
-                foreach (ItemTypeEnum type in System.Enum.GetValues(typeof(ItemTypeEnum)))
-                    buffer.Add(new ItemConfigElement(type, ItemConfigInitSystem.GetDefaultMaxStackFor(type, 50)));
+                // 격리 구성의 명시적 데이터다. 제품 Init의 기본값/파일 로드를 대신 호출하지 않는다.
+                buffer.Add(new ItemConfigElement(ItemTypeEnum.None, 0));
+                buffer.Add(new ItemConfigElement(ItemTypeEnum.Iron_Ore, 50));
+                buffer.Add(new ItemConfigElement(ItemTypeEnum.Copper_Ore, 50));
+                buffer.Add(new ItemConfigElement(ItemTypeEnum.Coal, 50));
+                buffer.Add(new ItemConfigElement(ItemTypeEnum.Stone, 50));
+                buffer.Add(new ItemConfigElement(ItemTypeEnum.Iron, 100));
+                buffer.Add(new ItemConfigElement(ItemTypeEnum.Copper, 100));
+                buffer.Add(new ItemConfigElement(ItemTypeEnum.Iron_Stick, 100));
+                buffer.Add(new ItemConfigElement(ItemTypeEnum.Copper_Stick, 100));
+                buffer.Add(new ItemConfigElement(ItemTypeEnum.Drone, 1));
             }
 
             using var recipes = _entityManager.CreateEntityQuery(typeof(RecipeRegistry));
@@ -329,7 +337,6 @@ namespace PlanetMiner.Tests
             Entity itemEntity = itemQuery.GetSingletonEntity();
             var recipes = _entityManager.GetBuffer<RecipeConfigElement>(recipeEntity, true);
             var ingredients = _entityManager.GetBuffer<RecipeIngredientElement>(recipeEntity, true);
-            var itemRegistry = itemQuery.GetSingleton<ItemRegistry>();
             var items = _entityManager.GetBuffer<ItemConfigElement>(itemEntity, true);
             if (!RecipeConfigLookupUtility.TryGetRecipeIndex(recipes, recipeId, out int recipeIndex))
             {
@@ -338,7 +345,7 @@ namespace PlanetMiner.Tests
 
             var recipe = recipes[recipeIndex];
             if (!BuildingInputSlotUtility.TryCalculate(ingredients, recipe.IngredientStart, recipe.IngredientCount,
-                    itemRegistry, items, out var slots, out var error))
+                    items, out var slots, out var error))
             {
                 throw new System.InvalidOperationException($"Invalid fixture input slots: {error}.");
             }

@@ -19,35 +19,38 @@ public class Phase3ItemConfigTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void Test03_CustomJson_OverridesValues()
+    public void Test03_CustomJson_PublishesConfiguredValues()
     {
-        // 지정/미지정 품목을 같은 Registry에서 읽어 덮어쓴 값과 기본 규칙을 구분한다.
-        // Arrange: Custom JSON with custom MaxStack
+        // 모든 실제 품목의 명시적 설정을 같은 원본 버퍼에서 읽는다.
+        // Arrange: Complete JSON with configured MaxStack
         string customJson = @"{
-            ""DefaultMaxStack"": 64,
             ""Items"": [
                 { ""ItemType"": ""Iron_Ore"", ""MaxStack"": 999 },
+                { ""ItemType"": ""Copper_Ore"", ""MaxStack"": 50 },
+                { ""ItemType"": ""Coal"", ""MaxStack"": 50 },
+                { ""ItemType"": ""Stone"", ""MaxStack"": 50 },
+                { ""ItemType"": ""Iron"", ""MaxStack"": 100 },
+                { ""ItemType"": ""Copper"", ""MaxStack"": 100 },
+                { ""ItemType"": ""Iron_Stick"", ""MaxStack"": 100 },
+                { ""ItemType"": ""Copper_Stick"", ""MaxStack"": 100 },
                 { ""ItemType"": ""Drone"", ""MaxStack"": 5 }
             ]
         }";
 
         // Act
         Entity configEntity = ItemConfigInitSystem.InitializeItemRegistry(_entityManager, customJson);
-        var registry = _entityManager.GetComponentData<ItemRegistry>(configEntity);
         var items = _entityManager.GetBuffer<ItemConfigElement>(configEntity, true);
 
-        // Assert: Overridden items
-        Assert.AreEqual(999, registry.GetMaxStack(items, ItemTypeEnum.Iron_Ore));
-        Assert.AreEqual(5, registry.GetMaxStack(items, ItemTypeEnum.Drone));
+        // Assert: Configured item limits
+        Assert.AreEqual(999, ItemRegistry.GetMaxStack(items, ItemTypeEnum.Iron_Ore));
+        Assert.AreEqual(5, ItemRegistry.GetMaxStack(items, ItemTypeEnum.Drone));
 
-        // Non-overridden items keep their default/fallback values
-        Assert.AreEqual(50, registry.GetMaxStack(items, ItemTypeEnum.Copper_Ore));
-        Assert.AreEqual(100, registry.GetMaxStack(items, ItemTypeEnum.Iron));
+        Assert.AreEqual(50, ItemRegistry.GetMaxStack(items, ItemTypeEnum.Copper_Ore));
+        Assert.AreEqual(100, ItemRegistry.GetMaxStack(items, ItemTypeEnum.Iron));
 
-        // Fallback uses DefaultMaxStack (64)
-        Assert.AreEqual(64, registry.DefaultMaxStack);
+        // An unregistered item has no capacity; it is not replaced with a default.
         var invalidType = (ItemTypeEnum)250;
-        Assert.AreEqual(64, registry.GetMaxStack(items, invalidType));
+        Assert.AreEqual(0, ItemRegistry.GetMaxStack(items, invalidType));
     }
 
     [Test]
@@ -62,12 +65,11 @@ public class Phase3ItemConfigTests : EcsWorldTestFixture
         // Assert: Singleton created and its item buffer populated
         var query = _world.EntityManager.CreateEntityQuery(typeof(ItemRegistry));
         Assert.AreEqual(1, query.CalculateEntityCount());
-        var singleton = query.GetSingleton<ItemRegistry>();
         Entity configEntity = query.GetSingletonEntity();
         Assert.IsTrue(_entityManager.HasBuffer<ItemConfigElement>(configEntity));
         var items = _entityManager.GetBuffer<ItemConfigElement>(configEntity, true);
         Assert.AreEqual(System.Enum.GetValues(typeof(ItemTypeEnum)).Length, items.Length);
-        Assert.Greater(singleton.GetMaxStack(items, ItemTypeEnum.Iron), 0);
+        Assert.Greater(ItemRegistry.GetMaxStack(items, ItemTypeEnum.Iron), 0);
     }
 
 }

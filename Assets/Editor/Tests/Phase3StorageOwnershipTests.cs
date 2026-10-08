@@ -265,7 +265,7 @@ public class Phase3StorageOwnershipTests : EcsWorldTestFixture
     public void Test04_StackMerging_And_NewSlotAllocation()
     {
         // [시나리오]
-        // 창고 SlotCount = 2, ItemConfig.DefaultMaxStack = 50.
+        // 창고 SlotCount = 2, 품목별 스택 한도는 준비한 ItemConfigElement를 따른다.
         // Slot 0에 이미 Iron_Ore 1개가 있는 상태.
         // 추가로 Iron_Ore 1개(item1)와 Copper_Ore 1개(item2)가 동시에 입고를 시도:
         // - item1(Iron_Ore)은 Slot 0의 기존 스택(여유 있음)에 합쳐져 Slot 0 배정.

@@ -622,8 +622,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
 
     private int GetMaxStack(ItemTypeEnum itemType)
     {
-        var registry = _entityManager.GetComponentData<ItemRegistry>(_items);
-        return registry.GetMaxStack(_entityManager.GetBuffer<ItemConfigElement>(_items, true), itemType);
+        return ItemRegistry.GetMaxStack(_entityManager.GetBuffer<ItemConfigElement>(_items, true), itemType);
     }
 
     private float GetCraftTime(int recipeId)

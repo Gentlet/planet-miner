@@ -28,7 +28,6 @@ public class DroneRetargetingTests : EcsWorldTestFixture
         base.SetUp();
         CreateGameplayPrefabDatabases();
         Entity registry = _entityManager.CreateEntity(typeof(ItemRegistry));
-        _entityManager.SetComponentData(registry, new ItemRegistry { DefaultMaxStack = 2 });
         var config = _entityManager.AddBuffer<ItemConfigElement>(registry);
         foreach (ItemTypeEnum type in Enum.GetValues(typeof(ItemTypeEnum))) config.Add(new ItemConfigElement(type, 2));
         Entity capacity = _entityManager.CreateEntity(typeof(DroneCapacityState));

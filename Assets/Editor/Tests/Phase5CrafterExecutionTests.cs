@@ -251,8 +251,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
         var stateMid = _entityManager.GetComponentData<CrafterState>(crafter);
         Assert.AreEqual(1.0f, stateMid.Progress, 0.0001f);
 
-        var itemRegistry = _entityManager.GetComponentData<ItemRegistry>(_itemConfig);
-        int maxStack = itemRegistry.GetMaxStack(
+        int maxStack = ItemRegistry.GetMaxStack(
             _entityManager.GetBuffer<ItemConfigElement>(_itemConfig, true), ItemTypeEnum.Copper);
         // 2. 부산품2(Slot 2: Copper)만 MaxStack만큼 채움 (Slot 0, 1은 여유 공간 있음)
         NativeArray<Entity> dummyItems = new NativeArray<Entity>(maxStack, Allocator.Temp);
