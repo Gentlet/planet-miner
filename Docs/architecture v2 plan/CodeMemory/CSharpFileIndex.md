@@ -151,7 +151,7 @@
 | `Assets/Scripts/Systems/Synchronization/BuildingSpatialSyncSystem.cs` | footprint의 모든 점유 셀을 건물 인덱스로 재구축한다. |
 | `Assets/Scripts/Systems/Synchronization/ItemSpatialSyncSystem.cs` | `Owner == Entity.Null`인 아이템만 공간 인덱스로 재구축한다. |
 | `Assets/Scripts/Systems/Synchronization/ResourceSpatialSyncSystem.cs` | 자원 노드 셀 인덱스를 재구축한다. |
-| `Assets/Scripts/Validation/WorldInvariantValidationSystem.cs` | Editor/개발 빌드에서 프레임 말 정합성을 검사하고 위반 보고서를 `Logs/InvariantErrors`에 기록한다. |
+| `Assets/Scripts/Validation/WorldInvariantValidationSystem.cs` | Editor/개발 빌드에서 프레임 말 정합성을 검사하고 위반 보고서를 기본 `Logs/InvariantErrors`에 기록한다. World별 `SetLogDirectory`로 테스트 출력을 격리한다. |
 | `Assets/Scripts/Systems/Commit/EndSimulationEntityCommandBufferSystem.cs` | 드론 작업·경로·배정·행동 결과 및 종료 정리의 ECB를 최종 재생한다. |
 
 ## 주요 EditMode 테스트와 공통 도우미
@@ -161,7 +161,7 @@
 | `Assets/Editor/Tests/DroneLifecycleIntegrationTests.cs` | 실제 정렬된 건물→드론 루트에서 입고/출고 공간·취소·철거·다음 틱 완공과 예약 정산을 검증한다. 관측·경로·행동은 입력 fixture다. |
 | `Assets/Editor/Tests/Phase1ItemIntegrationTests.cs` | 스폰, 소유권 이전, 공간 반영, 삭제, 잘못된 목적지/버퍼 정합성. |
 | `Assets/Editor/Tests/Phase2BeltExecutionTests.cs` | 회전, 연속 홉, 큰 이동량의 종단 정지와 delta time 제한. |
-| `Assets/Editor/Tests/Phase2BeltIntegrationTests.cs` | 다중 타일 흐름, 후방 정체, 4개 수용, 간격 위반 탐지. |
+| `Assets/Editor/Tests/Phase2BeltIntegrationTests.cs` | 다중 타일 흐름, 후방 정체, 4개 수용, 간격 위반 탐지. 사례별 전용 경로의 진단 로그를 성공·실패 모두 보존한다. |
 | `Assets/Editor/Tests/Phase3ItemConfigTests.cs` | 시스템 초기화와 커스텀 JSON 스택 설정 게시. |
 | `Assets/Editor/Tests/Phase3StorageDecisionTests.cs` | 입출고 결정 통합, 복수 벨트, 혼잡 후 재개. |
 | `Assets/Editor/Tests/Phase3StorageOwnershipTests.cs` | 입출고 소유권과 단일 남은 슬롯 경합, 스택 병합/새 슬롯. |
