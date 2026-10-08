@@ -2,6 +2,8 @@
 
 작업일: 2026-10-08. 코드 분석·.NET 컴파일과 Unity 실행 검증을 구분한다. 최초 Q04의 무효 설정 예시는 조건부 코드 분석이며 정상 JSON에서 실행 재현한 결과가 아니다.
 
+> 2026-10-09 현재 상태: F-015의 같은 최신 Unity 컴파일 기록에 F-007 구현 소스가 포함됨을 확인해 컴파일 대기를 해소하고 완료로 반영했다. 아래 2026-10-08의 연결 실패/대기는 당시 기록으로 보존한다. 무효 입력·일반 입고의 실행 재현과 선택 EditMode는 미수행이다. [공유 컴파일 확인](#2026-10-09-f-015-공유-컴파일-확인).
+
 ## 확정 정책과 구현
 
 - 기존 ItemConfig.json이 값의 출처다. 실제 9품목의 MaxStack을 모두 명시하고 양수만 허용한다. 품목 항목·값 누락, 0·음수, 빈/오타/정의되지 않은 이름·숫자 이름, 같은 품목의 중복은 오류다. 정상 이름의 대소문자 무시는 유지한다.
@@ -57,3 +59,13 @@
 위 후속 정리에서 F-013 품목 검증이 미구현이고 None/무출력 의미를 결정해야 한다고 설명한 부분은 F-013 적용 전 상태다. 이후 사용자는 정식 이름만 허용·실제 주생산품 필수·없는 부산물 생략을 확정했고 RecipeConfigLoader의 파싱/직접 게시와 제품 Init의 사전 등록에 해당 검증을 추가했다. Item과 Recipe의 이름 의미는 일치하지만 각각의 기존 로더가 검증을 소유한다. Item 버퍼 0번 내부 None/0은 레시피 품목으로 허용하지 않는다.
 
 F-007의 MaxStack 명시적 양수·원본 조회·일반 입고 거부 계약은 변경하지 않았다. F-013은 코드/.NET 빌드 확인·Unity 컴파일 대기이며 F-007의 Unity 대기도 그대로다. 이번 안내는 문서 변경이고 추가 완료·새 컴파일/테스트는 없다. [F-013의 직접 영향과 남은 범위](F013-Verification.md#2026-10-08-관련-이슈-후속-정리)를 따른다.
+
+## 2026-10-09 F-015 공유 컴파일 확인
+
+사용자의 관련 이슈 문서 정리 요청으로 F-015의 기존 원본 결과와 현재 소스를 대조했다. 이번 후속은 문서만 변경하며 새 컴파일·테스트를 실행하지 않는다.
+
+- ItemConfigInitSystem의 전체 품목/정식 이름/None/중복·명시적 양수 MaxStack 검사와 ValidateRegisteredItems의 인덱스/내부 None/0 검사를 확인했다. BuildingStorageInputReservationJob.Execute는 빈 슬롯을 찾기 전에 0 이하 한도를 거부한다. F-015의 레시피 번호 검사가 이 품목/용량 검사를 대신하지 않는다.
+- F-015의 Assembly-CSharp-Editor .NET 빌드는 런타임/Editor 소스를 경고 0·오류 0으로 컴파일했다. Assembly-CSharp.csproj에 ItemConfigInitSystem·BuildingStorageInputReservationSystem이 포함돼 있고 해당 소스는 확인된 최신 Unity DLL보다 오래됐다. 최신 Editor 소스보다 Editor DLL도 최신이다.
+- 같은 원본 recompile_status는 up_to_date/failed:false/errors:[]/compilationFailed:false이고 최종 Editor는 ready/비컴파일/비리로드/Play Mode stopped다. .NET 결과를 Unity 결과로 바꾸지 않고 독립된 Unity 상태와 어셈블리 기록을 재사용했다. [원본 컴파일·실행 한계](F015-Verification.md#확인-결과), Logs/Codex/F015-20261009/recompile-status.json·editor-status-final.json·assembly-freshness.json·msbuild.log를 근거로 한다.
+- 당시 남았던 Unity 컴파일 확인을 충족했으므로 코드·컴파일 기준의 구현 완료로 반영했다. 새 테스트/assertion을 필수로 요구하지 않는다. 무효 JSON/사전 등록→Fatal·입고 거부·Owner 반영, API 전환 후 기존 선택 EditMode와 Play Mode는 새로 실행하지 않았으며 그 제한은 유지한다.
+- F-008/F-009/F-011/F-031/F-037/F-040의 기존 완료/선택 검증 종료는 유지한다. F-013도 같은 공유 컴파일 확인으로 완료됐고 F-015 번호 정책은 구현됐으나 F-006 실행 중 결과 보존과 F-017 월드 산술은 별도 남은 범위다. 과거 48/48·79/79·32/32를 새 무효 입력 실행으로 합산하지 않는다. [전체 후속 범위](F015-Verification.md#2026-10-09-관련-이슈-후속-정리).
