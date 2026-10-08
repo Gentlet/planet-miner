@@ -180,9 +180,11 @@ namespace PlanetMiner.Config
             DynamicBuffer<RecipeIngredientElement> ingredients,
             DynamicBuffer<RecipeOutputElement> outputs)
         {
+            var recipeIds = new HashSet<int>();
             for (int i = 0; i < recipes.Length; i++)
             {
                 var recipe = recipes[i];
+                ValidateRecipeId(recipe.Id, recipeIds);
                 ValidateRecipeRange(recipe, ingredients.Length, outputs.Length);
                 var ingredientTypes = new HashSet<ItemTypeEnum>();
                 for (int ingredientIndex = 0; ingredientIndex < recipe.IngredientCount; ingredientIndex++)
@@ -341,8 +343,10 @@ namespace PlanetMiner.Config
 
         private static void ValidateConfig(RecipeConfigData config)
         {
+            var recipeIds = new HashSet<int>();
             foreach (var recipe in config.Recipes)
             {
+                ValidateRecipeId(recipe.Id, recipeIds);
                 ValidateRecipeRange(recipe, config.Ingredients.Count, config.Outputs.Count);
                 var ingredientTypes = new HashSet<ItemTypeEnum>();
                 for (int i = 0; i < recipe.IngredientCount; i++)
@@ -364,6 +368,18 @@ namespace PlanetMiner.Config
             for (int i = 0; i < config.Outputs.Count; i++)
             {
                 ValidateOutput(config.Outputs[i], i);
+            }
+        }
+
+        private static void ValidateRecipeId(int recipeId, HashSet<int> recipeIds)
+        {
+            if (recipeId <= 0)
+            {
+                throw new ArgumentException($"Recipe ID {recipeId} must be explicitly set to a positive integer.", "config");
+            }
+            if (!recipeIds.Add(recipeId))
+            {
+                throw new ArgumentException($"Duplicate recipe ID {recipeId}.", "config");
             }
         }
 
