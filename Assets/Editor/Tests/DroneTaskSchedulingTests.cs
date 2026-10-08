@@ -90,10 +90,10 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         var materials = _entityManager.AddBuffer<BuildingConstructionMaterialElement>(config);
         materials.Add(new BuildingConstructionMaterialElement(BuildingTypeEnum.Storage, ItemTypeEnum.Iron, 3));
         materials.Add(new BuildingConstructionMaterialElement(BuildingTypeEnum.Storage, ItemTypeEnum.Copper, 2));
-        Entity request = _entityManager.CreateEntity(typeof(BuildingPlacementRequest));
-        _entityManager.SetComponentData(request, new BuildingPlacementRequest());
-        _entityManager.AddBuffer<PlacementRequestCandidateElement>(request).Add(
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(8, 4)));
+        Entity request = BuildingPlacementRequestUtility.Submit(_entityManager, new BuildingPlacementRequest(), new[]
+        {
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(8, 4))
+        });
 
         CreateStorage(new int2(1, 1), 1, ItemTypeEnum.Iron, 3);
         CreateWorker(3);

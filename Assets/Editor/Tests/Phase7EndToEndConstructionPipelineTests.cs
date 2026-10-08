@@ -155,11 +155,11 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
     private Entity RequestPlacement(BuildingTypeEnum type, int2 pos, DirectionEnum dir = DirectionEnum.Up, int2 size = default)
     {
         if (size.x <= 0 || size.y <= 0) size = new int2(1, 1);
-        var reqEntity = _entityManager.CreateEntity(typeof(BuildingPlacementRequest));
-        _entityManager.SetComponentData(reqEntity, new BuildingPlacementRequest(PlacementFlags.StrictAllOrNothing));
-        var buffer = _entityManager.AddBuffer<PlacementRequestCandidateElement>(reqEntity);
-        buffer.Add(new PlacementRequestCandidateElement(type, size, pos, dir));
-        return reqEntity;
+        return BuildingPlacementRequestUtility.Submit(
+            _entityManager, new BuildingPlacementRequest(PlacementFlags.StrictAllOrNothing), new[]
+            {
+                new PlacementRequestCandidateElement(type, size, pos, dir)
+            });
     }
 
     private Entity PrepareDeliveredMaterial(Entity site, ItemTypeEnum type)

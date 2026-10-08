@@ -120,6 +120,7 @@ flowchart LR
 | 컴포넌트 상세 | 종류 | 정의 파일 |
 | --- | --- | --- |
 | [BuildingPlacementRequest](Construction.md#buildingplacementrequest) | 상태 | [BuildingPlacementRequests.cs](../../../Assets/Scripts/Components/Construction/BuildingPlacementRequests.cs) |
+| [BuildingPlacementReceiptSequence](Construction.md#buildingplacementreceiptsequence) | 상태 | [BuildingPlacementRequests.cs](../../../Assets/Scripts/Components/Construction/BuildingPlacementRequests.cs) |
 | [CancelConstructionRequest](Construction.md#cancelconstructionrequest) | 상태 | [ConstructionRequests.cs](../../../Assets/Scripts/Components/Construction/ConstructionRequests.cs) |
 | [ConstructionMaterialRequirementElement](Construction.md#constructionmaterialrequirementelement) | 버퍼 | [ConstructionComponents.cs](../../../Assets/Scripts/Components/Construction/ConstructionComponents.cs) |
 | [ConstructionSite](Construction.md#constructionsite) | 상태 | [ConstructionComponents.cs](../../../Assets/Scripts/Components/Construction/ConstructionComponents.cs) |

@@ -569,10 +569,11 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         _world.GetOrCreateSystem<ItemSpatialSyncSystem>();
 
         int2 sitePos = new int2(30, 30);
-        var reqEntity = _entityManager.CreateEntity(typeof(BuildingPlacementRequest));
-        _entityManager.SetComponentData(reqEntity, new BuildingPlacementRequest(PlacementFlags.StrictAllOrNothing));
-        var buffer = _entityManager.AddBuffer<PlacementRequestCandidateElement>(reqEntity);
-        buffer.Add(new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), sitePos, DirectionEnum.Up));
+        var reqEntity = BuildingPlacementRequestUtility.Submit(
+            _entityManager, new BuildingPlacementRequest(PlacementFlags.StrictAllOrNothing), new[]
+            {
+                new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), sitePos, DirectionEnum.Up)
+            });
 
         // CommandGroup 1회 실행 (BuildingPlacementCommandSystem -> EndCommandEntityCommandBufferSystem)
         commandGroup.Update();
