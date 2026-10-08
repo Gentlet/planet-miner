@@ -55,7 +55,7 @@ namespace PlanetMiner.Config
     /// <summary>
     /// 역할·목적: Resources 레시피 JSON을 해석해 재료/출력 범위를 만들고 World 소유 버퍼에 한 번 게시한다.
     /// conditions는 현재 DTO 입력 필드만 있으며 비트 변환은 연결하지 않고 ConditionFlags=0으로 게시한다.
-    /// 입력·출력: Resources 누락/빈 자료 또는 null 파싱 결과는 기존 기본 레시피를 사용한다. 재료 중복/수량 범위 오류는 거부하며 게시 전 버퍼 범위를 검증한다.
+    /// 입력·출력: 파일 누락/빈 자료/파싱 실패는 거부한다. 전체 초기화는 필수 ID 1~5를 요구하고 명시적 부분 게시 API는 격리 구성에 사용한다.
     /// 이용: RecipeInitSystem(Initialization)과 설정 테스트가 호출한다. 런타임 Reader는 RecipeRegistry와 ECS 버퍼를 사용한다.
     /// 수명·실패: 기존 레지스트리는 교체하지 않는다. 복사 중 실패하면 이번에 만든 미완성 엔티티만 회수하고 예외를 전달한다.
     /// </summary>
@@ -66,39 +66,45 @@ namespace PlanetMiner.Config
         public static RecipeConfigData LoadFromResources(string resourcePath = DefaultResourcePath)
         {
             var textAsset = Resources.Load<TextAsset>(resourcePath);
-            if (textAsset != null)
+            if (textAsset == null)
             {
-                if (!string.IsNullOrEmpty(textAsset.text))
-                {
-                    return ParseJson(textAsset.text);
-                }
+                throw new ArgumentException($"Recipe config asset was not found at Resources/{resourcePath}.", nameof(resourcePath));
             }
 
-            Debug.LogWarning($"[RecipeConfigLoader] Failed to load recipe JSON at '{resourcePath}'. Falling back to default hardcoded recipes.");
-            return CreateDefaultConfig();
+            var config = ParseJson(textAsset.text);
+            ValidateRequiredRecipes(config);
+            return config;
         }
 
         public static RecipeConfigData ParseJson(string json)
         {
+            if (string.IsNullOrWhiteSpace(json))
+            {
+                throw new ArgumentException("Recipe JSON is null or empty.", nameof(json));
+            }
+
             var jsonData = JsonUtility.FromJson<RecipeConfigJsonData>(json);
             if (jsonData == null)
             {
-                return CreateDefaultConfig();
+                throw new ArgumentException("Parsed recipe data is null.", nameof(json));
             }
 
             if (jsonData.recipes == null)
             {
-                return CreateDefaultConfig();
+                throw new ArgumentException("Recipe list is null.", nameof(json));
             }
-
             if (jsonData.recipes.Count == 0)
             {
-                return CreateDefaultConfig();
+                throw new ArgumentException("Recipe list is empty.", nameof(json));
             }
 
             var config = new RecipeConfigData();
             foreach (var entry in jsonData.recipes)
             {
+                if (entry == null)
+                {
+                    throw new ArgumentException("Recipe list contains a null entry.", nameof(json));
+                }
                 var recipe = new RecipeConfigElement
                 {
                     Id = entry.id,
@@ -114,6 +120,10 @@ namespace PlanetMiner.Config
                 {
                     foreach (var ingredient in entry.ingredients)
                     {
+                        if (ingredient == null)
+                        {
+                            throw new ArgumentException($"Recipe {entry.id} contains a null ingredient.", nameof(json));
+                        }
                         Enum.TryParse(ingredient.itemType, true, out ItemTypeEnum itemType);
                         if (ingredient.amount < int.MinValue || ingredient.amount > int.MaxValue)
                         {
@@ -131,6 +141,10 @@ namespace PlanetMiner.Config
                 {
                     foreach (var output in entry.byproducts)
                     {
+                        if (output == null)
+                        {
+                            throw new ArgumentException($"Recipe {entry.id} contains a null byproduct.", nameof(json));
+                        }
                         Enum.TryParse(output.itemType, true, out ItemTypeEnum itemType);
                         config.Outputs.Add(new RecipeOutputElement(itemType, output.amount > 0 ? output.amount : 1, true));
                     }
@@ -143,6 +157,48 @@ namespace PlanetMiner.Config
             return config;
         }
 
+        /// <summary>전체 제품 초기화에서 사용하는 필수 목록이다. 잠긴 레시피도 데이터 자체는 시작 시 존재해야 한다.</summary>
+        public static void ValidateRequiredRecipes(RecipeConfigData config)
+        {
+            if (config == null)
+            {
+                throw new ArgumentNullException(nameof(config));
+            }
+            var ids = new HashSet<int>();
+            foreach (var recipe in config.Recipes)
+            {
+                ids.Add(recipe.Id);
+            }
+            ValidateRequiredRecipeIds(ids);
+        }
+
+        public static void ValidateRequiredRecipes(in DynamicBuffer<RecipeConfigElement> recipes)
+        {
+            var ids = new HashSet<int>();
+            foreach (var recipe in recipes)
+            {
+                ids.Add(recipe.Id);
+            }
+            ValidateRequiredRecipeIds(ids);
+        }
+
+        private static void ValidateRequiredRecipeIds(HashSet<int> ids)
+        {
+            var missing = new List<int>();
+            for (int id = 1; id <= 5; id++)
+            {
+                if (!ids.Contains(id))
+                {
+                    missing.Add(id);
+                }
+            }
+            if (missing.Count > 0)
+            {
+                throw new ArgumentException($"Missing required recipe IDs: {string.Join(", ", missing)}.");
+            }
+        }
+
+        /// <summary>명시적인 기본 데이터 생성 API다. 파일 로드 실패의 대체 경로로는 사용하지 않는다.</summary>
         public static RecipeConfigData CreateDefaultConfig()
         {
             var config = new RecipeConfigData();

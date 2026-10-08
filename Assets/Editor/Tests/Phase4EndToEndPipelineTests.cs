@@ -98,6 +98,7 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
         {
             _elapsedTime += deltaTime;
             _world.SetTime(new Unity.Core.TimeData(_elapsedTime, deltaTime));
+            Entities.PrepareSimulationConfiguration();
             _simulationGroup.Update();
         }
     }

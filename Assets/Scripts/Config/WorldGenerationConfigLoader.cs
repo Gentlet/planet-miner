@@ -112,14 +112,26 @@ public static class WorldGenerationConfigLoader
         elements = null;
         floor = null;
 
-        TextAsset asset = Resources.Load<TextAsset>(resourcePath);
-        if (asset == null)
+        try
         {
-            Debug.LogError($"[WorldGenerationConfigLoader] Config asset not found at Resources/{resourcePath}");
+            TextAsset asset = Resources.Load<TextAsset>(resourcePath);
+            if (asset == null)
+            {
+                Debug.LogError($"[WorldGenerationConfigLoader] Config asset not found at Resources/{resourcePath}");
+                return false;
+            }
+
+            return TryParseAndValidateJson(asset.text, out worldSeed, out initialChunkSize, out elements, out floor);
+        }
+        catch (Exception exception)
+        {
+            worldSeed = 0;
+            initialChunkSize = 0;
+            elements = null;
+            floor = null;
+            Debug.LogError($"[WorldGenerationConfigLoader] Failed to read config at '{resourcePath}': {exception.Message}");
             return false;
         }
-
-        return TryParseAndValidateJson(asset.text, out worldSeed, out initialChunkSize, out elements, out floor);
     }
 
     /// <summary>
@@ -382,9 +394,22 @@ public static class WorldGenerationConfigLoader
     private static bool IsPositiveFinite(float value) => value > 0f && !float.IsNaN(value) && !float.IsInfinity(value);
     private static bool IsNonNegativeFinite(float value) => value >= 0f && !float.IsNaN(value) && !float.IsInfinity(value);
 
-    /// <summary>
-    /// 검증된 월드 생성 설정을 ECS 싱글톤 엔티티와 DynamicBuffer로 게시합니다.
-    /// </summary>
+    /// <summary>제품 초기화는 자원과 바닥을 같은 게시 엔티티에서 요구한다. 자원 전용 게시 API는 격리 구성용이다.</summary>
+    public static bool HasCompleteConfig(EntityManager entityManager, Entity entity)
+    {
+        if (!entityManager.HasComponent<FloorGenerationSettings>(entity) ||
+            !entityManager.HasBuffer<ResourceGenerationConfigElement>(entity) ||
+            !entityManager.HasBuffer<FloorBiomeElement>(entity) ||
+            !entityManager.HasBuffer<FloorVariantElement>(entity))
+        {
+            return false;
+        }
+        return entityManager.GetBuffer<ResourceGenerationConfigElement>(entity, true).Length > 0 &&
+               entityManager.GetBuffer<FloorBiomeElement>(entity, true).Length > 0 &&
+               entityManager.GetBuffer<FloorVariantElement>(entity, true).Length > 0;
+    }
+
+    /// <summary>명시적 자원 전용 게시 API. 전체 제품 초기화는 바닥을 포함한 오버로드를 사용한다.</summary>
     public static Entity PublishConfig(
         EntityManager entityManager,
         uint worldSeed,
@@ -413,24 +438,30 @@ public static class WorldGenerationConfigLoader
         FloorGenerationDefinition floor)
     {
         Entity entity = entityManager.CreateEntity(typeof(ResourceGenerationSettings));
-        entityManager.SetComponentData(entity, new ResourceGenerationSettings(worldSeed, initialChunkSize));
-
-        DynamicBuffer<ResourceGenerationConfigElement> buffer = entityManager.AddBuffer<ResourceGenerationConfigElement>(entity);
-        for (int i = 0; i < elements.Count; i++)
+        try
         {
-            buffer.Add(elements[i]);
-        }
+            entityManager.SetComponentData(entity, new ResourceGenerationSettings(worldSeed, initialChunkSize));
+            DynamicBuffer<ResourceGenerationConfigElement> buffer = entityManager.AddBuffer<ResourceGenerationConfigElement>(entity);
+            for (int i = 0; i < elements.Count; i++)
+            {
+                buffer.Add(elements[i]);
+            }
 
-        // 설정/바이옴 범위/평탄한 변형 목록을 같은 게시 엔티티에 보관해 Reader가 일치하는 구성을 읽게 한다.
-        if (floor != null)
+            // 자원 전용 명시적 게시도 허용하지만 제품 Init은 바닥을 포함한 완전한 구성을 요구한다.
+            if (floor != null)
+            {
+                entityManager.AddComponentData(entity, floor.Settings);
+                DynamicBuffer<FloorBiomeElement> biomes = entityManager.AddBuffer<FloorBiomeElement>(entity);
+                foreach (FloorBiomeElement biome in floor.Biomes) biomes.Add(biome);
+                DynamicBuffer<FloorVariantElement> variants = entityManager.AddBuffer<FloorVariantElement>(entity);
+                foreach (FloorVariantElement variant in floor.Variants) variants.Add(variant);
+            }
+            return entity;
+        }
+        catch
         {
-            entityManager.AddComponentData(entity, floor.Settings);
-            DynamicBuffer<FloorBiomeElement> biomes = entityManager.AddBuffer<FloorBiomeElement>(entity);
-            foreach (FloorBiomeElement biome in floor.Biomes) biomes.Add(biome);
-            DynamicBuffer<FloorVariantElement> variants = entityManager.AddBuffer<FloorVariantElement>(entity);
-            foreach (FloorVariantElement variant in floor.Variants) variants.Add(variant);
+            entityManager.DestroyEntity(entity);
+            throw;
         }
-
-        return entity;
     }
 }

@@ -533,6 +533,7 @@ public class DroneRetargetingTests : EcsWorldTestFixture
     private void Tick()
     {
         // 건물 반영을 확정한 다음 드론 관리 네 phase를 진행한다. 이동/관측/경로는 fixture 입력이다.
+        Entities.PrepareConstructionConfiguration();
         _building.Update();
         _decision.Update();
         _reservation.Update();

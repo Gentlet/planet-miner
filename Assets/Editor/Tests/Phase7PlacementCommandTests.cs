@@ -44,6 +44,11 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
 
     private void UpdateCommandPhase()
     {
+        using var configQuery = _entityManager.CreateEntityQuery(typeof(BuildingConfig));
+        if (configQuery.IsEmptyIgnoreFilter)
+        {
+            Entities.PrepareBuildingConfiguration(BuildingTypeEnum.Belt, BuildingTypeEnum.Miner, BuildingTypeEnum.Storage);
+        }
         // EndCommand 실체화 뒤 생성된 현장/요구 버퍼를 검사해 승인 판단과 가시화 시점을 구분한다.
         _commandHandle.Update(_world.Unmanaged);
         _endCommandEcb.Update();

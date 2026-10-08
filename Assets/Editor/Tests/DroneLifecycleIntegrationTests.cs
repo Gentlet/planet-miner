@@ -354,6 +354,7 @@ public class DroneLifecycleIntegrationTests : EcsWorldTestFixture
     private void Tick()
     {
         AdvanceTime();
+        Entities.PrepareSimulationConfiguration();
         _simulation.Update();
     }
 
@@ -365,6 +366,7 @@ public class DroneLifecycleIntegrationTests : EcsWorldTestFixture
 
     private void FinishTickAfterCommand()
     {
+        Entities.PrepareConstructionConfiguration();
         _building.Update();
         _drone.Update();
         _commit.Update();

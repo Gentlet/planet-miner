@@ -28,6 +28,8 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
 
     private void RunLifecyclePhase()
     {
+        Entities.PrepareBuildingConfiguration(BuildingTypeEnum.Belt, BuildingTypeEnum.Miner, BuildingTypeEnum.Crafter,
+            BuildingTypeEnum.Storage, BuildingTypeEnum.MainFacility, BuildingTypeEnum.Splitter, BuildingTypeEnum.Merger);
         // 요청 소비/인스턴스화의 같은 ECB를 재생한 뒤 공통/종류별 초기 상태를 검사한다.
         Simulation.UpdateAndComplete(_lifecycleSystem);
         Simulation.Playback(_ecbSystem);

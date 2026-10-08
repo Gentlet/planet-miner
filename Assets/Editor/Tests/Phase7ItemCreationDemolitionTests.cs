@@ -55,6 +55,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         command.AddComponent(worldRequest, new SpawnItemRequest(ItemTypeEnum.Drone, worldPosition));
 
         Simulation.SetDeltaTime(0.1f);
+        Entities.PrepareSimulationConfiguration();
         pipeline.Update();
 
         Assert.IsFalse(_entityManager.Exists(building));
@@ -98,6 +99,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         RequestDemolition(building);
         RecordStoredSpawns(command, building);
 
+        Entities.PrepareSimulationConfiguration();
         pipeline.Update();
 
         Assert.IsTrue(_entityManager.Exists(building));
@@ -133,6 +135,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         var pipeline = CreatePipeline(false);
         Entity demolished = CreateBufferedBuilding(BuildingTypeEnum.Storage, int2.zero);
         RequestDemolition(demolished);
+        Entities.PrepareSimulationConfiguration();
         pipeline.Update();
         Assert.IsFalse(_entityManager.Exists(demolished));
         AssertRequestsConsumed();
@@ -140,6 +143,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         Entity survivor = CreateBufferedBuilding(BuildingTypeEnum.Crafter, new int2(3, 4));
         AddProductionResults(survivor);
         RecordStoredSpawns(_endCommand.CreateCommandBuffer(), survivor);
+        Entities.PrepareSimulationConfiguration();
         pipeline.Update();
 
         Assert.AreEqual(6, _entityManager.GetBuffer<ProductItemElement>(survivor).Length);
@@ -243,6 +247,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         if (!demolish || alreadyCrafting)
         {
             Simulation.SetDeltaTime(GameConstants.MaxSimulationDeltaTime);
+            Entities.PrepareSimulationConfiguration();
             pipeline.Update();
             Assert.AreEqual(0, itemQuery.CalculateEntityCount());
             Assert.IsTrue(_entityManager.GetComponentData<CrafterState>(crafter).IsCraftingActive);
@@ -253,6 +258,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         }
 
         Simulation.SetDeltaTime(GameConstants.MaxSimulationDeltaTime, 0.2);
+        Entities.PrepareSimulationConfiguration();
         pipeline.Update();
 
         foreach (Entity ingredient in ingredients)
@@ -300,6 +306,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         }
 
         Simulation.SetDeltaTime(0.1f);
+        Entities.PrepareSimulationConfiguration();
         pipeline.Update();
 
         Assert.AreEqual(!demolish, _entityManager.Exists(miner));

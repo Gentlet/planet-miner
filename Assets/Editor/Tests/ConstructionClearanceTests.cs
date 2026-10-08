@@ -38,6 +38,7 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
     {
         Entity site = CreateSite(new int2(5, 5), new int2(2, 1), direction, required: 1);
         CreateItem(new int2(6, 5));
+        Entities.PrepareConstructionConfiguration();
         _building.Update();
         Assert.AreEqual(blocked, IsBlocked(site));
         Assert.IsTrue(_entityManager.Exists(site), "자재 미충족 현장은 차단 여부와 무관하게 남는다.");
@@ -49,12 +50,15 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
         // 맵 재구축 없이 실물 좌표만 바꿔 차단 판단이 이전 틱 인덱스에 의존하지 않는지 분리한다.
         Entity site = CreateSite(int2.zero, new int2(1, 1), required: 1);
         Entity item = CreateItem(new int2(8, 8));
+        Entities.PrepareConstructionConfiguration();
         _building.Update();
         Assert.IsFalse(IsBlocked(site));
         _entityManager.SetComponentData(item, new GridPosition(int2.zero));
+        Entities.PrepareConstructionConfiguration();
         _building.Update();
         Assert.IsTrue(IsBlocked(site));
         _entityManager.SetComponentData(item, new GridPosition(new int2(8, 8)));
+        Entities.PrepareConstructionConfiguration();
         _building.Update();
         Assert.IsFalse(IsBlocked(site));
     }
@@ -69,6 +73,7 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
         Assert.IsTrue(ItemOwnershipApplySystem.TryTransferItem(_entityManager, item, ItemTypeEnum.Iron,
             Entity.Null, holder, 0, new int2(2, 2), ecb));
         ecb.Playback(_entityManager);
+        Entities.PrepareConstructionConfiguration();
         _building.Update();
         Assert.IsFalse(_entityManager.Exists(site));
         Assert.IsTrue(_entityManager.Exists(item));
@@ -82,6 +87,7 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
         Entity item = CreateItem(int2.zero);
         _entityManager.SetComponentEnabled<DestroyItemRequest>(item, true);
 
+        Entities.PrepareConstructionConfiguration();
         _building.Update();
 
         Assert.IsFalse(_entityManager.Exists(item));
@@ -94,6 +100,7 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
         Entity site = CreateSite(int2.zero, new int2(1, 1));
         Entity request = _entityManager.CreateEntity(typeof(SpawnItemRequest));
         _entityManager.SetComponentData(request, new SpawnItemRequest(ItemTypeEnum.Iron, int2.zero));
+        Entities.PrepareConstructionConfiguration();
         _building.Update();
         Assert.IsFalse(_entityManager.Exists(site), "거부한 World Spawn은 완공을 막지 않는다.");
         Assert.IsFalse(_entityManager.Exists(request));
@@ -114,6 +121,7 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
         Entity request = _entityManager.CreateEntity(typeof(SpawnItemRequest));
         _entityManager.SetComponentData(request, new SpawnItemRequest(ItemTypeEnum.Iron, new int2(x, y)));
 
+        Entities.PrepareConstructionConfiguration();
         _building.Update();
 
         Assert.IsFalse(_entityManager.Exists(request));
@@ -140,6 +148,7 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
         _entityManager.SetComponentData(building, new GridPosition(new int2(3, 0)));
         Entity item = CreateItem(new int2(9, 9), building);
         _entityManager.GetBuffer<StoredItemElement>(building).Add(new StoredItemElement(item, ItemTypeEnum.Iron, 0));
+        Entities.PrepareConstructionConfiguration();
         _building.Update();
         Assert.IsFalse(_entityManager.Exists(building));
         Assert.IsFalse(_entityManager.Exists(site));
@@ -153,8 +162,10 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
     {
         Entity request = _entityManager.CreateEntity(typeof(SpawnItemRequest));
         _entityManager.SetComponentData(request, new SpawnItemRequest(ItemTypeEnum.Iron, new int2(10, 10)));
+        Entities.PrepareConstructionConfiguration();
         _building.Update();
         Entity site = CreateSite(int2.zero, new int2(1, 1), flags: ConstructionSiteFlags.AwaitingItemClearance);
+        Entities.PrepareConstructionConfiguration();
         _building.Update();
         Assert.IsFalse(_entityManager.Exists(site));
         using var items = _entityManager.CreateEntityQuery(ComponentType.ReadOnly<ItemIdentity>(),

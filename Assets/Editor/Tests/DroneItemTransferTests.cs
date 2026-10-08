@@ -98,6 +98,7 @@ public class DroneItemTransferTests : EcsWorldTestFixture
         AssertStored(secondStorage, new[] { item });
         Assert.IsFalse(_entityManager.IsComponentEnabled<TransferOwnershipRequest>(item));
         storeEcb.Playback(_entityManager);
+        Entities.PrepareConstructionConfiguration();
         _building.Update();
         ApplyDroneAndCommit();
         AssertStored(secondStorage, new[] { item });
@@ -109,6 +110,7 @@ public class DroneItemTransferTests : EcsWorldTestFixture
         Assert.IsTrue(_entityManager.GetComponentData<ItemOwnership>(item).IsWorldItem);
         Assert.IsTrue(_entityManager.HasComponent<DisableRendering>(item));
         dropEcb.Playback(_entityManager);
+        Entities.PrepareConstructionConfiguration();
         _building.Update();
         ApplyDroneAndCommit();
 
@@ -825,6 +827,7 @@ public class DroneItemTransferTests : EcsWorldTestFixture
     {
         // 건물 결과를 확정한 다음 드론 입력을 준비한다. 드론 실행 중 새 적재품은 기존 계획에 추가하지 않는다.
         _buildingApply.SortSystems();
+        Entities.PrepareConstructionConfiguration();
         _building.Update();
         _decision.Update();
         _execution.Update();

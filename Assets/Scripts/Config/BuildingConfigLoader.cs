@@ -54,14 +54,24 @@ public static class BuildingConfigLoader
         configs = null;
         materials = null;
 
-        var textAsset = Resources.Load<TextAsset>(resourcePath);
-        if (textAsset == null)
+        try
         {
-            Debug.LogError($"[BuildingConfigLoader] Failed to load config TextAsset at Resources path: '{resourcePath}'.");
+            var textAsset = Resources.Load<TextAsset>(resourcePath);
+            if (textAsset == null)
+            {
+                Debug.LogError($"[BuildingConfigLoader] Failed to load config TextAsset at Resources path: '{resourcePath}'.");
+                return false;
+            }
+
+            return TryParseJson(textAsset.text, out configs, out materials);
+        }
+        catch (Exception exception)
+        {
+            configs = null;
+            materials = null;
+            Debug.LogError($"[BuildingConfigLoader] Failed to read config at '{resourcePath}': {exception.Message}");
             return false;
         }
-
-        return TryParseJson(textAsset.text, out configs, out materials);
     }
 
     public static bool TryParseJson(
@@ -102,6 +112,12 @@ public static class BuildingConfigLoader
         for (int i = 0; i < data.buildings.Count; i++)
         {
             var entry = data.buildings[i];
+            if (entry == null)
+            {
+                Debug.LogError($"[BuildingConfigLoader] Entry at index {i} is null.");
+                return false;
+            }
+
             if (string.IsNullOrEmpty(entry.buildingType))
             {
                 Debug.LogError($"[BuildingConfigLoader] Entry at index {i} has missing or empty buildingType.");
@@ -186,6 +202,12 @@ public static class BuildingConfigLoader
                 for (int m = 0; m < entry.materials.Count; m++)
                 {
                     var mat = entry.materials[m];
+                    if (mat == null)
+                    {
+                        Debug.LogError($"[BuildingConfigLoader] Material at index {m} for {buildingType} is null.");
+                        return false;
+                    }
+
                     if (!Enum.TryParse<ItemTypeEnum>(mat.itemType, true, out var itemType) ||
                         !Enum.IsDefined(typeof(ItemTypeEnum), itemType) ||
                         itemType == ItemTypeEnum.None)
@@ -205,9 +227,55 @@ public static class BuildingConfigLoader
             }
         }
 
+        if (!ValidateRequiredTypes(seenTypes))
+        {
+            return false;
+        }
+
         configs = configList;
         materials = materialList;
         return true;
+    }
+
+    /// <summary>제품 초기화의 사전 등록도 전체 건물 종류와 게시 버퍼를 요구한다. 격리 테스트는 Init을 실행하지 않는다.</summary>
+    public static bool ValidatePublishedConfig(EntityManager entityManager, Entity entity)
+    {
+        if (!entityManager.HasBuffer<BuildingConfigElement>(entity) ||
+            !entityManager.HasBuffer<BuildingConstructionMaterialElement>(entity) ||
+            !entityManager.HasBuffer<BuildingRuntimeConfigElement>(entity))
+        {
+            Debug.LogError("[BuildingConfigLoader] Pre-registered BuildingConfig is missing its configuration buffers.");
+            return false;
+        }
+
+        var types = new HashSet<BuildingTypeEnum>();
+        foreach (var entry in entityManager.GetBuffer<BuildingConfigElement>(entity, true))
+        {
+            types.Add(entry.BuildingType);
+        }
+        return ValidateRequiredTypes(types);
+    }
+
+    private static bool ValidateRequiredTypes(HashSet<BuildingTypeEnum> types)
+    {
+        var missing = new List<BuildingTypeEnum>();
+        foreach (BuildingTypeEnum type in Enum.GetValues(typeof(BuildingTypeEnum)))
+        {
+            if (type == BuildingTypeEnum.None || type == BuildingTypeEnum.Count || type == BuildingTypeEnum.ConstructionSite)
+            {
+                continue;
+            }
+            if (!types.Contains(type))
+            {
+                missing.Add(type);
+            }
+        }
+        if (missing.Count == 0)
+        {
+            return true;
+        }
+        Debug.LogError($"[BuildingConfigLoader] Missing required building types: {string.Join(", ", missing)}.");
+        return false;
     }
 
     /// <summary>
@@ -233,27 +301,31 @@ public static class BuildingConfigLoader
             typeof(BuildingRuntimeConfigElement),
             typeof(BuildingConstructionMaterialElement));
 
-        var configBuffer = entityManager.GetBuffer<BuildingConfigElement>(entity);
-        var runtimeBuffer = entityManager.GetBuffer<BuildingRuntimeConfigElement>(entity);
-        var materialBuffer = entityManager.GetBuffer<BuildingConstructionMaterialElement>(entity);
-
-        for (int i = 0; i < configs.Count; i++)
+        try
         {
-            configBuffer.Add(configs[i]);
-            runtimeBuffer.Add(new BuildingRuntimeConfigElement(
-                configs[i].BuildingType,
-                configs[i].Speed,
-                configs[i].StorageCapacity));
-        }
+            var configBuffer = entityManager.GetBuffer<BuildingConfigElement>(entity);
+            var runtimeBuffer = entityManager.GetBuffer<BuildingRuntimeConfigElement>(entity);
+            var materialBuffer = entityManager.GetBuffer<BuildingConstructionMaterialElement>(entity);
 
-        if (materials != null)
-        {
-            for (int i = 0; i < materials.Count; i++)
+            for (int i = 0; i < configs.Count; i++)
             {
-                materialBuffer.Add(materials[i]);
+                configBuffer.Add(configs[i]);
+                runtimeBuffer.Add(new BuildingRuntimeConfigElement(configs[i].BuildingType, configs[i].Speed, configs[i].StorageCapacity));
             }
-        }
 
-        return entity;
+            if (materials != null)
+            {
+                for (int i = 0; i < materials.Count; i++)
+                {
+                    materialBuffer.Add(materials[i]);
+                }
+            }
+            return entity;
+        }
+        catch
+        {
+            entityManager.DestroyEntity(entity);
+            throw;
+        }
     }
 }

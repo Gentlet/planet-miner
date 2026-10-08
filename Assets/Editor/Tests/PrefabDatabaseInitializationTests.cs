@@ -40,6 +40,7 @@ public class PrefabDatabaseInitializationTests : EcsWorldTestFixture
         Entity config = _entityManager.CreateEntity(typeof(ResourceGenerationSettings));
         _entityManager.AddBuffer<ResourceGenerationConfigElement>(config).Add(
             new ResourceGenerationConfigElement(ItemTypeEnum.Iron_Ore, 1, 1, 1, 1, 1, 1));
+        Entities.PrepareSimulationConfiguration();
     }
 
     private void AssertFailed()

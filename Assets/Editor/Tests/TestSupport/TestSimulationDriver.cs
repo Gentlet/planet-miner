@@ -115,6 +115,7 @@ namespace PlanetMiner.Tests
         /// <summary>자원 생성/채굴 통합 테스트용 Command→건물→Synchronization 실행 경계. 추가 Playback은 사용하지 않는다.</summary>
         public GameSimulationGroup CreateResourceGenerationPipeline(bool includeMining = false)
         {
+            new TestEntityFactory(_world.EntityManager).PrepareSimulationConfiguration();
             var simulation = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
             var command = _world.GetOrCreateSystemManaged<CommandGroup>();
             var building = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();

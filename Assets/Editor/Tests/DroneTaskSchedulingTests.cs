@@ -792,6 +792,7 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         // 그룹과 두 ECB 경계를 한 틱씩 통과시켜 작업 생성 틱과 다음 배정 판단 틱을 구분한다.
         _elapsedTime += 0.1;
         Simulation.SetDeltaTime(0.1f, _elapsedTime);
+        Entities.PrepareSimulationConfiguration();
         _simulation.Update();
     }
 
@@ -860,6 +861,7 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         _entityManager.AddComponentData(item, new TransferOwnershipRequest(Entity.Null));
         _entityManager.SetComponentEnabled<TransferOwnershipRequest>(item, true);
 
+        Entities.PrepareConstructionConfiguration();
         _building.Update();
         ApplyDroneAndCommit();
 

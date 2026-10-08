@@ -177,7 +177,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
           ]
         }";
 
-        RecipeInitSystem.InitializeRecipeRegistry(_entityManager, customJson);
+        RecipeConfigLoader.PublishConfig(_entityManager, RecipeConfigLoader.ParseJson(customJson));
 
         var crafter = CreateCrafter(recipeId: 10);
         CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore);
@@ -239,7 +239,7 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
           ]
         }";
 
-        RecipeInitSystem.InitializeRecipeRegistry(_entityManager, customJson);
+        RecipeConfigLoader.PublishConfig(_entityManager, RecipeConfigLoader.ParseJson(customJson));
 
         var crafter = CreateCrafter(recipeId: 10);
         CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore);

@@ -24,6 +24,7 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
 
     private void RunCompletionPhase()
     {
+        Entities.PrepareConstructionConfiguration();
         // fixture 도착량/실물에 완공 Apply를 실행한다. 생성 성공 뒤 같은 ECB에서 현장/자재가 삭제되어야 한다.
         Simulation.UpdateAndComplete(_lifecycleApplySystem);
         Simulation.Playback(_ecbSystem);
@@ -233,7 +234,9 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
 
         UnityEngine.TestTools.LogAssert.Expect(UnityEngine.LogType.Error,
             new System.Text.RegularExpressions.Regex(".*Missing prefab for building type.*"));
+        Entities.PrepareSimulationConfiguration();
         group.Update();
+        Entities.PrepareSimulationConfiguration();
         group.Update(); // 오류 게시 후에는 다시 Spawn을 시도하지 않아야 한다.
 
         Assert.IsTrue(_entityManager.Exists(site));

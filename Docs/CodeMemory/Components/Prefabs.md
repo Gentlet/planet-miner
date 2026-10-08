@@ -4,7 +4,7 @@
 
 최초 조사 2026-10-03, 2026-10-06 도메인 분리의 실행 게이트와 ECB 경계를 현재 소스와 대조했다. 이번 문서 감사에서 베이킹·SubScene 실행·컴파일·테스트·Play Mode를 실행하지 않았다. Baker의 존재와 실제 장면의 베이킹 결과는 구분한다.
 
-건물·아이템·자원 DB는 각각 별도 엔티티의 태그와 매핑 버퍼로 구성된다. `PrefabDatabaseInitializationSystem`은 요청된 SubScene 로딩을 기다린 뒤 DB를 검증한다. 성공하면 `PrefabDatabaseReady`, 실패하면 `SimulationFatalError`를 게시한다. `GameSimulationGroup`은 틱 시작에 Ready가 있고 Fatal이 없으면 Command → BuildingSimulation → DroneSimulation → SimulationCommit → Synchronization을 진행한다. 검증 후 DB는 불변으로 사용하는 계약이며, 런타임 소비자는 DB를 재작성하지 않는다.
+건물·아이템·자원 DB는 각각 별도 엔티티의 태그와 매핑 버퍼로 구성된다. `PrefabDatabaseInitializationSystem`은 SubScene 로딩 뒤 DB를 검증하고 성공하면 `PrefabDatabaseReady`, 실패하면 `SimulationFatalError`를 게시한다. 기존 Fatal 뒤에는 비활성화한다. `GameSimulationGroup`은 틱 시작에 DB Ready와 건물·아이템·레시피·자원/바닥 설정의 게시 데이터가 준비되고 Fatal이 없으면 도메인 그룹을 진행한다. DB Ready는 설정 준비를 포함하지 않는다. 검증 후 DB는 불변이며 런타임 소비자는 재작성하지 않는다.
 
 ## BuildingPrefabDatabase
 
@@ -82,7 +82,7 @@
 
 - **목적·종류:** 프리팹 초기 검증을 통과했다는 사실을 나타내는 필드 없는 `IComponentData` 태그다. DB마다 붙이지 않고 별도 준비 상태 엔티티에 부착한다.
 - **생성·초기화:** `PrefabDatabaseInitializationSystem`이 Initialization 마지막에 요청된 SubScene들의 성공 로딩을 확인하고 건물·아이템·자원 DB 검증을 전부 통과하면 `EntityManager.CreateEntity`로 즉시 만든다. 이후 검증 시스템은 비활성화한다.
-- **Reader·처리:** `GameSimulationGroup.OnUpdate`가 Ready 쿼리가 비었는지 확인한다. Ready가 없으면 Command·BuildingSimulation·DroneSimulation·SimulationCommit·Synchronization 자식 그룹 전체를 실행하지 않는다. Ready가 있어도 Fatal 엔티티가 하나 이상 있으면 실행하지 않는다.
+- **Reader·처리:** `GameSimulationGroup.OnUpdate`가 DB Ready와 각 필수 설정 엔티티/버퍼, Fatal을 함께 검사한다. DB Ready 또는 설정 준비가 없거나 Fatal이 있으면 Command·BuildingSimulation·DroneSimulation·SimulationCommit·Synchronization 전체를 실행하지 않는다.
 - **대기·실패:** SubScene이 아직 로딩 중이면 Ready를 만들지 않고 다음 Initialization에서 다시 확인한다. 로딩 실패 또는 DB 검증 실패는 Fatal 게시와 시스템 비활성화로 끝나며 자동 재시도하지 않는다.
 - **생명주기·경계:** Ready 자체를 소비하거나 제거하는 제품 경로는 없다. 검증 후 DB를 매 틱 재검사하는 표식이 아니므로 이후 불변 DB 계약이 연결된다. World 종료 때 일반 ECS 엔티티로 정리된다.
 - **소스:** [정의](../../../Assets/Scripts/Components/Prefabs/PrefabDatabaseReadiness.cs), [게시·로딩 대기](../../../Assets/Scripts/Systems/Initialization/PrefabDatabaseInitializationSystem.cs), [실행 게이트](../../../Assets/Scripts/Phases/GameSimulationGroup.cs).
@@ -90,8 +90,8 @@
 ## SimulationFatalError
 
 - **목적·필드:** 복구 없이 게임 시뮬레이션 실행을 막는 `IComponentData` 진단 기록이다. `Message`는 `FixedString128Bytes`이며 오류마다 별도 엔티티에 기록될 수 있다.
-- **생성 경로 1:** Initialization의 `PrefabDatabaseInitializationSystem.Fail`은 상세 원인을 로그로 남기고 일반화된 메시지를 가진 오류 엔티티를 즉시 생성한다. 그 후 검증 시스템을 비활성화한다.
-- **생성 경로 2:** StateApply 스폰/환급 경로가 프리팹을 찾지 못하면 `SimulationFailureUtility.Record`가 메시지를 로그로 남기고 오류 엔티티 생성·컴포넌트 추가를 호출자의 EndBuilding ECB에 기록한다. 호출자는 `BuildingLifecycleUtility`, `ItemLifecycleApplySystem`, `BuildingLifecycleApplySystem`이다.
+- **생성 경로 1:** 건물·아이템·레시피·월드 설정 Init과 프리팹 초기화는 `SimulationFailureUtility.RecordInitializationFailure`로 상세 로그와 짧은 진단 메시지의 오류 엔티티를 즉시 게시한다. 실패 뒤 자동 초기화는 비활성화하며 재시도하지 않는다.
+- **생성 경로 2:** 배치의 설정 부재는 EndCommand, 직접 생성/완공의 설정 또는 프리팹 누락과 환급 실패는 EndBuilding에 `SimulationFailureUtility.Record`로 오류 생성을 기록한다. 초기화의 즉시 공개와 실행 중 ECB 공개를 구분한다.
 - **Reader·반영 시점:** `GameSimulationGroup`은 매 그룹 진입 때 Fatal 쿼리가 비었는지 확인한다. 틱 시작에만 검사하므로 EndBuilding에서 오류가 확정되어도 현재 틱 드론·Commit·Synchronization은 수행하고 다음 틱 GameSimulationGroup 진입부터 차단한다. 현재 틱 전체의 롤백이나 이미 기록한 구조 변경 취소는 제공하지 않는다.
 - **생명주기·현재 범위:** 오류를 소비·Clear·삭제해 자동 복구시키는 제품 경로는 없다. Ready가 남아 있어도 Fatal이 실행을 막는다. 새 World에서는 초기 검증부터 다시 수행하며, 원인이 남으면 다시 실패한다. 일반 ECS 데이터이므로 자체 Dispose는 없다.
 - **소스:** [정의](../../../Assets/Scripts/Components/Prefabs/PrefabDatabaseReadiness.cs), [초기 실패](../../../Assets/Scripts/Systems/Initialization/PrefabDatabaseInitializationSystem.cs), [ECB 오류 기록](../../../Assets/Scripts/Common/SimulationFailureUtility.cs), [실행 게이트](../../../Assets/Scripts/Phases/GameSimulationGroup.cs), [건물 스폰](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs), [아이템 스폰](../../../Assets/Scripts/Systems/Items/StateApply/ItemLifecycleApplySystem.cs), [환급](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingLifecycleApplySystem.cs).

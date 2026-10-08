@@ -1,8 +1,6 @@
 using System;
 using PlanetMiner.Config;
-using Unity.Collections;
 using Unity.Entities;
-using UnityEngine;
 
 /// <summary>
 /// 역할·목적: Initialization에서 레시피와 재료/출력 목록을 한 번 게시한다.
@@ -17,8 +15,7 @@ public partial class RecipeInitSystem : SystemBase
 {
     protected override void OnUpdate()
     {
-        using var fatalErrorQuery = EntityManager.CreateEntityQuery(ComponentType.ReadOnly<SimulationFatalError>());
-        if (!fatalErrorQuery.IsEmptyIgnoreFilter)
+        if (SimulationFailureUtility.HasFatalError(EntityManager))
         {
             Enabled = false;
             return;
@@ -32,7 +29,18 @@ public partial class RecipeInitSystem : SystemBase
                 !EntityManager.HasBuffer<RecipeIngredientElement>(registryEntity) ||
                 !EntityManager.HasBuffer<RecipeOutputElement>(registryEntity))
             {
-                throw new InvalidOperationException("The pre-registered RecipeRegistry requires recipe, ingredient and output buffers.");
+                ReportFailure(EntityManager, "The pre-registered RecipeRegistry requires recipe, ingredient and output buffers.");
+                Enabled = false;
+                return;
+            }
+
+            try
+            {
+                RecipeConfigLoader.ValidateRequiredRecipes(EntityManager.GetBuffer<RecipeConfigElement>(registryEntity, true));
+            }
+            catch (ArgumentException exception)
+            {
+                ReportFailure(EntityManager, exception.Message);
             }
 
             Enabled = false;
@@ -59,20 +67,26 @@ public partial class RecipeInitSystem : SystemBase
 
         try
         {
-            var config = string.IsNullOrEmpty(jsonOverride)
+            var config = jsonOverride == null
                 ? RecipeConfigLoader.LoadFromResources()
                 : RecipeConfigLoader.ParseJson(jsonOverride);
+            if (jsonOverride != null)
+            {
+                RecipeConfigLoader.ValidateRequiredRecipes(config);
+            }
             return RecipeConfigLoader.PublishConfig(entityManager, config);
         }
-        catch (ArgumentException exception)
+        catch (Exception exception)
         {
-            Debug.LogError($"[RecipeInitSystem] {exception.Message} Game simulation stopped.");
-            Entity error = entityManager.CreateEntity(typeof(SimulationFatalError));
-            entityManager.SetComponentData(error, new SimulationFatalError
-            {
-                Message = new FixedString128Bytes("Recipe initialization failed. See error log.")
-            });
+            ReportFailure(entityManager, exception.Message);
             return Entity.Null;
         }
+    }
+
+    private static void ReportFailure(EntityManager entityManager, string reason)
+    {
+        SimulationFailureUtility.RecordInitializationFailure(entityManager,
+            $"[RecipeInitSystem] {reason} Game simulation stopped.",
+            "Recipe initialization failed. See error log.");
     }
 }

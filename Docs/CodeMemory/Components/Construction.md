@@ -61,7 +61,7 @@ ConstructionSite.Progress와 도착 비율 기획은 제거했다. [Progress 제
 ## ConstructionMaterialRequirementElement
 
 - **종류·부착 대상·목적:** IBufferElementData. 현장에 품목별 RequiredQuantity, DeliveredQuantity, ReservedQuantity 데이터를 보관한다. 실물 참조는 별도 StoredItemElement 버퍼에 있다.
-- **생성:** 배치 Command가 BuildingConstructionMaterialElement에서 요구량을 복사하고 도착/예약량을 0으로 초기화한다. 건물 설정이 없으면 빈 버퍼를 만든다.
+- **생성:** 배치 Command가 준비된 BuildingConstructionMaterialElement에서 요구량을 복사하고 도착/예약량을 0으로 초기화한다. 설정 부재는 배치를 거부하며 Fatal을 기록한다. 정상 설정의 해당 건물 비용이 비어 있으면 빈 요구 버퍼를 허용한다.
 - **현재 계산:** RemainingRequired/RemainingToReserve/IsSatisfied/IsFullyReserved 속성은 남아 있다. 실제 완공 Job은 IsSatisfied를 읽는다. 예약량만으로 완공하지 않는다.
 - **현재 Writer 경계:** 기존 운송의 등록·수령 Writer는 제거했다. Reservation은 공통 Utility로 일반 예약 해제·확보를, StateApply Publish는 최종 공개 실패 롤백을 처리한다. DroneTaskLifecycleApplySystem은 공통 실물 API의 성공 수량으로 수집 부족분의 예약 해제와 현장 DeliveredQuantity·예약 감소를 처리한다. Decision은 ProjectedRemaining을 읽기 계산하며 이 버퍼를 변경하지 않는다. 합계에는 개별 예약과 공개 대기 기록의 CommittedQuantity가 포함된다. [드론 예약·후보·공개 대기 기록](DroneLogistics.md)를 따른다.
 - **테스트·결합:** Phase7 완공/배치 통합 테스트의 일부는 보관 실물, ItemOwnership 및 도착량을 직접 준비한다. DroneLifecycleIntegrationTests의 실제 공급→다음 틱 완공 흐름은 외부 수행자·관측·경로 결과·행동 신호를 준비하고 제품 배정/인계 시스템으로 도착량을 반영한다. 직접 준비와 제품 인계 경로를 구분하며, 어느 쪽도 실제 드론 이동·행동 Producer가 자동으로 자재를 운송한다는 증거가 아니다.
