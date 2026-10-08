@@ -41,6 +41,25 @@ public partial class WorldInvariantValidationSystem : SystemBase
         TotalViolationCount = 0;
     }
 
+    /// <summary>
+    /// 현재 World의 진단 출력 경로를 지정한다. 테스트는 실행별 전용 경로로 격리한다.
+    /// 기존 보고 파일을 삭제하거나 이동하지 않으며 세션 ID와 보고 순번은 유지한다.
+    /// </summary>
+    public void SetLogDirectory(string logDirectory)
+    {
+        if (logDirectory == null)
+        {
+            throw new ArgumentNullException(nameof(logDirectory));
+        }
+
+        if (string.IsNullOrWhiteSpace(logDirectory))
+        {
+            throw new ArgumentException("Log directory must not be empty.", nameof(logDirectory));
+        }
+
+        _logDirectory = Path.GetFullPath(logDirectory);
+    }
+
     protected override void OnCreate()
     {
         base.OnCreate();

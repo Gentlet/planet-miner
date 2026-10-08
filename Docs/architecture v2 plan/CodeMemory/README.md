@@ -64,7 +64,7 @@ SimulationSystemGroup
 - 철거 승인과 중복 제거는 BuildingDemolitionCommandSystem, 실제 반환/환급/파괴는 BuildingLifecycleApplySystem이 소유한다. EndCommand에서 PendingBuildingDemolition을 게시하고 요청을 모두 삭제한다. Decision은 건물 작업을 중단하며 새 아이템의 건물 입고도 ItemSpawnAdmissionDecisionSystem이 비활성화한다. Item Lifecycle/Ownership은 철거 요청과 상태를 조회하지 않는다. 실행 근거는 [철거 상태·동작 중단 검증](../V2%20Quality%20Evaluation%20Plan/Results/BuildingDemolitionStop-Verification.md)을 따른다.
 - 기존 F-004의 같은 틱 입고/출고와 철거 충돌 처리는 앞단 중단으로 대체했다. Command가 보관 실물의 이전 Transfer와 ProductResult를 소비하고 이후 Decision 후보를 막는다. 활성 Destroy 제외, 기존 내용물 반환/비용 환급 및 일반 생성 실패 계약은 유지한다. [F-004 기록](../V2%20Quality%20Evaluation%20Plan/Results/F004-Verification.md)은 당시 결과를 보존하며 현재 계약은 AGENTS 및 새 철거 상태 검증을 따른다.
 - Footprint는 현장/완공 모두 회전 전 크기를 저장하며 점유 Reader가 한 번 회전한다. 배치는 세 인덱스 Writer를 기다리고, 일반 창고 입고 예약은 품목과 수량을 함께 보관한다. 세부 계약은 [AGENTS.md](../../../AGENTS.md)를 따른다.
-- Validator는 Storage 없는 현장을 포함해 두 소유 버퍼의 중복·실존·Identity·Owner를 검사한다. 진단 파일은 World별 세션/보고 순번으로 구분한다. 이 검사는 공사 운송·자재 수령을 수행하지 않는다.
+- Validator는 Storage 없는 현장을 포함해 두 소유 버퍼의 중복·실존·Identity·Owner를 검사한다. 진단 파일은 World별 세션/보고 순번과 CreateNew로 구분·보존한다. 기본 출력은 `Logs/InvariantErrors`이며 `SetLogDirectory`는 해당 World의 출력 경로만 바꾼다. Phase2BeltIntegrationTests는 사례마다 `Logs/Tests/Phase2BeltIntegrationTests/<실행 GUID>`를 지정하고 로그를 성공·실패 모두 보존하며 공용 로그를 정리하지 않는다. 이 검사는 공사 운송·자재 수령을 수행하지 않는다.
 - 이 절은 소스 대조 결과이며 공사 전체·실제 베이킹·Play Mode 성공을 주장하지 않는다. 이슈별 새 검증과 제한은 [품질 개선 Tasks](../V2%20Quality%20Evaluation%20Plan/V2%20Quality%20Improvement%20Tasks.md)에 기록한다.
 
 ### F-037 입력 슬롯 계산·런타임 연결·통합 검증 (2026-09-29 완료)

@@ -12,12 +12,15 @@
 | 분류 | 전체 | 완료 | 미완료 |
 | --- | ---: | ---: | ---: |
 | P1 | 5 | 5 | 0 |
-| P2 | 32 | 18 | 14 |
+| P2 | 32 | 24 | 8 |
 | P3 | 2 | 2 | 0 |
 | 판단 보류 | 4 | 3 | 1 |
-| 합계 | 43 | 28 | 15 |
+| 합계 | 43 | 34 | 9 |
 
-- 2026-10-08 현재 **43개 중 28개 완료**, 15개 미완료다. 아래 실제 체크 상태를 집계하며 기존 2026-10-02 집계 이후 F-014·F-027·F-011 완료, F-011 영향 재검토에 따른 F-016 구현 완료와 F-033 제외를 반영했다. F-023·F-026의 회귀 근거/경계 갱신과 F-041의 남은 결정 축소는 추가 완료로 중복 집계하지 않는다. F-019의 실제 Baker 검증은 F-021에 남아 있고, F-029의 일반 T형 합류 제외 및 F-030의 속도 상한 정책을 유지한다. 항목별 변경·검증 근거와 제한을 확인한다.
+- 2026-10-08 현재 **43개 중 34개 완료/추적 종료**, 9개 미완료다. 아래 실제 체크 상태를 집계하며 기존 2026-10-02 집계 이후 F-014·F-027·F-011 완료, F-011 영향 재검토에 따른 F-016 구현 완료와 F-033 제외를 반영했다. F-023·F-026의 회귀 근거/경계 갱신과 F-041의 남은 결정 축소는 추가 완료로 중복 집계하지 않는다. F-019에서 이관한 실제 Baker 범위는 F-021의 확인된 정상 경로와 남은 선택 검증으로 구분해 추적을 종료했고, F-029의 일반 T형 합류 제외 및 F-030의 속도 상한 정책을 유지한다. 항목별 변경·검증 근거와 제한을 확인한다.
+- 2026-10-08 F-046 후속 검증 완료: Editor 컴파일·선택 EditMode 4/4·공용 원본 8개 해시 보존·독립 실행 경로·제어된 실패 후 sentinel/보고 보존을 확인해 한 건을 추가했다. 아래 기술 종료/직접 영향 후속의 33/43은 이 완료 전 집계이며 다른 대화의 5건 종료와 기록을 보존한다. F-044/F-045는 기존 완료와 검증 한계만 갱신해 추가 완료로 합산하지 않는다. [F-046 최종 검증](Results/F046-Verification.md#2026-10-08-최종-unity-및-로그-보존-검증).
+- 2026-10-08 기술 종료 5건: F-010·F-042는 기존 원인 경로 제거 확인, F-009·F-021은 사용자 방침에 따른 선택 검증 분리, F-028은 현 구조 유지 결정이다. 현황 표의 완료 열에 이 종료를 포함하며 제품 수정 5건이나 실행 통과 5건을 뜻하지 않는다. 이번에는 문서만 변경했고 과거 통과 수를 새 실행으로 합산하지 않았다. [기술 검토·종료 근거](Results/TechnicalIssueClosure-2026-10-08.md). F-046 등 다른 대화 항목의 상태는 그 대화의 최신 기록을 유지한다.
+- 기술 종료의 직접 영향 후속 (2026-10-08): F-001·F-003·F-011·F-018·F-019·F-024·F-026은 기존 완료를 유지하며 옛 구현 설명·필수 검증 안내·현재 근거/한계만 정리했다. F-025는 SampleScene 진입 선택·이관이 남아 미완료를 유지한다. 추가 완료/종료 개수는 0이며 위 33/43 집계에 다시 합산하지 않는다. [직접 영향과 남은 범위](Results/TechnicalIssueClosure-2026-10-08.md).
 - 항목 하나를 선택해 원본 평가와 현재 소스를 확인하고, 해당 문제의 개선·검증까지 작은 단위로 진행한다. 아래 나열 순서는 강제 의존 순서가 아니다.
 - 각 항목의 설명은 평가 당시 근거를 요약했다. 코드 확인, 조건부 영향 추정, 실행 미확인을 원본에서 구분한다. 특히 P1 5건의 실패 반례는 평가에서 실행 재현하지 않았다.
 - `결정 필요`는 아직 채택하지 않은 정책이다. 현재 소스·최신 사용자 지시로 해결되지 않는 해당 항목의 선택만 사용자에게 확인한다. 다른 항목의 결정을 모두 기다릴 필요는 없다.
@@ -48,16 +51,16 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 
 | 이슈 | 작업 | 추천 모델 | 추론 수준 | 추천 이유 |
 | --- | --- | --- | --- | --- |
-| F-001 | 공사 구현 문서 정합성 | GPT-6.1 Sol | Medium | 확인된 구현 범위와 문서 설명을 대조·갱신 |
+| F-001 | 공사 구현 문서 정합성 — 완료 유지 | GPT-6.1 Sol | Medium | 옛 내부 수령 Job 설명을 당시 기록으로 구분하고 현재 드론/완공 책임 연결 |
 | F-002 | 자원 ECB 설명 정합성 | GPT-6.1 Sol | Medium | 기록·재생·소비 시점의 문서/주석 정리 |
-| F-003 | 공사 자재 중복·소유 인계 | GPT-6 Astra | XHigh | 중복·거부·인계 시 예약과 이전 소유 버퍼의 책임을 함께 설계 |
+| F-003 | 공사 자재 중복·소유 인계 — 기존 완료 유지 | GPT-6 Astra | XHigh | 옛 운송은 제거됨; 새 공통 인계 검사와 F-042 종료 경계 확인 |
 | F-004 | 입고·철거 렌더 태그 경합 | GPT-6 Astra | XHigh | 입고·철거의 복수 Writer와 ECB 순서에 독립적인 최종 상태 설계 |
 | F-005 | 생성 대기·철거 경합 | GPT-6 Astra | XHigh | 생성·철거가 겹칠 때 실체화·폐기·보상 수명 계약 결정 |
 | F-006 | 중단된 월드의 생산 결과 보존 | GPT-6 Astra | XHigh | 치명적 오류 후 ProductResult 보존 필요 여부와 소비 계약 결정 |
 | F-007 | MaxStack 계약 | GPT-6.1 Sol | High | 입력 범위 검증과 생산·예약 경계 사례 확인 |
 | F-008 | Blob 교체 수명 | GPT-6 Astra | XHigh | 런타임 교체 정책과 Blob 소유권·Reader 종료·해제 수명 설계 |
-| F-009 | 설정 실패의 선택 실행 검증 | GPT-6.1 Sol | XHigh | F-011 구현 이후 남은 독립 실행 확인 범위와 미검증 경계 정리 |
-| F-010 | 중복 공사 자재 행 | GPT-6.1 Sol | High | 정책 확정 후 게시·수령 총량 계약 검증 |
+| F-009 | 설정 실패의 선택 실행 검증 — 추적 종료 | GPT-6.1 Sol | XHigh | F-011 구현 재확인; 독립 실패 실행은 선택 검증으로 분리 |
+| F-010 | 중복 공사 자재 행 — 기존 결함 종료 | GPT-6.1 Sol | High | 옛 첫 행 수령 제거와 현재 여러 행 예약·도착·완공 계약 확인 |
 | F-011 | 설정 실패·필수 누락과 준비 계약 — 구현 완료 | GPT-6.1 Sol | XHigh | 사용자 확정 정책으로 전체 초기화 오류 차단과 소비 경계 보호 |
 | F-012 | 긴 연구 키 파싱 | GPT-6.1 Sol | Medium | UTF-8 경계와 오류 반환의 국소 수정 |
 | F-013 | 무효 레시피 품목 | GPT-6.1 Sol | Medium | 품목 검증과 실패 시 게시·소비 범위 확인 |
@@ -65,17 +68,17 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 | F-015 | 레시피 ID 유효성 | GPT-6.1 Sol | Medium | 최초 게시의 ID 허용 범위·중복 정책과 실패 처리 확인 |
 | F-016 | 부분 게시·Ready 의미 — 구현 완료 | GPT-6.1 Sol | XHigh | F-011에서 불완전 사전 등록 거부와 게임 시작 차단을 연결 |
 | F-017 | 설정 범위·산술 한계 | GPT-6.1 Sol | High | 설정 경계와 소비자 overflow의 집중 검증 |
-| F-018 | DB 유일성 잔여 검증 | GPT-6 Astra | High | 확정된 중복·복수 DB 거부 정책의 등록 경로·행 순서 검증 |
-| F-019 | prefab 필수 구성 — 구현 완료 | GPT-6.1 Sol | High | F-024에서 해결; 실제 Baker 검증은 F-021로 이관 |
+| F-018 | DB 유일성 — 완료 유지 | GPT-6 Astra | High | 기존 거부 구현 유지; 실제 Bake의 전 오류 조합은 선택 검증 |
+| F-019 | prefab 필수 구성 — 구현 완료 | GPT-6.1 Sol | High | F-024에서 해결; F-021은 실제 베이킹 근거 반영·선택 검증 추적 종료 |
 | F-020 | Item 초기화 복제 | GPT-6.1 Sol | High | 공통화 시 생성·환급의 ECB와 실패 정책 보존 |
-| F-021 | 실제 Baker 검증 | GPT-6.1 Sol | High | F-019에서 이관한 정상·오류 입력과 실제 베이킹 결과 검증 |
+| F-021 | 실제 Baker 검증 — 선택 검증 추적 종료 | GPT-6.1 Sol | High | V2 실제 베이킹 정상 경로 근거 반영; 전수/오류 입력·지속 회귀는 미검증 |
 | F-022 | footprint 크기 출처 | GPT-6 Astra | High | request·Config·DB 사이 크기 정보의 권위와 편집 의미 결정 |
 | F-023 | footprint 이중 회전 | GPT-6 Astra | High | 배치·Spawn·완공·Sync가 공유할 기본 크기·회전 크기 표현 통일 |
-| F-024 | 완공 Spawn 실패 손실 | GPT-6 Astra | XHigh | Spawn 성공·실패와 자재 소비·현장 폐기를 원자적으로 연결하는 정책 설계 |
-| F-025 | 빌드 장면 DB 이관 | GPT-6.1 Sol | High | GUID·직렬화 필드·enum·실제 Bake를 함께 검증 |
-| F-026 | 배치 공간 조회 동기화 | GPT-6 Astra | High | 메인 스레드 공간 조회와 Writer Fence의 동기화 계약·영향 검토 |
+| F-024 | 완공 Spawn 거부 시 보존 — 완료 유지 | GPT-6 Astra | XHigh | 실제 V2 정상 완공 근거 추가; 베이킹 실패 주입·전체 rollback은 미검증 |
+| F-025 | 빌드 장면 DB 이관 | GPT-6.1 Sol | High | 진입 장면 결정 후 GUID·필드·enum·실제 Bake 확인; V2 기록으로 SampleScene을 대체하지 않음 |
+| F-026 | 배치 공간 조회 동기화 — 완료 유지 | GPT-6 Astra | High | 세 Writer 완료 경계 유지; F-028 유지 결정과 강제 경합 미검증 구분 |
 | F-027 | 별도 요청 중복 배치 | GPT-6 Astra | High | 요청 간 우선순위와 프레임 전체 점유 승인·Strict/Partial 계약 설계 |
-| F-028 | Fence의 추가 Reader 의존 | GPT-6 Astra | XHigh | ECS 의존 추적과 수동 Fence의 안전성·실제 병렬성을 함께 분석 |
+| F-028 | Fence의 추가 Reader 의존 — 유지 결정 종료 | GPT-6 Astra | XHigh | 추가 의존 확인; 실익 측정 없이 안전한 현 구조 유지, 대표 부하에서 재검토 |
 | F-029 | 진입 중재 지원 범위 | GPT-6 Astra | XHigh | 일반 T형 직접 합류 제외, 기존 외부 진입 계약 유지로 종료 |
 | F-030 | 전방 간격 침범 | GPT-6 Astra | XHigh | 사용자 선택에 따른 속도 상한을 설정·공통 생성 경계에 적용하여 종료 |
 | F-031 | 예약 슬롯 품목 누락 | GPT-6.1 Sol | High | 품목·수량 누적과 MaxStack 경계 회귀 |
@@ -87,10 +90,10 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 | F-039 | 레시피 Lookup 동기화 | GPT-6 Astra | High | 완료된 타입별 의존성·Job 완료 계약 유지와 실행 제한 확인 |
 | F-040 | 무효 레시피 변경 정책 | GPT-6 Astra | High | 확정된 무효 요청 거부·해제 정책 유지와 상태 보존 범위 확인 |
 | F-041 | PlacementStamp 동률 | GPT-6 Astra | High | 별도 요청의 발급 순서와 여러 소비자가 공유할 동률 계약 결정 |
-| F-042 | 불완전 현장 수령 | GPT-6.1 Sol | Medium | 필수 구성 검사와 부분 변경 방지 회귀 |
+| F-042 | 불완전 현장 수령 — 기존 결함 종료 | GPT-6.1 Sol | Medium | 옛 수령/Progress 제거와 새 공급의 실물·도착량 변경 전 Stored 검사 확인 |
 | F-044 | 소유 버퍼 검사 누락 | GPT-6.1 Sol | High | 여러 버퍼·Owner·현장의 공통 유일성 검증 |
 | F-045 | 로그 덮어쓰기 | GPT-6.1 Sol | Medium | 고유 보고 식별·World 구분·격리 테스트 |
-| F-046 | 공용 로그 삭제 | GPT-6.1 Sol | Medium | 테스트 산출물 소유권과 기존 로그 보존 |
+| F-046 | 로그 격리·보존 — 완료 | GPT-6.1 Sol | Medium | 공용 삭제 제거·실행별 독립성과 보존 확인 |
 
 ## P1 — 우선 개선할 핵심 동작
 
@@ -119,6 +122,8 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 - 에셋 확인: 기존 Drone 외형을 사용한 아이템 프리팹을 등록하고 기존 아이템 8개의 `ItemAuthoring`을 보완했다. 당시 Unity Editor에서 건물/아이템/자원 DB **11/9/4개**의 등록·참조·아이템 타입 일치를 확인했다.
 - 완료 범위와 제한: 즉시 Spawn 거부에 대한 F-024 원본 보존과 시작 차단을 완료했다. non-Null 반환은 ECB 기록 결과이며 전체 Playback rollback 보장이 아니다. 실제 SubScene 런타임 베이킹·Play Mode·시각 결과와 다른 도메인의 생산 결과 Clear·환급 실패 보상은 검증·구현 범위에 포함하지 않는다. 이번 완료 정보 정리에서는 현재 소스와 핵심 회귀 테스트의 존치를 읽기 전용으로 확인하고 문서만 변경했으며 컴파일·테스트를 재실행하지 않았다.
 - F-011 후속 정리 (2026-10-08): 설정/대상 종류 누락도 공통 Spawn의 Null 거부 조건이 됐고 완공 호출자의 현장·자재 보존 계약을 코드로 확인했다. 같은 F-011 실행의 완공 8/8·프리팹 초기화 15/15를 기존 프리팹 실패 보존/시작 차단의 회귀 근거로 재사용한다. 설정 누락 자체의 완공 연쇄 실행이나 현재 틱 전체 rollback을 확인한 결과는 아니다. [같은 구현·실행 기록](Results/F011-Verification.md).
+
+- F-010·F-021 종료의 직접 영향 (2026-10-08): 현장 완공은 모든 요구 행의 IsSatisfied를 검사하고 공통 Spawn이 Null이면 자재·현장을 보존하는 현재 코드를 유지한다. 실제 V2 베이킹 창고의 정상 Supply와 다음 Building 틱 생성·자재/현장 삭제는 기존 정상 완료 근거로 연결한다. 중복 행의 전 조합이나 실제 베이킹 프리팹 실패 주입·전체 ECB rollback을 검증한 결과는 아니다. F-024의 기존 완료·실패 보존 정책을 유지하며 추가 완료로 집계하지 않는다. [현재 경로·정상 베이킹 근거·한계](Results/TechnicalIssueClosure-2026-10-08.md).
 
 ### F-005 — 생성 대기 아이템과 건물 철거의 경합
 
@@ -161,17 +166,18 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 
 - [x] 완료 — **P2** · [최초 평가: Q02](Results/Q02.md) · [수령 평가: Q24](Results/Q24.md) · [구현/검증 기록](Results/F003-Verification.md)
 - 문제: 같은 아이템을 다시 공급하거나 기존 Owner가 있는 아이템을 넘길 때 실물 유일성과 이전 소유 버퍼 정리를 보장하지 않는다.
-- F-044 영향 (2026-09-30 코드 확인): 모든 Stored/Product 버퍼의 중복·실존·Identity·Owner 진단은 보완됐다. 이는 잘못된 수령 결과의 일부를 검출하는 경계이며 공급 승인 전에 중복이나 기존 소유 상태를 차단하지 않는다. 남은 구현은 ConstructionMaterialApplyJob의 수령 승인·소유 버퍼 인계 계약에 집중한다. F-042의 필수 버퍼 검증과 같은 수령 경계에서 검토하되 진단 기능을 다시 구현하거나 두 이슈의 완료 기준을 합치지 않는다.
+- F-044 영향 (2026-09-30 당시 코드 확인): 모든 Stored/Product 버퍼의 중복·실존·Identity·Owner 진단은 보완됐다. 이는 잘못된 수령 결과의 일부를 검출하는 경계이며공급 승인 전에 중복이나 기존 소유 상태를 차단하지 않는다. 당시 남은 구현은 ConstructionMaterialApplyJob의 수령 승인·소유 버퍼 인계 계약에 집중했다. F-042의 필수 버퍼 검증과 같은 수령 경계에서 검토하되 진단 기능을 다시 구현하거나 두 이슈의 완료 기준을 합치지 않는 범위였다.
 - F-004 영향 (2026-10-02 코드 확인): 유효한 Destroy 대상과 입출고 후 승인된 철거 건물의 Stored/Product 버퍼에 남은 실물은 수령 전에 거부한다. 도착량·예약량·현장 버퍼·Owner·렌더 태그를 변경하지 않고 요청만 소비하며 자동 재시도하지 않는다. 이 두 충돌의 거부 정책과 예약량 보존은 확정됐으며 다시 결정하지 않는다. [F-004 기록](Results/F004-Verification.md)의 컴파일 확인과 실행 미검증 한계를 따른다.
 - 2026-10-02 구현: ConstructionMaterialDelivery를 운송 키로 사용하고 기존 ConstructionLifecycleApplySystem에서 등록/취소/수령/현장 종료를 정산한다. 수령 승인 전 실물·기존 보관자·버퍼·Transfer 경합을 검증하며 이전 Stored 제거와 현장 등록을 함께 적용한다. 등록 단계의 실물 선점과 운송 State로 중복/재공급/여러 현장 경쟁을 막는다. Owner/렌더 태그/공개 결과는 EndStateApply에 기록하고 수령한 벨트 실물의 이동 상태도 끈다. 새 시스템이나 Ownership/철거 사이 순서는 추가하지 않았다.
 - 완료 기준: 동일 아이템 중복 요청, 재공급, 다른 Owner의 아이템, 정상 공급에서 Delivered/Reserved·버퍼·Owner·렌더 태그·요청 소비가 일치한다. 한 실물이 여러 소유 버퍼에 남지 않는다.
 - 확정 정책: 공급원은 Storage/DroneStation/MainFacility의 보관 자재이며 직접 인수를 허용한다. 세 공급원은 공통 생성 경로에서 항상 보관 구성을 갖는다(MainFacility 설정 50 유지, DroneStation 설정 20). 공급원과 도착 시 보관자는 구분한다. 정상 수령/일반 최종 거부는 해당 운송의 예약만 한 번 정산하며 무예약 공급은 다른 예약을 소진하지 않는다. F-004 충돌은 예약 보존·자동 재시도 없음의 기존 정책을 유지한다. 다른 현장의 자재 및 생산품 직접 인수는 제외한다.
 - 검증: Unity 6000.4.11f1 재컴파일 completed/failed:false/errors:[], Editor ready 및 최신 런타임/Editor 어셈블리 확인. 관련 EditMode 43/43(수령 17, 완공 9, 취소 4, 공사 연결 4, 건물 생성·철거 9), 실패/생략/Inconclusive 0. 처음 복수 클래스 구분자 필터가 0건을 선택한 결과는 통과에서 제외하고 클래스별로 실행했다. 실행 범위와 로그는 [F-003 기록](Results/F003-Verification.md)을 따른다.
-- 남은 범위: 실제 운송 Producer/드론 동작/결과 소비자 연결, 베이킹, Play Mode/시각/성능은 미검증이다. F-042의 대상 Stored 선행 방어가 인계 구간에 추가됐지만 해당 이슈의 전체 완료 처리는 별도다. 잘못된 외부 상태의 전역 보정은 포함하지 않는다.
+- 당시 검증 제외: 실제 운송 Producer/드론 동작/결과 소비자 연결, 베이킹, Play Mode/시각/성능은 당시 미검증이었다. F-042의 대상 Stored 선행 방어가 옛 인계 구간에 추가됐지만 당시 그 이슈의 전체 완료 처리는 별도였다. 잘못된 외부 상태의 전역 보정은 포함하지 않았다.
 - 후속 리뷰 보완 (2026-10-02): TransferOwnershipRequest의 ProcessedInStateApply를 EndStateApply까지 유지하여 같은 틱 출고/공급의 승인 결과를 Ownership 순서와 독립적으로 맞췄다. 기존 운송의 실물 선점을 재구성하여 중복 등록이 다른 실물의 예약 여유를 소진하지 못하게 했다. 취소/닫힌 현장의 정산은 새 등록 전에 수행한다. Job은 시스템 파일에 유지했다. 후속 컴파일 오류 0, 관련 EditMode 47/47(수령 26, 일반 소유권 4, 완공 9, 취소 4, 공사 연결 4). 초기 43/43과 추가 반례의 범위·로그는 [F-003 기록](Results/F003-Verification.md)의 후속 리뷰 절에 구분했다.
 
 - 중복 방어 정리 (2026-10-02): 수령의 AcceptedItems 집합을 제거하고 등록 실물 선점·운송 State·현재 소유 버퍼 검증으로 중복 공급을 차단한다. 등록 검증의 요구 자재 인덱스를 재사용한다. Job은 같은 파일에 유지했다. 재컴파일 오류 0, 기존 Phase7ConstructionMaterialTests 26/26 통과. 신규 등록이 없는 틱의 준비 작업 최적화는 제외했다. [변경 및 검증 기록](Results/F003-Verification.md)의 중복 방어 정리 절 참조.
 - F-011 후속 정리 (2026-10-08): DroneStation 저장 용량 검증 실패는 이제 F-011의 설정 미게시·로그·Fatal로 이어져 무설정 현장/기본 용량으로 우회하지 않는다. 용량 검증을 다시 구현하거나 옛 운송 기능을 복원할 범위가 아니며 F-011의 선택 실행을 드론 운송·예약·행동 검증으로 확대하지 않는다. [같은 구현·실행 기록](Results/F011-Verification.md).
+- F-042·F-010 종료의 직접 영향 (2026-10-08): 위 운송/수령/ProcessedInStateApply·전용 테스트는 이후 제거된 구조의 기록이다. 현재는 TryTransferItem이 실제 Owner·출발 참조의 유일성·목적지 Stored/중복을 변경 전에 검사하고 SupplySite가 성공 실물 수만 여러 요구 행의 도착량에 반영한다. 삭제된 운송 Producer·옛 예약/Progress assertion을 F-003의 추가 필수 작업으로 남기지 않는다. 기존 완료를 유지하며 새 드론의 전체 실패/재배정 실행, 실제 비행·시각·성능을 새로 검증했다는 뜻은 아니다. [현재 인계 계약·종료 기록](Results/TechnicalIssueClosure-2026-10-08.md), [드론 계약](../../CodeMemory/Components/DroneLogistics.md)을 따른다.
 
 ### F-004 — 같은 프레임 입고·철거의 렌더 태그 순서 의존
 
@@ -211,22 +217,22 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 
 ### F-009 — 설정 로드 실패 경로의 선택 실행 검증
 
-- [ ] 완료 — **P2** · [최초 평가: Q04](Results/Q04.md)
+- [x] 선택 검증으로 분리·이번 개선 추적 종료 — **P2** · 종료일: 2026-10-08 · [최초 평가: Q04](Results/Q04.md)
 - 평가 당시 문제: Item Test02가 실제 ItemConfig.json을 읽으면서 순수 기본값 검증으로 설명됐고, Test04·Test06도 실제 파일의 고정값에 의존했다.
 - 현재 대상 정리 (2026-10-02): 위 Test02·Test04·Test06은 F-008 이전 테스트 축소 커밋 `199478b`에서 삭제됐다. 해당 조회·Burst 테스트를 고치는 작업은 남은 범위에서 제외하며 F-008의 신규 해결로 집계하지 않는다. 현재 Item Test03은 명시 JSON, Test05는 자동 초기화 연동 검사다. `Phase5RecipeConfigTests.Test02`는 의도된 Resources 연동 검사이며 파일 연동 자체를 결함으로 간주하지 않는다.
 - F-014로 확인한 범위 (실행 2026-10-07, 문서 정리 2026-10-08): 레시피 재료 중복 [1,1]/[2,3]/[int.MaxValue,1]과 수량 2147483648의 입력 검증 실패는 설정 미게시·로그·즉시 `SimulationFatalError`로 처리함을 확인했다. 중복 세 사례는 이후 자동 Init이 기본 레시피로 재시도하지 않는 것도 확인했다. 이 네 사례는 초기화 입력 실패의 실행 근거로 재사용하며 같은 검증을 다시 만드는 작업은 제외한다. [F-014 검증 기록](Results/F014-Verification.md). 이 결과는 파일 부재나 일반 JSON 문법 오류의 fallback 검증이 아니다.
 - 2026-10-08 F-011 확장 이후 남은 검증 범위: 파일 부재·읽기 실패·일반 파싱 오류·새 필수 목록 누락은 오류 로그·설정 미게시·기존 Fatal로 통일했고 파일 실패 뒤 자동 기본값 대체를 제거했다. 유효한 Item 공통값/품목별 기본 규칙과 명시적 레시피 기본 데이터 API는 유지한다. 이 실패 경로들의 독립 실행은 이번 선택 테스트에 포함하지 않았으므로 정상 파일/명시 JSON·F-014 검증 오류 통과를 그 실행 근거로 확대하지 않는다. [F-011 기록](Results/F011-Verification.md).
-- 남은 범위 재분류 (2026-10-08): 자동 fallback 제거와 실패 전달의 구현 경계는 F-011에서 정리됐다. 이 항목의 체크 미완료는 독립 실패 실행 기록이 없다는 뜻이며 추가 코드 수정이나 F-011 완료를 막는 필수 테스트 요구가 아니다. 유효한 공통값/품목별 기본 규칙은 정상 입력 계약으로 유지한다.
-- 작업·완료 기준: 파일 부재·읽기/일반 파싱 실패·빈 목록·필수 누락의 독립 실행을 선택할 경우 실제 Config를 삭제/편집하지 않고 결과를 확인한다. 코드 확인과 실행 미검증을 분리하고, 정상 파일/명시 JSON 또는 F-014 오류 통과를 이 실패 경로의 증거로 대체하지 않는다. 확인 방법·추가 실행 여부는 작업별로 정하며 삭제된 테스트 복원·새 테스트·assertion 보강은 일괄 필수 조건이 아니다.
+- 종료 판단 (2026-10-08): 현재 네 로드 경로의 미게시·로그·Fatal 전달과 자동 fallback 제거를 재확인했다. 추가 제품 수정이 필요한 결함은 확인하지 않았고, 사용자 방침에 따라 독립 실패 실행을 선택 검증으로 분리해 활성 개선 추적을 종료한다. 삭제된 테스트 복원·새 fixture/assertion을 남은 필수 작업으로 두지 않는다. [현재 코드·원본 결과·종료 기록](Results/TechnicalIssueClosure-2026-10-08.md).
+- 남은 제한: 파일 부재·읽기/일반 파싱 실패·빈 목록·새 필수 누락의 독립 실행은 미수행이다. 원본 Item 2/2·Recipe 7/7를 다시 읽었지만 정상 파일/명시 JSON·F-014 오류 결과를 이 실패 실행의 증거로 확대하지 않는다. 향후 선택 실행은 실제 Config를 삭제/편집하지 않는 격리 방식으로 한다. 이번 문서 종료는 검증 공백 전체 해소나 F-011의 새 해결/재실행을 뜻하지 않는다.
 
 ### F-010 — 중복 공사 자재 행으로 완료 대기 지속
 
-- [ ] 완료 — **P2** · 기존 결함 종료/재분류 후보 · [최초 평가: Q05](Results/Q05.md)
+- [x] 기존 원인 경로 제거 확인·결함 추적 종료 — **P2** · 종료일: 2026-10-08 · [최초 평가: Q05](Results/Q05.md)
 - 평가 당시 문제: 같은 품목 요구 행을 여러 개 허용하지만 수령은 첫 일치 행을 처리해 후속 행을 충족하지 못했다.
 - 이전 구조의 기록 (2026-10-02): 당시 Loader는 중복 품목 행을 그대로 게시하고 `ConstructionMaterialDeliveryOperations.FindRequirement`는 첫 일치 행만 반환했다. 첫 행이 충족되면 후속 행에 수요가 남아도 신규 등록이 거부될 수 있어 운송별 정산 도입만으로 해결하지 못했다. 해당 기존 공사 운송 경로는 이후 제거됐으며 이 설명을 현재 드론 수령에 적용하지 않는다.
 - 현재 코드 확인 (2026-10-08): `ConstructionSupplyReservationUtility`는 같은 품목의 전체 요구·도착·예약량을 합산하고 Reserve/Release를 여러 행에 분배한다. `DroneItemTransferUtility.RecordDelivered`도 남은 도착량을 후속 행에 반영하며 `ConstructionLifecycleApplySystem`은 모든 요구 행의 IsSatisfied를 검사한다. 따라서 옛 첫 행 수령에서 멈추는 원인 경로는 현재 구현에 없다. [2026-10-06 재검토의 종료 후보 근거](Results/CurrentCodeReview-2026-10-06.md)를 현재 소스와 재대조했다.
-- 남은 정리: 기존 완료 대기 결함의 종료/재분류를 확정하고, 필요하면 현재 드론 경로에서 중복 행의 반복 공급·취소/거부·예약 정산·완공 실행을 별도로 확인한다. 현재 동작을 옛 운송 구조로 다시 구현하지 않으며 F-014의 신규 해결로 집계하지 않는다.
-- 정책·범위 경계: F-014의 중복 거부는 제작 레시피에만 적용한다. 현재 공사 자재의 여러 행 합산/분배를 바꾸거나 중복을 거부하도록 구현하는 승인은 아니다. 극단적인 int 합산 한계는 재검토 R-01의 별도 입력 범위 문제로 유지한다. 이 문서 정리는 코드 확인이며 F-014의 32사례 통과를 공사 중복 행 실행 근거로 사용하지 않는다. 체크박스는 종료/재분류 확정 전까지 유지한다.
+- 종료 판단 (2026-10-08): 옛 첫 행 전용 수령은 제거됐고 현재 예약·도착량의 여러 행 소비와 전체 행 완공 조건이 일치한다. 기존 결함을 종료하며 제품 코드를 새로 고쳐 해결한 것으로 기록하지 않는다. [코드 경로·종료 근거](Results/TechnicalIssueClosure-2026-10-08.md).
+- 정책·실행 경계: F-014의 중복 거부는 제작 레시피에만 적용한다. 공사 자재의 여러 행 합산/분배를 유지하며 극단적인 int 합산 한계는 재검토 R-01에 남긴다. 중복 행의 반복 공급·취소/거부·예약 정산·완공 조합은 이번에 실행하지 않았다. F-014나 일반 공급·완공의 기존 통과 수를 이 조합의 실행 근거로 사용하지 않는다.
 
 ### F-011 — 설정 로드 실패와 의도적 무설정 상태 혼동
 
@@ -240,6 +246,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 - 2026-10-08 사용자 확정·범위 확장: 현재 건물·아이템·레시피·월드 설정 및 프리팹 준비에서 실제 파일/파싱/필수 데이터 실패는 로그·해당 설정 미게시·기존 SimulationFatalError로 전체 게임 시뮬레이션을 차단한다. 앱 종료·자동 재시도·파일 실패 후 자동 기본값 대체는 추가하지 않는다. 건물 11종과 레시피 ID 1~5를 필수로 요구하고, 정상 Item 공통값/품목별 예외·빈 건축 비용·기본 footprint는 유지한다. 격리 테스트는 최소 설정을 직접 준비한다.
 - 구현: 기존 실패 Utility에 즉시 초기화 게시를 추가하고 각 설정 로더/Init을 연결했다. GameSimulationGroup은 각 설정의 게시 엔티티/버퍼를 확인한다. 배치와 공통 Spawn의 무설정 우회를 제거하고 완공 실패 시 현장·자재 보존 및 기존 종료 ECB 경계를 유지했다. 전체 파일 초기화의 완전성 검사와 명시적 격리 부분 게시 API를 구분했다. 새 시스템·Ready/Fatal 컴포넌트·설정 파일·partial 분리는 추가하지 않았다.
 - 검증·한계: [F-011 구현·검증 기록](Results/F011-Verification.md)을 따른다. 새 테스트/추가 assertion 없이 기존 fixture의 최소 입력을 조정했다. 파일 누락/읽기 실패·새 필수 항목 누락·건물 검증 실패에서 실제 장면의 배치→완공까지 연쇄 실행한 결과는 아니며 다른 입력 검증 이슈를 자동 완료로 집계하지 않는다. 위 2026-09-30~10-02 영향 설명은 당시 미완료 상태의 기록이다.
+- F-009 종료의 직접 영향 (2026-10-08): 독립 파일 실패 실행은 선택 검증으로 분리해 추적을 종료했다. 이 종료는 F-011의 기존 미게시·로그·Fatal/시작 차단 구현을 다시 해결하거나 실행 공백을 해소한 것이 아니다. 기존 완료·79/79 통계를 유지하며 파일/읽기/일반 파싱·필수 누락의 미검증 한계도 유지한다. [선택 검증 종료 근거](Results/TechnicalIssueClosure-2026-10-08.md).
 
 ### F-012 — 긴 requiredResearch의 파싱 실패 경계 이탈
 
@@ -310,14 +317,16 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 - 남은 작업·완료 기준: 수동 목록·자동 수집에서 생성된 중복, 행 순서 변경, 두 DB 구성에서 확정된 거부 정책과 진단·시작 차단이 일치하는지 확인한다. 확인 방법은 상단 검증 원칙을 따르며 새 테스트 작성을 일괄 요구하지 않는다. 검증 결과와 실행 미확인 범위를 남긴 후 종료한다. 별도 유일성 시스템이나 새 정책 설계는 필요하지 않다.
 - 2026-09-30 처리 결과: 기존 해결 확인: 세 Authoring의 수동 목록과 ResourcesAutoLoad는 유효 후보마다 동일 매핑 버퍼에 Add하므로 중복을 먼저 숨기지 않는다. PrefabDatabaseInitializationSystem은 각 도메인의 태그/매핑 버퍼 개수를 각각 정확히 1로 제한하고 같은 엔티티의 버퍼를 요구한다. 세 도메인 모두 HashSet.Add 실패를 거부하므로 중복 행 순서가 바뀌어도 시작을 허용하지 않는다(여러 결함이면 첫 오류의 종류는 달라질 수 있음). 실패는 오류+SimulationFatalError, Ready 미게시, 재시도 비활성화이며 GameSimulationGroup이 Ready/오류를 확인한다. Ready 이후 불변 계약·F-024 정책을 유지하고 새 시스템은 만들지 않았다. 코드 확인으로 잔여 경로 검토를 완료했고 기존 DuplicateDatabase_Stops/DuplicateMapping_Stops 및 F-024 기록을 대조했다. 소스 변경이 없어 새 컴파일·테스트는 실행하지 않았다. 실제 Baker/자동 수집 자산의 중복·전 도메인 행 순서 실행은 미검증이며 실제 베이킹은 F-021 범위다.
 - F-011 후속 정리 (2026-10-08): PrefabDatabaseInitializationTests의 같은 F-011 원본 실행 15/15를 기존 중복/복수 DB 거부와 시작 차단의 최신 회귀 근거로 추가한다. 다른 Init이 이미 Fatal을 게시하면 프리팹 Init도 비활성화한다. 이 결과는 수동 ECS DB 사례이며 실제 Authoring 자동 수집·Baker·전 도메인 모든 중복 순서의 새 실행을 뜻하지 않는다. 기존 완료를 유지한다. [같은 구현·실행 기록](Results/F011-Verification.md).
+- F-021 종료의 직접 영향 (2026-10-08): 현재 Init의 정확히 한 DB/버퍼·HashSet 중복 거부·식별 일치 검사를 재확인했고 기존 완료를 유지한다. 실제 V2 베이킹 DB로 정상 시작·생성/완공한 기록은 정상 경로 근거다. 실제 Bake의 중복 자산·복수 DB·전 도메인 행 순서 오류 주입은 여전히 미검증이며 F-021의 선택 검증으로 남긴다. F-021 체크를 이 실패 조합 통과나 추가 DB 구현의 근거로 쓰지 않는다. [범위와 원본 기록](Results/TechnicalIssueClosure-2026-10-08.md).
 
 ### F-019 — prefab 식별·필수 구성 검증 부족
 
-- [x] 완료 — **P2** · [최초 평가: Q08](Results/Q08.md) · [실제 자산 근거: Q11](Results/Q11.md) · 남은 실제 Baker 검증: **F-021**
+- [x] 완료 — **P2** · [최초 평가: Q08](Results/Q08.md) · [실제 자산 근거: Q11](Results/Q11.md) · 실제 Baker의 확인/선택 검증 경계: **F-021**
 - 최초 문제: prefab 식별·필수 구성의 사전 검증이 없었고, 등록 Item prefab 8개에 `ItemAuthoring`이 없었다.
 - 완료 구현 (2026-09-30, F-024에 포함): `PrefabDatabaseInitializationSystem`이 엔티티 생존·`Prefab`·`LocalTransform` 및 아이템 `ItemIdentity` 존재·등록 타입 일치를 검증한다. 무효 타입·누락·불일치는 시작 전에 거부한다. 등록 key와 베이킹된 식별 타입은 같아야 하며 불일치 alias는 허용하지 않는다.
 - 에셋·검증 근거: 기존 아이템 8개의 `ItemAuthoring`을 보완하고 Drone 아이템을 등록했다. F-024 당시 초기화 검증 및 실제 Resources 아이템의 타입별 Authoring 검사가 통과했고, Editor에서 V2 SubScene의 DB 등록·참조·아이템 타입 일치를 확인했다. 상세 실행 기록은 F-024를 따른다.
-- 종료 범위 조정 (2026-09-30 사용자 승인): 구현·알려진 에셋 결함 해결을 이 항목의 완료로 기록하고, 원래 완료 기준 중 **실제 Baker를 실행한 Authoring 없음·타입 불일치·None/범위 밖 값·정상 prefab 검증**은 F-021에 통합한다. 해당 검증을 통과한 것으로 처리한 것이 아니며 F-021이 계속 추적한다. 이번 정리는 문서 변경이며 새 컴파일·테스트는 실행하지 않았다.
+- 종료 범위 조정 (2026-09-30 당시 사용자 승인): 구현·알려진 에셋 결함 해결을 이 항목의 완료로 기록하고, 원래 완료 기준 중 **실제 Baker를 실행한 Authoring 없음·타입 불일치·None/범위 밖 값·정상 prefab 검증**은 당시 F-021로 이관했다. 해당 검증을 통과한 것으로 처리한 것이 아니며 당시 문서 정리에서 새 컴파일·테스트는 실행하지 않았다.
+- F-021 종료의 직접 영향 (2026-10-08): V2 장면의 실제 베이킹 프리팹을 사용한 정상 공급·창고 완공 기록을 반영했고, 이관된 나머지 입력/전수 검증은 선택 검증으로 분리해 활성 추적을 종료했다. F-019의 구현 완료를 유지하며 에셋/DB 검증을 재구현하지 않는다. Authoring 없음·타입 불일치·None/범위 밖 값의 실제 Bake 결과는 미검증이며 계속 필수 작업으로 안내하지 않는다. [최신 확인/선택 범위](Results/TechnicalIssueClosure-2026-10-08.md).
 
 ### F-020 — 철거 환급의 Item 초기화 규칙 복제
 
@@ -330,14 +339,11 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 
 ### F-021 — 실제 Baker를 실행하지 않는 계약 테스트
 
-- [ ] 완료 — **P2** · [최초 평가: Q08](Results/Q08.md)
-- 문제: Authoring/Baker 계약 테스트가 수동 ECS 구성이나 목록 수집만 확인해 실제 Baker 회귀를 놓친다.
-- F-037과의 경계: 실제 생성 요청과 정렬된 제작·물류 그룹을 검증했지만 프리팹은 수동 ECS 테스트 구성이었다. 생성·입고·생산 연결의 통과를 실제 SubScene Baker 검증으로 확대하지 않으며, 이 이슈의 베이킹 검증은 남아 있다.
-- F-018·F-020 영향 (2026-09-30 코드 확인): 중복·복수 DB 거부/시작 차단과 일반 Spawn·생산물·철거 환급의 공통 초기화는 기존 구현으로 확인했다. 이를 다시 구현하는 작업은 제외하고, 실제 Baker의 출력이 DB 검증 및 런타임 초기화의 입력 계약을 만족하는지 확인하는 범위로 유지한다. F-020의 모의 ECS 철거·환급 테스트 통과는 실제 Bake 근거가 아니며, F-019에서 이관된 검증은 유지한다.
-- 작업: 모의 런타임 테스트의 이름·범위를 명확히 하고 실제 Baker를 실행하는 최소 계약 검증을 보강한다.
-- 완료 기준: ItemIdentity와 정적 정보, 불필요한 런타임 상태 미포함, DB 실제 매핑·중복·누락 진단을 bake 결과로 검증한다. 모의 Spawn 통과와 실제 Bake 통과를 구분해 기록한다.
-- F-019에서 이관 (2026-09-30): 실제 Baker 경로에서 Authoring 없음, 등록 key/식별 타입 불일치, None/범위 밖 값, 정상 prefab의 결과를 확인한다. 베이킹 결과를 시작 검증에 전달했을 때 거부·진단 또는 정상 시작이 현재 계약과 일치하는지도 구분해 기록한다. 등록 시 조용히 제외되는 입력은 제외 사실과 최종 DB 검증 결과를 함께 확인한다.
-- 범위 구분: F-019의 구현과 기존 에셋 보완은 다시 수행하지 않는다. 수동 ECS 프리팹·Resources 목록/Authoring 검사만으로 실제 Baker 검증을 대체하지 않는다. 검증 방법은 상단 원칙에 따라 선택하며 새 fixture·자동 테스트 작성을 일괄 필수로 두지 않는다. 이관된 검증은 아직 미완료다.
+- [x] 실제 베이킹 근거 반영·선택 검증 추적 종료 — **P2** · 종료일: 2026-10-08 · [최초 평가: Q08](Results/Q08.md)
+- 평가 당시 문제와 현재 테스트 경계: Item/Building Authoring 목록 수집과 수동 ECS 자원·DB/Spawn 테스트는 실제 Bake 회귀가 아니다. F-037 제작 연결·F-020 환급·F-011 프리팹 15/15를 실제 Baker 통과로 확대하지 않는다. 현재 테스트 설명과 준비 코드를 확인했다.
+- 기존 실제 실행: [도메인 분리 기록의 일회 Play Mode 절](Results/BuildingDroneDomainSplit-Verification.md)은 V2 Test Scene·자동 로드 sub.unity의 실제 Default Game World/Player Loop와 베이킹된 창고·벨트·철 프리팹을 사용한다. 제어 입력의 Supply=Completed/1·Delivered=1·Reserved=0, 다음 Building 틱의 완공 창고 생성·현장/자재 삭제를 원본 결과와 대조했다. 실제 베이킹 정상 경로를 전혀 확인하지 않았다는 현황 설명은 갱신한다.
+- 종료 판단 (2026-10-08): 확인한 기존 실행을 반영하고 남은 입력 조합/자동 회귀를 선택 검증으로 분리해 활성 개선 추적을 종료한다. F-019 식별·필수 구성/에셋 보완이나 DB 검증을 재구현하지 않는다. [현재 Baker·테스트 범위·원본 실행·종료 기록](Results/TechnicalIssueClosure-2026-10-08.md).
+- 남은 제한: 전체 등록 타입의 구성·불필요한 런타임 상태 미포함, Authoring 없음/key 불일치/None/범위 밖 값·자동 수집 제외와 DB 진단의 전 조합을 실제 Bake로 검증한 것이 아니다. F-019에서 이관됐던 이 조합들은 선택 검증으로 남긴다. SampleScene·Player 빌드·지속 자동 회귀도 미검증이다. 수행자·경로·관측·행동 신호는 기존 실행의 제어 입력이며 실제 드론 생성/비행 증거가 아니다. 이번에는 새 Bake·Play Mode·자동 테스트를 실행/보강하지 않았고 검증 공백 전체 해소를 주장하지 않는다.
 - F-011 후속 정리 (2026-10-08): F-011의 프리팹 초기화 15/15·직접 생성 9/9·제작 입력 19/19는 명시적 ECS 테스트 입력의 시작/생성/소비 계약이다. Config와 에셋을 변경하거나 실제 Baker/SubScene 베이킹을 실행한 기록이 아니므로 미완료를 유지한다. 동일 실행을 베이킹 증거로 다시 집계하지 않는다. [같은 구현·실행 기록](Results/F011-Verification.md).
 
 ### F-022 — DB FootprintSize 편집과 실제 Spawn 크기 불일치
@@ -366,6 +372,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 - 작업: 사용할 진입 장면을 결정한 뒤 해당 경로의 DB를 현재 Authoring 계약으로 검증·이관한다.
 - 완료 기준: 선택한 장면의 실제 Bake에서 세 DB·entry 타입·prefab 참조·필수 구성을 확인한다. GUID만 교체하지 않고 필드와 enum 매핑을 함께 검증한다.
 - 결정 필요: SampleScene 유지·수리 또는 V2 장면 계열로 빌드 진입 변경.
+- F-021 종료의 적용 한계 (2026-10-08): 현재 EditorBuildSettings의 활성 진입은 SampleScene으로 재확인했다. 기존 실제 베이킹 실행은 V2 Test Scene/sub.unity에 한정하므로 SampleScene 이관·Player 빌드 근거가 아니며 F-025의 미완료와 진입 장면 결정은 유지한다. F-021의 선택 검증 추적 종료를 빌드 진입 문제 해결로 합산하지 않는다. [확인 범위](Results/TechnicalIssueClosure-2026-10-08.md).
 
 ### F-026 — 배치의 직접 공간 조회에 Writer 완료 경계 누락
 
@@ -375,6 +382,8 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 - 완료 기준: 각 Fence에 미완료 Writer를 둔 배치 조회와 Validator 없는 실행에서 안전성을 검증한다. 다른 시스템의 완료 부수효과나 강제 Map 재구축에 의존하지 않는다.
 - 2026-09-30 처리 결과: BuildingPlacementCommandSystem이 세 SpatialIndexFence를 준비 조건으로 요구하고 Map 접근 전에 GetReaderDependency의 세 Writer 핸들을 결합해 Complete한다. 메인 스레드 조회 완료 뒤에 후속 Writer가 스케줄되므로 별도 Reader Job 등록은 필요 없다. 다른 Reader 전체 완료·World 완료·Map 재구축·Validator 순서 의존을 추가하지 않았다. Writer의 실제 미완료 여부와 무관하게 호출하는 경계를 코드 확인했다. 컴파일 completed/failed:false/errors:[], Editor ready 및 최신 Assembly-CSharp 확인([로그](../../../Logs/QualityImprovement/Selected14/F026-status.json)). 지연 Writer 주입/Validator 없는 배치 실행은 미실행이다.
 - F-027 영향 (2026-10-08): 필요한 세 Writer 완료를 유지하고 아직 ECB 반영 전인 앞 요청의 승인 셀은 Command 소유 임시 approvedCells로 별도 전달한다. Fence 완료가 미생성 현장의 점유를 Map에 게시한다고 가정하지 않는다. F-027의 일반 배치/Sync 회귀 통과를 지연 Writer 강제 주입·Validator 없는 실행의 증거로 확대하지 않으며 이 실행 제한은 유지한다. [F-027 검증 기록](Results/F027-Verification.md).
+
+- F-028 유지 결정의 직접 영향 (2026-10-08): 배치가 세 Map의 마지막 Writer를 완료하는 현재 경계는 변경 없이 유지한다. F-028의 추가 Job Reader 의존/비용 판단과 메인 스레드 조회 안전성은 서로 다른 범위다. F-028의 유지 종료를 필요한 Writer 대기 제거 승인이나 F-026 지연 Writer 주입·Validator 없는 실행 통과로 해석하지 않는다. 기존 완료와 실행 제한을 유지한다. [전체 Reader/Writer와 유지 판단](Results/TechnicalIssueClosure-2026-10-08.md).
 
 ### F-027 — 별도 배치 요청 간 같은 셀 중복 승인
 
@@ -389,12 +398,11 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 
 ### F-028 — Fence 메타데이터 RW 선언의 추가 Reader 의존
 
-- [ ] 완료 — **P2** · [최초 평가: Q12](Results/Q12.md)
-- 문제: Fence 핸들 등록용 RW singleton 선언이 Map Reader Job들 사이에도 추가 ECS 의존을 만든다. 실제 성능 병목이나 잘못된 게임 결과는 확인되지 않았다.
-- F-026 영향 (2026-09-30 코드 확인): 배치의 메인 스레드 조회는 세 Fence의 마지막 Writer를 직접 완료하여 안전성 경계를 갖췄다. 이 안전성 수정은 완료 범위로 제외한다. 다른 Decision Reader들의 GetSingletonRW 및 AddReader 등록은 유지되므로, F-028은 독립 Reader 사이의 추가 직렬화와 실제 비용을 평가하는 개선 과제로 남는다. 성능 측정 없이 병목이나 변경 필요성을 확정하지 않으며 필요한 Writer 대기를 제거하지 않는다.
-- 작업: 독립 Reader의 실제 dependency와 비용을 확인하고 메타데이터 갱신·게임 데이터 추적을 분리할 필요를 판단한다.
-- 완료 기준: 독립 Reader 사례의 의존 관계와 필요한 측정 근거를 기록한다. 변경한다면 Reader 등록·Writer 대기·World 수명·Dispose 안전성을 유지한다. 현 구조를 유지한다면 비용과 판단 근거를 명시한다.
-- 결정 필요: 목표 병렬성과 변경 필요성. 필요한 ECS 의존을 제거해 겉으로만 병렬화하지 않는다.
+- [x] 현 구조 유지 결정·이번 개선 추적 종료 — **P2** · 종료일: 2026-10-08 · [최초 평가: Q12](Results/Q12.md)
+- 확인한 추가 의존: 벨트 이동 Decision과 건물 입고 Decision은 맵/실제 상태를 RO로 읽고 서로 다른 결정을 쓰지만 공통 Belt Fence의 RW singleton query가 ECS 의존을 추가한다. 현재 Entities 소스의 RW query 생성·타입 등록·Dependency/WriteFence 경로와 각 시스템의 state.Dependency 게시를 대조했다. AddReader 자체가 다음 Reader를 기다리게 하는 것은 아니다.
+- 안전성·실제 의존 구분: 네 맵의 모든 제품 Reader/Writer, Placement의 마지막 Writer 완료, Validator의 검사 전 Fence 완료, Sync의 Clear/Populate·재할당·Dispose 대기를 확인했다. 출고끼리 같은 결정 타입, Reservation의 결정 RW, Execution/Apply의 실제 상태·버퍼 RW 의존은 유지해야 하며 모두 Fence의 불필요한 직렬화로 분류하지 않는다. 도메인 순서만으로 Native 맵 안전성을 대체하지 않는다.
+- 유지 판단 (2026-10-08): 추가 의존의 실제 비용과 변경 실익을 입증한 대표 부하/비교 측정이 없으므로 현재 안전한 구조를 유지한다. 새 Fence owner·공간 캐시·병렬 구현이나 Writer 대기 제거는 없다. 잘못된 게임 결과나 실제 병목이 있다/없다를 단정하지 않고 기술 판단 종료로 기록한다. [전체 접근 범위·의존 근거·유지 이유](Results/TechnicalIssueClosure-2026-10-08.md).
+- 미측정 범위·재검토 조건: 활성 물류의 대표 건물/아이템 규모에서 목표 틱 예산을 넘고 독립 Reader의 Fence 대기가 주요 원인으로 확인될 때 재검토한다. 같은 입력/부하에서 Job 중첩·메인 스레드 대기·전체 틱 비용과 Writer/재할당/종료 안전성을 비교할 필요가 있다. 기존 작은 장면의 326개 유휴 표본은 Reader 병렬성 비교 근거가 아니다. 이번에는 새 성능 측정·최적화 구현을 하지 않았다.
 
 ### F-031 — 새 슬롯 예약의 품목 정보 누락
 
@@ -449,13 +457,11 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 
 ### F-042 — Stored 버퍼 없는 현장의 부분 수령 승인
 
-- [ ] 완료 — **P2** · [최초 평가: Q24](Results/Q24.md)
-- 평가 당시 문제: Stored 버퍼가 없는 불완전 현장에서도 Delivered/Reserved·Owner·렌더 태그를 변경해 실물이 보관 목록과 분리됐다. 정상 Placement는 해당 버퍼를 생성한다. 원본 평가는 Q24에 보존한다.
-- 현재 구현과 정책 (2026-10-02): F-003의 운송 등록/수령 검증이 대상 Stored 존재를 먼저 확인하고 누락 시 InvalidSite로 거부한다. 이전 보관 버퍼·실물 Owner·렌더 태그·Delivered·Progress는 보존하며 자동 복구하지 않는다. 이미 등록된 운송의 일반 거부는 해당 운송의 활성 예약만 해제하고 다른 운송의 예약을 소진하지 않는다. 거부/복구 정책은 추가 결정 대상이 아니다.
-- 다른 이슈와의 경계: F-044는 소유 버퍼 진단, F-003은 등록/수령 승인과 운송별 정산을 담당한다. Validator를 통과시키기 위해 현장에 Storage를 추가하지 않는다. Destroy/철거 충돌은 F-004의 우선 거부·활성 예약 보존 계약을 유지하며 일반 InvalidSite 거부와 구분한다.
-- 확인한 근거: [기존 회귀 테스트](../../../Assets/Editor/Tests/Phase7ConstructionMaterialTests.cs)의 `MissingDestinationBuffer_DoesNotRemoveSourceMaterialOrCountDelivery`는 등록 후 대상 Stored 버퍼를 제거하고 Delivered=0·공급원 Stored 길이=1·기존 Owner 보존을 확인한다. 해당 테스트가 포함된 F-003 정리 후 자재 테스트는 26/26 통과했다. [검증 기록](Results/F003-Verification.md) · [실행 결과](../../../Logs/QualityImprovement/F003/cleanup/verification-live.json)
-- 남은 작업: 같은 회귀 테스트에 Progress·렌더 태그·요청 소비·InvalidSite 결과·해당 운송 예약 해제와 다른 운송 예약 보존 assertion을 보강하고, 기존 정상 수령 사례의 완료 기준을 함께 대조한다. 현재 등록 시 선행 거부는 코드 확인이며 위 실행 사례는 등록 후 버퍼 제거 조건이다. 이번 문서 갱신에서는 테스트를 수정하거나 재실행하지 않았다.
-- 완료 기준: Stored 없는 현장의 거부에서 실물·공급원 버퍼·Owner·태그·Delivered/Progress가 보존되고 요청은 소비되며 해당 운송 예약만 정산된다. 정상 수령에서는 Delivered/Reserved/Progress·Owner·태그·양쪽 버퍼·요청 소비가 일치하고 실물이 정확히 한 번 등록된다. 이 기준의 남은 assertion 확인 전까지 미완료를 유지한다.
+- [x] 옛 부분 수령 제거·기존 결함 추적 종료 — **P2** · 종료일: 2026-10-08 · [최초 평가: Q24](Results/Q24.md)
+- 평가 당시 문제: Stored 없는 현장에서도 수량·Owner·렌더를 변경해 실물이 보관 목록과 분리됐다. 정상 Placement는 해당 버퍼를 생성한다. [F-003의 2026-10-02 검증](Results/F003-Verification.md)은 당시 운송 구조의 기록이며 현재 새 드론 실행 근거가 아니다.
+- 제거 확인: 기존 ConstructionMaterialDelivery·Supply/운송 취소 요청·수령 Job/Operations와 Phase7ConstructionMaterialTests는 [운송 제거](Results/ConstructionTransportRemoval-Verification.md) 때 제거됐다. ConstructionSite.Progress도 [별도 변경](Results/ConstructionProgressRemoval-Verification.md)으로 제거됐다. 삭제된 테스트/옛 InvalidSite·Progress·운송 예약 assertion은 현재 남은 작업으로 안내하지 않는다.
+- 현재 코드: PrepareSupply와 최종 SupplySite는 목적지 Stored가 없으면 실물 목록 준비 또는 MoveCargo/RecordDelivered 전에 0을 반환한다. 공통 TryTransferItem도 목적지 버퍼·슬롯·중복을 출발 버퍼 제거/Owner/위치/렌더 변경 전에 검사한다. 정상 Placement의 Stored 생성과 현재 드론 계약을 대조했다. [소스 경로·종료 기록](Results/TechnicalIssueClosure-2026-10-08.md).
+- 종료 의미·제한: 기존 부분 승인 원인 제거와 현재 선행 거부를 근거로 종료하며 이번 새 코드 해결/실행 통과로 집계하지 않는다. 준비 전/후 버퍼 누락·새 드론의 모든 수명/예약 조합은 실행 미검증이다. 0개 인계 뒤 행동 번호·Unavailable 결과·재목표화/완료와 개별 예약 정산은 새 계약을 따르므로 모든 배정/예약 상태가 보존된다고 쓰지 않는다. 옛 테스트를 복원하거나 Validator용 Storage를 추가하지 않는다.
 
 ### F-044 — 소유 버퍼 중복·공사 현장 역방향 검사 누락
 
@@ -463,8 +469,10 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 - 문제: Validator가 동일 실물의 중복 참조와 Storage 없는 현장 버퍼의 죽은/다른 Owner 참조를 놓칠 수 있다.
 - 작업: 버퍼 참조의 실존·Identity·Owner·유일성 검사를 Storage 용량 검사와 분리한다.
 - 완료 기준: Stored 중복, Product 중복, 두 버퍼 교차 중복, Storage 없는 현장의 dead/wrong-owner 참조를 검출하고 정상 현장은 통과한다. 검사에 맞추려고 현장에 Storage를 억지로 추가하지 않는다.
-- 연계: F-003은 잘못된 참조를 만드는 경계, 이 항목은 검사 누락이다. F-046의 로그 격리도 확인한다.
+- 연계: F-003은 잘못된 참조를 만드는 경계, 이 항목은 검사 누락이다. F-046의 로그 격리 구현과 이 항목의 검출 정확성 검증은 구분한다.
 - 2026-09-30 처리 결과: WorldInvariantValidationSystem에 Storage 보유 여부와 무관한 Stored/Product 참조 검사를 분리했다. 한 검사에서 모든 소유자와 두 버퍼가 Entity(Index,Version) HashSet을 공유하므로 각 버퍼 내부·교차·소유자 간 중복을 검출한다. 실존 여부를 먼저 확인하고 Identity 존재/타입 및 Owner 존재/일치를 각각 검사한다. 정상 현장에는 Storage를 요구하지 않으며 슬롯/용량 정책과 게임 상태는 바꾸지 않는다. 기존 용량 루프의 중복 실존/Owner 진단은 공통 경계로 이동했다(코드 확인). 컴파일 completed/failed:false/errors:[], Editor ready 및 최신 어셈블리 확인([로그](../../../Logs/QualityImprovement/Selected14/F044-status.json)). F-046의 공용 로그 삭제가 확인된 Validator 테스트는 실행하지 않았다. 의도적 불변식 위반·정상 현장의 실행 결과와 성능은 미검증이다. 최종 점검에서는 정상 항목별 진단 문자열 할당을 제거하고 위반 시에만 문맥을 생성하도록 정리했다. 이후 최종 컴파일 completed/failed:false/errors:[], Editor ready·최신 런타임 어셈블리를 확인했다([최종 로그](../../../Logs/QualityImprovement/Selected14/Final-status.json)).
+
+- F-046 영향 (2026-10-08 문서 정리): Phase2BeltIntegrationTests의 공용 삭제가 제거되고 Validator 인스턴스에 전용 경로를 지정할 수 있어, 진단 자료를 해당 테스트의 일괄 정리로 잃는 원인 경로는 코드상 해소됐다. F-044 검사 로직·위반 count·assertion은 바뀌지 않았고 의도적 중복/dead/wrong-owner 참조·정상 현장·성능의 새 실행 근거는 없다. 기존 완료 상태와 실행 한계를 유지하며 재완료로 집계하지 않는다. 다른 Validator fixture는 명시적으로 경로를 지정하지 않으면 기본 경로를 사용한다. [직접 관련 영향과 검증 한계](Results/F046-Verification.md#2026-10-08-직접-관련-이슈-영향-정리).
 
 ### F-045 — 같은 초의 진단 로그 덮어쓰기
 
@@ -474,13 +482,19 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 - 완료 기준: 같은 시각의 연속 위반, 서로 다른 World, 기록 실패 조건에서 위반 수와 보존된 보고 내용을 검증한다. 테스트는 격리된 경로를 사용한다.
 - 2026-09-30 처리 결과: WorldInvariantValidationSystem이 생성마다 고유 세션 GUID와 ResetViolationCount와 독립적인 보고 순번을 갖는다. 파일명에 세션/순번을 포함하고 FileMode.CreateNew로 기록하여 같은 초·같은 이름의 World·카운터 초기화 후에도 기존 보고를 덮어쓰지 않는다. 본문에는 World 이름과 Report ID를 남긴다. 파일 기록 예외에서도 위반 count와 순번은 증가하며 기존 Debug 출력에 보고 ID/원문/예외를 함께 남긴다(코드 확인). 실패한 파일의 완전한 보존/재시도까지 보장하지 않는다. 컴파일 completed/failed:false/errors:[], Editor ready 및 최신 어셈블리 확인([로그](../../../Logs/QualityImprovement/Selected14/F045-status.json)). 같은 시각·다중 World·쓰기 실패 실행은 미검증이며 F-046 공용 삭제 테스트는 실행하지 않았다.
 
+- F-046 영향 (2026-10-08 최종 검증 반영): 기존 World별 세션 ID·보고 순번·CreateNew 기록을 재사용하며 Phase2 실행마다 전용 출력 경로를 지정했다. 실제 동일 이름의 두 fixture World가 서로 다른 실행 GUID 경로·보고 세션 ID로 기록하고 앞 실행의 보고를 보존한 제한된 사례를 확인했다. 격리 검증에 새 sink/파일명 구현은 필요하지 않다. 같은 시각의 연속 보고·카운터 초기화·쓰기 실패에서의 count/내용 보존은 여전히 미검증이며 다중 World 전 조합으로 확대하지 않는다. 기존 완료 상태를 유지한다. [직접 관련 영향과 한계](Results/F046-Verification.md#2026-10-08-직접-관련-이슈-영향-정리), [최종 보존 검증](Results/F046-Verification.md#2026-10-08-최종-unity-및-로그-보존-검증).
+
 ### F-046 — 테스트가 공용 진단 로그를 삭제
 
-- [ ] 완료 — **P2** · [최초 평가: Q29](Results/Q29.md)
-- 문제: 현재 Phase2BeltIntegrationTests의 SetUp/TearDown이 공용 `Logs/InvariantErrors/invariant_error_*.txt` 전체를 삭제해 다른 실행의 근거를 지울 수 있다. 실제 기존 파일 삭제 여부는 조사하지 않았다.
+- [x] 완료 — **P2** · [최초 평가: Q29](Results/Q29.md)
+- 수정 전 문제: Phase2BeltIntegrationTests의 SetUp/TearDown이 공용 `Logs/InvariantErrors/invariant_error_*.txt` 전체를 삭제해 다른 실행의 근거를 지울 수 있었다. 현재 해당 삭제 경로는 제거됐으며 실제 과거 파일 삭제 여부는 조사하지 않았다.
 - F-045 영향 및 현재 대상 (2026-09-30 코드 확인): 보고 파일명은 World별 세션 ID·순번으로 고유해졌지만 여전히 invariant_error_*.txt 패턴에 포함된다. 따라서 공용 패턴 삭제 위험은 남는다. 과거 Q29가 지목한 Phase3StorageInvariantTests.cs는 현재 없고, 현재 Assets/Editor/Tests에서 해당 공용 패턴 삭제는 Phase2BeltIntegrationTests.CleanLogDirectory에 남아 있다. Q29의 과거 기록은 보존하고 현행 수정 대상을 이 테스트로 좁힌다. 실제 기존 로그 삭제 여부는 확인하지 않았다.
-- 작업: 현재 남은 Phase2BeltIntegrationTests의 출력 경로/진단 sink 또는 생성 파일 소유권을 격리하고 자기 산출물만 정리한다. F-045의 고유 파일명·CreateNew 기록은 유지하며 다시 구현하지 않는다.
+- 반영한 구현: Phase2BeltIntegrationTests의 Validator 출력과 파일 검사를 실행 GUID별 전용 경로로 격리하고 성공·실패 산출물을 삭제하지 않는다. F-045의 고유 파일명·CreateNew 기록은 유지하며 다시 구현하지 않는다.
+- 확인한 범위: Unity Editor 최종 컴파일·runtime/test 어셈블리 최신성, 기존 Phase2BeltIntegrationTests 4/4, 공용 원본 8개 해시 보존과 별도 fixture 실행의 독립 경로·제어된 assertion 실패 뒤 실제 TearDown의 sentinel/보고 보존을 확인했다. 실패 검증은 임시 NUnit 문맥의 직접 호출이며 Test Runner의 실패 통계에 합산하지 않는다. Phase3 테스트 복원·새 테스트/진단 구현·기존 assertion 보강은 없다. [직접 관련 영향과 검증 한계](Results/F046-Verification.md#2026-10-08-직접-관련-이슈-영향-정리).
 - 완료 기준: 임시 경로의 기존 sentinel, 서로 다른 테스트 실행의 독립 로그, 실패 시 진단 자료가 보존된다. 해당 기존 테스트를 재실행하기 전에 공용 삭제 경로의 격리부터 확인한다.
+- 2026-10-08 구현 결과·검증 대기: Validator에 인스턴스별 `SetLogDirectory`를 추가하고 Phase2BeltIntegrationTests는 사례마다 `Logs/Tests/Phase2BeltIntegrationTests/<실행 GUID>`를 지정한다. 공용 패턴 삭제 helper와 TearDown override를 제거하고 기존 World 해제만 사용하며 성공·실패 로그를 모두 보존한다. F-045 Writer·세션/순번·CreateNew와 기존 assertion은 유지했다. C# runtime/Editor 빌드는 경고 0·오류 0으로 통과했다. Unity CLI는 STATUS_PIPELINE_LOAD_PENDING/No Pipeline instance found로 컴파일을 시작하지 못하여 Editor 최종 컴파일·임시 sentinel·독립 실행·실패 후 보존은 실행 미확인이다. 따라서 완료 체크와 집계는 변경하지 않았다. [변경·검증·제한 기록](Results/F046-Verification.md)을 따른다. 과거 삭제 피해를 주장하지 않으며 다른 이슈·과거 Results는 보존한다.
+
+- 2026-10-08 최종 후속 검증·완료: 기존 Editor 활성화와 남은 pause 플래그 해제로 CLI 연결을 복구했다. recompile_status는 up_to_date/failed:false/errors:[]/compilationFailed:false이고 runtime/test DLL은 변경 소스보다 최신이다. 최종 Editor ready/compiling:false/domainReloadInProgress:false/playMode:stopped, 선택 EditMode completed/4 passed/0 failed·skipped·inconclusive를 확인했다. 정상 테스트 보고와 별도 제어 실패 실행의 보고·임시 sentinel이 실제 TearDown 이후 보존됐고 두 경로·보고 세션이 독립적이며 공용 원본 8개 모두 내용/길이 해시가 일치했다. 해당 기준으로 완료 체크와 P2/전체 집계를 한 건만 갱신했다. 초기 연결 실패·임시 검증의 실행 전 컴파일 오류는 원본 로그로 보존하며 과거 피해·모든 쓰기 실패 보장·전체 EditMode·Play Mode 실행을 주장하지 않는다. [최종 검증과 원본 로그](Results/F046-Verification.md#2026-10-08-최종-unity-및-로그-보존-검증).
 
 ## P3 — 설명 개선
 
@@ -512,10 +526,12 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 - 평가 당시 문제: 문서는 완료·취소·철거 미구현과 독립 Material 시스템을 설명했지만 소스에는 통합 ConstructionLifecycle의 Job들과 철거 구현이 있었다.
 - F-037 반영 상태: 공사 완료 → `BuildingLifecycleUtility.SpawnBuilding` → Crafter 구성·제작 연결을 검증했고 AGENTS의 완료 경로 설명을 갱신했다. 이 부분은 다시 미구현으로 설명하지 않는다.
 - F-005의 영향 (2026-09-30): 철거는 `BuildingDemolitionCommandSystem`의 검증과 `BuildingLifecycleApplySystem`의 적용으로 책임이 분리됐고, 아이템 생성 차단은 `ItemLifecycleApplySystem`이 같은 검증된 요청을 읽어 처리한다. 철거 미구현 또는 StateApply에서 최초 승인하는 것으로 설명하지 않는다.
-- 부분 정리 (2026-09-30): AGENTS의 독립 `ConstructionMaterialApplySystem` 설명을 `ConstructionLifecycleApplySystem` 내부 `ConstructionMaterialApplyJob`으로 수정했다. 현재 소스에서 취소→자재 수령→완공 Job 연결과 `ConstructionCompletionApplyJob`→`BuildingLifecycleUtility.SpawnBuilding` 호출도 확인했다. 문서 확인을 새 런타임 검증 결과로 간주하지 않는다.
-- 남은 작업: 원본 Q00에서 지목한 현행 문서의 관련 절과 코드 지도에 완료·취소·자재 수령·철거 설명이 일치하는지 대조하고 필요한 부분만 갱신한다. 원본 평가의 과거 기록은 보존한다. F-037·F-005 완료나 위 부분 수정만으로 F-001 전체를 완료 처리하지 않는다.
+- 부분 정리 (2026-09-30 당시): AGENTS의 독립 `ConstructionMaterialApplySystem` 설명을 `ConstructionLifecycleApplySystem` 내부 `ConstructionMaterialApplyJob`으로 수정했다. 당시 소스에서 취소→자재 수령→완공 Job 연결과 `ConstructionCompletionApplyJob`→`BuildingLifecycleUtility.SpawnBuilding` 호출도 확인했다. 문서 확인을 새 런타임 검증 결과로 간주하지 않는다.
+- 당시 정리 범위: 원본 Q00에서 지목한 문서의 완료·취소·자재 수령·철거 설명과 코드 지도를 대조했다. 아래 2026-09-30 처리 결과로 완료한 범위이며 지금 옛 수령 Job을 다시 구현할 작업이 아니다. 원본 평가·당시 실행 기록은 보존한다.
 - 완료 기준: 완료·취소·자재 수령·철거의 구현 여부와 담당 시스템, Completion→공통 Spawn의 실제 경로를 정확히 안내한다. 이 항목을 런타임 결함으로 승격하지 않는다.
 - 2026-09-30 처리 결과: Q00이 지목한 AGENTS와 CodeMemory를 현재 ConstructionLifecycle/BuildingLifecycle/BuildingDemolition 및 공통 Spawn 호출과 대조했다. 취소→수령→완공은 하나의 시스템 내부 Job 연결이며 취소는 즉시 Cancelled/실물 반환, 수령은 수량·진행·Stored 직접 갱신과 Owner/렌더 ECB 반영, 완료는 Spawn non-Null 이후 자재/현장 삭제임을 명시했다. 철거의 Command 승인·StateApply 적용·아이템 생성 차단과 기존 실물/신규 비용 환급도 구분했다. CodeMemory의 건설 미구현 설명을 수정하고 Architecture V2 Tasks의 해당 Task 7.3~7.7 담당 위치/직접 호출/fallback 제거를 갱신했다. 과거 검증 수치는 당시 기록임을 명시하고 유지했다. 이번 F-012/031/026/020/023/044/045 및 레시피/자원 계약도 AGENTS·CodeMemory·파일 색인에 반영했다. 원본 Results·F-029/F-030 지원 정책은 보존했다. 문서 정합성 완료이며 새 컴파일/테스트나 전체 공사 런타임 보장을 추가하지 않는다.
+
+- F-010·F-042 종료의 직접 영향 (2026-10-08): 위 내부 수령/Progress·EndStateApply 설명은 제거 전 기록이다. 현재 취소는 ConstructionCancelCommandSystem/EndCommand, 실물 인계와 도착/예약 정산은 드론 Lifecycle·공통 Ownership/EndSimulation, 모든 요구 행 완공 검사는 BuildingStateApply 마지막·EndBuilding이 담당한다. 현재 코드 지도와 연결하고 기존 문서 정합성 완료를 유지한다. 전체 공사 런타임/문서의 새 전수 검증을 추가한 것이 아니다. [현재 책임·종료 기록](Results/TechnicalIssueClosure-2026-10-08.md).
 
 ### F-002 — 자원 스폰·완료 알림의 ECB 설명 불일치
 

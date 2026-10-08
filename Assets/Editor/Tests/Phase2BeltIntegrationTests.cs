@@ -1,3 +1,4 @@
+using System;
 using System.IO;
 using NUnit.Framework;
 using PlanetMiner.Tests;
@@ -8,8 +9,8 @@ using UnityEngine;
 
 /// <summary>
 /// 역할·목적: 벨트 간격 보존·정체 전파·불변식 위반 감지에 대한 NUnit EditMode 회귀 검증.
-/// 입력·검사: 수동 구성한 벨트/아이템을 선택 시스템 순서로 진행해 위치/인덱스/진단 로그를 검사한다. 로그는 전후 정리하고 Play Mode/성능은 실행하지 않는다.
-/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
+/// 입력·검사: 수동 구성한 벨트/아이템을 선택 시스템 순서로 진행해 위치/인덱스/진단 로그를 검사한다. Play Mode/성능은 실행하지 않는다.
+/// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다. 실행별 전용 경로의 로그는 성공·실패 모두 보존한다.
 /// </summary>
 public class Phase2BeltIntegrationTests : EcsWorldTestFixture
 {
@@ -32,34 +33,11 @@ public class Phase2BeltIntegrationTests : EcsWorldTestFixture
         _beltExecutionHandle = _world.GetOrCreateSystem(typeof(BeltMovementExecutionSystem));
         _invariantValidationSystem = _world.GetOrCreateSystemManaged<WorldInvariantValidationSystem>();
 
-        _logDirectory = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Logs", "InvariantErrors"));
-        CleanLogDirectory();
-    }
-
-    [TearDown]
-    public override void TearDown()
-    {
-        CleanLogDirectory();
-        base.TearDown();
-    }
-
-    private void CleanLogDirectory()
-    {
-        try
-        {
-            if (Directory.Exists(_logDirectory))
-            {
-                var files = Directory.GetFiles(_logDirectory, "invariant_error_*.txt");
-                foreach (var file in files)
-                {
-                    File.Delete(file);
-                }
-            }
-        }
-        catch
-        {
-            // 테스트 정리 중 파일 잠금 예외 무시
-        }
+        _logDirectory = Path.GetFullPath(Path.Combine(
+            Application.dataPath, "..", "Logs", "Tests", nameof(Phase2BeltIntegrationTests),
+            Guid.NewGuid().ToString("N")));
+        _invariantValidationSystem.SetLogDirectory(_logDirectory);
+        TestContext.WriteLine($"Invariant reports for {TestContext.CurrentContext.Test.FullName}: {_logDirectory}");
     }
 
     private Entity CreateBelt(int2 position, DirectionEnum direction, float speed = 2.0f)
