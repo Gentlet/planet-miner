@@ -174,9 +174,9 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
     public void RecipeChange_PreservesMultipleStacks_WhenMovingRemainingInputs()
     {
         int maxStack = GetMaxStack(ItemTypeEnum.Iron_Ore);
-        _recipes = RecipeInitSystem.InitializeRecipeRegistry(_entityManager,
+        _recipes = RecipeConfigLoader.PublishConfig(_entityManager, RecipeConfigLoader.ParseJson(
             "{\"recipes\":[{\"id\":99,\"outputItemType\":\"Iron\",\"craftTime\":1," +
-            "\"ingredients\":[{\"itemType\":\"Iron_Ore\",\"amount\":" + (maxStack + 1) + "}]}]}");
+            "\"ingredients\":[{\"itemType\":\"Iron_Ore\",\"amount\":" + (maxStack + 1) + "}]}]}"));
 
         Entity crafter = SpawnCrafter();
         ChangeRecipe(crafter, 99);
@@ -374,6 +374,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
         {
             elapsed += GameConstants.MaxSimulationDeltaTime;
             Simulation.SetDeltaTime(GameConstants.MaxSimulationDeltaTime, elapsed);
+            Entities.PrepareSimulationConfiguration();
             pipeline.Update();
             _entityManager.CompleteAllTrackedJobs();
             Assert.AreEqual(0, validation.TotalViolationCount, "Every completed frame must preserve world invariants.");
@@ -502,6 +503,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
 
     private Entity CreateCrafterSource(bool withCustomPrefab, bool fromConstruction)
     {
+        Entities.PrepareBuildingConfiguration(BuildingTypeEnum.Crafter);
         if (_recipes == Entity.Null)
         {
             _recipes = RecipeInitSystem.InitializeRecipeRegistry(_entityManager);

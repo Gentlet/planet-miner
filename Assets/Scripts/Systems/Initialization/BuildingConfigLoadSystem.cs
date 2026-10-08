@@ -1,6 +1,5 @@
-using Unity.Burst;
+using System;
 using Unity.Entities;
-using UnityEngine;
 
 /// <summary>
 /// 역할·목적: BuildingConfig 게시를 기다리는 기존 초기화 진입점이다. 파일 로드와 설정 게시 자체는 하지 않는다.
@@ -27,7 +26,7 @@ public partial struct BuildingConfigLoadSystem : ISystem
 /// 입력·생성: OnCreate에서 Resources의 BuildingConfigLoader.DefaultResourcePath를 읽고 Loader가 검증한 설정을 이용한다.
 /// 출력·소유권: BuildingConfig와 스펙/자재 버퍼를 즉시 생성한다. 기존 singleton이 있으면 덮어쓰지 않는다.
 /// 이용: 배치 검증, 공사 요구량 구성과 완공 건물/철거 환급 생성이 게시 버퍼를 읽는다.
-/// 정리·가시화: 로드 실패는 오류를 기록하고 게시하지 않는다. OnUpdate 후 비활성화하며 설정은 World 수명 동안 남고 ECB는 사용하지 않는다.
+/// 정리·가시화: 로드/필수 종류 실패는 로그·미게시·즉시 Fatal이며 자동 재시도하지 않는다. 설정은 World 수명 동안 남고 ECB는 사용하지 않는다.
 /// </summary>
 [UpdateInGroup(typeof(InitializationSystemGroup))]
 public partial class BuildingConfigInitSystem : SystemBase
@@ -45,23 +44,45 @@ public partial class BuildingConfigInitSystem : SystemBase
 
     private void LoadAndPublish()
     {
-        if (SystemAPI.HasSingleton<BuildingConfig>())
+        if (SimulationFailureUtility.HasFatalError(EntityManager))
         {
             return;
         }
 
-        bool success = BuildingConfigLoader.TryLoadConfigFromResources(
-            BuildingConfigLoader.DefaultResourcePath,
-            out var configs,
-            out var materials);
+        try
+        {
+            if (SystemAPI.TryGetSingletonEntity<BuildingConfig>(out var entity))
+            {
+                if (!BuildingConfigLoader.ValidatePublishedConfig(EntityManager, entity))
+                {
+                    ReportFailure("Pre-registered BuildingConfig is incomplete.");
+                }
+                return;
+            }
 
-        if (success)
-        {
-            BuildingConfigLoader.PublishConfig(EntityManager, configs, materials);
+            bool success = BuildingConfigLoader.TryLoadConfigFromResources(
+                BuildingConfigLoader.DefaultResourcePath, out var configs, out var materials);
+            if (!success)
+            {
+                ReportFailure("Failed to load or validate BuildingConfig. Config will not be published.");
+                return;
+            }
+
+            if (BuildingConfigLoader.PublishConfig(EntityManager, configs, materials) == Entity.Null)
+            {
+                ReportFailure("Failed to publish BuildingConfig.");
+            }
         }
-        else
+        catch (Exception exception)
         {
-            Debug.LogError("[BuildingConfigInitSystem] Failed to load or validate BuildingConfig. Config will not be published.");
+            ReportFailure(exception.Message);
         }
+    }
+
+    private void ReportFailure(string reason)
+    {
+        SimulationFailureUtility.RecordInitializationFailure(EntityManager,
+            $"[BuildingConfigInitSystem] {reason} Game simulation stopped.",
+            "Building configuration initialization failed. See error log.");
     }
 }

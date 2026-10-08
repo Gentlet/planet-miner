@@ -62,10 +62,10 @@
 ## BuildingConfig
 
 - **종류·부착 대상·목적:** 필드 없는 일반 `IComponentData`. 건물 인스턴스가 아니라 건물 통합 설정 엔티티를 식별하는 싱글톤 태그다.
-- **생성:** Initialization의 managed `BuildingConfigInitSystem.OnCreate`가 기존 싱글톤이 없을 때 Resources의 BuildingConfig를 로드·검증하고 `BuildingConfigLoader.PublishConfig`로 즉시 생성한다. 실패하면 게시하지 않는다. 같은 파일의 `BuildingConfigLoadSystem`은 이 태그를 기다렸다가 한 번 실행 후 비활성화할 뿐 실제 파일을 읽지 않는다.
+- **생성:** Initialization의 managed `BuildingConfigInitSystem.OnCreate`가 Resources의 전체 11종 건물 설정을 검증하고 `BuildingConfigLoader.PublishConfig`로 즉시 생성한다. 파일/파싱/필수 종류 누락은 설정 미게시·로그·즉시 SimulationFatalError로 처리한다. 사전 등록도 제품 Init에서는 필수 종류·게시 버퍼를 확인한다. 같은 파일의 `BuildingConfigLoadSystem`은 태그를 기다린 뒤 비활성화할 뿐 파일을 읽지 않는다.
 - **결합:** 한 엔티티에 `BuildingConfigElement`, `BuildingConstructionMaterialElement`, 호환 태그 `BuildingRuntimeConfig`와 `BuildingRuntimeConfigElement`가 함께 붙는다. `PublishConfig` 자체는 기존 싱글톤 중복 검사를 하지 않으며, 자동 초기화 진입점이 기존 태그를 검사한다.
 - **읽기:** Command 배치는 이 엔티티에서 해금·자재 버퍼를 얻는다. StateApply의 건물 직접 생성/철거와 공사 완료는 태그와 설정 버퍼를 가진 싱글톤 엔티티를 얻어 스펙·환급 자재를 조회한다.
-- **수명·처리 경계:** 프레임 요청처럼 소비하지 않으며 ECB를 거치지 않고 초기 게시한다. Init 시스템이 비활성화되어도 데이터는 남는다. 런타임 삭제/재로드 시스템은 현재 없고 ECS 엔티티·버퍼가 World 종료 시 정리된다. 이 태그만으로 배치/생성 전체를 강제 차단하지 않으며 각 소비자에 설정 부재 분기가 있다.
+- **수명·처리 경계:** ECB 없이 초기 게시하고 World 종료까지 보존한다. GameSimulationGroup은 이 태그와 스펙/자재 버퍼를 포함한 필수 설정의 준비를 검사한다. 배치·직접 생성·완공은 무설정 fallback을 사용하지 않는다. 공통 Spawn은 대상 종류 설정 누락도 거부하고 호출자의 ECB에 Fatal을 기록한다. 완공은 생성 거부 시 현장·자재를 보존한다. 명시적 부분 게시 API는 Init을 실행하지 않는 격리 구성에 사용한다.
 - **근거:** [정의](../../../Assets/Scripts/Components/Buildings/BuildingConfigComponents.cs), [초기화 두 시스템](../../../Assets/Scripts/Systems/Initialization/BuildingConfigLoadSystem.cs), [게시 함수](../../../Assets/Scripts/Config/BuildingConfigLoader.cs), [배치](../../../Assets/Scripts/Systems/Command/BuildingPlacementCommandSystem.cs), [건물 수명주기](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingLifecycleApplySystem.cs).
 
 ## BuildingConfigElement

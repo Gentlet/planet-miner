@@ -219,7 +219,7 @@ public static class BuildingPlacementValidationUtility
         for (int i = 0; i < candidates.Length; i++)
         {
             var candidate = candidates[i];
-            bool isUnlocked = configBuffer.IsEmpty || BuildingConfigLookupUtility.IsBuildingUnlocked(configBuffer, candidate.TargetType);
+            bool isUnlocked = BuildingConfigLookupUtility.IsBuildingUnlocked(configBuffer, candidate.TargetType);
 
             var singleResult = ValidateSinglePlacement(
                 candidate.TargetType,
@@ -308,7 +308,7 @@ public static class BuildingPlacementValidationUtility
         for (int i = 0; i < candidates.Length; i++)
         {
             var candidate = candidates[i];
-            bool isUnlocked = !configs.IsCreated || configs.Length == 0 || BuildingConfigLookupUtility.IsBuildingUnlocked(configs, candidate.TargetType);
+            bool isUnlocked = configs.IsCreated && BuildingConfigLookupUtility.IsBuildingUnlocked(configs, candidate.TargetType);
 
             var singleResult = ValidateSinglePlacement(
                 candidate.TargetType,

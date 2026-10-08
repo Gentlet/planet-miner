@@ -44,7 +44,7 @@ Command → EndCommand
 - 각 도메인은 한 번만 실행한다. 건물의 이번 틱 입고 자재를 재차 생산 판단하지 않는다. 드론은 드론 실행 전 계획을 모두 준비하며, 드론 처리 도중 새 수집품이나 새 공간을 기존 계획에 추가하지 않는다.
 - 작업·경로·배정과 행동 결과는 EndSimulation에 공개한다. 새 작업·배정·경로는 다음 틱부터 사용한다.
 - 완공은 BuildingStateApply 마지막에서 판단한다. 이번 틱 드론의 마지막 납품·방해물 회수는 다음 틱 완공 판정에 반영된다. 이번 틱 완공된 건물은 드론에 보이지만 자체 생산·출고는 다음 틱부터 한다.
-- GameSimulationGroup은 틱 시작에 PrefabDatabaseReady와 SimulationFatalError를 검사한다. 중간 EndBuilding에서 오류가 확정되어도 현재 틱은 끝까지 수행하고 다음 틱부터 차단한다. 현재 틱 전체 rollback은 보장하지 않는다.
+- GameSimulationGroup은 틱 시작에 PrefabDatabaseReady, 건물·아이템·레시피·자원/바닥 설정 엔티티와 필수 버퍼, SimulationFatalError를 검사한다. 중간 EndBuilding에서 오류가 확정되어도 현재 틱은 끝까지 수행하고 다음 틱부터 차단한다. 현재 틱 전체 rollback은 보장하지 않는다.
 
 | 그룹 / 소스 위치 | 시스템과 책임 |
 | --- | --- |
@@ -107,7 +107,7 @@ Decision은 생성·무효화·경로 의도와 후보만 작성한다. Executio
 - Baker는 프리팹 참조와 정적 식별 데이터를 제공하고, 생성 시스템이 위치·소유권·진행도·요청의 런타임 상태를 초기화한다. `ItemAuthoring`은 `ItemIdentity`를 베이킹한다. 건물·아이템·자원 DB는 각각 별도 엔티티와 버퍼를 사용한다.
 - 프리팹 DB 부재 fallback은 건물·아이템 생성과 철거 자재 환급에서 제거했다. 테스트도 명시적인 ECS 프리팹 DB를 구성한다. 설정값 기본값 fallback과는 별개다.
 - `PrefabDatabaseInitializationSystem`은 Initialization 마지막에 요청된 SubScene 로딩을 기다린 뒤 건물·아이템·자원 DB의 유일성, 등록 타입·중복·필수 항목, 엔티티 생존·Prefab·LocalTransform, 아이템 ItemIdentity 일치를 검증한다. 건물은 None/Count/ConstructionSite를 제외한 종류, 아이템은 None을 제외한 종류, 자원은 활성 생성 설정의 품목이 필수다. 실패하면 오류를 기록하고 시작을 차단하며 자동 재시도하지 않는다.
-- `GameSimulationGroup`은 `PrefabDatabaseReady`가 있고 `SimulationFatalError`가 없을 때만 실행한다. DB는 검증 후 월드 수명 동안 불변이다. Spawn 중 DB/항목 누락은 ECB로 중단 오류를 게시하여 다음 틱을 차단한다. 현재 틱 전체 rollback은 보장하지 않는다. 공사 완료는 공통 Spawn의 non-Null 결과 이후에만 자재·현장 삭제를 기록한다. Null이면 현장과 보관 자재를 보존한다. 직접 생성 요청 소비·생산 결과 Clear·환급 실패 정책의 별도 보상은 이번 변경 범위가 아니다.
+- `GameSimulationGroup`은 프리팹 DB와 필수 설정의 게시 데이터가 준비되고 `SimulationFatalError`가 없을 때만 실행한다. `PrefabDatabaseReady` 자체는 설정 준비를 뜻하지 않는다. DB는 검증 후 월드 수명 동안 불변이다. Spawn 중 DB/항목 누락은 ECB로 중단 오류를 게시하여 다음 틱을 차단한다. 현재 틱 전체 rollback은 보장하지 않는다. 공사 완료는 공통 Spawn의 non-Null 결과 이후에만 자재·현장 삭제를 기록한다. Null이면 현장과 보관 자재를 보존한다. 직접 생성 요청 소비·생산 결과 Clear·환급 실패 정책의 별도 보상은 이번 변경 범위가 아니다.
 - `DirectionEnum`의 `Up, Right, Down, Left, Count` 순서는 회전과 직렬화 의미를 가진다. 기존 enum의 값·순서·`None`·정의된 terminal `Count`를 보존하고, 모든 enum에 `Count`가 있다고 가정하지 않는다. 새 도메인 enum은 기존 `Enum` 접미사 관례를 우선한다.
 - MonoBehaviour는 Authoring·표시·입력/요청 생성에 집중하고, 게임플레이 상태와 작업 진행은 ECS가 소유한다. 같은 역할의 새 공간 캐시나 병렬 구현을 중복 생성하지 않는다.
 - 사용자의 명시적 요청이 없으면 하나의 시스템을 여러 partial 소스 파일로 분리하지 않는다. Unity Entities 소스 생성에 필요한 partial 선언은 유지한다.
@@ -120,12 +120,14 @@ Decision은 생성·무효화·경로 의도와 후보만 작성한다. Executio
 
 | 설정 입력 | 게시 시스템 / 데이터 |
 | --- | --- |
-| `Assets/StreamingAssets/ItemConfig.json` | `ItemConfigInitSystem` → `ItemRegistry` / `ItemConfigElement` 버퍼. 설정 부재 시 기본값 경로가 있다. |
-| `Assets/Resources/Config/CrafterRecipeConfig.json` | `RecipeInitSystem` / `RecipeConfigLoader` → `RecipeRegistry`와 레시피·재료·출력 버퍼. 기본 레시피 경로가 있다. |
+| `Assets/StreamingAssets/ItemConfig.json` | `ItemConfigInitSystem` → `ItemRegistry` / `ItemConfigElement` 버퍼. 유효한 공통값·품목별 예외 규칙을 유지하며 파일/파싱 실패는 중단 오류다. |
+| `Assets/Resources/Config/CrafterRecipeConfig.json` | `RecipeInitSystem` / `RecipeConfigLoader` → `RecipeRegistry`와 레시피·재료·출력 버퍼. 전체 초기화는 ID 1~5를 요구하며 파일 실패 뒤 기본 레시피로 대체하지 않는다. |
 | `Assets/Resources/Config/BuildingConfig.json` | `BuildingConfigInitSystem` / `BuildingConfigLoader` → `BuildingConfigElement`, `BuildingConstructionMaterialElement`, 호환용 `BuildingRuntimeConfigElement`. 검증 실패 시 게시하지 않는다. |
 | `Assets/Resources/Config/WorldGenerationConfig.json` | `WorldGenerationConfigLoadSystem` / `WorldGenerationConfigLoader` → 자원 설정과 `FloorGenerationSettings`, `FloorBiomeElement`, `FloorVariantElement`를 같은 엔티티에 게시한다. 자원·바닥·Sprite 참조 검증 실패 시 부분 게시하지 않는다. |
 
 `BuildingConfigLoadSystem.cs`에는 실제 로더인 managed `BuildingConfigInitSystem`과, `BuildingConfig`를 요구하고 한 번 실행 후 비활성화되는 `BuildingConfigLoadSystem`이 함께 있다. 이름만 보고 로드 책임을 잘못 배정하지 않는다. 기존 전력·드론·연구·시작 아이템 JSON의 존재는 현재 로더가 사용한다는 증거가 아니다.
+
+- 2026-10-08 F-011: 현재 네 설정 로드 경로와 프리팹 준비는 파일 누락·읽기/파싱 실패·필수 데이터 누락을 로그·해당 설정 미게시·즉시 `SimulationFatalError`로 처리한다. 앱 종료·자동 재시도는 추가하지 않는다. 건물은 None/Count/ConstructionSite를 제외한 11종, 레시피는 ID 1~5가 필수다. 자원과 바닥은 같은 엔티티의 전체 구성을 요구한다. 정상 설정의 빈 건축 자재·기본 footprint·아이템 공통값/품목별 기본 규칙은 유지한다. 격리 테스트는 Init 없이 필요한 최소 데이터를 명시적으로 게시한다. 배치와 공통 Spawn은 설정 부재를 허용하지 않으며 Spawn의 대상 종류 누락도 거부한다. 검증 범위는 [F-011 기록](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/F011-Verification.md>)을 따른다.
 
 `BuildingConfigLoader`는 `requiredResearch` 변환 전에 UTF-8 길이가 기존 `FixedString32Bytes.Capacity`(29)를 넘는지 검사한다. 초과하면 파싱을 실패시키고 두 out 목록을 null로 유지하여 게시하지 않는다.
 

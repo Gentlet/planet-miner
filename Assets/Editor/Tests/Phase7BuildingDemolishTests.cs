@@ -554,6 +554,7 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
     [Test]
     public void Test13_EndCommandECB_Playback_ImmediateAvailabilityForDownstreamPhases()
     {
+        Entities.PrepareBuildingConfiguration(BuildingTypeEnum.Storage);
         // 시나리오: Phase 1 CommandGroup에서 배치 요청을 수행하면,
         // EndCommandEntityCommandBufferSystem에 의해 동일 프레임 Phase 2 진입 전에 물리적 ConstructionSite가 즉시 실체화됨.
         var commandGroup = _world.GetOrCreateSystemManaged<CommandGroup>();

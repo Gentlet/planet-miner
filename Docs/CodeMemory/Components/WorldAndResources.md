@@ -9,9 +9,9 @@
 ## ResourceGenerationSettings
 
 - **목적·필드:** `WorldSeed`는 자원 배치와 바닥 선택의 공통 시드, `InitialChunkSize`는 최초 요청할 청크 사각형 한 변의 길이다. `IComponentData`이며 생성자에서 0 이하 크기는 3으로 바꾼다.
-- **부착·생성:** `WorldGenerationConfigLoadSystem`이 Initialization에서 Resources의 월드 JSON을 검증한 뒤 `WorldGenerationConfigLoader.PublishConfig`로 만드는 설정 엔티티에 부착한다. 같은 엔티티에 자원 설정 버퍼와 바닥 설정·버퍼가 게시된다. 이미 싱글톤이 있으면 로더는 게시하지 않고 비활성화한다.
+- **부착·생성:** `WorldGenerationConfigLoadSystem`이 Resources의 월드 JSON을 검증해 같은 엔티티에 자원과 바닥 설정·버퍼를 게시한다. 기존 설정도 자원 버퍼·바닥 설정·바이옴/변형 버퍼의 완전성을 확인하며 자원 전용 등록을 전체 준비로 인정하지 않는다. 불완전하면 보충/중복 게시 없이 Fatal로 거부한다.
 - **Reader·처리:** `InitialChunkLoadBootstrapSystem`은 크기를 읽어 초기 요청을 넣는다. `ResourceGenerationCommandSystem`은 Command에서 시드와 같은 엔티티의 자원 설정을 읽는다. `PrefabDatabaseInitializationSystem`은 자원 설정 엔티티의 유일성과 필수 프리팹을 검증한다. `V2FloorBiomePreview`는 시드를 바닥 계산에 전달한다.
-- **생명주기:** 자동 로더는 성공·실패 후 모두 한 번 비활성화한다. 게시된 값의 런타임 Writer·자동 재로드·전용 삭제 경로는 없고 일반 ECS 엔티티로 World 종료 때 정리된다. JSON 검증 실패 때는 설정을 게시하지 않는다.
+- **생명주기:** 자동 로더는 성공·실패와 기존 Fatal 뒤 비활성화한다. 파일/파싱/검증 실패는 로그·해당 설정 미게시·즉시 SimulationFatalError이며 자동 재시도하지 않는다. 게시 실패는 이번 호출의 미완성 엔티티만 회수한다. 설정은 World 종료 때 정리한다.
 - **결합 계약:** 자동 로더는 자원과 바닥을 함께 검증하지만 공개 `PublishConfig` 오버로드는 `floor == null`인 자원 전용 게시도 허용한다. 공개 함수 자체는 기존 싱글톤을 거부하지 않는다. 따라서 자동 초기화의 1회 게시와 공개 함수의 호출 가능 범위를 구분한다.
 - **소스:** [정의](../../../Assets/Scripts/Components/World/WorldGenerationConfigComponents.cs), [자동 로더](../../../Assets/Scripts/Systems/Initialization/WorldGenerationConfigLoadSystem.cs), [검증·게시](../../../Assets/Scripts/Config/WorldGenerationConfigLoader.cs), [초기 요청](../../../Assets/Scripts/Systems/Initialization/InitialChunkLoadBootstrapSystem.cs).
 

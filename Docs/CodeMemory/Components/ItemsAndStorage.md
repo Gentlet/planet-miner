@@ -43,10 +43,10 @@ ECB 재생으로 구조가 변경되는 경계 전후에 기존 DynamicBuffer �
 ## ItemRegistry
 
 - **종류·부착 대상:** 설정 엔티티 하나에 붙는 일반 `IComponentData`. 같은 엔티티의 `ItemConfigElement` 버퍼를 사용하는 조회 기준이며 `DefaultMaxStack`을 보관한다. 개별 아이템이나 창고에 붙지 않는다.
-- **생성:** Initialization의 managed `ItemConfigInitSystem`이 `StreamingAssets/ItemConfig.json` 또는 기본값으로 Registry+버퍼를 한 번 게시한다. `InitializeItemRegistry` 공개 API로 사전 등록할 수도 있다. 기존 Registry가 있으면 공개 API는 입력 처리 전에 예외로 거부한다.
+- **생성:** Initialization의 managed `ItemConfigInitSystem`이 유효한 `StreamingAssets/ItemConfig.json`의 공통값·품목별 예외로 Registry+버퍼를 한 번 게시한다. 파일 누락·읽기/파싱 실패는 로그·설정 미게시·즉시 SimulationFatalError다. `InitializeItemRegistry`로 사전 등록할 수 있으며 기존 Registry가 있으면 입력 처리 전에 예외로 거부한다.
 - **Reader:** Command의 `CrafterRecipeCommandSystem`/`BuildingInputSlotUtility`가 입력 슬롯 수를 계산한다. Decision의 `MinerDecisionSystem`/`CrafterDecisionSystem`은 생산품 스택 한도를, Reservation의 `BuildingStorageInputReservationSystem`은 입고 슬롯 스택 한도를 읽는다. 개발용 불변식 진단도 설정을 참조한다.
 - **처리 방법:** `GetMaxStack`은 품목 enum 값을 버퍼 인덱스로 사용한다. 인덱스가 범위를 벗어나면 `DefaultMaxStack` 또는 호출자가 넘긴 fallback을 반환한다. Reader별 설정 부재 처리와 Registry의 범위 밖 fallback은 구별한다.
-- **수명·결합:** 자동 Init은 기존 Registry에 버퍼가 있는지 검사한 뒤 자신을 비활성화한다. 게시한 설정은 World 수명 동안 읽기 전용이며 Init 시스템 제거와 함께 삭제/Dispose하지 않는다. 게시 도중 실패하면 해당 호출이 생성한 미완성 엔티티만 회수한다.
+- **수명·결합:** 자동 Init은 기존 Registry의 버퍼와 품목 번호에 대응하는 전체 항목 구성을 확인한다. 초기화 실패나 기존 Fatal 뒤 비활성화하며 자동 재시도하지 않는다. 설정은 World 수명 동안 읽기 전용이며 Init 제거와 함께 삭제/Dispose하지 않는다. 게시 실패 시 이번 호출의 미완성 엔티티만 회수한다.
 - **근거:** [선언·조회](../../../Assets/Scripts/Components/Items/ItemConfigComponents.cs), [게시](../../../Assets/Scripts/Systems/Initialization/ItemConfigInitSystem.cs), [입력 구성](../../../Assets/Scripts/Common/BuildingInputSlotUtility.cs), [채굴 판단](../../../Assets/Scripts/Systems/Buildings/Decision/MinerDecisionSystem.cs), [제작 판단](../../../Assets/Scripts/Systems/Buildings/Decision/CrafterDecisionSystem.cs), [입고 예약](../../../Assets/Scripts/Systems/Buildings/Reservation/BuildingStorageInputReservationSystem.cs).
 
 ## ItemConfigElement

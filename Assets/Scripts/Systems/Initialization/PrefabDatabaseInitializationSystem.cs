@@ -27,6 +27,12 @@ public partial class PrefabDatabaseInitializationSystem : SystemBase
 
     protected override void OnUpdate()
     {
+        if (SimulationFailureUtility.HasFatalError(EntityManager))
+        {
+            Enabled = false;
+            return;
+        }
+
         using var scenes = _sceneQuery.ToEntityArray(Allocator.Temp);
         bool loading = false;
         foreach (Entity scene in scenes)
@@ -62,9 +68,9 @@ public partial class PrefabDatabaseInitializationSystem : SystemBase
 
     private void Fail(string reason)
     {
-        Debug.LogError($"[PrefabDatabaseInitializationSystem] {reason} Game simulation stopped.");
-        Entity error = EntityManager.CreateEntity(typeof(SimulationFatalError));
-        EntityManager.SetComponentData(error, new SimulationFatalError { Message = new FixedString128Bytes("Prefab database initialization failed. See error log.") });
+        SimulationFailureUtility.RecordInitializationFailure(EntityManager,
+            $"[PrefabDatabaseInitializationSystem] {reason} Game simulation stopped.",
+            "Prefab database initialization failed. See error log.");
         Enabled = false;
     }
 

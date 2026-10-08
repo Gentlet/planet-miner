@@ -24,7 +24,7 @@ public class ItemConfigJsonEntry
 
 /// <summary>
 /// 역할·목적: Initialization에서 품목별 최대 스택 설정을 한 번 게시한다.
-/// 입력·생성: StreamingAssets의 ItemConfig.json 또는 사전 등록 API의 JSON을 읽으며 읽기/파싱 실패는 현재 기본값 정책을 사용한다.
+/// 입력·생성: StreamingAssets의 ItemConfig.json 또는 사전 등록 API의 JSON을 읽는다. 유효한 공통값/품목별 예외는 유지하며 읽기/파싱 실패는 중단 오류다.
 /// 출력·소유권: ItemRegistry와 ItemConfigElement 버퍼를 즉시 생성한다. 유효한 기존 Registry는 보존하고 직접 중복 게시 API 호출은 거부한다.
 /// 이용: 입고 슬롯 예약, 생산 출력 공간 검사와 드론 보관 계획이 World 수명 동안 읽기 전용으로 이용한다.
 /// 정리: 초기화 뒤 비활성화하며 게시 도중 예외는 이번 호출이 만든 미완성 엔티티만 회수한다. 게시된 설정을 시스템 종료 시 삭제하지 않는다.
@@ -34,13 +34,33 @@ public partial class ItemConfigInitSystem : SystemBase
 {
     protected override void OnUpdate()
     {
+        if (SimulationFailureUtility.HasFatalError(EntityManager))
+        {
+            Enabled = false;
+            return;
+        }
+
         using var query = EntityManager.CreateEntityQuery(ComponentType.ReadOnly<ItemRegistry>());
         if (!query.IsEmptyIgnoreFilter)
         {
             Entity registryEntity = query.GetSingletonEntity();
             if (!EntityManager.HasBuffer<ItemConfigElement>(registryEntity))
             {
-                throw new InvalidOperationException("The pre-registered ItemRegistry requires an ItemConfigElement buffer.");
+                ReportFailure(EntityManager, "The pre-registered ItemRegistry requires an ItemConfigElement buffer.");
+                Enabled = false;
+                return;
+            }
+
+            var items = EntityManager.GetBuffer<ItemConfigElement>(registryEntity, true);
+            int count = Enum.GetValues(typeof(ItemTypeEnum)).Length;
+            bool complete = items.Length == count;
+            for (int i = 0; complete && i < count; i++)
+            {
+                complete = items[i].ItemType == (ItemTypeEnum)i;
+            }
+            if (!complete)
+            {
+                ReportFailure(EntityManager, "The pre-registered ItemRegistry is missing its indexed item definitions.");
             }
 
             Enabled = false;
@@ -64,61 +84,69 @@ public partial class ItemConfigInitSystem : SystemBase
             throw new InvalidOperationException("ItemRegistry is already registered. Runtime replacement is not supported.");
         }
 
-        string jsonText = jsonOverride;
-        if (string.IsNullOrEmpty(jsonText))
-        {
-            jsonText = TryReadConfigFile();
-        }
-
-        var items = ParseItems(jsonText, out int defaultMaxStack);
-        Entity registryEntity = entityManager.CreateEntity(typeof(ItemRegistry), typeof(ItemConfigElement));
         try
         {
-            entityManager.SetComponentData(registryEntity, new ItemRegistry { DefaultMaxStack = defaultMaxStack });
-            var buffer = entityManager.GetBuffer<ItemConfigElement>(registryEntity);
-            buffer.EnsureCapacity(items.Count);
-            foreach (var item in items)
+            string jsonText = jsonOverride ?? ReadConfigFile();
+            var items = ParseItems(jsonText, out int defaultMaxStack);
+            Entity registryEntity = entityManager.CreateEntity(typeof(ItemRegistry), typeof(ItemConfigElement));
+            try
             {
-                buffer.Add(item);
+                entityManager.SetComponentData(registryEntity, new ItemRegistry { DefaultMaxStack = defaultMaxStack });
+                var buffer = entityManager.GetBuffer<ItemConfigElement>(registryEntity);
+                buffer.EnsureCapacity(items.Count);
+                foreach (var item in items)
+                {
+                    buffer.Add(item);
+                }
+                return registryEntity;
             }
-
-            return registryEntity;
+            catch
+            {
+                // 이번 호출이 생성한 미완성 엔티티만 회수한다. 사전 등록 설정은 건드리지 않는다.
+                entityManager.DestroyEntity(registryEntity);
+                throw;
+            }
         }
-        catch
+        catch (Exception exception)
         {
-            // 이번 호출이 생성한 미완성 엔티티만 회수한다. 사전 등록 설정은 건드리지 않는다.
-            entityManager.DestroyEntity(registryEntity);
-            throw;
+            ReportFailure(entityManager, exception.Message);
+            return Entity.Null;
         }
+    }
+
+    private static void ReportFailure(EntityManager entityManager, string reason)
+    {
+        SimulationFailureUtility.RecordInitializationFailure(entityManager,
+            $"[ItemConfigInitSystem] {reason} Game simulation stopped.",
+            "Item configuration initialization failed. See error log.");
     }
 
     private static List<ItemConfigElement> ParseItems(string jsonText, out int defaultMaxStack)
     {
-        defaultMaxStack = 50;
-        var customStacks = new Dictionary<ItemTypeEnum, int>();
-        if (!string.IsNullOrEmpty(jsonText))
+        if (string.IsNullOrWhiteSpace(jsonText))
         {
-            try
+            throw new ArgumentException("Item JSON is null or empty.", nameof(jsonText));
+        }
+        var data = JsonUtility.FromJson<ItemConfigJsonData>(jsonText);
+        if (data == null)
+        {
+            throw new ArgumentException("Parsed item configuration is null.", nameof(jsonText));
+        }
+
+        defaultMaxStack = data.DefaultMaxStack > 0 ? data.DefaultMaxStack : 50;
+        var customStacks = new Dictionary<ItemTypeEnum, int>();
+        if (data.Items != null)
+        {
+            foreach (var item in data.Items)
             {
-                var data = JsonUtility.FromJson<ItemConfigJsonData>(jsonText);
-                if (data != null)
+                if (item == null)
                 {
-                    defaultMaxStack = data.DefaultMaxStack > 0 ? data.DefaultMaxStack : 50;
-                    if (data.Items != null)
-                    {
-                        foreach (var item in data.Items)
-                        {
-                            if (Enum.TryParse<ItemTypeEnum>(item.ItemType, true, out var parsedType))
-                            {
-                                customStacks[parsedType] = item.MaxStack;
-                            }
-                        }
-                    }
+                    throw new ArgumentException("Item configuration contains a null entry.", nameof(jsonText));
                 }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[ItemConfigInitSystem] Failed to parse ItemConfig.json, falling back to defaults. Error: {ex.Message}");
+                if (Enum.TryParse<ItemTypeEnum>(item.ItemType, true, out var parsedType))
+                {
+                    customStacks[parsedType] = item.MaxStack;
+                }
             }
         }
 
@@ -136,28 +164,19 @@ public partial class ItemConfigInitSystem : SystemBase
         return items;
     }
 
-    private static string TryReadConfigFile()
+    private static string ReadConfigFile()
     {
-        try
+        string path = Path.Combine(Application.streamingAssetsPath, "ItemConfig.json");
+        if (File.Exists(path))
         {
-            string path = Path.Combine(Application.streamingAssetsPath, "ItemConfig.json");
-            if (File.Exists(path))
-            {
-                return File.ReadAllText(path);
-            }
-
-            string altPath = Path.Combine(Application.dataPath, "StreamingAssets", "ItemConfig.json");
-            if (File.Exists(altPath))
-            {
-                return File.ReadAllText(altPath);
-            }
+            return File.ReadAllText(path);
         }
-        catch (Exception ex)
+        string altPath = Path.Combine(Application.dataPath, "StreamingAssets", "ItemConfig.json");
+        if (File.Exists(altPath))
         {
-            Debug.LogWarning($"[ItemConfigInitSystem] Exception while reading config file: {ex.Message}");
+            return File.ReadAllText(altPath);
         }
-
-        return null;
+        throw new FileNotFoundException($"Item config file was not found at '{path}' or '{altPath}'.", path);
     }
 
     /// <summary>

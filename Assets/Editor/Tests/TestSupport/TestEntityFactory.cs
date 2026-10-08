@@ -19,6 +19,100 @@ namespace PlanetMiner.Tests
             _entityManager = entityManager;
         }
 
+        /// <summary>격리 사례가 지정한 종류의 최소 생성 설정을 준비한다. 제품 전체 파일 검증을 실행하지 않는다.</summary>
+        public void PrepareBuildingConfiguration(params BuildingTypeEnum[] types)
+        {
+            using var query = _entityManager.CreateEntityQuery(typeof(BuildingConfig));
+            Entity entity = query.IsEmptyIgnoreFilter
+                ? _entityManager.CreateEntity(typeof(BuildingConfig))
+                : query.GetSingletonEntity();
+            if (!_entityManager.HasBuffer<BuildingConfigElement>(entity))
+                _entityManager.AddBuffer<BuildingConfigElement>(entity);
+            if (!_entityManager.HasBuffer<BuildingConstructionMaterialElement>(entity))
+                _entityManager.AddBuffer<BuildingConstructionMaterialElement>(entity);
+            if (!_entityManager.HasBuffer<BuildingRuntimeConfigElement>(entity))
+                _entityManager.AddBuffer<BuildingRuntimeConfigElement>(entity);
+
+            var configs = _entityManager.GetBuffer<BuildingConfigElement>(entity);
+            foreach (var type in types)
+            {
+                if (BuildingConfigLookupUtility.TryGetConfig(configs, type, out _))
+                    continue;
+                configs.Add(new BuildingConfigElement(type, type == BuildingTypeEnum.Belt ? 2f : 1f, 20, true,
+                    footprint: BuildingLifecycleUtility.GetDefaultFootprint(type)));
+            }
+        }
+
+        /// <summary>선택 시스템 그룹의 공개 설정 전제만 직접 준비한다. DB Ready와 제품 Init 검증은 대신하지 않는다.</summary>
+        public void PrepareSimulationConfiguration()
+        {
+            PrepareBuildingConfiguration(BuildingTypeEnum.Belt, BuildingTypeEnum.Miner,
+                BuildingTypeEnum.Crafter, BuildingTypeEnum.Storage);
+
+            using var items = _entityManager.CreateEntityQuery(typeof(ItemRegistry));
+            if (items.IsEmptyIgnoreFilter)
+            {
+                Entity entity = _entityManager.CreateEntity(typeof(ItemRegistry), typeof(ItemConfigElement));
+                _entityManager.SetComponentData(entity, new ItemRegistry { DefaultMaxStack = 50 });
+                var buffer = _entityManager.GetBuffer<ItemConfigElement>(entity);
+                foreach (ItemTypeEnum type in System.Enum.GetValues(typeof(ItemTypeEnum)))
+                    buffer.Add(new ItemConfigElement(type, ItemConfigInitSystem.GetDefaultMaxStackFor(type, 50)));
+            }
+
+            using var recipes = _entityManager.CreateEntityQuery(typeof(RecipeRegistry));
+            if (recipes.IsEmptyIgnoreFilter)
+            {
+                Entity entity = _entityManager.CreateEntity(typeof(RecipeRegistry), typeof(RecipeConfigElement),
+                    typeof(RecipeIngredientElement), typeof(RecipeOutputElement));
+                _entityManager.GetBuffer<RecipeConfigElement>(entity).Add(new RecipeConfigElement
+                {
+                    Id = 1, CraftTime = 1f, IngredientCount = 1, OutputCount = 1
+                });
+                _entityManager.GetBuffer<RecipeIngredientElement>(entity).Add(new RecipeIngredientElement(ItemTypeEnum.Iron_Ore, 1));
+                _entityManager.GetBuffer<RecipeOutputElement>(entity).Add(new RecipeOutputElement(ItemTypeEnum.Iron, 1));
+            }
+
+            using var world = _entityManager.CreateEntityQuery(typeof(ResourceGenerationSettings));
+            Entity worldEntity = world.IsEmptyIgnoreFilter
+                ? _entityManager.CreateEntity(typeof(ResourceGenerationSettings))
+                : world.GetSingletonEntity();
+            if (!_entityManager.HasBuffer<ResourceGenerationConfigElement>(worldEntity))
+                _entityManager.AddBuffer<ResourceGenerationConfigElement>(worldEntity).Add(
+                    new ResourceGenerationConfigElement(ItemTypeEnum.Iron_Ore, 1f, 1, 1, 1f, 1, 1));
+            if (!_entityManager.HasComponent<FloorGenerationSettings>(worldEntity))
+                _entityManager.AddComponentData(worldEntity, new FloorGenerationSettings
+                {
+                    BiomeRegionSizeInChunks = 1, TransitionWidthInChunks = 1,
+                    BoundaryNoiseScaleInCells = 1f, NearBiomePreferenceExponent = 1f, TransitionVariantCount = 1
+                });
+            if (!_entityManager.HasBuffer<FloorBiomeElement>(worldEntity))
+                _entityManager.AddBuffer<FloorBiomeElement>(worldEntity).Add(new FloorBiomeElement
+                {
+                    Id = "fixture", SelectionWeight = 1f, VariantStart = 1, VariantCount = 1
+                });
+            if (!_entityManager.HasBuffer<FloorVariantElement>(worldEntity))
+            {
+                var variants = _entityManager.AddBuffer<FloorVariantElement>(worldEntity);
+                variants.Add(new FloorVariantElement { SpriteResourcePath = "fixture", Weight = 1f });
+                variants.Add(new FloorVariantElement { SpriteResourcePath = "fixture", Weight = 1f });
+            }
+        }
+
+        public void PrepareConstructionConfiguration()
+        {
+            using var query = _entityManager.CreateEntityQuery(typeof(ConstructionSite));
+            using var sites = query.ToComponentDataArray<ConstructionSite>(Allocator.Temp);
+            var types = new System.Collections.Generic.HashSet<BuildingTypeEnum>();
+            foreach (var site in sites)
+            {
+                if (site.TargetBuildingType != BuildingTypeEnum.None && site.TargetBuildingType != BuildingTypeEnum.ConstructionSite)
+                    types.Add(site.TargetBuildingType);
+            }
+            var required = new BuildingTypeEnum[types.Count];
+            types.CopyTo(required);
+            PrepareBuildingConfiguration(required);
+        }
+
         public Entity CreateResourceNode(
             int2 position,
             ItemTypeEnum resourceType,

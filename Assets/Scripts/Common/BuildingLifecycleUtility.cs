@@ -6,7 +6,7 @@ using Unity.Transforms;
 /// <summary>
 /// 역할·목적: 직접 생성과 현장 완공이 같은 완공 건물 초기화 경계를 사용하게 한다.
 /// 입력·출력: 종류·위치·기본 크기·설정/DB Lookup을 받아 호출자의 ECB에 공통/종류별 런타임 구성을 기록한다.
-/// 이용: BuildingLifecycleApplySystem과 ConstructionLifecycleApplySystem이 호출한다. DB/항목 누락은 오류 기록 후 Null을 반환하며 대체 엔티티를 만들지 않는다.
+/// 이용: 직접 생성과 완공이 호출한다. 설정/대상 종류/프리팹 누락은 오류 기록 후 Null을 반환하며 대체 엔티티를 만들지 않는다.
 /// 수명·가시화: 반환 Entity는 지연 생성 참조이며 실제 건물은 호출자가 지정한 종료 ECB에서 실체화한다. 요청/현장/자재 소비와 실패 보존 정책은 호출자가 소유한다.
 /// </summary>
 public static class BuildingLifecycleUtility
@@ -30,22 +30,31 @@ public static class BuildingLifecycleUtility
             return Entity.Null;
         }
 
-        int2 baseFootprint = footprintSize;
-        float speed = (targetType == BuildingTypeEnum.Belt) ? 2.0f : 1.0f;
-        int storageCapacity = 20;
-
-        if (hasConfig && configEntity != Entity.Null && configBufferLookup.HasBuffer(configEntity))
+        if (!hasConfig)
         {
-            var configBuffer = configBufferLookup[configEntity];
-            if (BuildingConfigLookupUtility.TryGetConfig(configBuffer, targetType, out var config))
-            {
-                speed = config.Speed;
-                storageCapacity = config.StorageCapacity;
-                if (baseFootprint.x <= 0 || baseFootprint.y <= 0)
-                {
-                    baseFootprint = config.Footprint;
-                }
-            }
+            return RejectMissingConfiguration(ref ecb, targetType);
+        }
+        if (configEntity == Entity.Null)
+        {
+            return RejectMissingConfiguration(ref ecb, targetType);
+        }
+        if (!configBufferLookup.HasBuffer(configEntity))
+        {
+            return RejectMissingConfiguration(ref ecb, targetType);
+        }
+
+        var configBuffer = configBufferLookup[configEntity];
+        if (!BuildingConfigLookupUtility.TryGetConfig(configBuffer, targetType, out var config))
+        {
+            return RejectMissingConfiguration(ref ecb, targetType);
+        }
+
+        int2 baseFootprint = footprintSize;
+        float speed = config.Speed;
+        int storageCapacity = config.StorageCapacity;
+        if (baseFootprint.x <= 0 || baseFootprint.y <= 0)
+        {
+            baseFootprint = config.Footprint;
         }
 
         if (baseFootprint.x <= 0 || baseFootprint.y <= 0)
@@ -89,6 +98,15 @@ public static class BuildingLifecycleUtility
         AttachTypeSpecificComponents(ref ecb, newBuilding, targetType, direction, speed, storageCapacity);
 
         return newBuilding;
+    }
+
+    private static Entity RejectMissingConfiguration(ref EntityCommandBuffer ecb, BuildingTypeEnum type)
+    {
+        FixedString128Bytes message = "[BuildingLifecycleUtility] Missing configuration for building type '";
+        message.Append(type.ToFixedString());
+        message.Append((FixedString128Bytes)"'. Spawn rejected.");
+        SimulationFailureUtility.Record(ref ecb, message);
+        return Entity.Null;
     }
 
     public static void AttachTypeSpecificComponents(

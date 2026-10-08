@@ -72,6 +72,17 @@ public partial struct BuildingPlacementCommandSystem : ISystem
         // 설정 버퍼를 임시 배열로 복사해 검증과 ECB 기록 동안 같은 입력을 사용한다.
         // 여기서 해금/자재 요구량만 읽으며 설정이나 드론 관리 상태를 변경하지 않는다.
         bool hasConfig = SystemAPI.TryGetSingletonEntity<BuildingConfig>(out var configEntity);
+        if (!hasConfig || !state.EntityManager.HasBuffer<BuildingConfigElement>(configEntity) ||
+            !state.EntityManager.HasBuffer<BuildingConstructionMaterialElement>(configEntity))
+        {
+            SimulationFailureUtility.Record(ref ecb, "[BuildingPlacementCommandSystem] Missing building configuration. Placement rejected.");
+            foreach (var (_, entity) in SystemAPI.Query<RefRO<BuildingPlacementRequest>>().WithEntityAccess())
+            {
+                ecb.DestroyEntity(entity);
+            }
+            return;
+        }
+
         NativeArray<BuildingConfigElement> configs = default;
         NativeArray<BuildingConstructionMaterialElement> materials = default;
 
@@ -127,29 +138,15 @@ public partial struct BuildingPlacementCommandSystem : ISystem
 
             // 직전 동기화의 점유·앞 요청의 최종 승인·이 묶음 내부 후보 충돌을 검사한다.
             // 같은 틱의 취소/철거가 기록됐더라도 인덱스가 갱신되기 전 점유는 그대로 사용한다.
-            if (hasConfig)
-            {
-                BuildingPlacementValidationUtility.ValidateBatchPlacement(
-                    candidates,
-                    request.Flags,
-                    buildingMap.AsReadOnly(),
-                    resourceMap.AsReadOnly(),
-                    itemMap.AsReadOnly(),
-                    results,
-                    configs,
-                    approvedCells: approvedCells);
-            }
-            else
-            {
-                BuildingPlacementValidationUtility.ValidateBatchPlacement(
-                    candidates,
-                    request.Flags,
-                    buildingMap.AsReadOnly(),
-                    resourceMap.AsReadOnly(),
-                    itemMap.AsReadOnly(),
-                    results,
-                    approvedCells: approvedCells);
-            }
+            BuildingPlacementValidationUtility.ValidateBatchPlacement(
+                candidates,
+                request.Flags,
+                buildingMap.AsReadOnly(),
+                resourceMap.AsReadOnly(),
+                itemMap.AsReadOnly(),
+                results,
+                configs,
+                approvedCells: approvedCells);
 
             // 후보의 명시 Tick을 우선하되 버퍼 순서를 유지한다. 이 Stamp가 이후 최초 공급 우선순위의 근거가 된다.
             ulong defaultTick = request.RequestTick > 0 ? request.RequestTick : _currentTick;
@@ -204,10 +201,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                     var reqBuffer = ecb.AddBuffer<ConstructionMaterialRequirementElement>(siteEntity);
                     ecb.AddBuffer<StoredItemElement>(siteEntity);
 
-                    if (hasConfig && materials.IsCreated)
-                    {
-                        BuildingConfigLookupUtility.PopulateRequirements(materials, candidate.TargetType, ref reqBuffer);
-                    }
+                    BuildingConfigLookupUtility.PopulateRequirements(materials, candidate.TargetType, ref reqBuffer);
 
                     BuildingPlacementValidationUtility.ClaimApprovedPlacement(candidate, approvedCells);
                 }
