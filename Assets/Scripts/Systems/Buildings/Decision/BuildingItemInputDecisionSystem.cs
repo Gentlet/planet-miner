@@ -28,7 +28,7 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
         _crafterStateLookup = state.GetComponentLookup<CrafterState>(true);
         _pendingDemolitionLookup = state.GetComponentLookup<PendingBuildingDemolition>(true);
 
-        // 지난 틱 비활성 결정을 포함해 다시 판단한다. enable 상태를 쿼리 필터로 삼으면 새 입고 후보를 놓친다.
+        // 지난 틱 비활성 결정을 포함해 다시 판단한다. 이동 활성 여부는 Job에서 별도로 검사한다.
         _itemQuery = SystemAPI.QueryBuilder()
             .WithAllRW<BuildingItemInputDecision>()
             .WithAll<BeltMovementState, GridPosition, ItemIdentity, ItemOwnership>()
@@ -112,38 +112,42 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
         ref BuildingItemInputDecision inputDecision,
         EnabledRefRW<BuildingItemInputDecision> inputDecisionEnabled,
         in BeltMovementState beltState,
+        EnabledRefRO<BeltMovementState> beltMovementEnabled,
         in GridPosition gridPos,
         in ItemIdentity itemIdentity,
         in ItemOwnership ownership)
     {
+        // 비활성 결정도 매 틱 재판단하되 이전 대상과 예약 슬롯은 남기지 않는다.
+        inputDecision = new BuildingItemInputDecision(Entity.Null);
+        inputDecisionEnabled.ValueRW = false;
+
+        // 바닥 아이템의 잔여 진행도는 입고 자격이 아니다. 실제 이동 참여 상태를 확인한다.
+        if (!beltMovementEnabled.ValueRO)
+        {
+            return;
+        }
+
         // 1. 월드 아이템이 아니면 판정 제외 및 비활성화
         if (!ownership.IsWorldItem)
         {
-            inputDecisionEnabled.ValueRW = false;
             return;
         }
 
         // 2. 현재 타일에 벨트가 없으면 판정 제외 및 비활성화
         if (!BeltMap.TryGetValue(gridPos.Value, out BeltInfo currentBelt))
         {
-            inputDecisionEnabled.ValueRW = false;
             return;
         }
 
         // 철거 승인된 현재 벨트는 종단에 도달한 아이템도 인계하지 않는다.
         if (PendingDemolitionLookup.HasComponent(currentBelt.Entity))
         {
-            inputDecision.TargetBuilding = Entity.Null;
-            inputDecision.CanDeposit = false;
-            inputDecision.TargetSlotIndex = -1;
-            inputDecisionEnabled.ValueRW = false;
             return;
         }
 
         // 3. 벨트 끝(Progress >= 1.0f - Epsilon)에 도달하지 않았으면 비활성화
         if (beltState.Progress < 1.0f - GameConstants.AlignmentEpsilon)
         {
-            inputDecisionEnabled.ValueRW = false;
             return;
         }
 
@@ -152,20 +156,12 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
         if (!BuildingMap.TryGetValue(nextPos, out BuildingInfo buildingInfo))
         {
             // 다음 타일에 건물이 없음
-            inputDecision.TargetBuilding = Entity.Null;
-            inputDecision.CanDeposit = false;
-            inputDecision.TargetSlotIndex = -1;
-            inputDecisionEnabled.ValueRW = false;
             return;
         }
 
         // Command에서 철거를 승인한 건물에는 입고 후보를 생성하지 않는다.
         if (PendingDemolitionLookup.HasComponent(buildingInfo.Entity))
         {
-            inputDecision.TargetBuilding = Entity.Null;
-            inputDecision.CanDeposit = false;
-            inputDecision.TargetSlotIndex = -1;
-            inputDecisionEnabled.ValueRW = false;
             return;
         }
 
@@ -173,19 +169,11 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
         if (!StorageLookup.HasComponent(buildingInfo.Entity))
         {
             // 보관 기능이 없는 건물 (예: 전신주 등)
-            inputDecision.TargetBuilding = buildingInfo.Entity;
-            inputDecision.CanDeposit = false;
-            inputDecision.TargetSlotIndex = -1;
-            inputDecisionEnabled.ValueRW = false;
             return;
         }
 
         if (StorageLookup[buildingInfo.Entity].SlotCount <= 0)
         {
-            inputDecision.TargetBuilding = buildingInfo.Entity;
-            inputDecision.CanDeposit = false;
-            inputDecision.TargetSlotIndex = -1;
-            inputDecisionEnabled.ValueRW = false;
             return;
         }
 
@@ -195,10 +183,6 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
             var crafterState = CrafterStateLookup[buildingInfo.Entity];
             if (crafterState.Status == CrafterStatusEnum.WaitingForByproductOutput)
             {
-                inputDecision.TargetBuilding = buildingInfo.Entity;
-                inputDecision.CanDeposit = false;
-                inputDecision.TargetSlotIndex = -1;
-                inputDecisionEnabled.ValueRW = false;
                 return;
             }
         }
@@ -210,10 +194,6 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
             if (!filter.IsItemAllowed(itemIdentity.Type))
             {
                 // 필터로 인해 입고 거부
-                inputDecision.TargetBuilding = buildingInfo.Entity;
-                inputDecision.CanDeposit = false;
-                inputDecision.TargetSlotIndex = -1;
-                inputDecisionEnabled.ValueRW = false;
                 return;
             }
         }
