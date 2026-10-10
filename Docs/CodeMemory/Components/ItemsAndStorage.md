@@ -126,8 +126,8 @@ ECB 재생으로 구조가 변경되는 경계 전후에 기존 DynamicBuffer �
 ## BuildingItemInputDecision
 
 - **종류·부착 대상:** 아이템에 붙는 `IComponentData, IEnableableComponent`. `TargetBuilding`, `CanDeposit`, `TargetSlotIndex`로 이번 틱 입고 의도를 전달하며 독립 일회성 요청이 아니다. 공통 아이템 스폰은 비활성 상태로 미리 붙인다.
-- **Decision Writer:** `BuildingItemInputDecisionSystem`은 월드 소유, 현재 벨트 존재, 종단 진행도, 다음 셀의 양수 Storage, Crafter 부산물 대기 여부, 필터를 검사한다. 성공하면 활성화하고 `CanDeposit=true`, `TargetSlotIndex=-1`을 기록한다.
-- **조회 조건:** 해당 시스템 쿼리는 `IgnoreComponentEnabledState`를 사용하며 Execute에서 BeltMovementState 활성 여부를 별도로 검사하지 않는다. 따라서 실제 입고 조건은 위 데이터 검사로 설명한다. 실패하면 결정을 비활성화하며 일부 분기만 값도 초기화한다.
+- **Decision Writer:** `BuildingItemInputDecisionSystem`은 매 판단 시작에 대상 Null·CanDeposit=false·슬롯 -1·결정 비활성으로 초기화한다. 이동 활성, 월드 소유, 현재 벨트 존재, 종단 진행도, 철거 승인 부재, 다음 셀의 양수 Storage, Crafter 부산물 대기 여부, 필터를 검사한다. 성공하면 활성화하고 `CanDeposit=true`, `TargetSlotIndex=-1`을 기록한다.
+- **조회 조건:** 비활성 프레임 결정도 다음 틱에 다시 판단하기 위해 `IgnoreComponentEnabledState`를 유지한다. Execute의 `EnabledRefRO<BeltMovementState>`는 실제 이동 활성을 별도로 읽으며 비활성 원본의 잔여 Progress가 0 또는 1이어도 거절한다. 수납 실물은 이동 활성 값과 무관하게 거절한다. 정체로 이번 틱 전진량이 0인 활성 실물은 제외하지 않는다. 모든 거절 분기는 시작 시 초기화한 결정을 유지한다. [F-032 구현·검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/F032-Verification.md).
 - **Reservation Writer:** `BuildingStorageInputReservationSystem`은 활성 미배정 결정을 순차 처리하여 슬롯을 확정한다. 같은 틱 예약의 품목·개수와 현재 Stored 버퍼를 합산하며 배정 실패는 CanDeposit=false/slot=-1/비활성으로 처리한다.
 - **Apply·소비:** `BuildingItemStorageApplySystem`은 승인된 슬롯에 실물을 추가하고 벨트 상태를 끄며 Transfer를 켠 뒤 결정을 비활성화한다. 활성 Destroy 또는 대상 Stored 버퍼 누락도 결정을 초기화·비활성화한다. 컴포넌트는 남아 이후 틱에 재사용되며 성공 여부를 오래 보관하는 결과 데이터가 아니다.
 - **근거:** [선언](../../../Assets/Scripts/Components/Storage/BuildingItemDecisions.cs), [초기화](../../../Assets/Scripts/Common/ItemLifecycleUtility.cs), [Decision](../../../Assets/Scripts/Systems/Buildings/Decision/BuildingItemInputDecisionSystem.cs), [Reservation](../../../Assets/Scripts/Systems/Buildings/Reservation/BuildingStorageInputReservationSystem.cs), [Apply](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingItemStorageApplySystem.cs).

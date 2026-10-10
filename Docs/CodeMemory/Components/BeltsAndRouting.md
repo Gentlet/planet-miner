@@ -25,7 +25,7 @@
 
 - **종류·부착 대상:** 아이템의 `IComponentData, IEnableableComponent`. `Progress`는 현재 타일 입구 0, 중심 0.5, 출구 1의 영속 진행도다. 활성 상태는 일반 벨트 이동 Job의 처리 대상 여부를 결정한다.
 - **초기화·활성화:** `ItemLifecycleUtility`는 모든 새 아이템에 미리 붙이고 비활성화한다. World 목적지로 벨트 셀에 스폰했다는 이유만으로 여기서 켜지지는 않는다. Storage Apply의 출고와 Routing Apply의 전달이 Progress=0과 활성 상태를 직접 기록한다.
-- **Reader:** Decision의 일반 이동·건물 입고·두 출고·Splitter/Merger, Reservation의 목적지 검사가 진행도를 사용한다. 일반 이동과 `BeltEntryUtility`의 점유 집계는 월드 소유이며 활성 이동 상태인 아이템을 센다. 건물 입고의 쿼리는 enable 상태를 무시하고, Routing의 종단 후보 탐색도 별도의 enable 검사를 하지 않으므로 모든 Reader의 조건을 같다고 보지 않는다.
+- **Reader:** 일반 이동, 건물 입고와 Splitter/Merger의 종단 원본 선택은 월드 소유와 활성 이동 상태를 요구한다. 입고 쿼리는 비활성 프레임 결정을 다시 판단하려고 enable 필터를 무시하지만 Job의 `EnabledRefRO<BeltMovementState>`로 실제 이동 활성 여부를 검사한다. Routing은 원본 lookup의 `IsComponentEnabled`를 확인한 뒤 기존 종단 진행도를 비교한다. 정체된 활성 실물도 후보이며 비활성 실물의 잔여 Progress는 자격이 아니다. 목적지 공간의 `BeltEntryUtility`도 월드 소유·활성 이동 실물만 점유로 센다. 원본 자격과 목적지 공간/경합은 서로 다른 검사다. [F-032 구현·검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/F032-Verification.md).
 - **Writer·처리:** Execution의 `BeltMovementExecutionSystem`이 계획을 Progress에 더하고 다음 벨트로 넘어가면 GridPosition과 잔여 진행도를 갱신한다. 종단은 1에서 멈추며 위치는 `셀 중심 + 방향*(Progress-0.5)`다. StateApply의 출고/Routing은 새 벨트 입구로 재설정한다.
 - **비활성·수명:** 일반 입고는 즉시 비활성화한다. 드론 인계의 `ItemOwnershipApplySystem.TryTransferItem`도 성공 실물의 이동 상태를 즉시 비활성화하며 새 방출품을 자동 벨트 이동시키지 않는다. Building Lifecycle은 철거한 벨트 셀에 있는 아이템의 비활성화를 EndBuilding ECB에 기록하며 활성 Destroy는 건너뛴다. 이전 공사 운송의 전용 수령 경로는 제거되었다. 컴포넌트는 보관 중에도 남고 실물 삭제 시 소멸한다. 매 틱 소비되는 Decision과 달리 Progress는 보존된다.
 - **근거:** [선언](../../../Assets/Scripts/Components/Belts/BeltComponents.cs), [초기화](../../../Assets/Scripts/Common/ItemLifecycleUtility.cs), [Execution](../../../Assets/Scripts/Systems/Buildings/Execution/BeltMovementExecutionSystem.cs), [입출고](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingItemStorageApplySystem.cs), [Routing](../../../Assets/Scripts/Systems/Buildings/StateApply/RoutingApplySystem.cs), [철거](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingLifecycleApplySystem.cs).
@@ -44,7 +44,7 @@
 - **종류·부착 대상:** Splitter 건물의 일반 `IComponentData`. `InputBelt`는 기준 입력 벨트, `ForwardDirection`은 기준 전방, `OutputCursor`는 다음 출력 탐색의 시작 포트다. 아이템을 보관하는 버퍼는 아니다.
 - **초기화:** 공통 건물 생성은 `InputBelt=Null`, 건물 방향을 초기 ForwardDirection, 커서 0으로 기록한다. 직접 스폰/공사 완료 모두 같은 구성을 EndBuilding에 만든다.
 - **Reader·Decision:** `SplitterDecisionSystem`은 기존 입력이 없거나 유효한 인접 유입 벨트가 아니면 후보를 다시 찾는다. 기준 후보는 유입 연결 조건과 `PlacementStamp`의 앞선 설치 순서를 사용한다. 기존 기준과 다른 입력을 선택하면 이번 탐색은 커서 0부터 시작하지만 영속 상태는 이 단계에서 쓰지 않는다.
-- **후보 처리:** 입력 벨트 종단의 월드 아이템을 찾고 커서부터 forward→right→left의 세 포트를 순환 탐색한다. 존재·외향 연결·입구 여유가 있는 첫 출력으로 `RoutingTransferDecision`을 켠다. 포트가 막혔으면 다른 포트를 계속 검사하고 모두 불가하면 결정을 끈다.
+- **후보 처리:** 입력 벨트 종단의 이동 활성 월드 아이템을 찾고 커서부터 forward→right→left의 세 포트를 순환 탐색한다. 존재·외향 연결·입구 여유가 있는 첫 출력으로 `RoutingTransferDecision`을 켠다. 매 판단 시작에 이전 결정을 초기화·비활성화하므로 비활성 원본/후보 부재도 이전 전달을 남기지 않는다. 포트가 막혔으면 다른 포트를 계속 검사하고 모두 불가하면 결정을 끈다.
 - **Writer·수명:** Reservation을 통과한 전달을 StateApply의 `RoutingApplySystem`이 실제 적용할 때 SourceBelt와 방향을 저장하고 실제 출력 포트의 다음 인덱스로 커서를 전진시킨다. 승인되지 않은 틱에는 커서가 진행하지 않는다. 건물에 유지되며 철거 시 소멸한다.
 - **근거:** [선언](../../../Assets/Scripts/Components/Routing/RoutingComponents.cs), [생성](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs), [Splitter Decision](../../../Assets/Scripts/Systems/Buildings/Decision/SplitterDecisionSystem.cs), [포트 계산](../../../Assets/Scripts/Common/RoutingDirectionUtility.cs), [StateApply Writer](../../../Assets/Scripts/Systems/Buildings/StateApply/RoutingApplySystem.cs).
 
@@ -53,7 +53,7 @@
 - **종류·부착 대상:** Merger 건물의 일반 `IComponentData`. `OutputBelt`는 기준 출력 벨트, `ForwardDirection`은 기준 전방, `InputCursor`는 다음 입력 탐색 시작 포트다. 합류할 실물은 입력 벨트에 있고 Merger 내부에 수납되지 않는다.
 - **초기화:** 공통 생성은 `OutputBelt=Null`, 건물 방향을 초기 전방, 커서 0으로 기록한다. 완공 건물 생성 경로가 EndBuilding ECB에서 부착한다.
 - **Reader·Decision:** `MergerDecisionSystem`은 기존 출력이 없거나 유효한 인접 외향 벨트가 아니면 설치 순서를 고려하여 새 기준 출력을 찾는다. 출력 입구 여유가 없으면 후보를 만들지 않는다. 기준이 변경된 틱의 입력 탐색은 0번부터 시작한다.
-- **후보 처리:** 커서부터 back→left→right 세 포트를 순환하며 유입 방향의 벨트와 종단 월드 아이템을 찾는다. 첫 가능한 입력 실물에서 기준 출력으로 `RoutingTransferDecision`을 만든다. 이번 단계는 영속 커서를 쓰지 않는다.
+- **후보 처리:** 커서부터 back→left→right 세 포트를 순환하며 유입 방향의 벨트와 이동 활성 종단 월드 아이템을 찾는다. 매 판단 시작에 이전 결정을 초기화·비활성화한 뒤 첫 가능한 입력 실물에서 기준 출력으로 `RoutingTransferDecision`을 만든다. 이번 단계는 영속 커서를 쓰지 않는다.
 - **Writer·수명:** StateApply `RoutingApplySystem`이 실제 전달할 때 출력 벨트·전방을 저장하고 실제 SourceBelt가 있던 입력 포트의 다음 인덱스로 커서를 갱신한다. 대기/예약 탈락 중에는 현재 커서를 유지하고 건물 삭제 때 소멸한다. 다른 출고/Routing과의 공유 출력 경합은 목적지 예약이 처리한다.
 - **근거:** [선언](../../../Assets/Scripts/Components/Routing/RoutingComponents.cs), [생성](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs), [Merger Decision](../../../Assets/Scripts/Systems/Buildings/Decision/MergerDecisionSystem.cs), [포트 계산](../../../Assets/Scripts/Common/RoutingDirectionUtility.cs), [Writer](../../../Assets/Scripts/Systems/Buildings/StateApply/RoutingApplySystem.cs), [공유 목적지](../../../Assets/Scripts/Systems/Buildings/Reservation/BeltDestinationReservationSystem.cs).
 

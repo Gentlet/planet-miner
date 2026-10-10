@@ -275,16 +275,31 @@ public partial struct SplitterDecisionJob : IJobEntity
         {
             do
             {
-                if (ItemOwnershipLookup.TryGetComponent(item, out var ownership) && ownership.IsWorldItem)
+                if (!ItemOwnershipLookup.TryGetComponent(item, out var ownership))
                 {
-                    if (BeltMovementStateLookup.TryGetComponent(item, out var movement))
-                    {
-                        if (movement.Progress >= maxProgress)
-                        {
-                            bestItem = item;
-                            maxProgress = movement.Progress;
-                        }
-                    }
+                    continue;
+                }
+
+                if (!ownership.IsWorldItem)
+                {
+                    continue;
+                }
+
+                if (!BeltMovementStateLookup.TryGetComponent(item, out var movement))
+                {
+                    continue;
+                }
+
+                // 잔여 진행도가 있더라도 이동이 꺼진 바닥 아이템은 라우팅하지 않는다.
+                if (!BeltMovementStateLookup.IsComponentEnabled(item))
+                {
+                    continue;
+                }
+
+                if (movement.Progress >= maxProgress)
+                {
+                    bestItem = item;
+                    maxProgress = movement.Progress;
                 }
             } while (ItemMap.TryGetNextValue(out item, ref iterator));
         }

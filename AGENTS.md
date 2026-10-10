@@ -160,6 +160,7 @@ Decision은 생성·무효화·경로 의도와 후보만 작성한다. Executio
 
 ### 물류·생산
 
+- 2026-10-10 F-032: 건물 입고와 Splitter/Merger의 원본은 월드 소유이며 `BeltMovementState`가 활성인 종단 아이템만 선택한다. 정체로 이번 틱 이동량이 0인 활성 아이템은 제외하지 않는다. 입고는 매 판단 시작에 대상 Null·CanDeposit=false·슬롯 -1·결정 비활성으로 초기화하고 활성 후보만 게시한다. 비활성 프레임 결정의 재판단을 위한 `IgnoreComponentEnabledState`는 유지하며 실제 이동 활성은 별도로 검사한다. 바닥 실물의 잔여 Progress는 자격이 아니다. 기존 현장 회수 후 완공과 정상 출고의 벨트 복귀를 유지하며 재설치/직접 Spawn에 자동 복귀를 추가하지 않는다. 코드 확인·Unity 컴파일 및 실행 미검증 범위는 [F-032 기록](<Docs/architecture v2 plan/V2 Quality Evaluation Plan/Results/F032-Verification.md>)을 따른다.
 - 입고: `BuildingItemInputDecisionSystem`이 벨트 종단의 다음 셀, `Storage`, 필터, 제작기의 잔여물 대기를 확인한다. `BuildingStorageInputReservationSystem`이 프레임 임시 맵에 예약 품목·수량을 함께 기록하여 일반 창고의 새 슬롯도 같은 품목의 MaxStack까지 재사용하고 제작기 전용 슬롯 제한을 유지한 채 슬롯을 확정한다. 이후 `BuildingItemStorageApplySystem` → `ItemOwnershipApplySystem`이 반영한다.
 - 출고: 일반 창고는 `StorageItemOutputDecisionSystem`이 첫 보관품을, 생산 건물은 `ProductItemOutputDecisionSystem`이 슬롯 0 우선으로 생산품을 선택한다. 외향 벨트의 입구 여유를 검사하고 공통 예약/반영 경로를 사용한다.
 - 벨트 이동: `BeltMovementDecisionSystem`이 현재/다음 셀의 간격과 수용량으로 이동량을 계산하고 `BeltMovementExecutionSystem`이 격자·진행도·시각 위치를 변경한 뒤 계획을 소비한다. 현재 `BeltDestinationReservationSystem`의 후보는 건물 출고와 라우팅 전달뿐이다. 일반 벨트 이동까지 통합 예약한다고 가정하지 않는다.
