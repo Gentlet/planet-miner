@@ -1,6 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -89,8 +92,11 @@ public static class BuildingConfigLoader
         }
 
         BuildingConfigJsonData data;
+        JArray rawEntries;
         try
         {
+            // JsonUtility는 소수/문자열 숫자를 int로 보정한다. 원본 토큰으로 크기 형식만 먼저 보존한다.
+            rawEntries = JObject.Parse(json)["buildings"] as JArray;
             data = JsonUtility.FromJson<BuildingConfigJsonData>(json);
         }
         catch (Exception ex)
@@ -99,7 +105,7 @@ public static class BuildingConfigLoader
             return false;
         }
 
-        if (data == null || data.buildings == null || data.buildings.Count == 0)
+        if (data == null || data.buildings == null || data.buildings.Count == 0 || rawEntries == null)
         {
             Debug.LogError("[BuildingConfigLoader] Parsed buildings list is null or empty.");
             return false;
@@ -164,16 +170,15 @@ public static class BuildingConfigLoader
                 }
             }
 
-            // Footprint 검증
-            int2 footprint = new int2(1, 1);
-            if (entry.footprint != null)
+            var rawEntry = rawEntries[i] as JObject;
+            if (rawEntry == null)
             {
-                if (entry.footprint.Length != 2 || entry.footprint[0] < 1 || entry.footprint[1] < 1)
-                {
-                    Debug.LogError($"[BuildingConfigLoader] {buildingType} has invalid footprint. Dimensions must be 2 positive integers (width, height >= 1).");
-                    return false;
-                }
-                footprint = new int2(entry.footprint[0], entry.footprint[1]);
+                Debug.LogError($"[BuildingConfigLoader] Entry at index {i} is not a building object.");
+                return false;
+            }
+            if (!TryReadFootprint(buildingType, rawEntry["footprint"], out int2 footprint))
+            {
+                return false;
             }
 
             FixedString32Bytes reqResearch = default;
@@ -251,9 +256,56 @@ public static class BuildingConfigLoader
         var types = new HashSet<BuildingTypeEnum>();
         foreach (var entry in entityManager.GetBuffer<BuildingConfigElement>(entity, true))
         {
+            if (!ValidateFootprint(entry.BuildingType, entry.Footprint))
+            {
+                return false;
+            }
             types.Add(entry.BuildingType);
         }
         return ValidateRequiredTypes(types);
+    }
+
+    private static bool TryReadFootprint(BuildingTypeEnum type, JToken rawFootprint, out int2 footprint)
+    {
+        footprint = int2.zero;
+        if (rawFootprint == null)
+        {
+            Debug.LogError($"[BuildingConfigLoader] {type} is missing its required footprint.");
+            return false;
+        }
+        if (rawFootprint.Type == JTokenType.Null)
+        {
+            Debug.LogError($"[BuildingConfigLoader] {type} is missing its required footprint.");
+            return false;
+        }
+        if (rawFootprint is not JArray dimensions || dimensions.Count != 2)
+        {
+            Debug.LogError($"[BuildingConfigLoader] {type} footprint must contain exactly two integer dimensions.");
+            return false;
+        }
+        for (int axis = 0; axis < 2; axis++)
+        {
+            JToken value = dimensions[axis];
+            if (value.Type != JTokenType.Integer ||
+                !long.TryParse(value.ToString(Formatting.None), NumberStyles.Integer, CultureInfo.InvariantCulture, out long dimension) ||
+                dimension < int.MinValue || dimension > int.MaxValue)
+            {
+                Debug.LogError($"[BuildingConfigLoader] {type} footprint dimensions must be JSON integers representable as int.");
+                return false;
+            }
+            footprint[axis] = (int)dimension;
+        }
+        return ValidateFootprint(type, footprint);
+    }
+
+    private static bool ValidateFootprint(BuildingTypeEnum type, int2 footprint)
+    {
+        if (footprint.x <= 0 || footprint.y <= 0)
+        {
+            Debug.LogError($"[BuildingConfigLoader] {type} has invalid footprint. Both dimensions must be positive.");
+            return false;
+        }
+        return true;
     }
 
     private static bool ValidateRequiredTypes(HashSet<BuildingTypeEnum> types)
@@ -291,6 +343,15 @@ public static class BuildingConfigLoader
         {
             Debug.LogError("[BuildingConfigLoader] Cannot publish null or empty config elements.");
             return Entity.Null;
+        }
+
+        // 공개 게시와 사전 등록 Init도 JSON과 같은 크기 계약을 따른다. 무효 입력은 부분 게시하지 않는다.
+        foreach (var config in configs)
+        {
+            if (!ValidateFootprint(config.BuildingType, config.Footprint))
+            {
+                return Entity.Null;
+            }
         }
 
         // 통합 설정과 호환 버퍼를 같은 입력에서 게시한다. 이후 게임 Reader가 managed JSON 목록을 원본으로 다시 읽지 않게 한다.

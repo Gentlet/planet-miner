@@ -27,6 +27,7 @@ public struct BuildingConfigElement : IBufferElementData
     public int StorageCapacity;
     public bool IsUnlocked;
     public FixedString32Bytes RequiredResearch;
+    /// <summary>이 종류의 방향 적용 전 고정 점유 크기. 명시적 양수 설정이 필수이며 기본값으로 보충하지 않는다.</summary>
     public int2 Footprint;
 
     public BuildingConfigElement(
@@ -42,7 +43,7 @@ public struct BuildingConfigElement : IBufferElementData
         StorageCapacity = storageCapacity;
         IsUnlocked = isUnlocked;
         RequiredResearch = requiredResearch;
-        Footprint = footprint.Equals(int2.zero) ? new int2(1, 1) : footprint;
+        Footprint = footprint;
     }
 }
 

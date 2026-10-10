@@ -308,7 +308,16 @@ public static class BuildingPlacementValidationUtility
         for (int i = 0; i < candidates.Length; i++)
         {
             var candidate = candidates[i];
-            bool isUnlocked = configs.IsCreated && BuildingConfigLookupUtility.IsBuildingUnlocked(configs, candidate.TargetType);
+            bool hasConfig = BuildingConfigLookupUtility.TryGetConfig(configs, candidate.TargetType, out var config);
+            bool isUnlocked = hasConfig && config.IsUnlocked;
+
+            // 전달 크기는 미리보기의 설정 스냅샷이다. 설정과 다르면 어떤 셀도 승인하거나 선점하지 않는다.
+            if (isUnlocked && !math.all(candidate.FootprintSize == config.Footprint))
+            {
+                results[i] = new PlacementValidationResult(PlacementValidationCode.InvalidFootprint);
+                anyFailed = true;
+                continue;
+            }
 
             var singleResult = ValidateSinglePlacement(
                 candidate.TargetType,

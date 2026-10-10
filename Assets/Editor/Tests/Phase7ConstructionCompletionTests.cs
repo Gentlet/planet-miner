@@ -40,7 +40,7 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
     {
         if (size.x <= 0 || size.y <= 0)
         {
-            size = new int2(1, 1);
+            size = PlanetMiner.Tests.TestEntityFactory.GetFixtureBuildingFootprint(targetType);
         }
 
         var site = _entityManager.CreateEntity();
@@ -185,9 +185,9 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
     public void Test08_InvalidTargetBuildingType_DoesNotTransition()
     {
         // 1. None 타입 목표를 가진 비정상 현장
-        var siteNone = CreateSite(BuildingTypeEnum.None, new int2(1, 1));
+        var siteNone = CreateSite(BuildingTypeEnum.None, new int2(1, 1), size: new int2(1, 1));
         // 2. ConstructionSite를 목표로 하는 비정상 현장
-        var siteLoop = CreateSite(BuildingTypeEnum.ConstructionSite, new int2(2, 2));
+        var siteLoop = CreateSite(BuildingTypeEnum.ConstructionSite, new int2(2, 2), size: new int2(1, 1));
 
         RunCompletionPhase();
 
@@ -211,7 +211,7 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
             entries.Clear();
             if (databaseFailure == 2)
             {
-                entries.Add(new BuildingPrefabElement(BuildingTypeEnum.Miner, Entity.Null, new int2(2, 2)));
+                entries.Add(new BuildingPrefabElement(BuildingTypeEnum.Miner, Entity.Null));
             }
         }
 

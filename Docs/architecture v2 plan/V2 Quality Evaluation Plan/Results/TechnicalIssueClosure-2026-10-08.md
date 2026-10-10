@@ -49,6 +49,8 @@ F-007 후속 주석(2026-10-08): 위 종료 재검토 시점의 정상 Item 공�
 
 ## F-021 — 실제 베이킹 근거를 반영하고 나머지 선택 검증 추적 종료
 
+> 2026-10-11 F-022 후속 근거: 실제 V2 SubScene 입력으로 InspectorList/ResourcesAutoLoad 각각 11원형을 베이킹하고 2×3 Storage의 4방향 현장→완공·직접 생성과 정확한 점유를 확인했다. 기존 종료에 선택 검증 근거를 보강하며 새 완료 항목으로 합산하지 않는다. 두 모드의 실제 Baker 실행과 선별 ECS 59/59, 아래 기존 Play Mode 실행은 서로 다른 근거다. 전체 타입 구성·오류 등록/Authoring 전 조합·Item/Resource 전체 Bake·지속 자동 회귀·SampleScene/Player 빌드 공백은 유지한다. [현재 범위와 남은 이슈](F022-Verification.md#2026-10-11-관련-이슈-후속-정리). 이 후속은 문서만 변경하며 새 실행은 없다.
+
 [Q08](Q08.md)의 기존 테스트는 실제 Baker 회귀를 검출하지 못하는 범위였다. 현재도 [Phase1ItemAuthoringPrefabTests](../../../../Assets/Editor/Tests/Phase1ItemAuthoringPrefabTests.cs)의 PopulateFromResources와 [Phase7BuildingAuthoringPrefabTests](../../../../Assets/Editor/Tests/Phase7BuildingAuthoringPrefabTests.cs)의 임시 Authoring 목록 수집은 실제 Bake가 아니다. [Phase4ResourceAuthoringAndSpawnTests](../../../../Assets/Editor/Tests/Phase4ResourceAuthoringAndSpawnTests.cs)는 수동 ECS 자원/DB를 준비한다. 이들과 F-011 프리팹 초기화 15/15를 실제 Baker 실행으로 바꾸어 설명하지 않는다.
 
 코드로는 [ItemAuthoringBaker](../../../../Assets/Scripts/Authoring/ItemAuthoring.cs)가 Dynamic 엔티티에 ItemIdentity를 추가하고, [BuildingPrefabDatabaseBaker](../../../../Assets/Scripts/Authoring/BuildingPrefabDatabaseAuthoring.cs)가 실제 prefab 참조를 GetEntity로 변환해 별도 DB 버퍼에 등록하는 경로를 확인했다. 정적 입력과 런타임 초기화의 책임을 새로 구현하지 않았다.

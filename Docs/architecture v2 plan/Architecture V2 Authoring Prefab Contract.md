@@ -13,7 +13,7 @@
 본 문서는 Unity SubScene 베이킹 환경과 Architecture V2 런타임 ECS 환경을 연결하는 **Authoring 및 프리팹 데이터베이스의 공통 규약(Common Contract)**을 정의한다.
 
 1. **상태 소유권의 엄격한 분리 (Baker vs Spawn Owner)**:
-   - Baker는 정적 불변 데이터(정적 타입 식별자, Footprint 크기 등)만 엔티티 프리팹에 베이킹한다.
+   - Baker는 정적 불변 데이터(정적 타입 식별자, 프리팹 참조 등)를 베이킹한다. 건물 크기는 BuildingConfig가 게시하고 생성 경계가 인스턴스에 기록한다.
    - 런타임 가변 상태(소유권 `ItemOwnership`, 공간 좌표 `GridPosition`, 이동 진행도 `BeltMovementState`, 1회성 Request 컴포넌트 등)는 Baker가 미리 부착하지 않으며, 실제 생성을 소유하는 런타임 시스템이 인스턴스화 직후 초기화한다.
 2. **도메인별 모듈화 (Domain-Separated Prefab Databases)**:
    - 모든 프리팹을 하나의 거대한 엔티티에 섞지 않고, 도메인별 독립 엔티티(`Building`, `Item`, `Resource`, `Drone`)로 베이킹하여 관심사를 분리하고 불필요한 컴포넌트 결합을 방지한다.
@@ -27,7 +27,7 @@
 SubScene 베이킹을 통해 월드에 생성되는 4대 프리팹 데이터베이스 구조는 다음과 같다:
 
 ### ① `BuildingPrefabElement` (`BuildingPrefabDatabase`)
-- **역할**: 건물 배치/건설 시 참조할 원본 프리팹 엔티티와 물리적 Footprint 크기 정보 보관.
+- **역할**: 건물 배치/건설 시 참조할 원본 프리팹 엔티티 매핑 보관. 점유 크기는 BuildingConfig.json의 명시적 양수 footprint가 유일한 원본이며 DB/Inspector에는 크기를 등록하지 않는다.
 - **버퍼 요소**:
   ```csharp
   [InternalBufferCapacity(16)]
@@ -35,7 +35,6 @@ SubScene 베이킹을 통해 월드에 생성되는 4대 프리팹 데이터베�
   {
       public BuildingTypeEnum Type;
       public Entity Prefab;
-      public int2 FootprintSize;
   }
   ```
 
@@ -80,7 +79,7 @@ SubScene 베이킹을 통해 월드에 생성되는 4대 프리팹 데이터베�
 | 구분 | Baker (SubScene Authoring) | Spawn Owner System (런타임) |
 | :--- | :--- | :--- |
 | **소유 책임** | 정적 에셋 변환, 프리팹 DB 엔티티/버퍼 게시 | 엔티티 인스턴스화, 런타임 상태 주입, 생명주기 관리 |
-| **포함 컴포넌트** | `Prefab`, `BuildingType`, `ItemIdentity`, `BuildingFootprint`, 렌더러 컴포넌트 | `GridPosition`, `Direction`, `ItemOwnership`, `BeltMovementState`, 버퍼, `IRequestComponent` |
+| **포함 컴포넌트** | `Prefab`, `BuildingType`, `ItemIdentity`, 렌더러 컴포넌트 | `BuildingFootprint`(Config 크기), `GridPosition`, `Direction`, `ItemOwnership`, `BeltMovementState`, 버퍼, `IRequestComponent` |
 | **배제 컴포넌트** | `ItemOwnership`, `BeltMovement*`, `StoredItemElement`, 각종 Request 등 | Baker가 설정한 정적 프리팹 원본 데이터 |
 | **스폰 주체** | - | `ItemLifecycleApplySystem` (Item)<br>`ConstructionApplySystem` (Building)<br>`ResourceMapGeneratorSystem` (Resource)<br>`DroneSpawnSystem` (Drone) |
 

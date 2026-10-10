@@ -28,7 +28,8 @@ public struct SpawnBuildingRequest : IComponentData, IRequestComponent
     public DirectionEnum Direction;
 
     /// <summary>
-    /// 건물의 Footprint 크기 (int2.zero 이하인 경우 Config 또는 기본 규격을 사용).
+    /// Config의 방향 적용 전 고정 크기와 일치해야 하는 입력 스냅샷. int2.zero는 생략이며 Config를 사용한다.
+    /// 그 외 무효 값이나 Config와 다른 크기는 거절한다. 개별 건물의 크기를 덮어쓰지 않는다.
     /// </summary>
     public int2 FootprintSize;
 

@@ -17,12 +17,12 @@
 
 ## BuildingPrefabElement
 
-- **목적·필드:** `Type → Prefab` 매핑과 정적 `FootprintSize`를 담는 `IBufferElementData`다. 내부 버퍼 용량 힌트는 16이다. 타입별 여러 건물 인스턴스가 같은 매핑을 반복 조회한다.
-- **부착·초기화:** Building DB Baker가 DB 엔티티에 버퍼를 만들고 각 GameObject 프리팹의 Renderable 엔티티 참조를 등록한다. Inspector 크기는 축별 최소 1로 정규화하고 자동 탐색은 타입별 기본 크기를 기록한다.
+- **목적·필드:** `Type → Prefab` 매핑만 담는 `IBufferElementData`다. 내부 버퍼 용량 힌트는 16이다. 타입별 여러 건물 인스턴스가 같은 매핑을 반복 조회한다. F-022에서 크기 필드를 제거했다.
+- **부착·초기화:** Building DB Baker가 DB 엔티티에 버퍼를 만들고 각 GameObject 프리팹의 Renderable 엔티티 참조를 등록한다. Inspector와 Resources 자동 탐색 모두 종류와 프리팹만 게시한다. 점유 크기는 Resources/Config/BuildingConfig.json에서 편집한다.
 - **Reader·검증:** Initialization에서 None/Count/ConstructionSite·범위 밖/중복 등록을 거부하고 나머지 모든 건물 종류를 요구한다. 프리팹은 생존하며 `Prefab`·`LocalTransform`을 가져야 한다. StateApply의 `BuildingLifecycleApplySystem` 및 `ConstructionLifecycleApplySystem`은 읽기 전용 BufferLookup을 `BuildingLifecycleUtility.SpawnBuilding`에 전달한다.
 - **처리·ECB:** 공통 스폰 유틸리티가 매핑을 찾아 프리팹 Instantiate와 위치·방향·타입별 런타임 구성을 EndBuilding ECB에 기록한다. DB/매핑 누락이면 Fatal을 기록하고 `Entity.Null`을 반환한다. 대체 프리팹이나 빈 엔티티를 생성하지 않는다.
-- **필드 결합·생명주기:** 조회 함수는 `FootprintSize`도 반환하지만 현재 `SpawnBuilding`은 반환된 `dbFootprint`를 실제 크기에 사용하지 않는다. 실제 `BuildingFootprint`는 전달 크기→건물 설정→타입 기본값 순서로 정한다. 매핑 버퍼는 조회 후 유지하며 런타임 Writer·Clear·별도 Dispose는 없다.
-- **소스:** [정의](../../../Assets/Scripts/Components/Prefabs/PrefabDatabaseComponents.cs), [Baker와 크기 초기값](../../../Assets/Scripts/Authoring/BuildingPrefabDatabaseAuthoring.cs), [검증](../../../Assets/Scripts/Systems/Initialization/PrefabDatabaseInitializationSystem.cs), [조회](../../../Assets/Scripts/Common/PrefabLookupUtility.cs), [실제 스폰·크기 선택](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs).
+- **필드 결합·생명주기:** 조회 함수는 프리팹만 반환한다. 실제 BuildingFootprint는 BuildingConfigElement.Footprint가 유일한 원본이며 전달 크기는 일치 확인용 스냅샷이다. 매핑 버퍼는 조회 후 유지하며 런타임 Writer·Clear·별도 Dispose는 없다.
+- **소스:** [정의](../../../Assets/Scripts/Components/Prefabs/PrefabDatabaseComponents.cs), [Baker](../../../Assets/Scripts/Authoring/BuildingPrefabDatabaseAuthoring.cs), [검증](../../../Assets/Scripts/Systems/Initialization/PrefabDatabaseInitializationSystem.cs), [조회](../../../Assets/Scripts/Common/PrefabLookupUtility.cs), [실제 스폰·크기 선택](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs).
 
 ## ItemPrefabDatabase
 

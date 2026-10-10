@@ -53,6 +53,7 @@ public struct BuildingPlacementReceiptSequence : IComponentData
 public struct PlacementRequestCandidateElement : IBufferElementData
 {
     public BuildingTypeEnum TargetType;
+    /// <summary>미리보기/사전 검사에 사용한 Config 크기. Command가 원본 설정과 일치하는지 확인하며 덮어쓰기를 허용하지 않는다.</summary>
     public int2 FootprintSize;
     public int2 OriginPosition;
     public DirectionEnum Direction;

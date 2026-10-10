@@ -39,7 +39,38 @@ namespace PlanetMiner.Tests
                 if (BuildingConfigLookupUtility.TryGetConfig(configs, type, out _))
                     continue;
                 configs.Add(new BuildingConfigElement(type, type == BuildingTypeEnum.Belt ? 2f : 1f, 20, true,
-                    footprint: BuildingLifecycleUtility.GetDefaultFootprint(type)));
+                    footprint: GetFixtureBuildingFootprint(type)));
+            }
+        }
+
+        /// <summary>격리 fixture의 명시적 크기다. 제품 Spawn/Init의 기본값 경로가 아니다.</summary>
+        public static int2 GetFixtureBuildingFootprint(BuildingTypeEnum type)
+        {
+            return type switch
+            {
+                BuildingTypeEnum.Belt or BuildingTypeEnum.Splitter or BuildingTypeEnum.Merger or
+                BuildingTypeEnum.PowerPole or BuildingTypeEnum.Storage => new int2(1, 1),
+                BuildingTypeEnum.Miner or BuildingTypeEnum.Crafter => new int2(2, 2),
+                BuildingTypeEnum.CoalGenerator or BuildingTypeEnum.DroneStation or BuildingTypeEnum.ResearchBuilding or
+                BuildingTypeEnum.MainFacility => new int2(3, 3),
+                _ => throw new System.ArgumentOutOfRangeException(nameof(type))
+            };
+        }
+
+        /// <summary>비정사각형 사례가 요청/현장과 같은 설정 크기를 명시한다.</summary>
+        public void SetBuildingFootprint(BuildingTypeEnum type, int2 footprint)
+        {
+            PrepareBuildingConfiguration(type);
+            using var query = _entityManager.CreateEntityQuery(typeof(BuildingConfig));
+            var configs = _entityManager.GetBuffer<BuildingConfigElement>(query.GetSingletonEntity());
+            for (int i = 0; i < configs.Length; i++)
+            {
+                if (configs[i].BuildingType != type)
+                    continue;
+                var config = configs[i];
+                config.Footprint = footprint;
+                configs[i] = config;
+                return;
             }
         }
 

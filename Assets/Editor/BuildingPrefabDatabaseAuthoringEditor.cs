@@ -13,6 +13,7 @@ public class BuildingPrefabDatabaseAuthoringEditor : Editor
     {
         // Undo 가능한 목록 편집과 dirty 표시만 수행한다. 저장/베이킹은 이 호출에서 실행하지 않는다.
         DrawDefaultInspector();
+        EditorGUILayout.HelpBox("건물 점유 크기는 Resources/Config/BuildingConfig.json의 footprint에서 편집합니다. 프리팹 목록은 종류와 원형만 등록합니다.", MessageType.Info);
 
         var authoring = (BuildingPrefabDatabaseAuthoring)target;
 

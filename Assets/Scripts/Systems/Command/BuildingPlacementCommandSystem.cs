@@ -68,7 +68,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
         var ecb = ecbSystem.CreateCommandBuffer();
 
         // 설정 버퍼를 임시 배열로 복사해 검증과 ECB 기록 동안 같은 입력을 사용한다.
-        // 여기서 해금/자재 요구량만 읽으며 설정이나 드론 관리 상태를 변경하지 않는다.
+        // 여기서 고정 크기/해금/자재 요구량을 읽으며 설정이나 드론 관리 상태를 변경하지 않는다.
         bool hasConfig = SystemAPI.TryGetSingletonEntity<BuildingConfig>(out var configEntity);
         if (!hasConfig || !state.EntityManager.HasBuffer<BuildingConfigElement>(configEntity) ||
             !state.EntityManager.HasBuffer<BuildingConstructionMaterialElement>(configEntity))
@@ -181,7 +181,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                     ecb.AddComponent(siteEntity, new BuildingType(BuildingTypeEnum.ConstructionSite));
 
                     // Size에는 방향 적용 전 크기를 저장한다. 점유 조회 시에만 회전한다.
-                    int2 baseSize = math.max(candidate.FootprintSize, new int2(1, 1));
+                    int2 baseSize = candidate.FootprintSize;
                     ecb.AddComponent(siteEntity, new BuildingFootprint(baseSize));
                     ecb.AddComponent(siteEntity, new GridPosition(candidate.OriginPosition));
                     ecb.AddComponent(siteEntity, new Direction(candidate.Direction));

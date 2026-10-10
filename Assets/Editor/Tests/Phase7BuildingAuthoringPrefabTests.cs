@@ -14,6 +14,47 @@ using UnityEngine.TestTools;
 /// </summary>
 public class Phase7BuildingAuthoringPrefabTests : EcsWorldTestFixture
 {
+    [TestCase(null)]
+    [TestCase("[]")]
+    [TestCase("[0, 1]")]
+    [TestCase("[-1, 1]")]
+    [TestCase("[1, 1, 1]")]
+    [TestCase("[1.5, 1]")]
+    [TestCase("[\"2\", 1]")]
+    [TestCase("[2147483648, 1]")]
+    public void InvalidOrMissingFootprint_RejectsJsonWithoutPublishingLists(string footprintJson)
+    {
+        string json = Resources.Load<TextAsset>(BuildingConfigLoader.DefaultResourcePath).text;
+        var footprintField = new Regex("\"footprint\"\\s*:\\s*\\[[^\\]]*\\],");
+        string replacement = footprintJson == null ? string.Empty : "\"footprint\": " + footprintJson + ",";
+        json = footprintField.Replace(json, replacement, 1);
+
+        LogAssert.Expect(LogType.Error, new Regex("BuildingConfigLoader.*footprint"));
+        Assert.IsFalse(BuildingConfigLoader.TryParseJson(json, out var configs, out var materials));
+        Assert.IsNull(configs);
+        Assert.IsNull(materials);
+    }
+
+    [Test]
+    public void InvalidPreregisteredFootprint_StopsSimulationAtInit_AndPreservesSource()
+    {
+        Assert.IsTrue(BuildingConfigLoader.TryLoadConfigFromResources(
+            BuildingConfigLoader.DefaultResourcePath, out var configs, out var materials));
+        Entity configEntity = BuildingConfigLoader.PublishConfig(_entityManager, configs, materials);
+        var buffer = _entityManager.GetBuffer<BuildingConfigElement>(configEntity);
+        var invalid = buffer[0];
+        invalid.Footprint = int2.zero;
+        buffer[0] = invalid;
+
+        LogAssert.Expect(LogType.Error, new Regex("BuildingConfigLoader.*invalid footprint"));
+        LogAssert.Expect(LogType.Error, new Regex("BuildingConfigInitSystem.*Game simulation stopped"));
+        _world.GetOrCreateSystemManaged<BuildingConfigInitSystem>();
+
+        Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
+        Assert.IsTrue(_entityManager.Exists(configEntity));
+        Assert.AreEqual(int2.zero, _entityManager.GetBuffer<BuildingConfigElement>(configEntity)[0].Footprint);
+    }
+
     [Test]
     public void Test01_BuildingConfigLoader_ParsesAndValidatesFootprintsAndMainFacility()
     {
@@ -80,8 +121,8 @@ public class Phase7BuildingAuthoringPrefabTests : EcsWorldTestFixture
     {
         var configEntity = _entityManager.CreateEntity(typeof(BuildingConfigElement));
         var buffer = _entityManager.GetBuffer<BuildingConfigElement>(configEntity);
-        buffer.Add(new BuildingConfigElement(BuildingTypeEnum.Belt, 10f, 0, true));
-        buffer.Add(new BuildingConfigElement(BuildingTypeEnum.Miner, 0.1f, 0, false));
+        buffer.Add(new BuildingConfigElement(BuildingTypeEnum.Belt, 10f, 0, true, footprint: new int2(1, 1)));
+        buffer.Add(new BuildingConfigElement(BuildingTypeEnum.Miner, 0.1f, 0, false, footprint: new int2(2, 2)));
 
         Assert.IsTrue(BuildingConfigLookupUtility.IsBuildingUnlocked(buffer, BuildingTypeEnum.Belt));
         Assert.IsFalse(BuildingConfigLookupUtility.IsBuildingUnlocked(buffer, BuildingTypeEnum.Miner));
@@ -105,31 +146,10 @@ public class Phase7BuildingAuthoringPrefabTests : EcsWorldTestFixture
         // Resources/Prefabs/Building에 11개의 프리팹이 있으므로 11개가 파퓰레이트되어야 함
         Assert.AreEqual(11, authoring.Prefabs.Count);
 
-        // 주요 건물 Footprint 확인
+        // 크기는 Config가 소유한다. 목록에는 원형 참조만 등록한다.
         foreach (var entry in authoring.Prefabs)
         {
             Assert.IsNotNull(entry.Prefab, $"{entry.Type} 프리팹 GameObject가 null이 아니어야 함");
-            switch (entry.Type)
-            {
-                case BuildingTypeEnum.Belt:
-                    Assert.AreEqual(new Vector2Int(1, 1), entry.Size);
-                    break;
-                case BuildingTypeEnum.Miner:
-                    Assert.AreEqual(new Vector2Int(2, 2), entry.Size);
-                    break;
-                case BuildingTypeEnum.Crafter:
-                    Assert.AreEqual(new Vector2Int(2, 2), entry.Size);
-                    break;
-                case BuildingTypeEnum.Storage:
-                    Assert.AreEqual(new Vector2Int(1, 1), entry.Size);
-                    break;
-                case BuildingTypeEnum.ResearchBuilding:
-                    Assert.AreEqual(new Vector2Int(3, 3), entry.Size);
-                    break;
-                case BuildingTypeEnum.MainFacility:
-                    Assert.AreEqual(new Vector2Int(3, 3), entry.Size);
-                    break;
-            }
         }
 
         Object.DestroyImmediate(go);

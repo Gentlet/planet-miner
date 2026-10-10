@@ -59,6 +59,24 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
         return BuildingPlacementRequestUtility.Submit(_entityManager, new BuildingPlacementRequest(flags), candidates);
     }
 
+    [Test]
+    public void Test14_FootprintMismatch_RejectsWithoutClaimingLaterPlacement()
+    {
+        SetupBuildingConfig((BuildingTypeEnum.Storage, 1f, 4, true, null));
+        CreatePlacementRequest(PlacementFlags.StrictAllOrNothing,
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(2, 3), int2.zero));
+        CreatePlacementRequest(PlacementFlags.StrictAllOrNothing,
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), int2.zero));
+
+        UpdateCommandPhase();
+        UpdateBuildingSpatialIndex();
+
+        using var sites = _entityManager.CreateEntityQuery(typeof(ConstructionSite));
+        Assert.AreEqual(1, sites.CalculateEntityCount());
+        Assert.AreEqual(1, _buildingMap.Count());
+        Assert.AreEqual(sites.GetSingletonEntity(), _buildingMap[int2.zero].Entity);
+    }
+
     private void SetupBuildingConfig(params (BuildingTypeEnum type, float speed, int storage, bool unlocked, (ItemTypeEnum item, int qty)[] mats)[] configs)
     {
         var entity = _entityManager.CreateEntity(
@@ -74,7 +92,8 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
 
         foreach (var c in configs)
         {
-            configBuffer.Add(new BuildingConfigElement(c.type, c.speed, c.storage, c.unlocked));
+            configBuffer.Add(new BuildingConfigElement(c.type, c.speed, c.storage, c.unlocked,
+                footprint: PlanetMiner.Tests.TestEntityFactory.GetFixtureBuildingFootprint(c.type)));
             runtimeBuffer.Add(new BuildingRuntimeConfigElement(c.type, c.speed, c.storage));
             if (c.mats != null)
             {
@@ -270,12 +289,13 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
         PlacementFlags firstFlags, PlacementFlags laterFlags, bool sameOrigin)
     {
         SetupBuildingConfig((BuildingTypeEnum.Storage, 1f, 4, true, null));
+        Entities.SetBuildingFootprint(BuildingTypeEnum.Storage, new int2(2, 3));
         Entity first = CreatePlacementRequest(firstFlags,
             new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(2, 3), int2.zero, DirectionEnum.Right, 500UL));
         int2 overlappingOrigin = sameOrigin ? int2.zero : new int2(2, 1);
         Entity later = CreatePlacementRequest(laterFlags,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(2, 2), overlappingOrigin, DirectionEnum.Up, 1UL),
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(8, 8)));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(2, 3), overlappingOrigin, DirectionEnum.Up, 1UL),
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(2, 3), new int2(8, 8)));
         // 먼저 접수한 요청을 다른 archetype으로 옮겨 Query 배열 순서를 접수 순서의 근거로 삼지 않는다.
         _entityManager.AddComponentData(first, new Direction(DirectionEnum.Right));
 
@@ -290,7 +310,7 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
 
         Entity winner = _buildingMap[int2.zero].Entity;
         Assert.AreEqual(500UL, _entityManager.GetComponentData<PlacementStamp>(winner).Tick);
-        Assert.AreEqual(allowPartial ? 7 : 6, _buildingMap.Count());
+        Assert.AreEqual(allowPartial ? 12 : 6, _buildingMap.Count());
         for (int y = 0; y < 2; y++)
         {
             for (int x = 0; x < 3; x++)

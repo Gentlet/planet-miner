@@ -49,17 +49,19 @@ public static class BuildingLifecycleUtility
             return RejectMissingConfiguration(ref ecb, targetType);
         }
 
-        int2 baseFootprint = footprintSize;
+        // Config가 유일한 크기 원본이다. 전달 크기는 승인된 현장/요청의 일치 확인용이며 덮어쓰기 입력이 아니다.
+        int2 baseFootprint = config.Footprint;
         float speed = config.Speed;
         int storageCapacity = config.StorageCapacity;
         if (baseFootprint.x <= 0 || baseFootprint.y <= 0)
         {
-            baseFootprint = config.Footprint;
+            SimulationFailureUtility.Record(ref ecb, "[BuildingLifecycleUtility] Invalid configured building footprint. Spawn rejected.");
+            return Entity.Null;
         }
-
-        if (baseFootprint.x <= 0 || baseFootprint.y <= 0)
+        if (!math.all(footprintSize == int2.zero) && !math.all(footprintSize == baseFootprint))
         {
-            baseFootprint = GetDefaultFootprint(targetType);
+            UnityEngine.Debug.LogError("[BuildingLifecycleUtility] Requested footprint differs from BuildingConfig. Spawn rejected.");
+            return Entity.Null;
         }
 
         float3 spawnPosition = new float3(position.x, position.y, 0f);
@@ -67,12 +69,11 @@ public static class BuildingLifecycleUtility
         Entity newBuilding;
 
         Entity prefabEntity = Entity.Null;
-        int2 dbFootprint = int2.zero;
 
         if (hasPrefabDb && prefabDbEntity != Entity.Null && prefabBufferLookup.HasBuffer(prefabDbEntity))
         {
             var buffer = prefabBufferLookup[prefabDbEntity];
-            PrefabLookupUtility.TryGetBuildingPrefab(buffer, targetType, out prefabEntity, out dbFootprint);
+            PrefabLookupUtility.TryGetBuildingPrefab(buffer, targetType, out prefabEntity);
         }
 
         if (prefabEntity == Entity.Null)
@@ -188,31 +189,5 @@ public static class BuildingLifecycleUtility
         ecb.AddComponent(building, new StorageFilter());
         ecb.AddComponent<BuildingItemOutputDecision>(building);
         ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);
-    }
-
-    public static int2 GetDefaultFootprint(BuildingTypeEnum type)
-    {
-        switch (type)
-        {
-            case BuildingTypeEnum.Belt:
-            case BuildingTypeEnum.Splitter:
-            case BuildingTypeEnum.Merger:
-            case BuildingTypeEnum.PowerPole:
-            case BuildingTypeEnum.Storage:
-                return new int2(1, 1);
-
-            case BuildingTypeEnum.Miner:
-            case BuildingTypeEnum.Crafter:
-                return new int2(2, 2);
-
-            case BuildingTypeEnum.CoalGenerator:
-            case BuildingTypeEnum.DroneStation:
-            case BuildingTypeEnum.ResearchBuilding:
-            case BuildingTypeEnum.MainFacility:
-                return new int2(3, 3);
-
-            default:
-                return new int2(1, 1);
-        }
     }
 }
