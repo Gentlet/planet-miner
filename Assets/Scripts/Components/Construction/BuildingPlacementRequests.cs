@@ -16,7 +16,7 @@ public struct BuildingPlacementRequest : IComponentData
     public PlacementFlags Flags;
 
     /// <summary>
-    /// 요청 시점의 시뮬레이션 틱 (0이면 시스템 현재 틱을 자동 부여).
+    /// 호출자가 명시하는 설치 기준 Tick. 0이면 공통 Command Tick을 사용하며 실제 접수 순번과 구분한다.
     /// </summary>
     public ulong RequestTick;
 
@@ -32,13 +32,14 @@ public struct BuildingPlacementRequest : IComponentData
 }
 
 /// <summary>
-/// 역할·목적: 배치 요청의 World 접수번호 발급 상태. 점유나 설치 우선순위 Stamp를 저장하지 않는다.
-/// 생성·소유권: BuildingPlacementRequestUtility.Submit이 최초 접수 때 NextValue=1로 만들고 번호를 증가시킨다.
+/// 역할·목적: 배치·직접 생성이 공유하는 World 접수번호와 기본 설치 Tick의 원본. 점유나 개별 건물 Stamp는 저장하지 않는다.
+/// 생성·소유권: BuildingPlacementRequestUtility가 NextValue=1, CurrentTick=1로 준비한다. Submit/SubmitSpawn은 번호를 발급하고 배치 Command만 Tick을 전진한다.
 /// 수명: 요청 소비와 무관하게 World 종료까지 유지하며 번호를 재사용하지 않는다.
 /// </summary>
 public struct BuildingPlacementReceiptSequence : IComponentData
 {
     public ulong NextValue;
+    public ulong CurrentTick;
 }
 
 /// <summary>

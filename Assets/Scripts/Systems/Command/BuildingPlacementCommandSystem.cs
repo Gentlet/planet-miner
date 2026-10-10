@@ -17,8 +17,6 @@ using UnityEngine;
 [UpdateInGroup(typeof(CommandGroup))]
 public partial struct BuildingPlacementCommandSystem : ISystem
 {
-    private ulong _currentTick;
-
     private struct PendingPlacement
     {
         public Entity Entity;
@@ -35,7 +33,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
 
     public void OnCreate(ref SystemState state)
     {
-        _currentTick = 1;
+        BuildingPlacementRequestUtility.GetOrCreateReceiptSequence(state.EntityManager);
         state.RequireForUpdate<BuildingSpatialIndexFence>();
         state.RequireForUpdate<ResourceSpatialIndexFence>();
         state.RequireForUpdate<ItemSpatialIndexFence>();
@@ -149,7 +147,9 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                 approvedCells: approvedCells);
 
             // 후보의 명시 Tick을 우선하되 버퍼 순서를 유지한다. 이 Stamp가 이후 최초 공급 우선순위의 근거가 된다.
-            ulong defaultTick = request.RequestTick > 0 ? request.RequestTick : _currentTick;
+            ulong defaultTick = request.RequestTick > 0
+                ? request.RequestTick
+                : SystemAPI.GetSingleton<BuildingPlacementReceiptSequence>().CurrentTick;
 
             for (int i = 0; i < count; i++)
             {
@@ -193,7 +193,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                     }
 
                     ecb.AddComponent(siteEntity, new ConstructionSite(candidate.TargetType, flags));
-                    ecb.AddComponent(siteEntity, new PlacementStamp(candidateTick, (uint)i));
+                    ecb.AddComponent(siteEntity, new PlacementStamp(candidateTick, (uint)i, request.ReceiptSequence));
                     ecb.AddComponent(siteEntity, LocalTransform.FromPosition(candidate.OriginPosition.x, candidate.OriginPosition.y, 0f));
 
                     // 요구 수량과 실물 참조를 분리한다. 현장은 요구량만으로 자재를 소유하지 않으며
@@ -220,7 +220,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
             if (materials.IsCreated) materials.Dispose();
         }
 
-        _currentTick++;
+        BuildingPlacementRequestUtility.AdvanceTick(state.EntityManager);
     }
 
     private static bool HasDuplicateReceipt(NativeArray<PendingPlacement> requests, int index)

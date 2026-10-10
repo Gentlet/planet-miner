@@ -222,6 +222,7 @@ public partial struct SplitterDecisionJob : IJobEntity
         Entity bestBelt = Entity.Null;
         PlacementStamp bestStamp = default;
         bool hasBestStamp = false;
+        int2 bestPosition = default;
         forwardDir = DirectionEnum.Up;
 
         for (int i = 0; i < (int)DirectionEnum.Count; i++)
@@ -246,13 +247,16 @@ public partial struct SplitterDecisionJob : IJobEntity
                         bestBelt = beltInfo.Entity;
                         bestStamp = stamp;
                         hasBestStamp = hasStamp;
+                        bestPosition = neighborPos;
                         forwardDir = beltInfo.Direction;
                     }
-                    else if (hasStamp && (!hasBestStamp || stamp.IsEarlierThan(bestStamp)))
+                    else if (PlacementStamp.Compare(hasStamp, stamp, neighborPos,
+                                 hasBestStamp, bestStamp, bestPosition) < 0)
                     {
                         bestBelt = beltInfo.Entity;
                         bestStamp = stamp;
-                        hasBestStamp = true;
+                        hasBestStamp = hasStamp;
+                        bestPosition = neighborPos;
                         forwardDir = beltInfo.Direction;
                     }
                 }

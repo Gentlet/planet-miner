@@ -388,12 +388,18 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         Assert.AreEqual(1, Requirement(reachable).ReservedQuantity);
     }
 
-    [Test]
-    public void InitialAssignment_PrefersEarlierSiteOverCloserSite()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void InitialAssignment_PrefersEarlierSiteOverCloserSite(bool sameTick)
     {
         Entity older = CreateSite(new int2(100, 0), 1, ItemTypeEnum.Iron, 1);
         Entity olderTask = CreateSupplyTask(older, ItemTypeEnum.Iron, 1);
         Entity younger = CreateSite(new int2(2, 0), 2, ItemTypeEnum.Iron, 1);
+        if (sameTick)
+        {
+            _entityManager.SetComponentData(older, new PlacementStamp(10, 8, 1));
+            _entityManager.SetComponentData(younger, new PlacementStamp(10, 0, 2));
+        }
         CreateSupplyTask(younger, ItemTypeEnum.Iron, 2);
         CreateStorage(new int2(1, 0), 1, ItemTypeEnum.Iron, 2);
         CreateWorker(1);
@@ -407,22 +413,33 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         Assert.AreEqual(0, Requirement(younger).ReservedQuantity);
     }
 
-    [Test]
-    public void SourceSelection_UsesCompleteRouteDistance_ThenPlacementStamp()
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    public void SourceSelection_UsesCompleteRouteDistance_ThenPlacementStamp(int scenario)
     {
         Entity site = CreateSite(new int2(20, 0), 1, ItemTypeEnum.Iron, 1);
         CreateSupplyTask(site, ItemTypeEnum.Iron, 1);
         Entity visuallyNearest = CreateStorage(new int2(1, 0), 1, ItemTypeEnum.Iron, 1);
         Entity tiedYounger = CreateStorage(new int2(5, 0), 3, ItemTypeEnum.Iron, 1);
         Entity tiedOlder = CreateStorage(new int2(6, 0), 2, ItemTypeEnum.Iron, 1);
+        if (scenario == 1)
+        {
+            _entityManager.SetComponentData(tiedYounger, new PlacementStamp(2, 0));
+        }
+        if (scenario == 2)
+        {
+            _entityManager.SetComponentData(tiedOlder, new PlacementStamp(2, 8, 1));
+            _entityManager.SetComponentData(tiedYounger, new PlacementStamp(2, 0, 2));
+        }
         CreateWorker(1);
         Tick();
         AnswerRoutes(route => route.Source == visuallyNearest ? 40f : 25f);
 
         Tick();
 
-        Assert.AreEqual(tiedOlder, SingleAssignment().Source);
-        Assert.AreNotEqual(tiedYounger, SingleAssignment().Source);
+        Assert.AreEqual(scenario == 1 ? tiedYounger : tiedOlder, SingleAssignment().Source);
+        Assert.AreNotEqual(visuallyNearest, SingleAssignment().Source);
     }
 
     [Test]

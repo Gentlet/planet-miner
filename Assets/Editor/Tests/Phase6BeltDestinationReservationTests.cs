@@ -38,22 +38,27 @@ public class Phase6BeltDestinationReservationTests : EcsWorldTestFixture
         _reservationHandle.Update(_world.Unmanaged);
     }
 
-    [Test]
-    public void Test02_MultipleBuildingOutputs_PlacementStampArbitration()
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    [TestCase(3)]
+    public void Test02_MultipleBuildingOutputs_PlacementStampArbitration(int scenario)
     {
         // Arrange: 대상 벨트 (0,0)로 두 창고가 동시 출고 시도
         var belt = Entities.CreateBelt(new int2(0, 0), DirectionEnum.Right);
 
         // 창고 1 (Tick=10)
         var storage1 = Entities.CreateStorage(new int2(0, 1), new int2(1, 1));
-        _entityManager.AddComponentData(storage1, new PlacementStamp(tick: 10, order: 0));
+        if (scenario != 3)
+            _entityManager.AddComponentData(storage1, new PlacementStamp(10, scenario == 1 ? 8U : 0U, scenario == 1 ? 1UL : 0UL));
         var item1 = Entities.CreateBeltItem(new int2(0, 1), DirectionEnum.Down, progress: 0.0f);
         _entityManager.SetComponentData(storage1, new BuildingItemOutputDecision(canOutput: true, item1, new int2(0, 0)));
         _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(storage1, true);
 
-        // 창고 2 (Tick=20)
+        // 다른 Tick / 같은 Tick의 뒤 접수 / 완전 동률 / 표식 누락을 비교한다.
         var storage2 = Entities.CreateStorage(new int2(0, -1), new int2(1, 1));
-        _entityManager.AddComponentData(storage2, new PlacementStamp(tick: 20, order: 0));
+        if (scenario != 3)
+            _entityManager.AddComponentData(storage2, new PlacementStamp(scenario == 0 ? 20UL : 10UL, 0, scenario == 1 ? 2UL : 0UL));
         var item2 = Entities.CreateBeltItem(new int2(0, -1), DirectionEnum.Up, progress: 0.0f);
         _entityManager.SetComponentData(storage2, new BuildingItemOutputDecision(canOutput: true, item2, new int2(0, 0)));
         _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(storage2, true);
@@ -63,14 +68,15 @@ public class Phase6BeltDestinationReservationTests : EcsWorldTestFixture
         // Act
         RunReservation();
 
-        // Assert: 창고 1(Tick 10) 승인, 창고 2(Tick 20) 탈락
+        // 다른 Tick·접수번호는 창고 1, 완전 동률·누락은 아래쪽 창고 2가 승인된다.
         var out1 = _entityManager.GetComponentData<BuildingItemOutputDecision>(storage1);
-        Assert.IsTrue(out1.CanOutput);
-        Assert.IsTrue(_entityManager.IsComponentEnabled<BuildingItemOutputDecision>(storage1));
+        bool firstWins = scenario < 2;
+        Assert.AreEqual(firstWins, out1.CanOutput);
+        Assert.AreEqual(firstWins, _entityManager.IsComponentEnabled<BuildingItemOutputDecision>(storage1));
 
         var out2 = _entityManager.GetComponentData<BuildingItemOutputDecision>(storage2);
-        Assert.IsFalse(out2.CanOutput);
-        Assert.IsFalse(_entityManager.IsComponentEnabled<BuildingItemOutputDecision>(storage2));
+        Assert.AreEqual(!firstWins, out2.CanOutput);
+        Assert.AreEqual(!firstWins, _entityManager.IsComponentEnabled<BuildingItemOutputDecision>(storage2));
     }
 
     [TestCase(true)]

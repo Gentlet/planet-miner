@@ -52,11 +52,11 @@
 
 ## PlacementStamp
 
-- **종류·부착 대상·목적:** 일반 `IComponentData`. 현장·완공 건물에 붙는 `Tick: ulong`, `Order: uint`로 배치 순서 비교에 쓰는 메타데이터다. `IsEarlierThan`은 Tick, 이어 Order가 작은지 비교한다.
-- **생성:** 배치 Command는 후보 `RequestTick > 0`, 요청 헤더 `RequestTick > 0`, 시스템 내부 `_currentTick` 순으로 Tick을 선택하고, 후보 버퍼의 인덱스를 Order로 저장한다. 내부 Tick은 1로 시작해 배치 시스템이 인덱스 준비 조건을 통과한 업데이트마다 증가한다. 여러 요청 전체를 위한 별도 전역 Order 발급은 없다.
-- **전달:** 현장 완공은 존재하는 Stamp를 그대로 새 건물에 전달하고, 없으면 default를 전달한다. 직접 스폰은 요청의 `Stamp`를 사용한다. 동일 벨트 덮어쓰기 경로는 Direction만 바꾸며 Stamp를 새로 부여하지 않는다.
+- **종류·부착 대상·목적:** 일반 `IComponentData`. 현장·완공 건물의 `Tick: ulong`, `ReceiptSequence: ulong`, `Order: uint`는 불변 설치 기록이다. `CompareTo`/`IsEarlierThan`은 Tick→양수 접수번호 우선/번호→Order를 비교한다. `Compare`는 표식 유무와 마지막 좌표 x/y도 함께 비교한다.
+- **생성:** 배치 Command는 후보 `RequestTick > 0`, 요청 헤더 `RequestTick > 0`, 기존 `BuildingPlacementReceiptSequence.CurrentTick` 순으로 Tick을 선택한다. 요청의 접수번호와 원래 후보 인덱스를 함께 저장해 같은 Tick의 앞 접수 묶음 전체를 우선한다. 공통 Tick은 1로 시작하며 Command가 기존 정상 처리 종료에서 전진한다. 실제 접수 순서와 명시 Tick은 서로 다른 의미다.
+- **전달:** 현장 완공은 존재하는 전체 Stamp를 그대로 전달하고, 없으면 기존 default를 전달한다. 직접 스폰은 `SubmitSpawn`이 생략 표식만 공통 Tick/번호로 발급한다. 원시 요청의 생략값은 Apply 준비 묶음에 같은 번호를 발급하고 좌표로 동률을 푼다. 명시 0/0도 `HasPlacementStamp`로 생략과 구별해 보존한다. 동일 벨트 방향 변경은 Stamp를 바꾸지 않는다.
 - **읽기:** BuildingDecision의 Splitter/Merger는 인접 벨트 후보의 Stamp를 읽는다. BuildingReservation의 `BeltDestinationReservationSystem`은 출고·라우팅 후보의 출처 Stamp로 목적지 경합 우선순위를 정한다. 드론의 `DroneSchedulingUtility`도 공급 현장 우선순위와 경로 거리 동률의 현장/보관처 비교에 Stamp를 사용한다. 드론 작업 생성 순번·적재품의 최초 순서는 별도 데이터다.
-- **비교 경계:** 목적지 예약은 Stamp가 있는 후보를 우선하고 Tick/Order 동률 또는 둘 다 미부착이면 `SourceEntity.Index`를 사용한다. 따라서 모든 비교가 Entity 값과 완전히 독립적이라고 설명할 수 없다. 생성 후 Stamp를 변경하는 런타임 Writer는 없다.
+- **비교 경계:** 목적지 예약·라우터 기준 연결·드론은 같은 `PlacementStamp.Compare`를 사용한다. 표식이 있는 후보가 우선하고 같은 Tick에서 양수 접수번호가 0인 명시 기록보다 우선한다. 최종 동률과 모두 미부착은 좌표 x, 이어 y가 작은 쪽이다. 좌표까지 같으면 동순위이며 Entity/방향/Query 순서로 보완하지 않는다. 정상 비중첩 설치의 같은 좌표 중복은 이 비교가 해결하는 문제가 아니다. 생성 후 Stamp를 변경하는 런타임 Writer는 없다.
 - **수명·근거:** 건물/현장 삭제까지 유지된다. [정의](../../../Assets/Scripts/Components/Buildings/PlacementStamp.cs), [발급](../../../Assets/Scripts/Systems/Command/BuildingPlacementCommandSystem.cs), [완공 승계](../../../Assets/Scripts/Systems/Construction/StateApply/ConstructionLifecycleApplySystem.cs), [Splitter](../../../Assets/Scripts/Systems/Buildings/Decision/SplitterDecisionSystem.cs), [Merger](../../../Assets/Scripts/Systems/Buildings/Decision/MergerDecisionSystem.cs), [목적지 예약과 동률 비교](../../../Assets/Scripts/Systems/Buildings/Reservation/BeltDestinationReservationSystem.cs), [드론 순서·거리 동률 비교](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs).
 
 ## BuildingConfig
@@ -104,8 +104,8 @@
 
 ## SpawnBuildingRequest
 
-- **종류·부착 대상·목적:** 일반 `IComponentData`이자 `IRequestComponent`. 별도 일회성 요청 엔티티에 TargetType/Position/Direction/FootprintSize/Stamp를 담아 완공 건물을 직접 생성한다. 배치 타당성 검사나 공사 비용 납부를 수행하는 요청은 아니다.
-- **생성 경로:** 현재 `Assets/Scripts`에는 이 요청을 만드는 게임플레이 Producer가 없다. 직접 생성하는 호출은 테스트에서 확인된다. 실제 공사 완료는 요청을 발행하지 않고 `BuildingLifecycleUtility.SpawnBuilding`을 바로 호출한다.
+- **종류·부착 대상·목적:** 일반 `IComponentData`이자 `IRequestComponent`. 별도 일회성 요청의 TargetType/Position/Direction/FootprintSize/Stamp/HasPlacementStamp가 직접 생성을 전달한다. HasPlacementStamp는 명시적 0/0과 생성자에서 생략한 표식을 구별한다. 배치 타당성 검사나 공사 비용 납부를 수행하는 요청은 아니다.
+- **생성 경로:** `BuildingPlacementRequestUtility.SubmitSpawn`이 생략 표식만 공통 Tick/접수번호로 준비한다. 실제 런타임 게임플레이 Producer는 후속이며 현재 호출은 테스트에서 확인된다. 원시 요청은 Apply의 Job/Lookup 준비 전에 생략 표식을 처리 묶음 단위로 발급하며 실제 접수 순서를 추정하지 않는다. 공사 완료는 요청을 발행하지 않고 공통 SpawnBuilding에 현장의 기존 표식을 바로 전달한다.
 - **소비·순서:** StateApply의 `BuildingLifecycleApplySystem`이 철거 Job 및 벨트 아이템 정리 Job 뒤에 Spawn Job을 연결한다. 공통 생성 함수가 프리팹 인스턴스화와 공통/타입별 구성을 같은 EndBuilding ECB에 기록한다. 시스템은 Routing/Storage Apply 이후이며 Construction Lifecycle은 같은 건물 StateApply의 OrderLast다. 건물 생성/삭제 결과는 EndBuilding 뒤 같은 틱 드론에 보인다.
 - **실패·소비:** None/ConstructionSite 대상은 Null을 반환한다. 등록 프리팹을 찾지 못하면 SimulationFatalError 기록 후 Null을 반환한다. Spawn Job은 반환 성공 여부에 관계없이 요청 삭제를 기록하므로 이 요청 자체는 자동 재시도하지 않는다.
 - **수명·반영:** 새 건물과 요청 삭제는 EndBuilding에 반영되고 다음 Synchronization이 공간을 등록한다. 요청이 소비되기 전까지는 일반 컴포넌트이며 enable/disable로 재사용하지 않는다. 입력 Stamp와 기본 Footprint는 공통 생성의 선택 규칙에 따라 전달된다.

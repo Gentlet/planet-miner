@@ -28,15 +28,15 @@ ConstructionSite.Progress와 도착 비율 기획은 제거했다. [Progress 제
 - **생성:** 플레이어 입력은 사전 확인 후 `BuildingPlacementRequestUtility.Submit`에 헤더와 후보 묶음을 전달한다. Submit은 World 접수번호를 발급해 요청·후보를 같은 엔티티에 만든다. 현재 런타임 UI는 연결되지 않았으며 기존 테스트 Producer는 같은 Submit API로 변경했다. 헤더만 있는 엔티티는 Command의 처리 대상이 아니다.
 - **읽기·승인:** Command의 `BuildingPlacementCommandSystem`이 Building/Resource/Item 공간 인덱스의 마지막 Writer 완료를 기다린 뒤 현재 맵을 읽는다. 유틸리티는 크기, 건물/현장 점유, Miner 하부 자원, 해금, 바닥 아이템을 검사한다. StrictAllOrNothing은 후보 하나라도 실패하면 묶음의 유효 후보도 취소하며, AllowPartialPlacement는 유효 후보만 남긴다.
 - **처리 범위:** 묶음 내부 `claimedCells`와 Command 전체의 `approvedCells`는 별도 임시 데이터다. Validation은 앞 요청의 최종 승인 셀을 읽고 Command가 묶음 정책 확정 뒤 승인 후보만 공유한다. Strict 실패는 선점을 남기거나 앞 승인 셀을 해제하지 않는다. 기존 벨트 방향 변경도 앞 요청 최종 승인 우선이며, Partial은 뒤 요청의 다른 유효 후보만 승인한다. 두 목록은 공간 맵을 변경하거나 ECS 원본을 대체하지 않는다. 바닥 아이템은 차단하지 않고 AwaitingItemClearance를 설정한다.
-- **순서·반영:** ReceiptSequence 오름차순과 요청 내부 후보 순서로 처리한다. 번호 0/중복은 오류 기록 후 요청 전체를 거부·소비하며 Query/Entity 순서로 보완하지 않는다. 현장·요구 버퍼·Stamp/벨트 방향과 요청 삭제는 EndCommand ECB에 기록한다. 헤더 Tick이 0이면 시스템 내부 Tick, 후보 Tick이 양수이면 이를 우선하지만 접수 순서를 바꾸지 않는다. 기존 Stamp.Order는 요청 내부 후보 인덱스로 유지한다(F-041 별도).
+- **순서·반영:** ReceiptSequence 오름차순과 요청 내부 후보 순서로 승인한다. 번호 0/중복은 오류 기록 후 요청 전체를 거부·소비하며 Query/Entity 순서로 보완하지 않는다. 현장·요구 버퍼·Stamp/벨트 방향과 요청 삭제는 EndCommand ECB에 기록한다. 후보 Tick→헤더 Tick→공통 CurrentTick으로 설치 시점을 고르되 승인 순서를 바꾸지 않는다. F-041에서 접수번호도 현장 Stamp로 복사하며 Order는 원래 후보 인덱스다.
 - **수명:** 처리가 시작된 요청은 빈 후보/성공/실패에 관계없이 EndCommand에 삭제된다. 필수 Fence·인덱스가 없거나 맵이 생성되지 않은 경우 시스템이 진행하지 않으므로 그때 요청은 남는다. 재사용·비활성화 과정은 없다.
 - **근거:** [정의](../../../Assets/Scripts/Components/Construction/BuildingPlacementRequests.cs), [소비·생성](../../../Assets/Scripts/Systems/Command/BuildingPlacementCommandSystem.cs), [묶음 검증](../../../Assets/Scripts/Common/BuildingPlacementValidationUtility.cs), [테스트 생성](../../../Assets/Editor/Tests/Phase7PlacementCommandTests.cs).
 
 ## BuildingPlacementReceiptSequence
 
-- **종류·부착 대상·목적:** `IComponentData`. 요청과 별도의 World 단일 엔티티에서 다음 양수 접수번호 `NextValue`만 보관한다. 공간 예약이나 PlacementStamp 원본이 아니다.
-- **생성·쓰기:** Submit이 최초 접수 때 NextValue=1로 생성하거나 기존 singleton을 재사용한다. 요청/후보 준비 성공 뒤 번호를 증가시키며 외부 요청의 ReceiptSequence 입력은 덮어쓴다. 0 또는 ulong.MaxValue 상태는 예외로 접수 전에 거부한다.
-- **읽기·수명:** Submit만 다음 번호를 읽고 쓴다. Command는 요청에 복사한 번호만 읽으므로 번호 발급 상태나 UI 내부를 참조하지 않는다. 개별 요청 소비 뒤에도 World 종료까지 유지한다.
+- **종류·부착 대상·목적:** `IComponentData`. 기존 World 단일 엔티티의 `NextValue`와 `CurrentTick`이 배치·직접 생성의 순서 원본이다. 개별 설치 표식이나 공간 점유는 저장하지 않는다.
+- **생성·쓰기:** 기존 Utility가 NextValue=1/CurrentTick=1로 준비한다. Submit은 요청/후보 준비 성공 뒤 번호를 증가시키며 외부 ReceiptSequence 입력은 덮어쓴다. SubmitSpawn은 생략한 표식만 같은 Tick/번호로 발급한다. 원시 생략 Spawn은 처리 묶음마다 번호 하나를 발급해 실제 접수 순서를 추정하지 않는다. 배치 Command만 기존 정상 처리 종료에서 CurrentTick을 전진한다. 번호 0/ulong.MaxValue 또는 Tick 0 상태는 발급 전에 거부한다.
+- **읽기·수명:** 기존 Utility의 Submit/SubmitSpawn/원시 Spawn 준비가 다음 번호를 읽고 쓴다. Command는 요청의 번호로 승인하고 공통 CurrentTick을 읽고 전진한다. 후속 물류·드론은 현장/건물 Stamp만 읽으며 요청 엔티티나 발급 상태를 참조하지 않는다. 원본은 World 종료까지 유지한다.
 - **근거:** [정의](../../../Assets/Scripts/Components/Construction/BuildingPlacementRequests.cs), [접수 API](../../../Assets/Scripts/Common/BuildingPlacementRequestUtility.cs).
 
 ## PlacementRequestCandidateElement
