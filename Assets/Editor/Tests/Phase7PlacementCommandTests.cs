@@ -364,6 +364,71 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
         fenceQuery.GetSingleton<BuildingSpatialIndexFence>().Complete();
     }
 
+    // 별도 비중첩 묶음의 마지막 후보가 뒤 묶음의 첫 후보보다 우선하고 완공 뒤에도 출고 중재에 전달되는 회귀.
+    [TestCase(1, 0UL, 0UL)]
+    [TestCase(4, 0UL, 0UL)]
+    [TestCase(4, 100UL, 100UL)]
+    [TestCase(4, 100UL, 50UL)]
+    [TestCase(4, 100UL, 200UL)]
+    public void Test13_SeparateRequests_PreserveInstallationOrderThroughCompletionAndOutput(
+        int firstCount, ulong firstTick, ulong laterTick)
+    {
+        SetupBuildingConfig((BuildingTypeEnum.Storage, 1f, 4, true, null));
+        CreateGameplayPrefabDatabases();
+        var candidates = new PlacementRequestCandidateElement[firstCount];
+        for (int i = 0; i < firstCount; i++)
+        {
+            int2 position = i == firstCount - 1 ? new int2(1, 0) : new int2(5 + i, 5);
+            candidates[i] = new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), position);
+        }
+        Entity first = BuildingPlacementRequestUtility.Submit(_entityManager,
+            new BuildingPlacementRequest(requestTick: firstTick), candidates);
+        ulong receipt = _entityManager.GetComponentData<BuildingPlacementRequest>(first).ReceiptSequence;
+        Entity later = BuildingPlacementRequestUtility.Submit(_entityManager,
+            new BuildingPlacementRequest(requestTick: laterTick), new[]
+            {
+                new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(-1, 0))
+            });
+        _entityManager.AddComponentData(first, new Direction(DirectionEnum.Right));
+        // 요청과 완공 엔티티의 할당 이력이 설치 순서의 근거가 되지 않도록 재사용 가능한 슬롯을 만든다.
+        Entity recycled = _entityManager.CreateEntity();
+        _entityManager.DestroyEntity(recycled);
+        Entities.CreateBelt(int2.zero, DirectionEnum.Up);
+
+        UpdateCommandPhase();
+        UpdateBuildingSpatialIndex();
+        Entity firstSite = _buildingMap[new int2(1, 0)].Entity;
+        Entity laterSite = _buildingMap[new int2(-1, 0)].Entity;
+        var firstStamp = _entityManager.GetComponentData<PlacementStamp>(firstSite);
+        var laterStamp = _entityManager.GetComponentData<PlacementStamp>(laterSite);
+        Assert.AreEqual(receipt, firstStamp.ReceiptSequence);
+        Assert.AreEqual((uint)(firstCount - 1), firstStamp.Order);
+
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<ConstructionLifecycleApplySystem>());
+        Simulation.Playback(_world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>());
+        UpdateBuildingSpatialIndex();
+        Entity firstBuilding = _buildingMap[new int2(1, 0)].Entity;
+        Entity laterBuilding = _buildingMap[new int2(-1, 0)].Entity;
+        Assert.IsFalse(_entityManager.Exists(firstSite));
+        Assert.IsFalse(_entityManager.Exists(laterSite));
+        Assert.AreEqual(firstStamp, _entityManager.GetComponentData<PlacementStamp>(firstBuilding));
+        Assert.AreEqual(laterStamp, _entityManager.GetComponentData<PlacementStamp>(laterBuilding));
+
+        Entity firstItem = Entities.CreateBeltItem(new int2(1, 0), DirectionEnum.Left, 0f);
+        Entity laterItem = Entities.CreateBeltItem(new int2(-1, 0), DirectionEnum.Right, 0f);
+        _entityManager.SetComponentData(firstBuilding, new BuildingItemOutputDecision(true, firstItem, int2.zero));
+        _entityManager.SetComponentData(laterBuilding, new BuildingItemOutputDecision(true, laterItem, int2.zero));
+        _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(firstBuilding, true);
+        _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(laterBuilding, true);
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<BeltSpatialSyncSystem>());
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<ItemSpatialSyncSystem>());
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<BeltDestinationReservationSystem>());
+        bool firstWins = laterTick == 0 || laterTick >= firstTick;
+        Assert.AreEqual(firstWins, _entityManager.IsComponentEnabled<BuildingItemOutputDecision>(firstBuilding));
+        Assert.AreEqual(!firstWins, _entityManager.IsComponentEnabled<BuildingItemOutputDecision>(laterBuilding));
+        Assert.AreEqual(firstWins, DroneSchedulingUtility.ComparePlacement(_entityManager, firstBuilding, laterBuilding) < 0);
+    }
+
     [Test]
     public void Test09_CandidateSpecificRequestTick_AssignsIndividualTicks()
     {

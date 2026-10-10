@@ -128,6 +128,7 @@ public struct DestinationCandidate
     public Entity ItemEntity;        // 전송 대상 아이템
     public PlacementStamp Stamp;
     public bool HasStamp;
+    public int2 SourcePosition;
 }
 
 /// <summary>목적 셀별 후보를 모아 하나만 유지하는 단일 Job. 인덱스를 읽고 탈락 결정만 쓰며 로컬 후보 컨테이너는 처리 뒤 Dispose한다.</summary>
@@ -184,6 +185,7 @@ public struct BeltDestinationReservationJob : Unity.Jobs.IJob
 
             PlacementStamp stamp = default;
             bool hasStamp = PlacementStampLookup.TryGetComponent(buildingEntity, out stamp);
+            GridPositionLookup.TryGetComponent(buildingEntity, out var sourcePosition);
 
             var cand = new DestinationCandidate
             {
@@ -191,7 +193,8 @@ public struct BeltDestinationReservationJob : Unity.Jobs.IJob
                 SourceEntity = buildingEntity,
                 ItemEntity = decision.ItemToOutput,
                 Stamp = stamp,
-                HasStamp = hasStamp
+                HasStamp = hasStamp,
+                SourcePosition = sourcePosition.Value
             };
 
             candidatesByTarget.Add(targetPos, cand);
@@ -225,6 +228,7 @@ public struct BeltDestinationReservationJob : Unity.Jobs.IJob
 
             PlacementStamp stamp = default;
             bool hasStamp = PlacementStampLookup.TryGetComponent(routingEntity, out stamp);
+            GridPositionLookup.TryGetComponent(routingEntity, out var sourcePosition);
 
             var cand = new DestinationCandidate
             {
@@ -232,7 +236,8 @@ public struct BeltDestinationReservationJob : Unity.Jobs.IJob
                 SourceEntity = routingEntity,
                 ItemEntity = decision.Item,
                 Stamp = stamp,
-                HasStamp = hasStamp
+                HasStamp = hasStamp,
+                SourcePosition = sourcePosition.Value
             };
 
             candidatesByTarget.Add(targetPos, cand);
@@ -345,20 +350,12 @@ public struct BeltDestinationReservationJob : Unity.Jobs.IJob
     }
 
     /// <summary>
-    /// PlacementStamp(Tick, Order) 및 Entity.Index 순서로 후보 간 우선순위를 비교합니다.
+    /// 공통 설치 순서와 발신 좌표로 비교하며 Entity 할당 이력을 사용하지 않습니다.
     /// </summary>
     private static bool IsCandidateEarlier(in DestinationCandidate a, in DestinationCandidate b)
     {
-        if (a.HasStamp && b.HasStamp)
-        {
-            if (a.Stamp.Tick != b.Stamp.Tick)
-                return a.Stamp.Tick < b.Stamp.Tick;
-            if (a.Stamp.Order != b.Stamp.Order)
-                return a.Stamp.Order < b.Stamp.Order;
-            return a.SourceEntity.Index < b.SourceEntity.Index;
-        }
-        if (a.HasStamp) return true;
-        if (b.HasStamp) return false;
-        return a.SourceEntity.Index < b.SourceEntity.Index;
+        return PlacementStamp.Compare(
+            a.HasStamp, a.Stamp, a.SourcePosition,
+            b.HasStamp, b.Stamp, b.SourcePosition) < 0;
     }
 }

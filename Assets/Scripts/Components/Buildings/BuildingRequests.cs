@@ -5,7 +5,7 @@ using Unity.Mathematics;
 /// <summary>
 /// 역할·목적: 완공 건물 하나의 직접 생성과 런타임 컴포넌트 초기화를 요청한다.
 /// 부착 엔티티: 위치·종류 등을 담은 별도 일회성 요청 엔티티. 생성될 건물에 붙이는 상태가 아니다.
-/// 생성: 외부 Producer가 소비 전에 실체화하는 계약이며 현재 직접 생성은 테스트가 담당한다.
+/// 생성: 외부 Producer는 BuildingPlacementRequestUtility.SubmitSpawn으로 접수한다. 기존 원시 요청의 생략 표식은 Apply 직전에 같은 처리 묶음으로 발급한다.
 /// 현재 ConstructionLifecycleApplySystem은 이 요청을 만들지 않고 공통 SpawnBuilding API로 완공 건물을 직접 생성한다.
 /// 이용: BuildingLifecycleApplySystem(StateApply)이 등록된 프리팹을 인스턴스화한다. DB/항목 누락 시 대체 생성 없이 중단 오류를 기록한다.
 /// 제거: 성공/실패와 관계없이 처리한 요청을 EndBuilding에서 삭제한다. 생성 실패 시 요청 자체를 재시도하지 않는다.
@@ -33,22 +33,25 @@ public struct SpawnBuildingRequest : IComponentData, IRequestComponent
     public int2 FootprintSize;
 
     /// <summary>
-    /// 배치 우선순위 타임스탬프 (배치 요청 또는 공사 현장에서 승계).
+    /// 명시 설치 기록 또는 SubmitSpawn/Apply 준비에서 발급한 기록. 실제 공사 완공은 이 요청을 거치지 않고 표식을 직접 승계한다.
     /// </summary>
     public PlacementStamp Stamp;
+    /// <summary>명시한 표식 또는 접수 시 발급한 표식이 있는지 구분한다. 명시적 0/0과 생성자에서 생략한 값을 구별한다.</summary>
+    public bool HasPlacementStamp;
 
     public SpawnBuildingRequest(
         BuildingTypeEnum targetType,
         int2 position,
         DirectionEnum direction = DirectionEnum.Up,
         int2 footprintSize = default,
-        PlacementStamp stamp = default)
+        PlacementStamp? stamp = null)
     {
         TargetType = targetType;
         Position = position;
         Direction = direction;
         FootprintSize = footprintSize;
-        Stamp = stamp;
+        Stamp = stamp.GetValueOrDefault();
+        HasPlacementStamp = stamp.HasValue;
     }
 }
 

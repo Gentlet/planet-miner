@@ -151,32 +151,35 @@ public class Phase6MergerPipelineTests : EcsWorldTestFixture
         Assert.AreEqual(1, _entityManager.GetComponentData<MergerRoutingState>(merger).InputCursor);
     }
 
-    [Test]
-    public void Test05_Merger_PlacementStampPriority_DeterminesOutputBelt()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Test05_Merger_PlacementStampPriority_DeterminesOutputBelt(bool sameStamp)
     {
         // Arrange: OutputBelt 미지정 상태의 Merger
         var merger = CreateMerger(new int2(0, 0), DirectionEnum.Right, outputBelt: Entity.Null, inputCursor: 0);
 
         // 2개 나가는 벨트 배치
         // 벨트 A: (1, 0) Right (Tick = 20)
-        var beltA = Entities.CreateBelt(new int2(1, 0), DirectionEnum.Right);
-        _entityManager.AddComponentData(beltA, new PlacementStamp(tick: 20UL, order: 0U));
+        var beltA = Entities.CreateBelt(new int2(-1, 0), DirectionEnum.Left);
+        _entityManager.AddComponentData(beltA, new PlacementStamp(tick: sameStamp ? 10UL : 20UL, order: 0U));
 
         // 벨트 B: (0, 1) Up (Tick = 10) -> 더 일찍 설치됨!
         var beltB = Entities.CreateBelt(new int2(0, 1), DirectionEnum.Up);
         _entityManager.AddComponentData(beltB, new PlacementStamp(tick: 10UL, order: 0U));
 
         // 벨트 B의 방향(Up) 기준 Back 입력 벨트: (0, -1) Up
-        var inputBelt = Entities.CreateBelt(new int2(0, -1), DirectionEnum.Up);
-        var inputItem = Entities.CreateBeltItem(new int2(0, -1), DirectionEnum.Up, progress: 1.0f);
+        int2 inputPosition = sameStamp ? new int2(1, 0) : new int2(0, -1);
+        DirectionEnum selectedDirection = sameStamp ? DirectionEnum.Left : DirectionEnum.Up;
+        var inputBelt = Entities.CreateBelt(inputPosition, selectedDirection);
+        var inputItem = Entities.CreateBeltItem(inputPosition, selectedDirection, progress: 1.0f);
 
         // Act
         RunPipeline();
 
         // Assert: PlacementStamp가 더 앞선 벨트 B가 기준선으로 채택되어 (0, 1)로 합류
-        Assert.AreEqual(new int2(0, 1), _entityManager.GetComponentData<GridPosition>(inputItem).Value);
+        Assert.AreEqual(sameStamp ? new int2(-1, 0) : new int2(0, 1), _entityManager.GetComponentData<GridPosition>(inputItem).Value);
         var mergerState = _entityManager.GetComponentData<MergerRoutingState>(merger);
-        Assert.AreEqual(beltB, mergerState.OutputBelt);
-        Assert.AreEqual(DirectionEnum.Up, mergerState.ForwardDirection);
+        Assert.AreEqual(sameStamp ? beltA : beltB, mergerState.OutputBelt);
+        Assert.AreEqual(selectedDirection, mergerState.ForwardDirection);
     }
 }

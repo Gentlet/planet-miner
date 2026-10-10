@@ -147,8 +147,9 @@ public class Phase6SplitterPipelineTests : EcsWorldTestFixture
         Assert.AreEqual(1, _entityManager.GetComponentData<SplitterRoutingState>(splitter).OutputCursor);
     }
 
-    [Test]
-    public void Test05_Splitter_PlacementStampPriority_DeterminesInputBelt()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Test05_Splitter_PlacementStampPriority_DeterminesInputBelt(bool sameStamp)
     {
         // Arrange: InputBelt 미지정 상태의 Splitter
         var splitter = CreateSplitter(new int2(0, 0), DirectionEnum.Right, inputBelt: Entity.Null, outputCursor: 0);
@@ -156,25 +157,27 @@ public class Phase6SplitterPipelineTests : EcsWorldTestFixture
         // 2개 입력 벨트 배치
         // 벨트 A: (-1, 0) Right (Tick = 20)
         var beltA = Entities.CreateBelt(new int2(-1, 0), DirectionEnum.Right);
-        _entityManager.AddComponentData(beltA, new PlacementStamp(tick: 20UL, order: 0U));
+        _entityManager.AddComponentData(beltA, new PlacementStamp(tick: sameStamp ? 10UL : 20UL, order: 0U));
 
         // 벨트 B: (0, -1) Up (Tick = 10) -> 더 일찍 설치됨!
         var beltB = Entities.CreateBelt(new int2(0, -1), DirectionEnum.Up);
         _entityManager.AddComponentData(beltB, new PlacementStamp(tick: 10UL, order: 0U));
 
         // 벨트 B의 진행 방향(Up) 기준 Forward 출구: (0, 1) Up
-        var outputBelt = Entities.CreateBelt(new int2(0, 1), DirectionEnum.Up);
+        int2 outputPosition = sameStamp ? new int2(1, 0) : new int2(0, 1);
+        DirectionEnum selectedDirection = sameStamp ? DirectionEnum.Right : DirectionEnum.Up;
+        var outputBelt = Entities.CreateBelt(outputPosition, selectedDirection);
 
         // 벨트 B에 아이템 도착
-        var itemB = Entities.CreateBeltItem(new int2(0, -1), DirectionEnum.Up, progress: 1.0f);
+        var itemB = Entities.CreateBeltItem(sameStamp ? new int2(-1, 0) : new int2(0, -1), selectedDirection, progress: 1.0f);
 
         // Act
         RunPipeline();
 
         // Assert: PlacementStamp가 더 앞선 벨트 B가 기준선으로 채택되어 Forward(0, 1)로 배출
-        Assert.AreEqual(new int2(0, 1), _entityManager.GetComponentData<GridPosition>(itemB).Value);
+        Assert.AreEqual(outputPosition, _entityManager.GetComponentData<GridPosition>(itemB).Value);
         var splitterState = _entityManager.GetComponentData<SplitterRoutingState>(splitter);
-        Assert.AreEqual(beltB, splitterState.InputBelt);
-        Assert.AreEqual(DirectionEnum.Up, splitterState.ForwardDirection);
+        Assert.AreEqual(sameStamp ? beltA : beltB, splitterState.InputBelt);
+        Assert.AreEqual(selectedDirection, splitterState.ForwardDirection);
     }
 }

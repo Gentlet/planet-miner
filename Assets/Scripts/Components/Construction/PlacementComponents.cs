@@ -95,7 +95,7 @@ public struct PlacementValidationResult
 /// 역할·목적: 배치 가능성 검사에 필요한 종류·기본 크기·위치·방향을 전달하는 후보 값.
 /// 부착 엔티티: 없음. PlacementRequestCandidateElement를 검증용으로 변환한 일반 구조체이며 Tick은 포함하지 않는다.
 /// 생성·이용: BuildingPlacementCommandSystem이 임시 배열로 만들고 BuildingPlacementValidationUtility가 묶음 충돌을 검사한다.
-/// 제거: 요청 처리 후 임시 후보 배열을 Dispose한다. 승인 시 원래 요청의 Tick/인덱스로 별도 PlacementStamp를 만든다.
+/// 제거: 요청 처리 후 임시 후보 배열을 Dispose한다. 승인 시 설치 Tick·요청 접수번호·원래 후보 인덱스로 별도 PlacementStamp를 만든다.
 /// </summary>
 public struct PlacementCandidate
 {

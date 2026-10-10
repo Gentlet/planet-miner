@@ -87,6 +87,12 @@ public partial struct BuildingLifecycleApplySystem : ISystem
             return;
         }
 
+        if (hasSpawnRequests)
+        {
+            state.CompleteDependency();
+            BuildingPlacementRequestUtility.PrepareSpawnStamps(state.EntityManager, _spawnQuery);
+        }
+
         var ecbSystem = state.World.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>();
         var ecb = ecbSystem.CreateCommandBuffer();
 

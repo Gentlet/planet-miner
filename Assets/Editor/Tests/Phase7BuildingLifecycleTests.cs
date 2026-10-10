@@ -45,7 +45,7 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
             new int2(5, 7),
             DirectionEnum.Right,
             default,
-            new PlacementStamp(10, 1)
+            new PlacementStamp(10, 1, 17)
         ));
 
         // 2. 시스템 실행 및 ECB Playback
@@ -63,9 +63,49 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
         Assert.AreEqual(new int2(1, 1), _entityManager.GetComponentData<BuildingFootprint>(building).Size);
         Assert.AreEqual(new int2(5, 7), _entityManager.GetComponentData<GridPosition>(building).Value);
         Assert.AreEqual(DirectionEnum.Right, _entityManager.GetComponentData<Direction>(building).dir);
-        Assert.AreEqual(new PlacementStamp(10, 1), _entityManager.GetComponentData<PlacementStamp>(building));
+        Assert.AreEqual(new PlacementStamp(10, 1, 17), _entityManager.GetComponentData<PlacementStamp>(building));
         Assert.AreEqual(2.0f, _entityManager.GetComponentData<BeltComponent>(building).Speed);
         Assert.AreEqual(new float3(5, 7, 0), _entityManager.GetComponentData<LocalTransform>(building).Position);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Test11_UnstampedSpawn_IsNewInstallation_AndExplicitZeroIsPreserved(bool rawRequests)
+    {
+        var firstRequest = new SpawnBuildingRequest(BuildingTypeEnum.Storage, new int2(5, 0));
+        var laterRequest = new SpawnBuildingRequest(BuildingTypeEnum.Storage, new int2(-5, 0));
+        if (rawRequests)
+        {
+            _entityManager.AddComponentData(_entityManager.CreateEntity(), firstRequest);
+            _entityManager.AddComponentData(_entityManager.CreateEntity(), laterRequest);
+        }
+        else
+        {
+            BuildingPlacementRequestUtility.SubmitSpawn(_entityManager, firstRequest);
+            BuildingPlacementRequestUtility.SubmitSpawn(_entityManager, laterRequest);
+        }
+        BuildingPlacementRequestUtility.SubmitSpawn(_entityManager,
+            new SpawnBuildingRequest(BuildingTypeEnum.Belt, new int2(0, 5), stamp: new PlacementStamp(0, 0)));
+        RunLifecyclePhase();
+
+        Entity first = Entity.Null;
+        Entity later = Entity.Null;
+        using var query = _entityManager.CreateEntityQuery(typeof(BuildingType), typeof(GridPosition));
+        using var buildings = query.ToEntityArray(Unity.Collections.Allocator.Temp);
+        foreach (Entity building in buildings)
+        {
+            int2 position = _entityManager.GetComponentData<GridPosition>(building).Value;
+            if (position.Equals(new int2(5, 0))) first = building;
+            if (position.Equals(new int2(-5, 0))) later = building;
+            if (position.Equals(new int2(0, 5)))
+                Assert.AreEqual(new PlacementStamp(0, 0), _entityManager.GetComponentData<PlacementStamp>(building));
+        }
+        Assert.AreNotEqual(Entity.Null, first);
+        Assert.AreNotEqual(Entity.Null, later);
+        Assert.Greater(_entityManager.GetComponentData<PlacementStamp>(first).Tick, 0UL);
+        Assert.Greater(_entityManager.GetComponentData<PlacementStamp>(first).ReceiptSequence, 0UL);
+        Assert.AreEqual(!rawRequests, DroneSchedulingUtility.ComparePlacement(_entityManager, first, later) < 0,
+            "SubmitSpawn은 실제 접수 순서, 원시 생략 요청의 동일 준비 묶음은 좌표 순서로 비교한다.");
     }
 
     [Test]

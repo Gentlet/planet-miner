@@ -413,19 +413,13 @@ public static class DroneSchedulingUtility
     {
         bool hasLeft = manager.HasComponent<PlacementStamp>(left);
         bool hasRight = manager.HasComponent<PlacementStamp>(right);
-        if (hasLeft && hasRight)
-        {
-            var a = manager.GetComponentData<PlacementStamp>(left);
-            var b = manager.GetComponentData<PlacementStamp>(right);
-            if (a.IsEarlierThan(b)) return -1;
-            if (b.IsEarlierThan(a)) return 1;
-        }
-        else if (hasLeft != hasRight)
-        {
-            return hasLeft ? -1 : 1;
-        }
-
-        return 0;
+        var a = hasLeft ? manager.GetComponentData<PlacementStamp>(left) : default;
+        var b = hasRight ? manager.GetComponentData<PlacementStamp>(right) : default;
+        int2 leftPosition = manager.HasComponent<GridPosition>(left)
+            ? manager.GetComponentData<GridPosition>(left).Value : default;
+        int2 rightPosition = manager.HasComponent<GridPosition>(right)
+            ? manager.GetComponentData<GridPosition>(right).Value : default;
+        return PlacementStamp.Compare(hasLeft, a, leftPosition, hasRight, b, rightPosition);
     }
 
     /// <summary>공급끼리는 PlacementStamp를 우선하고 나머지 동률/종류 간 비교는 작업 CreationSequence를 사용한다.</summary>
