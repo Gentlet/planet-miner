@@ -43,7 +43,7 @@ ConstructionSite.Progress와 도착 비율 기획은 제거했다. [Progress 제
 
 - **종류·부착 대상·목적:** `IBufferElementData`. 배치 요청 엔티티에서 후보별 `TargetType`, 방향 적용 전 `FootprintSize`, 좌하단 `OriginPosition`, `Direction`, 개별 `RequestTick`을 보관한다. 요청 하나에 후보 여러 개를 담을 수 있다.
 - **생성:** 플레이어 입력이 Submit에 헤더와 후보 묶음을 함께 전달한다. 현재 연결된 호출자는 테스트이며 런타임 UI/블루프린트 Producer는 없다. 후보 자체는 현장 또는 건물에 부착하는 버퍼가 아니다.
-- **읽기:** Command는 이 버퍼를 임시 `PlacementCandidate` 배열로 변환해 검증한다. 이 변환에는 Tick이 포함되지 않으며, 승인 이후 원본 후보의 RequestTick을 읽어 Stamp를 정한다. 기본 크기의 유효성 및 방향 회전은 배치 검증 유틸리티가 처리한다.
+- **읽기:** Command는 이 버퍼를 임시 `PlacementCandidate` 배열로 변환해 검증한다. 크기는 Config에서 읽어 미리보기/사전 검사에 사용한 스냅샷이며 Config와 다르면 InvalidFootprint로 거절한다. 개별 크기 덮어쓰기는 지원하지 않는다. 이 변환에는 Tick이 포함되지 않으며, 승인 이후 원본 후보의 RequestTick을 읽어 Stamp를 정한다. 기본 크기의 유효성 및 방향 회전은 배치 검증 유틸리티가 처리한다.
 - **후보 순서:** 버퍼의 앞선 유효 후보가 해당 묶음의 점유 셀을 선점한다. 승인 현장의 Stamp.Order는 후보의 원래 인덱스다. 개별 Tick이 양수이면 요청 헤더/시스템 Tick보다 우선하지만 후보 처리 순서를 Tick으로 정렬하지는 않는다.
 - **소비·결과:** 유효한 후보는 현장의 BuildingType/Footprint/GridPosition/Direction/ConstructionSite/PlacementStamp 및 두 버퍼로 변환된다. 기존 같은 타입 벨트 덮어쓰기는 방향만 바꾼다. 버퍼는 개별 Remove/Clear로 소비하지 않고 요청 엔티티와 함께 EndCommand에 제거된다.
 - **근거:** [정의·변환 연산자](../../../Assets/Scripts/Components/Construction/BuildingPlacementRequests.cs), [후보 해석·Stamp 발급](../../../Assets/Scripts/Systems/Command/BuildingPlacementCommandSystem.cs), [순차 검증](../../../Assets/Scripts/Common/BuildingPlacementValidationUtility.cs), [테스트 후보](../../../Assets/Editor/Tests/Phase7PlacementCommandTests.cs).

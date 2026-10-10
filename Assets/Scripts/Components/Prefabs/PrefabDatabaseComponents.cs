@@ -2,7 +2,7 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 역할·목적: 건물 종류별 프리팹·방향 적용 전 정적 크기 매핑의 단일 DB 소유자를 식별한다.
+/// 역할·목적: 건물 종류별 프리팹 매핑의 단일 DB 소유자를 식별한다. 점유 크기는 BuildingConfig가 소유한다.
 /// 부착 엔티티: BuildingPrefabElement 버퍼가 함께 있는 별도 베이킹 DB 엔티티다.
 /// 생성: BuildingPrefabDatabaseAuthoring.Baker가 등록된 Authoring 항목을 베이킹한다.
 /// 이용: PrefabDatabaseInitializationSystem(Initialization)이 DB 유일성·필수 항목·프리팹 생존/태그를 검증하고 BuildingLifecycleApplySystem/ConstructionLifecycleApplySystem(StateApply)의 완공 생성이 읽는다.
@@ -13,7 +13,7 @@ public struct BuildingPrefabDatabase : IComponentData
 }
 
 /// <summary>
-/// 역할·목적: 건물 종류별 프리팹·방향 적용 전 정적 크기 매핑을 제공한다. Prefab은 실제 런타임 인스턴스와 구분한다.
+/// 역할·목적: 건물 종류별 프리팹 매핑을 제공한다. Prefab은 실제 런타임 인스턴스와 구분하며 크기는 담지 않는다.
 /// 부착 엔티티: BuildingPrefabDatabase 태그가 있는 DB 엔티티의 버퍼다.
 /// 생성: BuildingPrefabDatabaseAuthoring.Baker가 각 항목의 Prefab 참조를 등록한다.
 /// 이용: PrefabDatabaseInitializationSystem(Initialization)이 항목 중복·타입·Prefab/LocalTransform 등을 검증하고 BuildingLifecycleApplySystem/ConstructionLifecycleApplySystem(StateApply)의 완공 생성이 타입으로 조회하여 인스턴스화한다.
@@ -24,13 +24,10 @@ public struct BuildingPrefabElement : IBufferElementData
 {
     public BuildingTypeEnum Type;
     public Entity Prefab;
-    public int2 FootprintSize;
-
-    public BuildingPrefabElement(BuildingTypeEnum type, Entity prefab, int2 footprintSize)
+    public BuildingPrefabElement(BuildingTypeEnum type, Entity prefab)
     {
         Type = type;
         Prefab = prefab;
-        FootprintSize = footprintSize;
     }
 }
 

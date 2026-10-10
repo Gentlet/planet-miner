@@ -35,7 +35,7 @@
 ## BuildingFootprint
 
 - **종류·부착 대상·목적:** 일반 `IComponentData`. 현장·완공 건물에 붙는 `Size: int2`는 방향 적용 전 기본 폭·높이다. `GridPosition`은 회전 후 점유 사각형의 좌하단 기준점으로 사용한다.
-- **생성:** 배치 Command는 후보 크기를 각 축 최소 1로 정규화하여 저장한다. 완공 생성은 전달받은 크기가 유효하면 그대로 사용하고, 유효하지 않으면 통합 설정의 Footprint, 이어 타입별 기본 크기를 사용한다. 프리팹 DB 조회로 얻은 크기를 이 선택에 사용하지 않는다. 공사 완료는 현장의 `Size`를 새 건물로 전달한다.
+- **생성:** 크기 원본은 BuildingConfigElement.Footprint이며 종류별로 고정한다. 배치 Command는 Config와 일치하는 후보의 양수 크기만 승인하여 그대로 저장한다. 공사 완료는 현장의 Size를 전달하고 공통 Spawn은 Config와 일치하는지 확인한 뒤 같은 기본 크기를 기록한다. 직접 생성의 int2.zero만 생략이며 Config를 사용한다. 다른 입력은 불일치/무효 시 거절한다. DB 크기와 타입 기본 크기 fallback은 없다.
 - **읽기·계산:** `BuildingFootprintUtility.GetEffectiveSize`가 각 축 최소 1 및 Left/Right에서 폭·높이 교환을 처리한다. Decision의 채굴기는 이 영역의 자원을 찾고, Storage/Product 출고 Decision은 회전된 크기로 출구를 계산한다. Synchronization의 건물 공간 등록도 같은 계산으로 점유 셀을 등록한다.
 - **단계 경계:** 현장 생성은 EndCommand, 완공 건물 생성은 EndBuilding에 반영된다. 이후 매 Synchronization에서 점유 크기를 다시 읽는다. 저장된 크기에 미리 방향 회전을 적용하지 않는다.
 - **수명·결합:** 생성 이후 크기를 갱신하는 런타임 시스템은 현재 없다. 엔티티 삭제 시 함께 제거된다. 배치 후보의 크기 검증, 현장의 기본 크기, 완공으로 전달되는 크기, 각 Reader의 한 번 회전이 연결되어 있다.
@@ -71,8 +71,8 @@
 ## BuildingConfigElement
 
 - **종류·부착 대상·목적:** `IBufferElementData`. 통합 설정 엔티티에 건물 종류별 `Speed`, `StorageCapacity`, `IsUnlocked`, `RequiredResearch`, 방향 적용 전 `Footprint`를 보관한다.
-- **생성:** `BuildingConfigLoader`가 JSON을 파싱·검증한 목록을 `PublishConfig`에서 버퍼에 복사한다. 초기 게시 시 호환 런타임 버퍼에도 Speed/StorageCapacity를 복사한다. 생성자의 기본 Footprint 처리는 `int2.zero`일 때 `(1,1)`로 바꾸는 규칙이다.
-- **읽기:** Command의 배치 검증은 IsUnlocked를 조회한다. StateApply의 공통 건물 생성은 Speed/StorageCapacity/Footprint를 읽어 타입별 런타임 상태를 초기화한다. 이미 생성된 건물이 매 프레임 이 버퍼의 Speed를 다시 읽는 구조는 아니다.
+- **생성:** `BuildingConfigLoader`가 JSON을 파싱·검증한 목록을 `PublishConfig`에서 버퍼에 복사한다. 초기 게시 시 호환 런타임 버퍼에도 Speed/StorageCapacity를 복사한다. 크기는 명시적 양수 두 축이 필수이며 JSON 생략·무효 입력과 공개 게시/사전 등록의 비양수 크기를 거절한다. 생성자도 int2.zero를 1×1로 보충하지 않는다. 제품 Init 실패는 기존 Fatal 정책이다.
+- **읽기:** Command의 배치 검증은 Footprint와 IsUnlocked를 같은 스냅샷에서 조회한다. StateApply의 공통 건물 생성은 Speed/StorageCapacity/Footprint를 읽어 타입별 런타임 상태를 초기화한다. 이미 생성된 건물이 매 프레임 이 버퍼의 Speed를 다시 읽는 구조는 아니다.
 - **쓰기·현재 연결:** 공개 `BuildingConfigLookupUtility.SetBuildingUnlocked`가 특정 행의 IsUnlocked를 변경할 수 있지만 `Assets/Scripts`에 이를 호출하는 연구 진행 시스템은 없다. RequiredResearch 문자열의 존재만으로 연구가 진행되거나 자동 해금되지는 않는다.
 - **조회·수명 경계:** 조회 유틸리티는 BuildingType의 첫 일치 행을 사용한다. 실제 배치 호출의 설정 NativeArray가 비어 있으면 해금 검사를 통과시키며, 비어 있지 않을 때 미등록 타입은 미해금이다. 생성 시 설정이 없거나 타입을 찾지 못하면 공통 생성의 기본 스펙을 사용한다. 버퍼는 소비·Clear되지 않고 설정 엔티티와 함께 유지된다.
 - **근거:** [정의](../../../Assets/Scripts/Components/Buildings/BuildingConfigComponents.cs), [로드·게시](../../../Assets/Scripts/Config/BuildingConfigLoader.cs), [조회·해금 변경 API](../../../Assets/Scripts/Common/BuildingConfigLookupUtility.cs), [배치 검증](../../../Assets/Scripts/Common/BuildingPlacementValidationUtility.cs), [생성 시 스펙 사용](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs).
@@ -107,7 +107,7 @@
 - **종류·부착 대상·목적:** 일반 `IComponentData`이자 `IRequestComponent`. 별도 일회성 요청의 TargetType/Position/Direction/FootprintSize/Stamp/HasPlacementStamp가 직접 생성을 전달한다. HasPlacementStamp는 명시적 0/0과 생성자에서 생략한 표식을 구별한다. 배치 타당성 검사나 공사 비용 납부를 수행하는 요청은 아니다.
 - **생성 경로:** `BuildingPlacementRequestUtility.SubmitSpawn`이 생략 표식만 공통 Tick/접수번호로 준비한다. 실제 런타임 게임플레이 Producer는 후속이며 현재 호출은 테스트에서 확인된다. 원시 요청은 Apply의 Job/Lookup 준비 전에 생략 표식을 처리 묶음 단위로 발급하며 실제 접수 순서를 추정하지 않는다. 공사 완료는 요청을 발행하지 않고 공통 SpawnBuilding에 현장의 기존 표식을 바로 전달한다.
 - **소비·순서:** StateApply의 `BuildingLifecycleApplySystem`이 철거 Job 및 벨트 아이템 정리 Job 뒤에 Spawn Job을 연결한다. 공통 생성 함수가 프리팹 인스턴스화와 공통/타입별 구성을 같은 EndBuilding ECB에 기록한다. 시스템은 Routing/Storage Apply 이후이며 Construction Lifecycle은 같은 건물 StateApply의 OrderLast다. 건물 생성/삭제 결과는 EndBuilding 뒤 같은 틱 드론에 보인다.
-- **실패·소비:** None/ConstructionSite 대상은 Null을 반환한다. 등록 프리팹을 찾지 못하면 SimulationFatalError 기록 후 Null을 반환한다. Spawn Job은 반환 성공 여부에 관계없이 요청 삭제를 기록하므로 이 요청 자체는 자동 재시도하지 않는다.
+- **실패·소비:** None/ConstructionSite 대상은 Null을 반환한다. 설정/대상 종류/프리팹 누락과 무효 설정 크기는 SimulationFatalError 기록 후 Null이다. 명시 요청 크기가 Config와 다르면 오류 로그 후 Null이며 설정을 덮어쓰지 않는다. Spawn Job은 반환 성공 여부에 관계없이 요청 삭제를 기록하므로 이 요청 자체는 자동 재시도하지 않는다. 완공 호출자의 현장/자재 보존 계약은 유지한다.
 - **수명·반영:** 새 건물과 요청 삭제는 EndBuilding에 반영되고 다음 Synchronization이 공간을 등록한다. 요청이 소비되기 전까지는 일반 컴포넌트이며 enable/disable로 재사용하지 않는다. 입력 Stamp와 기본 Footprint는 공통 생성의 선택 규칙에 따라 전달된다.
 - **근거:** [정의](../../../Assets/Scripts/Components/Buildings/BuildingRequests.cs), [Spawn 소비](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingLifecycleApplySystem.cs), [공통 생성](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs), [공사 완료 직접 호출](../../../Assets/Scripts/Systems/Construction/StateApply/ConstructionLifecycleApplySystem.cs), [테스트 생성 사례](../../../Assets/Editor/Tests/Phase7BuildingLifecycleTests.cs).
 

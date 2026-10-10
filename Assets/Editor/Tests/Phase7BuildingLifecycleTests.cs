@@ -268,6 +268,11 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
         ));
 
         // 2. Miner 및 Storage 스폰 요청
+        // 요청 크기가 설정을 덮어쓰면 같은 위치에 추가 Miner가 생겨 기존 singleton 검사가 실패한다.
+        var mismatchedRequest = _entityManager.CreateEntity();
+        _entityManager.AddComponentData(mismatchedRequest, new SpawnBuildingRequest(
+            BuildingTypeEnum.Miner, new int2(0, 0), footprintSize: new int2(2, 3)));
+        LogAssert.Expect(LogType.Error, "[BuildingLifecycleUtility] Requested footprint differs from BuildingConfig. Spawn rejected.");
         var reqMiner = _entityManager.CreateEntity();
         _entityManager.AddComponentData(reqMiner, new SpawnBuildingRequest(BuildingTypeEnum.Miner, new int2(0, 0)));
 
@@ -294,7 +299,7 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
         TestPrefabDatabaseFactory.RemoveDatabase<BuildingPrefabDatabase>(_entityManager);
         var dbEntity = _entityManager.CreateEntity(typeof(BuildingPrefabDatabase));
         var dbBuffer = _entityManager.AddBuffer<BuildingPrefabElement>(dbEntity);
-        dbBuffer.Add(new BuildingPrefabElement(BuildingTypeEnum.Belt, mockBeltPrefab, new int2(1, 1)));
+        dbBuffer.Add(new BuildingPrefabElement(BuildingTypeEnum.Belt, mockBeltPrefab));
 
         // 2. 등록되지 않은 Miner 스폰 요청
         var reqEntity = _entityManager.CreateEntity();
@@ -317,6 +322,7 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
     [Test]
     public void Test09_SpawnBuilding_FootprintRotation_PreservesBaseSize()
     {
+        Entities.SetBuildingFootprint(BuildingTypeEnum.Crafter, new int2(2, 3));
         // 1. 가로 2, 세로 3인 비대칭 크기를 지정하여 90도 회전(Right) 스폰
         var reqEntity = _entityManager.CreateEntity();
         _entityManager.AddComponentData(reqEntity, new SpawnBuildingRequest(

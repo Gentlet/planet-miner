@@ -521,7 +521,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
             TestPrefabDatabaseFactory.RemoveDatabase<BuildingPrefabDatabase>(_entityManager);
             Entity database = _entityManager.CreateEntity(typeof(BuildingPrefabDatabase));
             _entityManager.AddBuffer<BuildingPrefabElement>(database)
-                .Add(new BuildingPrefabElement(BuildingTypeEnum.Crafter, prefab, new int2(2, 2)));
+                .Add(new BuildingPrefabElement(BuildingTypeEnum.Crafter, prefab));
         }
 
         Entity source = _entityManager.CreateEntity();

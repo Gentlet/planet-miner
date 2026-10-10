@@ -62,7 +62,8 @@ public static class BuildingConfigLookupUtility
         BuildingTypeEnum type,
         out int2 footprint)
     {
-        if (TryGetConfig(buffer, type, out BuildingConfigElement config))
+        if (TryGetConfig(buffer, type, out BuildingConfigElement config) &&
+            config.Footprint.x > 0 && config.Footprint.y > 0)
         {
             footprint = config.Footprint;
             return true;
@@ -136,14 +137,27 @@ public static class BuildingConfigLookupUtility
         in NativeArray<BuildingConfigElement> configs,
         BuildingTypeEnum type)
     {
-        for (int i = 0; i < configs.Length; i++)
+        return TryGetConfig(configs, type, out var config) && config.IsUnlocked;
+    }
+
+    /// <summary>Command의 같은 설정 스냅샷에서 크기·해금을 조회한다. 별도 크기 캐시를 만들지 않는다.</summary>
+    public static bool TryGetConfig(
+        in NativeArray<BuildingConfigElement> configs,
+        BuildingTypeEnum type,
+        out BuildingConfigElement config)
+    {
+        if (configs.IsCreated)
         {
-            if (configs[i].BuildingType == type)
+            for (int i = 0; i < configs.Length; i++)
             {
-                return configs[i].IsUnlocked;
+                if (configs[i].BuildingType == type)
+                {
+                    config = configs[i];
+                    return true;
+                }
             }
         }
-
+        config = default;
         return false;
     }
 
