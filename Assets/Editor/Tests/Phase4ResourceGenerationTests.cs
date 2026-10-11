@@ -13,7 +13,7 @@ using Unity.Transforms;
 /// </summary>
 public class Phase4ResourceGenerationTests : EcsWorldTestFixture
 {
-    private (Entity ConfigEntity, Entity PrefabDbEntity) SetupDefaultConfig(uint worldSeed = 12345u, int initialChunkSize = 3)
+    private (Entity ConfigEntity, Entity PrefabDbEntity) SetupDefaultConfig(uint worldSeed = 12345u, int initialChunkSize = GameConstants.DefaultInitialChunkSize)
     {
         Entity settingsEntity = _entityManager.CreateEntity(typeof(ResourceGenerationSettings));
         _entityManager.SetComponentData(settingsEntity, new ResourceGenerationSettings(worldSeed, initialChunkSize));
@@ -24,7 +24,7 @@ public class Phase4ResourceGenerationTests : EcsWorldTestFixture
             ItemTypeEnum.Iron_Ore,
             weight: 0.8f,
             minPatchRadius: 2,
-            maxPatchRadius: 4,
+            maxPatchRadius: GameConstants.MaxResourcePatchRadius,
             cellFillChance: 0.7f,
             minAmount: 50,
             maxAmount: 200));
@@ -33,7 +33,7 @@ public class Phase4ResourceGenerationTests : EcsWorldTestFixture
             ItemTypeEnum.Copper_Ore,
             weight: 0.6f,
             minPatchRadius: 2,
-            maxPatchRadius: 3,
+            maxPatchRadius: GameConstants.MaxResourcePatchRadius,
             cellFillChance: 0.6f,
             minAmount: 40,
             maxAmount: 150));
@@ -42,7 +42,7 @@ public class Phase4ResourceGenerationTests : EcsWorldTestFixture
             ItemTypeEnum.Coal,
             weight: 0.5f,
             minPatchRadius: 1,
-            maxPatchRadius: 3,
+            maxPatchRadius: GameConstants.MaxResourcePatchRadius,
             cellFillChance: 0.65f,
             minAmount: 30,
             maxAmount: 120));
@@ -51,7 +51,7 @@ public class Phase4ResourceGenerationTests : EcsWorldTestFixture
             ItemTypeEnum.Stone,
             weight: 0.7f,
             minPatchRadius: 2,
-            maxPatchRadius: 4,
+            maxPatchRadius: GameConstants.MaxResourcePatchRadius,
             cellFillChance: 0.75f,
             minAmount: 60,
             maxAmount: 250));

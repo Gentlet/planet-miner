@@ -8,8 +8,8 @@
 
 ## ResourceGenerationSettings
 
-- **목적·필드:** `WorldSeed`는 자원 배치와 바닥 선택의 공통 시드, `InitialChunkSize`는 최초 요청할 청크 사각형 한 변의 길이다. `IComponentData`이며 생성자에서 0 이하 크기는 3으로 바꾼다.
-- **부착·생성:** `WorldGenerationConfigLoadSystem`이 Resources의 월드 JSON을 검증해 같은 엔티티에 자원과 바닥 설정·버퍼를 게시한다. 기존 설정도 자원 버퍼·바닥 설정·바이옴/변형 버퍼의 완전성을 확인하며 자원 전용 등록을 전체 준비로 인정하지 않는다. 불완전하면 보충/중복 게시 없이 Fatal로 거부한다.
+- **목적·필드:** `WorldSeed`는 자원 배치와 바닥 선택의 공통 시드, `InitialChunkSize`는 최초 요청할 청크 사각형 한 변의 길이다. 지원 크기는 1~3이고 기존 0→3 입력 해석을 유지한다. 기본값/최댓값은 GameConstants를 사용한다. 생성자의 기존 0 이하→기본값 처리는 유지하지만 JSON/공개 게시의 원시 음수와 사전 등록된 음수·상한 초과 값은 공통 검사에서 거절한다.
+- **부착·생성:** `WorldGenerationConfigLoadSystem`이 Resources의 월드 JSON을 검증해 같은 엔티티에 자원과 바닥 설정·버퍼를 게시한다. 공개 게시도 엔티티 생성 전에 공통 수치 검사를 실행한다. 기존 설정은 자원/바닥 형태에 이어 같은 수치 검사를 적용하며 실패하면 보충/중복 게시 없이 원본을 보존하고 Fatal로 거부한다. 자원 전용 등록은 제품의 전체 준비로 인정하지 않는다.
 - **Reader·처리:** `InitialChunkLoadBootstrapSystem`은 크기를 읽어 초기 요청을 넣는다. `ResourceGenerationCommandSystem`은 Command에서 시드와 같은 엔티티의 자원 설정을 읽는다. `PrefabDatabaseInitializationSystem`은 자원 설정 엔티티의 유일성과 필수 프리팹을 검증한다. `V2FloorBiomePreview`는 시드를 바닥 계산에 전달한다.
 - **생명주기:** 자동 로더는 성공·실패와 기존 Fatal 뒤 비활성화한다. 파일/파싱/검증 실패는 로그·해당 설정 미게시·즉시 SimulationFatalError이며 자동 재시도하지 않는다. 게시 실패는 이번 호출의 미완성 엔티티만 회수한다. 설정은 World 종료 때 정리한다.
 - **결합 계약:** 자동 로더는 자원과 바닥을 함께 검증하지만 공개 `PublishConfig` 오버로드는 `floor == null`인 자원 전용 게시도 허용한다. 공개 함수 자체는 기존 싱글톤을 거부하지 않는다. 따라서 자동 초기화의 1회 게시와 공개 함수의 호출 가능 범위를 구분한다.
@@ -18,17 +18,17 @@
 ## ResourceGenerationConfigElement
 
 - **목적·필드:** 품목 `ResourceType`, 후보 광맥의 발생 확률 `Weight`, 반경 범위, 셀 채움 확률, 셀별 매장량 범위를 담는 `IBufferElementData`다. 자원 노드의 현재 매장량은 이 버퍼가 아니라 `ResourceNode.Amount`다.
-- **부착·생성:** `WorldGenerationConfigLoader.PublishConfig`가 `ResourceGenerationSettings` 엔티티에 버퍼를 추가하고 검증된 목록 순서로 채운다. 자동 경로는 JSON의 중복 종류·확률·반경·매장량 및 바닥 설정 검증을 통과한 경우에만 게시한다.
+- **부착·생성:** `WorldGenerationConfigLoader.PublishConfig`가 `ResourceGenerationSettings` 엔티티에 버퍼를 추가하고 검증된 목록 순서로 채운다. 반경은 0≤min≤max≤GameConstants.MaxResourcePatchRadius(현재 2), 매장량은 1≤min≤max<int.MaxValue다. JSON·공개 게시·사전 등록이 같은 수치 검사를 사용한다. JSON의 반경/매장량 정수 토큰은 int 표현 범위도 검사하며 자동 경로의 종류/중복/바닥 검증은 유지한다.
 - **Reader·처리:** Initialization의 `PrefabDatabaseInitializationSystem`이 활성 항목에 필요한 자원 프리팹을 검사한다. Command의 `ResourceGenerationCommandSystem`은 `ResourceGenerationUtility.TryResolvePrefabs`로 활성 품목 프리팹을 먼저 전부 해결하고 `GenerateChunkResources`에 버퍼를 전달한다.
-- **생성 계산:** `IsValidConfig`를 통과한 항목을 대상으로 시드·후보 청크·품목에서 난수를 만든다. 이웃 청크에서 시작한 광맥도 계산하되 목표 청크 안의 셀만 생성한다. 한 목표 청크의 임시 `occupied` 집합은 같은 셀의 중복 생성을 막으며, 순회 중 먼저 등록한 항목이 해당 셀을 차지한다.
+- **생성 계산:** `IsValidConfig`를 통과한 활성 항목을 대상으로 시드·후보 청크·품목에서 난수를 만든다. 지원 반경/매장량을 벗어난 직접 생성 입력은 기록 전에 예외로 거절한다. 이웃 청크의 광맥도 같은 RNG 순서로 계산하며 중심·셀·거리 제곱은 long을 사용한다. 표현 가능한 목표 청크 내부인지 검사한 뒤에만 int 셀로 변환한다. 목표 청크별 임시 `occupied`는 중복 생성을 막고 먼저 등록한 항목이 셀을 차지한다. 이는 지도 표시 정밀도나 큰 맵 성능의 보장이 아니다.
 - **생명주기·경계:** 설정 자체는 소비하거나 Clear하지 않는다. 생성기는 설정/프리팹이 준비되지 않으면 Ready를 유지한다. 자원 인스턴스의 생성은 EndCommand ECB로 확정한다. 설정 버퍼는 ECS가 소유하며 게시 후 변경·삭제하는 제품 코드 경로는 없다.
 - **소스:** [정의](../../../Assets/Scripts/Components/World/ResourceGenerationConfigComponents.cs), [설정 검증·게시](../../../Assets/Scripts/Config/WorldGenerationConfigLoader.cs), [Command 소비자](../../../Assets/Scripts/Systems/Command/ResourceGenerationCommandSystem.cs), [광맥 계산](../../../Assets/Scripts/Chunks/ResourceGenerationUtility.cs), [프리팹 검증](../../../Assets/Scripts/Systems/Initialization/PrefabDatabaseInitializationSystem.cs).
 
 ## FloorGenerationSettings
 
 - **목적·필드:** 바이옴 영역 크기, 전이 폭, 경계 노이즈의 스케일·진폭, 가까운 바이옴의 선택 편향, 전이용 변형 수를 가진 `IComponentData`다. 별도 시드 없이 `ResourceGenerationSettings.WorldSeed`를 사용한다.
-- **부착·생성:** 자동 월드 설정 로드의 바닥 검증 성공 후 같은 월드 설정 엔티티에 `FloorBiomeElement`·`FloorVariantElement`와 함께 직접 게시한다. 영역 크기는 양수, 노이즈 스케일·편향 지수는 양수 유한값, 노이즈 진폭은 0 이상 유한값, 전이 폭은 0 이상 영역 크기 이하인지 검사한다. 필요한 바이옴/변형 및 Sprite 참조가 없으면 자동 게시 전체가 실패한다.
-- **Reader·처리:** 현재 ECS 시뮬레이션에는 전용 바닥 시스템이 없다. `V2FloorBiomePreview.Update`가 설정을 읽고 `FloorBiomeSampler.SelectFloor`에 전달한다. 샘플러는 노이즈로 셀 좌표를 변형한 뒤 영역과 경계 거리로 바이옴·전이 여부를 계산한다.
+- **부착·생성:** 자동 월드 설정 로드의 바닥 검증 성공 후 같은 엔티티에 `FloorBiomeElement`·`FloorVariantElement`와 게시한다. 양수 int 영역, 0~영역의 전이 폭, 양수 유한 노이즈 스케일/편향 지수, 0 이상 유한 진폭을 유지한다. JSON·공개 게시·사전 등록이 int 월드 셀 전체에서 노이즈/영역 좌표 변환과 이웃 좌표 연산이 안전한지도 검사한다. 진폭 0이면 사용하지 않는 노이즈 좌표 검사는 생략한다. 필요한 바이옴/변형/Sprite가 없으면 자동 게시 전체가 실패한다.
+- **Reader·처리:** 현재 ECS 시뮬레이션에는 전용 바닥 시스템이 없다. `V2FloorBiomePreview.Update`가 설정을 읽고 `FloorBiomeSampler.SelectFloor`에 전달한다. 샘플러는 노이즈로 셀 좌표를 변형한 뒤 영역과 경계 거리로 바이옴·전이 여부를 계산한다. 영역/전이 폭은 float 변환 후 청크 크기를 곱한다. 영역을 현재 3청크로 제한하지 않으며 큰 값의 표시/셀 정밀도를 보장하지 않는다.
 - **생명주기:** 게시 후 변경·소비·전용 제거 경로는 없다. 미리보기는 미리보기 객체가 이미 있으면 다시 만들지 않으므로 설정 변경을 매 프레임 다시 표시하는 구조가 아니다. 설정 자체는 World 수명 동안 보관되고 ECS가 정리한다.
 - **결합 계약·현재 범위:** `TransitionVariantCount`는 `FloorVariantElement` 맨 앞 구간의 길이다. 샘플러 결과는 진단 색상 텍스처에 사용된다. 실제 바닥 Sprite 청크 엔티티 생성·렌더링 수명주기는 현재 연결되어 있지 않다.
 - **소스:** [정의](../../../Assets/Scripts/Components/World/FloorGenerationConfigComponents.cs), [검증·게시](../../../Assets/Scripts/Config/WorldGenerationConfigLoader.cs), [순수 계산](../../../Assets/Scripts/Chunks/FloorBiomeSampler.cs), [현재 소비자](../../../Assets/Scripts/Debug/V2FloorBiomePreview.cs).
@@ -54,7 +54,7 @@
 ## ChunkLoadRequestQueue
 
 - **목적·종류:** 청크 좌표 요청 버퍼의 엔티티를 찾는 필드 없는 `IComponentData` 태그다. 청크 하나마다 붙는 태그가 아니며 요청 큐 싱글톤에 부착된다.
-- **생성·초기화:** Initialization의 `InitialChunkLoadBootstrapSystem`이 월드 설정이 준비된 후 없으면 큐 엔티티와 `ChunkLoadRequestElement` 버퍼를 함께 만든다. 기존 큐가 있으면 그 엔티티의 버퍼를 사용한다.
+- **생성·초기화:** Initialization의 `InitialChunkLoadBootstrapSystem`은 공통 시드/초기 크기 수치 검사를 먼저 실행한다. 무효이면 기존 초기화 Fatal 경로로 차단하고 큐를 만들지 않는다. 유효하면 없을 때 큐 엔티티와 `ChunkLoadRequestElement` 버퍼를 함께 만들며 기존 큐가 있으면 재사용한다.
 - **Reader·처리:** 같은 부트스트랩이 초기 N×N 좌표를 추가하고 비활성화한다. Command의 `ChunkLoadCommandSystem`은 태그로 큐를 찾고 좌표 버퍼를 처리한다. 현재 제품 소스에서 카메라 이동 등에 따른 추가 Producer는 확인되지 않는다.
 - **생명주기:** 버퍼 내용은 매 Command 소비하지만 태그와 큐 엔티티는 유지된다. 요청마다 생성·삭제하지 않는다. 전용 큐 파괴·청크 언로드 경로는 없고 World 종료 때 ECS가 정리한다.
 - **결합 계약:** 기존 큐 엔티티에는 요청 버퍼가 있어야 한다. `GeneratedChunkTracker` 엔티티와 큐 엔티티는 역할과 생성 경로가 별개다.

@@ -12,9 +12,9 @@ public struct ResourceGenerationSettings : IComponentData
     public uint WorldSeed;
     public int InitialChunkSize;
 
-    public ResourceGenerationSettings(uint worldSeed, int initialChunkSize = 3)
+    public ResourceGenerationSettings(uint worldSeed, int initialChunkSize = GameConstants.DefaultInitialChunkSize)
     {
         WorldSeed = worldSeed;
-        InitialChunkSize = initialChunkSize > 0 ? initialChunkSize : 3;
+        InitialChunkSize = initialChunkSize > 0 ? initialChunkSize : GameConstants.DefaultInitialChunkSize;
     }
 }

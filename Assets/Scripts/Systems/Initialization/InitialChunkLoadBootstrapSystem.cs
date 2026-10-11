@@ -24,6 +24,17 @@ public partial struct InitialChunkLoadBootstrapSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         var settings = SystemAPI.GetSingleton<ResourceGenerationSettings>();
+        if (!WorldGenerationConfigLoader.TryValidateWorldSettings(settings.WorldSeed, settings.InitialChunkSize, out string error))
+        {
+            if (!SimulationFailureUtility.HasFatalError(state.EntityManager))
+            {
+                SimulationFailureUtility.RecordInitializationFailure(state.EntityManager,
+                    $"[InitialChunkLoadBootstrapSystem] {error} Game simulation stopped.",
+                    "World configuration initialization failed. See error log.");
+            }
+            state.Enabled = false;
+            return;
+        }
 
         // 큐 엔티티 및 버퍼 준비
         Entity queueEntity;
@@ -40,7 +51,9 @@ public partial struct InitialChunkLoadBootstrapSystem : ISystem
         var requestBuffer = state.EntityManager.GetBuffer<ChunkLoadRequestElement>(queueEntity);
 
         // 원점의 음방향 절반부터 N×N을 요청한다. 짝수 크기는 정수 좌표상 음방향에 한 칸 더 걸친다.
-        int size = settings.InitialChunkSize > 0 ? settings.InitialChunkSize : 3;
+        int size = settings.InitialChunkSize > 0
+            ? settings.InitialChunkSize
+            : GameConstants.DefaultInitialChunkSize;
         int half = size / 2;
         int startX = -half;
         int startY = -half;

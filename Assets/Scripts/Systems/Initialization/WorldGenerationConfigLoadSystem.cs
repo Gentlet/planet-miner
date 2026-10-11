@@ -31,9 +31,9 @@ public partial struct WorldGenerationConfigLoadSystem : ISystem
         {
             if (SystemAPI.TryGetSingletonEntity<ResourceGenerationSettings>(out var existing))
             {
-                if (!WorldGenerationConfigLoader.HasCompleteConfig(state.EntityManager, existing))
+                if (!WorldGenerationConfigLoader.TryValidatePreRegisteredConfig(state.EntityManager, existing, out string error))
                 {
-                    ReportFailure(state.EntityManager, "Pre-registered world configuration is missing resource or floor data.");
+                    ReportFailure(state.EntityManager, error);
                 }
                 state.Enabled = false;
                 return;

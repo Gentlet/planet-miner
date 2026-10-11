@@ -1,3 +1,4 @@
+using System;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -49,8 +50,8 @@ public static class ResourceGenerationUtility
     {
         return config.ResourceType > ItemTypeEnum.None &&
                config.Weight > 0f &&
-               config.MaxPatchRadius >= 0 &&
-               config.MaxAmount > 0;
+               ResourceGenerationConfigLookupUtility.IsPatchRadiusSupported(config.MinPatchRadius, config.MaxPatchRadius) &&
+               ResourceGenerationConfigLookupUtility.IsAmountRangeSupported(config.MinAmount, config.MaxAmount);
     }
 
     /// <summary>
@@ -104,6 +105,18 @@ public static class ResourceGenerationUtility
         in DynamicBuffer<ResourceGenerationConfigElement> configs,
         NativeArray<Entity> resolvedPrefabs)
     {
+        // 무효 입력을 정상적인 빈 생성으로 처리하지 않고 ECB 기록 전에 거절한다.
+        ChunkUtility.GetChunkBounds(targetChunkCoord, out int2 minCell, out int2 maxCell);
+        for (int i = 0; i < configs.Length; i++)
+        {
+            ResourceGenerationConfigElement config = configs[i];
+            if (!ResourceGenerationConfigLookupUtility.IsPatchRadiusSupported(config.MinPatchRadius, config.MaxPatchRadius) ||
+                !ResourceGenerationConfigLookupUtility.IsAmountRangeSupported(config.MinAmount, config.MaxAmount))
+            {
+                throw new ArgumentException("Resource generation parameters exceed the supported ranges.", nameof(configs));
+            }
+        }
+
         int maxPatchRadius = GetMaxPatchRadius(configs);
         int neighborRange = maxPatchRadius / ChunkUtility.ChunkSize + 1;
         var occupied = new NativeParallelHashSet<int2>(ChunkUtility.CellCount, Allocator.Temp);
@@ -118,7 +131,8 @@ public static class ResourceGenerationUtility
                 {
                     TryGeneratePatchFromCandidateChunk(
                         ref ecb,
-                        targetChunkCoord,
+                        minCell,
+                        maxCell,
                         candidateChunk,
                         worldSeed,
                         configs[i],
@@ -136,7 +150,8 @@ public static class ResourceGenerationUtility
     /// </summary>
     private static void TryGeneratePatchFromCandidateChunk(
         ref EntityCommandBuffer ecb,
-        int2 targetChunkCoord,
+        int2 minCell,
+        int2 maxCell,
         int2 candidateChunk,
         uint worldSeed,
         in ResourceGenerationConfigElement config,
@@ -147,38 +162,37 @@ public static class ResourceGenerationUtility
             return;
 
         // 같은 후보 광맥의 난수 흐름을 타깃 청크마다 재현한다. 어느 청크를 먼저 요청했는지 전역 RNG에 의존하지 않는다.
-        var random = new Random(HashSeed(worldSeed, candidateChunk, config.ResourceType));
+        var random = new Unity.Mathematics.Random(HashSeed(worldSeed, candidateChunk, config.ResourceType));
 
         if (random.NextFloat() > math.saturate(config.Weight))
             return;
 
-        int minRadius = math.max(0, config.MinPatchRadius);
-        int maxRadius = math.max(minRadius, config.MaxPatchRadius);
-        int radius = random.NextInt(minRadius, maxRadius + 1);
-        int2 patchCenter = candidateChunk * ChunkUtility.ChunkSize + new int2(
-            random.NextInt(0, ChunkUtility.ChunkSize),
-            random.NextInt(0, ChunkUtility.ChunkSize));
+        int radius = random.NextInt(config.MinPatchRadius, config.MaxPatchRadius + 1);
+        long patchCenterX = (long)candidateChunk.x * ChunkUtility.ChunkSize + random.NextInt(0, ChunkUtility.ChunkSize);
+        long patchCenterY = (long)candidateChunk.y * ChunkUtility.ChunkSize + random.NextInt(0, ChunkUtility.ChunkSize);
+        long squaredRadius = (long)radius * radius;
 
         for (int y = -radius; y <= radius; y++)
         {
             for (int x = -radius; x <= radius; x++)
             {
-                int2 offset = new int2(x, y);
-
-                if (offset.x * offset.x + offset.y * offset.y > radius * radius)
+                long squaredDistance = (long)x * x + (long)y * y;
+                if (squaredDistance > squaredRadius)
                     continue;
                 if (random.NextFloat() > math.saturate(config.CellFillChance))
                     continue;
 
-                int minAmount = math.max(1, config.MinAmount);
-                int safeMaxConfig = math.min(config.MaxAmount, int.MaxValue - 1);
-                int maxAmount = math.max(minAmount, safeMaxConfig);
-                int amount = random.NextInt(minAmount, maxAmount + 1);
-
-                int2 cell = patchCenter + offset;
+                int amount = random.NextInt(config.MinAmount, config.MaxAmount + 1);
+                long cellX = patchCenterX + x;
+                long cellY = patchCenterY + y;
 
                 // 광맥 전체를 동일하게 계산하되 이번 청크 부분만 실체화한다. 설정/광맥이 겹친 셀은 첫 품목 하나만 생성한다.
-                if (!ChunkUtility.IsInsideChunk(cell, targetChunkCoord) || !occupied.Add(cell))
+                if (cellX < minCell.x || cellX > maxCell.x || cellY < minCell.y || cellY > maxCell.y)
+                    continue;
+
+                // 대상 청크 경계를 통과한 뒤에만 int 셀로 변환한다. 주변 후보는 경계 밖에 있을 수 있다.
+                int2 cell = new int2((int)cellX, (int)cellY);
+                if (!occupied.Add(cell))
                     continue;
 
                 Entity entity = ecb.Instantiate(prefabEntity);

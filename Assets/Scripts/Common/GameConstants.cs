@@ -8,6 +8,11 @@ public static class GameConstants
     public const int ChunkSize = 16;
     public const int ChunkCellCount = ChunkSize * ChunkSize;
 
+    // 현재 월드 생성의 지원 규모. 산술 표현 한계와 별개인 생성 작업량 정책이다.
+    public const int MaxResourcePatchRadius = 2;
+    public const int DefaultInitialChunkSize = 3;
+    public const int MaxInitialChunkSize = DefaultInitialChunkSize;
+
     /// <summary>
     /// 벨트 위 아이템 간 최소 간격 (1타일 1.0f 기준, 최대 4개 수용 가능).
     /// </summary>

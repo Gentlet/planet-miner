@@ -34,6 +34,29 @@ public static class FloorBiomeSampler
     private const uint WarpXSalt = 0x68E31DA4u;
     private const uint WarpYSalt = 0x1B56C4E9u;
 
+    /// <summary>
+    /// 유효한 바닥 수치에서 int 월드 셀 전체의 노이즈/영역 좌표 변환과 이웃 +1/-1이 표현 가능한지 검사한다.
+    /// 표시 정밀도나 실제 지도 크기를 보장하는 검사가 아니다.
+    /// </summary>
+    public static bool HasSafeCoordinateConversions(in FloorGenerationSettings settings)
+    {
+        // float로 변환한 int.MaxValue도 이 배타적 상한으로 반올림된다.
+        float coordinateLimitExclusive = -(float)int.MinValue;
+        if (settings.BoundaryNoiseAmplitudeInCells > 0f)
+        {
+            float maximumNoiseCoordinate = coordinateLimitExclusive / settings.BoundaryNoiseScaleInCells;
+            if (!math.isfinite(maximumNoiseCoordinate) || maximumNoiseCoordinate >= coordinateLimitExclusive)
+            {
+                return false;
+            }
+        }
+
+        float maximumWarpedCell = coordinateLimitExclusive + settings.BoundaryNoiseAmplitudeInCells;
+        float regionSizeInCells = settings.BiomeRegionSizeInChunks * (float)ChunkUtility.ChunkSize;
+        float maximumRegionCoordinate = maximumWarpedCell / regionSizeInCells;
+        return math.isfinite(maximumRegionCoordinate) && maximumRegionCoordinate < coordinateLimitExclusive;
+    }
+
     public static FloorTileSelection SelectFloor(
         uint worldSeed,
         in FloorGenerationSettings settings,
@@ -93,7 +116,7 @@ public static class FloorBiomeSampler
         float2 distanceToBoundary = math.min(regionFraction, 1f - regionFraction) * regionSizeInCells;
         bool isVerticalBoundary = distanceToBoundary.x <= distanceToBoundary.y;
         float boundaryDistance = isVerticalBoundary ? distanceToBoundary.x : distanceToBoundary.y;
-        float halfTransitionWidthInCells = settings.TransitionWidthInChunks * ChunkUtility.ChunkSize * 0.5f;
+        float halfTransitionWidthInCells = settings.TransitionWidthInChunks * (float)ChunkUtility.ChunkSize * 0.5f;
         if (boundaryDistance >= halfTransitionWidthInCells) return currentBiomeIndex;
 
         int2 neighboringRegion = currentRegion;
