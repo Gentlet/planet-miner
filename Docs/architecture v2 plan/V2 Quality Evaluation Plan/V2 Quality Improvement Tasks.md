@@ -12,10 +12,12 @@
 | 분류 | 전체 | 완료 | 미완료 |
 | --- | ---: | ---: | ---: |
 | P1 | 5 | 5 | 0 |
-| P2 | 32 | 30 | 2 |
+| P2 | 32 | 31 | 1 |
 | P3 | 2 | 2 | 0 |
 | 판단 보류 | 4 | 3 | 1 |
-| 합계 | 43 | 40 | 3 |
+| 합계 | 43 | 41 | 2 |
+
+- 2026-10-11 F-025 완료: 사용자가 빌드·Editor 편집 기준을 기존 V2 메인 장면으로 통일하고 진단 바닥 유지로 확정했다. 전역/Windows 프로필의 진입을 변경하고 저장된 V2 SubScene의 세 DB를 실제 Bake했다. 건물 11개·아이템 9개·자원 4개, 24개 정확한 원형 참조·9개 ItemIdentity, 현재 네 Config와 제품 초기 검증의 Ready 1/Fatal 0을 독립 World에서 확인했다. Unity 컴파일 up_to_date/failed:false/errors:[]·Editor ready·실행 DLL 최신성을 확인했다. 제품 코드·테스트·Config·장면·프리팹 변경과 Play Mode·Player 빌드는 없으며 추가 완료는 F-025 한 건이다. **41/43**, 미완료는 **F-006/F-017**이다. [F-025 변경·검증 기록](Results/F025-Verification.md). 아래 날짜별 집계는 당시 기록으로 보존한다.
 
 - 티어·표시 이름 직접 영향 후속 (2026-10-11): 티어/이름 지원 구조와 건물 자동 탐색 제거는 구현 완료로 정리했다. F-009/F-011/F-012·F-018/F-019/F-020/F-021/F-022/F-023/F-024/F-041의 기존 완료/추적 종료를 유지하며 같은 구현의 111/111 및 독립 실제 Baker 근거를 해당 범위에 연결했다. F-025의 이관 대상은 Type/Tier/Prefab과 Config의 명시 메타데이터로 갱신했지만 F-006/F-017/F-025는 그대로 남는다. 추가 F 완료/종료 0건, 40/43을 유지한다. 이번 후속은 문서만 변경하며 새 컴파일·테스트·베이킹은 실행하지 않았다. [티어·표시 이름 영향 정리](Results/BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
 
@@ -454,13 +456,15 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 
 ### F-025 — 활성 빌드 장면 DB의 오래된 직렬화 연결
 
-- [ ] 완료 — **P2** · [최초 평가: Q11](Results/Q11.md)
+- [x] 완료 — **P2** · [최초 평가: Q11](Results/Q11.md)
+- 2026-10-11 완료: SampleScene 수리 대신 기존 V2 Test Scene을 빌드·편집 공통 진입으로 선택했다. 전역/활성 Windows 프로필의 단일 장면 목록과 현재 Editor 시작 장면을 V2로 맞추고 진단 바닥은 유지했다. 장면이나 Authoring을 재작성하지 않고 현재 SubScene의 세 DB를 실제 Bake해 건물 11개(모두 Tier 1)·아이템 9개·자원 4개, 정확한 원형 참조 24개와 ItemIdentity 9개, 제품 Init의 Ready 1/Fatal 0을 확인했다. 컴파일과 실행 DLL 최신성을 확인했으며 새 테스트·Play Mode·Player 빌드는 실행하지 않았다. SampleScene의 구형 연결은 레거시 참고에 남고 현재 선택한 경로에서 제외했다. [완료 범위·로그·남은 제한](Results/F025-Verification.md).
+- 아래 티어/F-022/F-021/F-041/F-032 후속의 SampleScene 진입·F-025 미완료 설명은 위 완료 전에 확인한 당시 기록이다. 현재 진입/완료 상태는 위 F-025 기록을 따른다. 과거 결과를 이번 실제 베이킹 근거로 합산하지 않는다.
 - 티어·표시 이름 후속 (2026-10-11): 현재 이관해야 하는 건물 등록 필드는 Type/Tier/Prefab이고, Config에는 명시적 tier/displayName/footprint가 필요하다. 삭제한 LoadMode/Resources 자동 수집과 DB size를 복원하지 않는다. V2 SubScene의 11개 Tier 1 수동 등록과 실제 명시 Baker는 확인했지만 활성 빌드는 계속 SampleScene이다. 진입 장면 선택·구형 GUID/enum·세 DB 이관·자동 시작/Player 빌드는 남아 미완료를 유지한다. [티어·표시 이름 영향 정리](Results/BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
 - F-022 후속 (2026-10-11): F-022 당시 Building DB의 이관 대상은 Type/Prefab뿐이며 점유 크기는 Config가 소유한다. SampleScene의 구형 size를 DB 크기로 복원하지 않는다. V2 SubScene은 실제 두 DB 모드의 정상 Baker→Storage 생성/4방향 점유 근거가 생겼지만 EditorBuildSettings는 여전히 SampleScene이며 그 Sub의 세 script GUID는 현재 Authoring과 다르다. 구형 type/prefab 이름·enum 숫자 대응도 남아 GUID 치환만으로 이관할 수 없다. 남은 결정은 SampleScene 수리 또는 V2 계열 진입 선택이며, 선택한 경로의 Building/Item/Resource 세 DB를 확인해야 한다. 이번 근거를 SampleScene·자동 시작·Player 빌드 성공으로 확대하지 않고 미완료를 유지한다. [후속 근거](Results/F022-Verification.md#2026-10-11-관련-이슈-후속-정리).
-- 문제: 활성 SampleScene의 세 DB script GUID가 현재 스크립트와 연결되지 않으며 필드 구조·enum 의미도 다르다. 실제 Bake/빌드 실패 여부는 미확인이다.
+- 최초 문제: 당시 활성 SampleScene의 세 DB script GUID가 현재 스크립트와 연결되지 않으며 필드 구조·enum 의미도 달랐다. 해당 구형 경로의 실제 Bake/빌드 실패 여부는 재현하지 않았다.
 - 작업: 사용할 진입 장면을 결정한 뒤 해당 경로의 DB를 현재 Authoring 계약으로 검증·이관한다.
 - 완료 기준: 선택한 장면의 실제 Bake에서 세 DB·entry 타입·prefab 참조·필수 구성을 확인한다. GUID만 교체하지 않고 필드와 enum 매핑을 함께 검증한다.
-- 결정 필요: SampleScene 유지·수리 또는 V2 장면 계열로 빌드 진입 변경.
+- 사용자 결정 (2026-10-11): 빌드와 편집 모두 기존 V2로 통일하고 진단 바닥은 유지한다. 컴파일과 세 DB 실제 베이킹을 확인하며 Play Mode/Player 빌드는 실행하지 않는다.
 - F-021 종료의 적용 한계 (2026-10-08): 현재 EditorBuildSettings의 활성 진입은 SampleScene으로 재확인했다. 기존 실제 베이킹 실행은 V2 Test Scene/sub.unity에 한정하므로 SampleScene 이관·Player 빌드 근거가 아니며 F-025의 미완료와 진입 장면 결정은 유지한다. F-021의 선택 검증 추적 종료를 빌드 진입 문제 해결로 합산하지 않는다. [확인 범위](Results/TechnicalIssueClosure-2026-10-08.md).
 
 - F-041과의 남은 경계 (2026-10-10): 현재 활성 빌드 진입은 여전히 SampleScene이다. F-041의 명시적 ECS 테스트 DB·컴파일·직접 Spawn은 해당 장면의 DB 직렬화 이관/실제 Bake/Player 빌드를 확인한 결과가 아니다. Pipeline 서버 설정 에셋이 생긴 것도 장면 DB 수리와 무관하며 미완료를 유지한다. [남은 범위](Results/F041-Verification.md#2026-10-10-관련-이슈-후속-정리).
