@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Text;
+using Newtonsoft.Json.Linq;
 using Unity.Entities;
 using Unity.Collections;
 using UnityEngine;
@@ -178,6 +179,11 @@ public static class WorldGenerationConfigLoader
         WorldGenerationConfigFile configFile;
         try
         {
+            if (!TryValidateIntegerTokens(JObject.Parse(jsonText), out string integerError))
+            {
+                Debug.LogError($"[WorldGenerationConfigLoader] {integerError}");
+                return false;
+            }
             configFile = JsonUtility.FromJson<WorldGenerationConfigFile>(jsonText);
         }
         catch (Exception ex)
@@ -192,15 +198,9 @@ public static class WorldGenerationConfigLoader
             return false;
         }
 
-        if (configFile.worldSeed == 0)
+        if (!TryValidateWorldSettings(configFile.worldSeed, configFile.initialChunkSize, out string settingsError))
         {
-            Debug.LogError("[WorldGenerationConfigLoader] WorldSeed cannot be 0. WorldSeed must be a positive integer >= 1.");
-            return false;
-        }
-
-        if (configFile.initialChunkSize < 0)
-        {
-            Debug.LogError("[WorldGenerationConfigLoader] initialChunkSize cannot be negative.");
+            Debug.LogError($"[WorldGenerationConfigLoader] {settingsError}");
             return false;
         }
 
@@ -235,38 +235,20 @@ public static class WorldGenerationConfigLoader
                 return false;
             }
 
-            if (entry.weight < 0f || entry.weight > 1f)
-            {
-                Debug.LogError($"[WorldGenerationConfigLoader] Invalid weight for type '{type}': {entry.weight}. Must be between 0.0 and 1.0.");
-                return false;
-            }
-
-            if (entry.minPatchRadius < 0 || entry.maxPatchRadius < entry.minPatchRadius)
-            {
-                Debug.LogError($"[WorldGenerationConfigLoader] Invalid patch radius for type '{type}': min={entry.minPatchRadius}, max={entry.maxPatchRadius}. Must satisfy 0 <= min <= max.");
-                return false;
-            }
-
-            if (entry.cellFillChance < 0f || entry.cellFillChance > 1f)
-            {
-                Debug.LogError($"[WorldGenerationConfigLoader] Invalid cellFillChance for type '{type}': {entry.cellFillChance}. Must be between 0.0 and 1.0.");
-                return false;
-            }
-
-            if (entry.minAmount <= 0 || entry.maxAmount < entry.minAmount || entry.maxAmount >= int.MaxValue)
-            {
-                Debug.LogError($"[WorldGenerationConfigLoader] Invalid amount for type '{type}': min={entry.minAmount}, max={entry.maxAmount}. Must satisfy 1 <= min <= max < {int.MaxValue}.");
-                return false;
-            }
-
-            validatedList.Add(new ResourceGenerationConfigElement(
+            var element = new ResourceGenerationConfigElement(
                 type,
                 entry.weight,
                 entry.minPatchRadius,
                 entry.maxPatchRadius,
                 entry.cellFillChance,
                 entry.minAmount,
-                entry.maxAmount));
+                entry.maxAmount);
+            if (!TryValidateResourceParameters(element, out string resourceError))
+            {
+                Debug.LogError($"[WorldGenerationConfigLoader] {resourceError}");
+                return false;
+            }
+            validatedList.Add(element);
         }
 
         if (!TryValidateFloor(configFile.floor, out FloorGenerationDefinition validatedFloor))
@@ -275,7 +257,9 @@ public static class WorldGenerationConfigLoader
         }
 
         worldSeed = configFile.worldSeed;
-        initialChunkSize = configFile.initialChunkSize > 0 ? configFile.initialChunkSize : 3;
+        initialChunkSize = configFile.initialChunkSize > 0
+            ? configFile.initialChunkSize
+            : GameConstants.DefaultInitialChunkSize;
         elements = validatedList;
         floor = validatedFloor;
         return true;
@@ -284,13 +268,23 @@ public static class WorldGenerationConfigLoader
     private static bool TryValidateFloor(FloorGenerationConfigData config, out FloorGenerationDefinition floor)
     {
         floor = null;
-        if (config == null || config.biomeRegionSizeInChunks <= 0 ||
-            config.transitionWidthInChunks < 0 || config.transitionWidthInChunks > config.biomeRegionSizeInChunks ||
-            !IsPositiveFinite(config.boundaryNoiseScaleInCells) ||
-            !IsNonNegativeFinite(config.boundaryNoiseAmplitudeInCells) ||
-            !IsPositiveFinite(config.nearBiomePreferenceExponent))
+        if (config == null)
         {
             Debug.LogError("[WorldGenerationConfigLoader] Invalid floor generation parameters.");
+            return false;
+        }
+
+        var settings = new FloorGenerationSettings
+        {
+            BiomeRegionSizeInChunks = config.biomeRegionSizeInChunks,
+            TransitionWidthInChunks = config.transitionWidthInChunks,
+            BoundaryNoiseScaleInCells = config.boundaryNoiseScaleInCells,
+            BoundaryNoiseAmplitudeInCells = config.boundaryNoiseAmplitudeInCells,
+            NearBiomePreferenceExponent = config.nearBiomePreferenceExponent
+        };
+        if (!TryValidateFloorSettings(settings, out string floorError))
+        {
+            Debug.LogError($"[WorldGenerationConfigLoader] {floorError}");
             return false;
         }
 
@@ -342,17 +336,10 @@ public static class WorldGenerationConfigLoader
             return false;
         }
 
+        settings.TransitionVariantCount = config.transitionFloorVariants.Count;
         floor = new FloorGenerationDefinition
         {
-            Settings = new FloorGenerationSettings
-            {
-                BiomeRegionSizeInChunks = config.biomeRegionSizeInChunks,
-                TransitionWidthInChunks = config.transitionWidthInChunks,
-                BoundaryNoiseScaleInCells = config.boundaryNoiseScaleInCells,
-                BoundaryNoiseAmplitudeInCells = config.boundaryNoiseAmplitudeInCells,
-                NearBiomePreferenceExponent = config.nearBiomePreferenceExponent,
-                TransitionVariantCount = config.transitionFloorVariants.Count
-            },
+            Settings = settings,
             Biomes = biomes,
             Variants = variants
         };
@@ -394,6 +381,140 @@ public static class WorldGenerationConfigLoader
     private static bool IsPositiveFinite(float value) => value > 0f && !float.IsNaN(value) && !float.IsInfinity(value);
     private static bool IsNonNegativeFinite(float value) => value >= 0f && !float.IsNaN(value) && !float.IsInfinity(value);
 
+    private static bool TryValidateIntegerTokens(JObject config, out string error)
+    {
+        if (!TryValidateIntegerToken(config["initialChunkSize"], "initialChunkSize", out error))
+            return false;
+
+        if (config["configs"] is JArray resources)
+        {
+            foreach (JToken token in resources)
+            {
+                if (token is not JObject resource)
+                    continue;
+                if (!TryValidateIntegerToken(resource["minPatchRadius"], "minPatchRadius", out error) ||
+                    !TryValidateIntegerToken(resource["maxPatchRadius"], "maxPatchRadius", out error) ||
+                    !TryValidateIntegerToken(resource["minAmount"], "minAmount", out error) ||
+                    !TryValidateIntegerToken(resource["maxAmount"], "maxAmount", out error))
+                    return false;
+            }
+        }
+
+        if (config["floor"] is JObject floor)
+        {
+            if (!TryValidateIntegerToken(floor["biomeRegionSizeInChunks"], "biomeRegionSizeInChunks", out error) ||
+                !TryValidateIntegerToken(floor["transitionWidthInChunks"], "transitionWidthInChunks", out error))
+                return false;
+        }
+
+        error = null;
+        return true;
+    }
+
+    private static bool TryValidateIntegerToken(JToken token, string fieldName, out string error)
+    {
+        // 누락 시의 기존 DTO 값은 유지하되 JsonUtility의 숫자 변환으로 범위 밖 입력을 보정하지 않는다.
+        if (token == null)
+        {
+            error = null;
+            return true;
+        }
+        if (token.Type == JTokenType.Integer && int.TryParse(token.ToString(), out _))
+        {
+            error = null;
+            return true;
+        }
+        error = $"{fieldName} must be an integer within the int range.";
+        return false;
+    }
+
+    public static bool TryValidateWorldSettings(uint worldSeed, int initialChunkSize, out string error)
+    {
+        if (worldSeed == 0)
+        {
+            error = "WorldSeed cannot be 0. WorldSeed must be a positive integer >= 1.";
+            return false;
+        }
+        if (initialChunkSize < 0 || initialChunkSize > GameConstants.MaxInitialChunkSize)
+        {
+            error = $"initialChunkSize must be between 0 and {GameConstants.MaxInitialChunkSize}; 0 uses the existing default.";
+            return false;
+        }
+        error = null;
+        return true;
+    }
+
+    private static bool TryValidateResourceParameters(in ResourceGenerationConfigElement config, out string error)
+    {
+        if (config.Weight < 0f || config.Weight > 1f)
+        {
+            error = $"Invalid weight for type '{config.ResourceType}': {config.Weight}. Must be between 0.0 and 1.0.";
+            return false;
+        }
+        if (!ResourceGenerationConfigLookupUtility.IsPatchRadiusSupported(config.MinPatchRadius, config.MaxPatchRadius))
+        {
+            error = $"Invalid patch radius for type '{config.ResourceType}': min={config.MinPatchRadius}, max={config.MaxPatchRadius}. Must satisfy 0 <= min <= max <= {GameConstants.MaxResourcePatchRadius}.";
+            return false;
+        }
+        if (config.CellFillChance < 0f || config.CellFillChance > 1f)
+        {
+            error = $"Invalid cellFillChance for type '{config.ResourceType}': {config.CellFillChance}. Must be between 0.0 and 1.0.";
+            return false;
+        }
+        if (!ResourceGenerationConfigLookupUtility.IsAmountRangeSupported(config.MinAmount, config.MaxAmount))
+        {
+            error = $"Invalid amount for type '{config.ResourceType}': min={config.MinAmount}, max={config.MaxAmount}. Must satisfy 1 <= min <= max < {int.MaxValue}.";
+            return false;
+        }
+        error = null;
+        return true;
+    }
+
+    private static bool TryValidateFloorSettings(in FloorGenerationSettings settings, out string error)
+    {
+        if (settings.BiomeRegionSizeInChunks <= 0 ||
+            settings.TransitionWidthInChunks < 0 || settings.TransitionWidthInChunks > settings.BiomeRegionSizeInChunks ||
+            !IsPositiveFinite(settings.BoundaryNoiseScaleInCells) ||
+            !IsNonNegativeFinite(settings.BoundaryNoiseAmplitudeInCells) ||
+            !IsPositiveFinite(settings.NearBiomePreferenceExponent))
+        {
+            error = "Invalid floor generation parameters.";
+            return false;
+        }
+        if (!FloorBiomeSampler.HasSafeCoordinateConversions(settings))
+        {
+            error = "Invalid floor generation parameters: noise or biome coordinates exceed the int conversion range.";
+            return false;
+        }
+        error = null;
+        return true;
+    }
+
+    public static bool TryValidatePreRegisteredConfig(EntityManager entityManager, Entity entity, out string error)
+    {
+        if (!entityManager.HasComponent<ResourceGenerationSettings>(entity))
+        {
+            error = "Pre-registered world configuration is missing resource settings.";
+            return false;
+        }
+        if (!HasCompleteConfig(entityManager, entity))
+        {
+            error = "Pre-registered world configuration is missing resource or floor data.";
+            return false;
+        }
+        var settings = entityManager.GetComponentData<ResourceGenerationSettings>(entity);
+        if (!TryValidateWorldSettings(settings.WorldSeed, settings.InitialChunkSize, out error))
+            return false;
+
+        var resources = entityManager.GetBuffer<ResourceGenerationConfigElement>(entity, true);
+        for (int i = 0; i < resources.Length; i++)
+        {
+            if (!TryValidateResourceParameters(resources[i], out error))
+                return false;
+        }
+        return TryValidateFloorSettings(entityManager.GetComponentData<FloorGenerationSettings>(entity), out error);
+    }
+
     /// <summary>제품 초기화는 자원과 바닥을 같은 게시 엔티티에서 요구한다. 자원 전용 게시 API는 격리 구성용이다.</summary>
     public static bool HasCompleteConfig(EntityManager entityManager, Entity entity)
     {
@@ -415,7 +536,7 @@ public static class WorldGenerationConfigLoader
         uint worldSeed,
         List<ResourceGenerationConfigElement> elements)
     {
-        return PublishConfig(entityManager, worldSeed, 3, elements);
+        return PublishConfig(entityManager, worldSeed, GameConstants.DefaultInitialChunkSize, elements);
     }
 
     /// <summary>
@@ -437,6 +558,23 @@ public static class WorldGenerationConfigLoader
         List<ResourceGenerationConfigElement> elements,
         FloorGenerationDefinition floor)
     {
+        if (!TryValidateWorldSettings(worldSeed, initialChunkSize, out string settingsError))
+            throw new ArgumentException(settingsError);
+        if (elements == null)
+            throw new ArgumentNullException(nameof(elements));
+        if (elements.Count == 0)
+            throw new ArgumentException("Resource configuration must not be empty.", nameof(elements));
+        foreach (ResourceGenerationConfigElement element in elements)
+        {
+            if (!TryValidateResourceParameters(element, out string resourceError))
+                throw new ArgumentException(resourceError, nameof(elements));
+        }
+        if (floor != null)
+        {
+            if (!TryValidateFloorSettings(floor.Settings, out string floorError))
+                throw new ArgumentException(floorError, nameof(floor));
+        }
+
         Entity entity = entityManager.CreateEntity(typeof(ResourceGenerationSettings));
         try
         {

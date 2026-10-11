@@ -1,3 +1,4 @@
+using System;
 using Unity.Mathematics;
 
 /// <summary>
@@ -9,6 +10,14 @@ public static class ChunkUtility
 {
     public const int CellCount = GameConstants.ChunkCellCount;
     public const int ChunkSize = GameConstants.ChunkSize;
+    public const int MinChunkCoordinate = int.MinValue / ChunkSize;
+    public const int MaxChunkCoordinate = int.MaxValue / ChunkSize;
+
+    public static bool IsChunkCoordinateRepresentable(int2 chunkCoord)
+    {
+        return chunkCoord.x >= MinChunkCoordinate && chunkCoord.x <= MaxChunkCoordinate &&
+               chunkCoord.y >= MinChunkCoordinate && chunkCoord.y <= MaxChunkCoordinate;
+    }
 
     /// <summary>
     /// 월드 셀(타일) 좌표를 청크 좌표로 변환합니다.
@@ -43,6 +52,12 @@ public static class ChunkUtility
     /// </summary>
     public static void GetChunkBounds(int2 chunkCoord, out int2 minCell, out int2 maxCell)
     {
+        if (!IsChunkCoordinateRepresentable(chunkCoord))
+        {
+            throw new ArgumentOutOfRangeException(nameof(chunkCoord),
+                "The complete chunk must fit in integer world-cell coordinates.");
+        }
+
         minCell = chunkCoord * ChunkSize;
         maxCell = minCell + new int2(ChunkSize - 1, ChunkSize - 1);
     }

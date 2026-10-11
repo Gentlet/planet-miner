@@ -7,6 +7,17 @@ using Unity.Entities;
 /// </summary>
 public static class ResourceGenerationConfigLookupUtility
 {
+    public static bool IsPatchRadiusSupported(int minRadius, int maxRadius)
+    {
+        return minRadius >= 0 && maxRadius >= minRadius &&
+               maxRadius <= GameConstants.MaxResourcePatchRadius;
+    }
+
+    public static bool IsAmountRangeSupported(int minAmount, int maxAmount)
+    {
+        return minAmount > 0 && maxAmount >= minAmount && maxAmount < int.MaxValue;
+    }
+
     public static bool TryGetConfig(
         in DynamicBuffer<ResourceGenerationConfigElement> buffer,
         ItemTypeEnum resourceType,
