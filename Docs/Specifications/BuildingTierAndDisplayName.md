@@ -30,6 +30,6 @@ PrefabDatabaseInitializationSystem은 기존 단일 DB·원형 생존/Prefab/Loc
 
 ## 후속과 검증
 
-실제 추가 창고 티어 수치/명칭/프리팹, 표시 이름과 티어 선택 UI, 그림 자동 배율·회전·위치 보정, 기존 건물 승급, 연구 진행 연동은 후속이다. R-01 산술 상한·F-025 빌드 진입 장면 등의 기존 미완료 범위는 별도다.
+실제 추가 창고 티어 수치/명칭/프리팹, 표시 이름과 티어 선택 UI, 그림 자동 배율·회전·위치 보정, 기존 건물 승급, 연구 진행 연동은 후속이다. R-01 산술 상한 등 기존 미완료 범위는 별도다. F-025는 기존 V2를 빌드·편집 공통 진입으로 선택하고 세 DB의 실제 베이킹/초기 검증을 확인해 완료했다. Play Mode·Player 빌드 실행 근거는 추가하지 않았다. [F-025 기록](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/F025-Verification.md)을 따른다.
 
 컴파일·선별 EditMode·실제 Baker의 최종 근거와 실행하지 않은 범위는 [검증 기록](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingTierAndDisplayName-Verification.md)을 따른다.
