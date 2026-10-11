@@ -58,7 +58,7 @@ SynchronizationGroup은 GameSimulationGroup의 OrderLast이며 최종 EndSimulat
 ## BuildingSpatialIndex
 
 - **종류와 부착:** 일반 `IComponentData`, BuildingSpatialSyncSystem이 만든 싱글톤에 BuildingSpatialIndexFence와 함께 부착된다.
-- **목적과 필드:** `NativeParallelHashMap<int2, BuildingInfo> Map`. BuildingInfo는 엔티티·건물 타입·방향을 가진 비컴포넌트 struct다. 하나의 다중 셀 건물은 모든 점유 셀에서 같은 엔티티로 조회된다.
+- **목적과 필드:** `NativeParallelHashMap<int2, BuildingInfo> Map`. BuildingInfo는 엔티티·건물 타입·티어·방향을 가진 비컴포넌트 struct다. 하나의 다중 셀 건물은 모든 점유 셀에서 같은 엔티티로 조회된다.
 - **생성·갱신:** OnCreate에서 용량 1024로 생성한다. Synchronization에서 BuildingType/BuildingFootprint/GridPosition/Direction을 읽고 회전된 유효 크기의 모든 셀에 TryAdd한다. 용량은 Footprint 면적 합으로 산정한다. 완공 건물과 ConstructionSite가 모두 대상이다.
 - **Reader와 단계:** BuildingPlacementCommandSystem이 Command에서 점유를 조회하고 BuildingPlacementValidationUtility에 맵을 넘긴다. BuildingItemInputDecisionSystem이 Decision에서 벨트 종단의 다음 셀에 입고 가능한 건물이 있는지 조회한다.
 - **수명과 결합:** 매 Synchronization에 Clear 후 재등록한다. 점유 원본은 건물 컴포넌트이며 맵 자체가 배치 예약이나 구조 변경을 수행하지 않는다. OnDestroy에서 Fence 완료 후 Dispose한다.

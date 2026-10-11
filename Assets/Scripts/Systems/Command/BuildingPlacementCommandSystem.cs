@@ -162,7 +162,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                     // 벨트 덮어쓰기 처리: 동일 벨트인지 다른 벨트인지 판정
                     if (buildingMap.TryGetValue(candidate.OriginPosition, out var existingBuilding))
                     {
-                        if (existingBuilding.Type == candidate.TargetType)
+                        if (existingBuilding.Type == candidate.TargetType && existingBuilding.Tier == candidate.TargetTier)
                         {
                             // 기존 같은 타입 벨트는 새 현장/요구 자재 없이 EndCommand에서 방향만 바꾼다.
                             ecb.SetComponent(existingBuilding.Entity, new Direction(candidate.Direction));
@@ -178,7 +178,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                 {
                     // 공사 현장 엔티티 생성
                     var siteEntity = ecb.CreateEntity();
-                    ecb.AddComponent(siteEntity, new BuildingType(BuildingTypeEnum.ConstructionSite));
+                    ecb.AddComponent(siteEntity, new BuildingType(BuildingTypeEnum.ConstructionSite, 0));
 
                     // Size에는 방향 적용 전 크기를 저장한다. 점유 조회 시에만 회전한다.
                     int2 baseSize = candidate.FootprintSize;
@@ -192,7 +192,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                         flags |= ConstructionSiteFlags.AwaitingItemClearance;
                     }
 
-                    ecb.AddComponent(siteEntity, new ConstructionSite(candidate.TargetType, flags));
+                    ecb.AddComponent(siteEntity, new ConstructionSite(candidate.TargetType, candidate.TargetTier, flags));
                     ecb.AddComponent(siteEntity, new PlacementStamp(candidateTick, (uint)i, request.ReceiptSequence));
                     ecb.AddComponent(siteEntity, LocalTransform.FromPosition(candidate.OriginPosition.x, candidate.OriginPosition.y, 0f));
 
@@ -201,7 +201,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                     var reqBuffer = ecb.AddBuffer<ConstructionMaterialRequirementElement>(siteEntity);
                     ecb.AddBuffer<StoredItemElement>(siteEntity);
 
-                    BuildingConfigLookupUtility.PopulateRequirements(materials, candidate.TargetType, ref reqBuffer);
+                    BuildingConfigLookupUtility.PopulateRequirements(materials, candidate.TargetType, candidate.TargetTier, ref reqBuffer);
 
                     BuildingPlacementValidationUtility.ClaimApprovedPlacement(candidate, approvedCells);
                 }

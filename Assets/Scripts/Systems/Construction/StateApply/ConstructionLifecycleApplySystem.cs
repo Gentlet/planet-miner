@@ -211,6 +211,7 @@ public partial struct ConstructionCompletionApplyJob : IJobEntity
         Entity building = BuildingLifecycleUtility.SpawnBuilding(
             ref ECB,
             site.TargetBuildingType,
+            site.TargetTier,
             pos.Value,
             dir.dir,
             footprint.Size,

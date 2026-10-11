@@ -445,7 +445,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         Entity config = _entityManager.CreateEntity(typeof(BuildingConfig));
         _entityManager.AddBuffer<BuildingConfigElement>(config);
         _entityManager.AddBuffer<BuildingConstructionMaterialElement>(config).Add(
-            new BuildingConstructionMaterialElement(type, ItemTypeEnum.Iron, quantity));
+            new BuildingConstructionMaterialElement(type, 1, ItemTypeEnum.Iron, quantity));
     }
 
     private void AddItemPrefabDb()

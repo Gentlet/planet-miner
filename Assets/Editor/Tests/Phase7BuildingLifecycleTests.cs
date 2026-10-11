@@ -41,7 +41,7 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
         // 1. 명시적인 테스트 프리팹 DB 환경: Belt 스폰 요청 발행
         var reqEntity = _entityManager.CreateEntity();
         _entityManager.AddComponentData(reqEntity, new SpawnBuildingRequest(
-            BuildingTypeEnum.Belt,
+            BuildingTypeEnum.Belt, 1,
             new int2(5, 7),
             DirectionEnum.Right,
             default,
@@ -72,8 +72,8 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
     [TestCase(true)]
     public void Test11_UnstampedSpawn_IsNewInstallation_AndExplicitZeroIsPreserved(bool rawRequests)
     {
-        var firstRequest = new SpawnBuildingRequest(BuildingTypeEnum.Storage, new int2(5, 0));
-        var laterRequest = new SpawnBuildingRequest(BuildingTypeEnum.Storage, new int2(-5, 0));
+        var firstRequest = new SpawnBuildingRequest(BuildingTypeEnum.Storage, 1, new int2(5, 0));
+        var laterRequest = new SpawnBuildingRequest(BuildingTypeEnum.Storage, 1, new int2(-5, 0));
         if (rawRequests)
         {
             _entityManager.AddComponentData(_entityManager.CreateEntity(), firstRequest);
@@ -85,7 +85,7 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
             BuildingPlacementRequestUtility.SubmitSpawn(_entityManager, laterRequest);
         }
         BuildingPlacementRequestUtility.SubmitSpawn(_entityManager,
-            new SpawnBuildingRequest(BuildingTypeEnum.Belt, new int2(0, 5), stamp: new PlacementStamp(0, 0)));
+            new SpawnBuildingRequest(BuildingTypeEnum.Belt, 1, new int2(0, 5), stamp: new PlacementStamp(0, 0)));
         RunLifecyclePhase();
 
         Entity first = Entity.Null;
@@ -114,7 +114,7 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
         // 1. Miner 스폰 요청 발행
         var reqEntity = _entityManager.CreateEntity();
         _entityManager.AddComponentData(reqEntity, new SpawnBuildingRequest(
-            BuildingTypeEnum.Miner,
+            BuildingTypeEnum.Miner, 1,
             new int2(2, 4),
             DirectionEnum.Up,
             default,
@@ -151,7 +151,7 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
         // 1. Crafter 스폰 요청 발행
         var reqEntity = _entityManager.CreateEntity();
         _entityManager.AddComponentData(reqEntity, new SpawnBuildingRequest(
-            BuildingTypeEnum.Crafter,
+            BuildingTypeEnum.Crafter, 1,
             new int2(10, 10),
             DirectionEnum.Left
         ));
@@ -191,7 +191,7 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
         // 1. Storage 스폰 요청 발행
         var reqEntity = _entityManager.CreateEntity();
         _entityManager.AddComponentData(reqEntity, new SpawnBuildingRequest(
-            BuildingTypeEnum.Storage,
+            BuildingTypeEnum.Storage, 1,
             new int2(0, 0)
         ));
 
@@ -215,14 +215,14 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
         // 1. Splitter 및 Merger 스폰 요청 발행
         var reqSplitter = _entityManager.CreateEntity();
         _entityManager.AddComponentData(reqSplitter, new SpawnBuildingRequest(
-            BuildingTypeEnum.Splitter,
+            BuildingTypeEnum.Splitter, 1,
             new int2(1, 1),
             DirectionEnum.Down
         ));
 
         var reqMerger = _entityManager.CreateEntity();
         _entityManager.AddComponentData(reqMerger, new SpawnBuildingRequest(
-            BuildingTypeEnum.Merger,
+            BuildingTypeEnum.Merger, 1,
             new int2(3, 3),
             DirectionEnum.Left
         ));
@@ -253,14 +253,14 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
         var configEntity = _entityManager.CreateEntity(typeof(BuildingConfig));
         var configBuffer = _entityManager.AddBuffer<BuildingConfigElement>(configEntity);
         configBuffer.Add(new BuildingConfigElement(
-            BuildingTypeEnum.Miner,
+            BuildingTypeEnum.Miner, 1, "Miner",
             speed: 3.5f,
             storageCapacity: 0,
             footprint: new int2(2, 2),
             isUnlocked: true
         ));
         configBuffer.Add(new BuildingConfigElement(
-            BuildingTypeEnum.Storage,
+            BuildingTypeEnum.Storage, 1, "Storage",
             speed: 1.0f,
             storageCapacity: 64,
             footprint: new int2(1, 1),
@@ -271,13 +271,13 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
         // 요청 크기가 설정을 덮어쓰면 같은 위치에 추가 Miner가 생겨 기존 singleton 검사가 실패한다.
         var mismatchedRequest = _entityManager.CreateEntity();
         _entityManager.AddComponentData(mismatchedRequest, new SpawnBuildingRequest(
-            BuildingTypeEnum.Miner, new int2(0, 0), footprintSize: new int2(2, 3)));
+            BuildingTypeEnum.Miner, 1, new int2(0, 0), footprintSize: new int2(2, 3)));
         LogAssert.Expect(LogType.Error, "[BuildingLifecycleUtility] Requested footprint differs from BuildingConfig. Spawn rejected.");
         var reqMiner = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(reqMiner, new SpawnBuildingRequest(BuildingTypeEnum.Miner, new int2(0, 0)));
+        _entityManager.AddComponentData(reqMiner, new SpawnBuildingRequest(BuildingTypeEnum.Miner, 1, new int2(0, 0)));
 
         var reqStorage = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(reqStorage, new SpawnBuildingRequest(BuildingTypeEnum.Storage, new int2(10, 10)));
+        _entityManager.AddComponentData(reqStorage, new SpawnBuildingRequest(BuildingTypeEnum.Storage, 1, new int2(10, 10)));
 
         RunLifecyclePhase();
 
@@ -299,12 +299,12 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
         TestPrefabDatabaseFactory.RemoveDatabase<BuildingPrefabDatabase>(_entityManager);
         var dbEntity = _entityManager.CreateEntity(typeof(BuildingPrefabDatabase));
         var dbBuffer = _entityManager.AddBuffer<BuildingPrefabElement>(dbEntity);
-        dbBuffer.Add(new BuildingPrefabElement(BuildingTypeEnum.Belt, mockBeltPrefab));
+        dbBuffer.Add(new BuildingPrefabElement(BuildingTypeEnum.Belt, 1, mockBeltPrefab));
 
         // 2. 등록되지 않은 Miner 스폰 요청
         var reqEntity = _entityManager.CreateEntity();
         _entityManager.AddComponentData(reqEntity, new SpawnBuildingRequest(
-            BuildingTypeEnum.Miner,
+            BuildingTypeEnum.Miner, 1,
             new int2(5, 5)
         ));
 
@@ -326,7 +326,7 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
         // 1. 가로 2, 세로 3인 비대칭 크기를 지정하여 90도 회전(Right) 스폰
         var reqEntity = _entityManager.CreateEntity();
         _entityManager.AddComponentData(reqEntity, new SpawnBuildingRequest(
-            BuildingTypeEnum.Crafter,
+            BuildingTypeEnum.Crafter, 1,
             new int2(0, 0),
             DirectionEnum.Right,
             new int2(2, 3)
@@ -344,10 +344,10 @@ public class Phase7BuildingLifecycleTests : EcsWorldTestFixture
     {
         // 1. 무효한 타입(None 및 ConstructionSite)으로 스폰 요청
         var reqNone = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(reqNone, new SpawnBuildingRequest(BuildingTypeEnum.None, int2.zero));
+        _entityManager.AddComponentData(reqNone, new SpawnBuildingRequest(BuildingTypeEnum.None, 1, int2.zero));
 
         var reqSite = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(reqSite, new SpawnBuildingRequest(BuildingTypeEnum.ConstructionSite, int2.zero));
+        _entityManager.AddComponentData(reqSite, new SpawnBuildingRequest(BuildingTypeEnum.ConstructionSite, 1, int2.zero));
 
         RunLifecyclePhase();
 

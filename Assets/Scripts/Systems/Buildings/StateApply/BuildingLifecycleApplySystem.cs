@@ -245,7 +245,8 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
             return;
         }
 
-        var buildingType = BuildingTypeLookup[buildingEntity].Type;
+        var buildingDefinition = BuildingTypeLookup[buildingEntity];
+        var buildingType = buildingDefinition.Type;
 
         // 3. 건물 좌표 확인
         int2 sitePos = int2.zero;
@@ -317,7 +318,7 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
             var materialDb = MaterialBufferLookup[ConfigEntity];
             for (int i = 0; i < materialDb.Length; i++)
             {
-                if (materialDb[i].BuildingType == buildingType)
+                if (materialDb[i].BuildingType == buildingType && materialDb[i].Tier == buildingDefinition.Tier)
                 {
                     ItemTypeEnum itemType = materialDb[i].ItemType;
                     int quantity = materialDb[i].Quantity;
@@ -380,6 +381,7 @@ public partial struct SpawnBuildingApplyJob : IJobEntity
         BuildingLifecycleUtility.SpawnBuilding(
             ref ECB,
             request.TargetType,
+            request.TargetTier,
             request.Position,
             request.Direction,
             request.FootprintSize,

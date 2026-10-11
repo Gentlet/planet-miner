@@ -2,6 +2,8 @@
 
 날짜: 2026-10-11. 사용자 결정 구현·코드 확인·Unity 컴파일·선별 EditMode·격리 실제 Baker 실행 완료. 원본 Q09와 후속 기록은 당시 근거로 보존한다.
 
+현재 후속: 같은 날 종류·티어 지원과 별도 표시 이름을 구현하고 건물 Resources 자동 탐색을 제거했다. 아래 InspectorList/ResourcesAutoLoad 두 모드와 59건은 F-022 당시 실행 근거다. 후속의 현재 계약·111건과 단일 명시 등록 Baker 검증은 [별도 기록](BuildingTierAndDisplayName-Verification.md)을 따른다.
+
 ## 결정과 편집 흐름
 
 - 건물 크기는 Assets/Resources/Config/BuildingConfig.json의 footprint에서만 편집한다. 같은 건물 종류의 크기는 고정한다. 티어 구분과 건물명 별도 지정은 후속 구현이며, 같은 종류·같은 티어의 고정 크기와 티어별 다른 크기를 고려할 조건만 남긴다.

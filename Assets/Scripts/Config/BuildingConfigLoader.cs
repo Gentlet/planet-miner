@@ -23,6 +23,8 @@ public class BuildingConfigJsonData
 public class BuildingConfigJsonEntry
 {
     public string buildingType;
+    public int tier;
+    public string displayName;
     public float speed;
     public int storageCapacity;
     public bool isUnlockedByDefault = true;
@@ -113,7 +115,7 @@ public static class BuildingConfigLoader
 
         var configList = new List<BuildingConfigElement>(data.buildings.Count);
         var materialList = new List<BuildingConstructionMaterialElement>();
-        var seenTypes = new HashSet<BuildingTypeEnum>();
+        var seenTypes = new HashSet<(BuildingTypeEnum Type, int Tier)>();
 
         for (int i = 0; i < data.buildings.Count; i++)
         {
@@ -132,15 +134,10 @@ public static class BuildingConfigLoader
 
             if (!Enum.TryParse<BuildingTypeEnum>(entry.buildingType, true, out var buildingType) ||
                 buildingType == BuildingTypeEnum.None ||
+                buildingType == BuildingTypeEnum.ConstructionSite ||
                 buildingType >= BuildingTypeEnum.Count)
             {
                 Debug.LogError($"[BuildingConfigLoader] Invalid buildingType '{entry.buildingType}' at index {i}.");
-                return false;
-            }
-
-            if (!seenTypes.Add(buildingType))
-            {
-                Debug.LogError($"[BuildingConfigLoader] Duplicate buildingType '{buildingType}' detected at index {i}.");
                 return false;
             }
 
@@ -176,6 +173,15 @@ public static class BuildingConfigLoader
                 Debug.LogError($"[BuildingConfigLoader] Entry at index {i} is not a building object.");
                 return false;
             }
+            if (!TryReadDefinition(rawEntry, buildingType, out int tier, out FixedString128Bytes displayName))
+            {
+                return false;
+            }
+            if (!seenTypes.Add((buildingType, tier)))
+            {
+                Debug.LogError($"[BuildingConfigLoader] Duplicate building type/tier '{buildingType}/{tier}' at index {i}.");
+                return false;
+            }
             if (!TryReadFootprint(buildingType, rawEntry["footprint"], out int2 footprint))
             {
                 return false;
@@ -195,6 +201,8 @@ public static class BuildingConfigLoader
 
             configList.Add(new BuildingConfigElement(
                 buildingType,
+                tier,
+                displayName,
                 entry.speed,
                 entry.storageCapacity,
                 entry.isUnlockedByDefault,
@@ -227,7 +235,7 @@ public static class BuildingConfigLoader
                         return false;
                     }
 
-                    materialList.Add(new BuildingConstructionMaterialElement(buildingType, itemType, mat.quantity));
+                    materialList.Add(new BuildingConstructionMaterialElement(buildingType, tier, itemType, mat.quantity));
                 }
             }
         }
@@ -253,16 +261,106 @@ public static class BuildingConfigLoader
             return false;
         }
 
-        var types = new HashSet<BuildingTypeEnum>();
+        var configs = new List<BuildingConfigElement>();
         foreach (var entry in entityManager.GetBuffer<BuildingConfigElement>(entity, true))
         {
-            if (!ValidateFootprint(entry.BuildingType, entry.Footprint))
+            configs.Add(entry);
+        }
+        var materials = new List<BuildingConstructionMaterialElement>();
+        foreach (var entry in entityManager.GetBuffer<BuildingConstructionMaterialElement>(entity, true))
+        {
+            materials.Add(entry);
+        }
+        if (!ValidateDefinitions(configs, materials, out var keys))
+        {
+            return false;
+        }
+        var runtimeKeys = new HashSet<(BuildingTypeEnum Type, int Tier)>();
+        foreach (var entry in entityManager.GetBuffer<BuildingRuntimeConfigElement>(entity, true))
+        {
+            if (!keys.Contains((entry.BuildingType, entry.Tier)) || !runtimeKeys.Add((entry.BuildingType, entry.Tier)))
+            {
+                Debug.LogError("[BuildingConfigLoader] Pre-registered runtime configuration has an invalid or duplicate type/tier.");
+                return false;
+            }
+        }
+        if (!runtimeKeys.SetEquals(keys))
+        {
+            Debug.LogError("[BuildingConfigLoader] Pre-registered runtime configuration is missing a type/tier.");
+            return false;
+        }
+        return ValidateRequiredTypes(keys);
+    }
+
+    private static bool TryReadDefinition(JObject entry, BuildingTypeEnum type, out int tier, out FixedString128Bytes displayName)
+    {
+        tier = 0;
+        displayName = default;
+        JToken tierToken = entry["tier"];
+        if (tierToken == null)
+        {
+            Debug.LogError($"[BuildingConfigLoader] {type} is missing its required tier.");
+            return false;
+        }
+        if (tierToken.Type != JTokenType.Integer ||
+            !long.TryParse(tierToken.ToString(Formatting.None), NumberStyles.Integer, CultureInfo.InvariantCulture, out long value) ||
+            value <= 0 || value > int.MaxValue)
+        {
+            Debug.LogError($"[BuildingConfigLoader] {type} tier must be an explicit positive JSON integer representable as int.");
+            return false;
+        }
+        JToken nameToken = entry["displayName"];
+        if (nameToken == null)
+        {
+            Debug.LogError($"[BuildingConfigLoader] {type}/{value} is missing its required displayName.");
+            return false;
+        }
+        if (nameToken.Type != JTokenType.String)
+        {
+            Debug.LogError($"[BuildingConfigLoader] {type}/{value} displayName must be a nonempty string.");
+            return false;
+        }
+        string name = nameToken.Value<string>();
+        if (string.IsNullOrWhiteSpace(name) || Encoding.UTF8.GetByteCount(name) > displayName.Capacity)
+        {
+            Debug.LogError($"[BuildingConfigLoader] {type}/{value} displayName must be nonempty and fit {displayName.Capacity} UTF-8 bytes.");
+            return false;
+        }
+        tier = (int)value;
+        displayName = new FixedString128Bytes(name);
+        return true;
+    }
+
+    private static bool ValidateDefinitions(List<BuildingConfigElement> configs, List<BuildingConstructionMaterialElement> materials,
+        out HashSet<(BuildingTypeEnum Type, int Tier)> keys)
+    {
+        keys = new HashSet<(BuildingTypeEnum Type, int Tier)>();
+        foreach (var config in configs)
+        {
+            if (config.BuildingType <= BuildingTypeEnum.None || config.BuildingType >= BuildingTypeEnum.Count ||
+                config.BuildingType == BuildingTypeEnum.ConstructionSite || config.Tier <= 0 ||
+                string.IsNullOrWhiteSpace(config.DisplayName.ToString()) || !keys.Add((config.BuildingType, config.Tier)))
+            {
+                Debug.LogError("[BuildingConfigLoader] Invalid or duplicate building type/tier, or empty displayName.");
+                return false;
+            }
+            if (!ValidateFootprint(config.BuildingType, config.Footprint))
             {
                 return false;
             }
-            types.Add(entry.BuildingType);
         }
-        return ValidateRequiredTypes(types);
+        if (materials != null)
+        {
+            foreach (var material in materials)
+            {
+                if (!keys.Contains((material.BuildingType, material.Tier)))
+                {
+                    Debug.LogError("[BuildingConfigLoader] Construction material references an undefined building type/tier.");
+                    return false;
+                }
+            }
+        }
+        return true;
     }
 
     private static bool TryReadFootprint(BuildingTypeEnum type, JToken rawFootprint, out int2 footprint)
@@ -308,7 +406,7 @@ public static class BuildingConfigLoader
         return true;
     }
 
-    private static bool ValidateRequiredTypes(HashSet<BuildingTypeEnum> types)
+    private static bool ValidateRequiredTypes(HashSet<(BuildingTypeEnum Type, int Tier)> types)
     {
         var missing = new List<BuildingTypeEnum>();
         foreach (BuildingTypeEnum type in Enum.GetValues(typeof(BuildingTypeEnum)))
@@ -317,7 +415,7 @@ public static class BuildingConfigLoader
             {
                 continue;
             }
-            if (!types.Contains(type))
+            if (!types.Contains((type, 1)))
             {
                 missing.Add(type);
             }
@@ -326,7 +424,7 @@ public static class BuildingConfigLoader
         {
             return true;
         }
-        Debug.LogError($"[BuildingConfigLoader] Missing required building types: {string.Join(", ", missing)}.");
+        Debug.LogError($"[BuildingConfigLoader] Missing required tier 1 building types: {string.Join(", ", missing)}.");
         return false;
     }
 
@@ -346,12 +444,9 @@ public static class BuildingConfigLoader
         }
 
         // 공개 게시와 사전 등록 Init도 JSON과 같은 크기 계약을 따른다. 무효 입력은 부분 게시하지 않는다.
-        foreach (var config in configs)
+        if (!ValidateDefinitions(configs, materials, out _))
         {
-            if (!ValidateFootprint(config.BuildingType, config.Footprint))
-            {
-                return Entity.Null;
-            }
+            return Entity.Null;
         }
 
         // 통합 설정과 호환 버퍼를 같은 입력에서 게시한다. 이후 게임 Reader가 managed JSON 목록을 원본으로 다시 읽지 않게 한다.
@@ -371,7 +466,7 @@ public static class BuildingConfigLoader
             for (int i = 0; i < configs.Count; i++)
             {
                 configBuffer.Add(configs[i]);
-                runtimeBuffer.Add(new BuildingRuntimeConfigElement(configs[i].BuildingType, configs[i].Speed, configs[i].StorageCapacity));
+                runtimeBuffer.Add(new BuildingRuntimeConfigElement(configs[i].BuildingType, configs[i].Tier, configs[i].Speed, configs[i].StorageCapacity));
             }
 
             if (materials != null)

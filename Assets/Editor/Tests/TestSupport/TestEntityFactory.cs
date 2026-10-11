@@ -36,9 +36,9 @@ namespace PlanetMiner.Tests
             var configs = _entityManager.GetBuffer<BuildingConfigElement>(entity);
             foreach (var type in types)
             {
-                if (BuildingConfigLookupUtility.TryGetConfig(configs, type, out _))
+                if (BuildingConfigLookupUtility.TryGetConfig(configs, type, 1, out _))
                     continue;
-                configs.Add(new BuildingConfigElement(type, type == BuildingTypeEnum.Belt ? 2f : 1f, 20, true,
+                configs.Add(new BuildingConfigElement(type, 1, type.ToString(), type == BuildingTypeEnum.Belt ? 2f : 1f, 20, true,
                     footprint: GetFixtureBuildingFootprint(type)));
             }
         }
@@ -243,7 +243,7 @@ namespace PlanetMiner.Tests
                 typeof(Storage),
                 typeof(BuildingItemOutputDecision));
 
-            _entityManager.SetComponentData(entity, new BuildingType(BuildingTypeEnum.Storage));
+            _entityManager.SetComponentData(entity, new BuildingType(BuildingTypeEnum.Storage, 1));
             _entityManager.SetComponentData(entity, new BuildingFootprint(size));
             _entityManager.SetComponentData(entity, new GridPosition(position));
             _entityManager.SetComponentData(entity, new Direction(direction));
@@ -279,7 +279,7 @@ namespace PlanetMiner.Tests
                 typeof(MinerState),
                 typeof(MinerDecision));
 
-            _entityManager.SetComponentData(entity, new BuildingType(BuildingTypeEnum.Miner));
+            _entityManager.SetComponentData(entity, new BuildingType(BuildingTypeEnum.Miner, 1));
             _entityManager.SetComponentData(entity, new BuildingFootprint(size));
             _entityManager.SetComponentData(entity, new GridPosition(position));
             _entityManager.SetComponentData(entity, new Direction(direction));
@@ -317,7 +317,7 @@ namespace PlanetMiner.Tests
                 typeof(Storage),
                 typeof(StorageFilter));
 
-            _entityManager.SetComponentData(entity, new BuildingType(BuildingTypeEnum.Crafter));
+            _entityManager.SetComponentData(entity, new BuildingType(BuildingTypeEnum.Crafter, 1));
             _entityManager.SetComponentData(entity, new BuildingFootprint(new int2(1, 1)));
             _entityManager.SetComponentData(entity, new GridPosition(position));
             _entityManager.SetComponentData(entity, new Direction(DirectionEnum.Up));
@@ -434,7 +434,7 @@ namespace PlanetMiner.Tests
                 typeof(GridPosition),
                 typeof(Direction));
 
-            _entityManager.SetComponentData(entity, new BuildingType(type));
+            _entityManager.SetComponentData(entity, new BuildingType(type, 1));
             _entityManager.SetComponentData(entity, new BuildingFootprint(size));
             _entityManager.SetComponentData(entity, new GridPosition(position));
             _entityManager.SetComponentData(entity, new Direction(direction));

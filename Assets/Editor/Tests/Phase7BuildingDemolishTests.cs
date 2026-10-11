@@ -61,7 +61,7 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         }
 
         var building = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(building, new BuildingType(type));
+        _entityManager.AddComponentData(building, new BuildingType(type, 1));
         _entityManager.AddComponentData(building, new BuildingFootprint(size));
         _entityManager.AddComponentData(building, new GridPosition(pos));
         _entityManager.AddComponentData(building, new Direction(dir));
@@ -128,7 +128,7 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         _entityManager.AddBuffer<BuildingConfigElement>(configEntity);
 
         var materialBuffer = _entityManager.AddBuffer<BuildingConstructionMaterialElement>(configEntity);
-        materialBuffer.Add(new BuildingConstructionMaterialElement(type, materialType, quantity));
+        materialBuffer.Add(new BuildingConstructionMaterialElement(type, 1, materialType, quantity));
 
         return configEntity;
     }
@@ -300,7 +300,7 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
     {
         // 1. 공사 현장 생성 (공사 현장은 철거 대상이 아님 -> Cancel로만 취소 가능)
         var site = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(site, new BuildingType(BuildingTypeEnum.ConstructionSite));
+        _entityManager.AddComponentData(site, new BuildingType(BuildingTypeEnum.ConstructionSite, 0));
         _entityManager.AddComponentData(site, new GridPosition(new int2(1, 1)));
 
         // 2. 공사 현장에 철거 요청 발행
@@ -573,7 +573,7 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         var reqEntity = BuildingPlacementRequestUtility.Submit(
             _entityManager, new BuildingPlacementRequest(PlacementFlags.StrictAllOrNothing), new[]
             {
-                new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), sitePos, DirectionEnum.Up)
+                new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(1, 1), sitePos, DirectionEnum.Up)
             });
 
         // CommandGroup 1회 실행 (BuildingPlacementCommandSystem -> EndCommandEntityCommandBufferSystem)

@@ -870,7 +870,7 @@ public class DroneItemTransferTests : EcsWorldTestFixture
     private Entity CreateStorage(int count, int slots = 16)
     {
         Entity storage = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(storage, new BuildingType(BuildingTypeEnum.Storage));
+        _entityManager.AddComponentData(storage, new BuildingType(BuildingTypeEnum.Storage, 1));
         _entityManager.AddComponentData(storage, new GridPosition(int2.zero));
         _entityManager.AddComponentData(storage, new Storage(slots));
         _entityManager.AddComponentData(storage, new StorageFilter(StorageFilterMode.AllowAll));
@@ -883,8 +883,8 @@ public class DroneItemTransferTests : EcsWorldTestFixture
     private Entity CreateSite(int required)
     {
         Entity site = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(site, new BuildingType(BuildingTypeEnum.ConstructionSite));
-        _entityManager.AddComponentData(site, new ConstructionSite(BuildingTypeEnum.Storage));
+        _entityManager.AddComponentData(site, new BuildingType(BuildingTypeEnum.ConstructionSite, 0));
+        _entityManager.AddComponentData(site, new ConstructionSite(BuildingTypeEnum.Storage, 1));
         _entityManager.AddComponentData(site, new GridPosition(int2.zero));
         _entityManager.AddComponentData(site, new BuildingFootprint(new int2(1, 1)));
         _entityManager.AddComponentData(site, new Direction(DirectionEnum.Up));

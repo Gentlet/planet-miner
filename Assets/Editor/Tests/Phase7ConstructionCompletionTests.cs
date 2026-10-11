@@ -44,12 +44,12 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
         }
 
         var site = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(site, new BuildingType(BuildingTypeEnum.ConstructionSite));
+        _entityManager.AddComponentData(site, new BuildingType(BuildingTypeEnum.ConstructionSite, 0));
         _entityManager.AddComponentData(site, new BuildingFootprint(size));
         _entityManager.AddComponentData(site, new GridPosition(pos));
         _entityManager.AddComponentData(site, new Direction(dir));
         _entityManager.AddComponentData(site, stamp);
-        _entityManager.AddComponentData(site, new ConstructionSite(targetType, flags));
+        _entityManager.AddComponentData(site, new ConstructionSite(targetType, 1, flags));
         _entityManager.AddBuffer<ConstructionMaterialRequirementElement>(site);
         _entityManager.AddBuffer<StoredItemElement>(site);
         return site;
@@ -211,7 +211,7 @@ public class Phase7ConstructionCompletionTests : EcsWorldTestFixture
             entries.Clear();
             if (databaseFailure == 2)
             {
-                entries.Add(new BuildingPrefabElement(BuildingTypeEnum.Miner, Entity.Null));
+                entries.Add(new BuildingPrefabElement(BuildingTypeEnum.Miner, 1, Entity.Null));
             }
         }
 

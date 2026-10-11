@@ -148,7 +148,7 @@ public partial struct PopulateBuildingSpatialIndexJob : IJobEntity
         in Direction dir)
     {
         int2 effectiveSize = footprint.GetEffectiveSize(dir.dir);
-        var info = new BuildingInfo(entity, type.Type, dir.dir);
+        var info = new BuildingInfo(entity, type.Type, type.Tier, dir.dir);
 
         for (int y = 0; y < effectiveSize.y; y++)
         {

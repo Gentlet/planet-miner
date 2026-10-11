@@ -16,6 +16,7 @@ public struct SpawnBuildingRequest : IComponentData, IRequestComponent
     /// 스폰할 대상 건물 종류.
     /// </summary>
     public BuildingTypeEnum TargetType;
+    public int TargetTier;
 
     /// <summary>
     /// 건물이 배치될 원점 그리드 좌표.
@@ -42,12 +43,14 @@ public struct SpawnBuildingRequest : IComponentData, IRequestComponent
 
     public SpawnBuildingRequest(
         BuildingTypeEnum targetType,
+        int targetTier,
         int2 position,
         DirectionEnum direction = DirectionEnum.Up,
         int2 footprintSize = default,
         PlacementStamp? stamp = null)
     {
         TargetType = targetType;
+        TargetTier = targetTier;
         Position = position;
         Direction = direction;
         FootprintSize = footprintSize;

@@ -35,14 +35,16 @@ public enum BuildingTypeEnum : byte
 public struct BuildingType : IComponentData
 {
     public BuildingTypeEnum Type;
+    /// <summary>완공 건물은 명시적 양수 티어, 현장 분류는 0이며 목표 티어는 ConstructionSite가 소유한다.</summary>
+    public int Tier;
 
-    public BuildingType(BuildingTypeEnum type)
+    public BuildingType(BuildingTypeEnum type, int tier)
     {
         Type = type;
+        Tier = tier;
     }
 
     public static implicit operator BuildingTypeEnum(BuildingType b) => b.Type;
-    public static implicit operator BuildingType(BuildingTypeEnum type) => new BuildingType(type);
 }
 
 /// <summary>

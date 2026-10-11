@@ -9,7 +9,7 @@
 ## BuildingPrefabDatabase
 
 - **목적·종류:** 건물 프리팹 DB를 식별하는 필드 없는 `IComponentData` 태그다. 완공 건물 인스턴스마다 부착하는 태그가 아니라 매핑 버퍼를 보관하는 DB 엔티티에 부착된다.
-- **부착·생성:** `BuildingPrefabDatabaseAuthoring.BuildingPrefabDatabaseBaker`가 Authoring 엔티티(`TransformUsageFlags.None`)에 태그와 `BuildingPrefabElement` 버퍼를 함께 추가한다. Inspector 목록 또는 `Resources/Prefabs/Building` 자동 탐색 결과가 입력이다.
+- **부착·생성:** `BuildingPrefabDatabaseAuthoring.BuildingPrefabDatabaseBaker`가 Authoring 엔티티(`TransformUsageFlags.None`)에 태그와 `BuildingPrefabElement` 버퍼를 함께 추가한다. Type/Tier/Prefab을 명시한 Inspector 목록만 입력이다. 건물 Resources 자동 탐색과 목록 채우기 버튼은 제거했다.
 - **Reader·단계:** Initialization 마지막의 `PrefabDatabaseInitializationSystem`이 이 태그 엔티티와 매핑 버퍼 엔티티가 각각 정확히 하나이며 같은 엔티티인지 확인한다. 건물 스폰을 수행하는 StateApply 두 시스템은 태그 대신 `BuildingPrefabElement` 버퍼 쿼리로 DB를 찾는다.
 - **처리·실패:** 초기 검증에서 건물 필수 종류·중복/금지 종류 및 참조 프리팹을 검사한다. 실패하면 Fatal을 직접 게시하고 검증 시스템을 비활성화한다. 태그 존재만으로 게임 시뮬레이션이 허용되지는 않는다.
 - **생명주기·경계:** 스폰 때 태그를 소비·비활성화하지 않는다. 제품 코드에 DB 재로드·제거 경로는 없고 검증 이후 World 수명 동안 유지하는 계약이다. 버퍼 및 엔티티 메모리는 ECS가 관리한다.
@@ -17,11 +17,11 @@
 
 ## BuildingPrefabElement
 
-- **목적·필드:** `Type → Prefab` 매핑만 담는 `IBufferElementData`다. 내부 버퍼 용량 힌트는 16이다. 타입별 여러 건물 인스턴스가 같은 매핑을 반복 조회한다. F-022에서 크기 필드를 제거했다.
-- **부착·초기화:** Building DB Baker가 DB 엔티티에 버퍼를 만들고 각 GameObject 프리팹의 Renderable 엔티티 참조를 등록한다. Inspector와 Resources 자동 탐색 모두 종류와 프리팹만 게시한다. 점유 크기는 Resources/Config/BuildingConfig.json에서 편집한다.
-- **Reader·검증:** Initialization에서 None/Count/ConstructionSite·범위 밖/중복 등록을 거부하고 나머지 모든 건물 종류를 요구한다. 프리팹은 생존하며 `Prefab`·`LocalTransform`을 가져야 한다. StateApply의 `BuildingLifecycleApplySystem` 및 `ConstructionLifecycleApplySystem`은 읽기 전용 BufferLookup을 `BuildingLifecycleUtility.SpawnBuilding`에 전달한다.
+- **목적·필드:** `(Type, Tier) → Prefab` 매핑만 담는 `IBufferElementData`다. 내부 버퍼 용량 힌트는 16이다. 타입별 여러 건물 인스턴스가 같은 매핑을 반복 조회한다. F-022에서 크기 필드를 제거했다.
+- **부착·초기화:** Building DB Baker가 DB 엔티티에 버퍼를 만들고 각 GameObject 프리팹의 Renderable 엔티티 참조를 등록한다. 명시 등록 목록의 종류·티어와 프리팹을 게시한다. 같은 프리팹을 여러 조합에서 공유할 수 있다. 점유 크기는 Resources/Config/BuildingConfig.json에서 편집한다.
+- **Reader·검증:** Initialization에서 None/Count/ConstructionSite·범위 밖/중복 등록을 거부하고 기존 모든 종류의 1티어와 Config에 등록한 모든 종류·티어의 프리팹을 요구한다. 비양수 티어·설정 없는 등록도 거절한다. 프리팹은 생존하며 `Prefab`·`LocalTransform`을 가져야 한다. StateApply의 `BuildingLifecycleApplySystem` 및 `ConstructionLifecycleApplySystem`은 읽기 전용 BufferLookup을 `BuildingLifecycleUtility.SpawnBuilding`에 전달한다.
 - **처리·ECB:** 공통 스폰 유틸리티가 매핑을 찾아 프리팹 Instantiate와 위치·방향·타입별 런타임 구성을 EndBuilding ECB에 기록한다. DB/매핑 누락이면 Fatal을 기록하고 `Entity.Null`을 반환한다. 대체 프리팹이나 빈 엔티티를 생성하지 않는다.
-- **필드 결합·생명주기:** 조회 함수는 프리팹만 반환한다. 실제 BuildingFootprint는 BuildingConfigElement.Footprint가 유일한 원본이며 전달 크기는 일치 확인용 스냅샷이다. 매핑 버퍼는 조회 후 유지하며 런타임 Writer·Clear·별도 Dispose는 없다.
+- **필드 결합·생명주기:** 조회 함수는 프리팹만 반환한다. 실제 BuildingFootprint는 해당 종류·티어의 BuildingConfigElement.Footprint가 유일한 원본이며 전달 크기는 일치 확인용 스냅샷이다. 매핑 버퍼는 조회 후 유지하며 런타임 Writer·Clear·별도 Dispose는 없다.
 - **소스:** [정의](../../../Assets/Scripts/Components/Prefabs/PrefabDatabaseComponents.cs), [Baker](../../../Assets/Scripts/Authoring/BuildingPrefabDatabaseAuthoring.cs), [검증](../../../Assets/Scripts/Systems/Initialization/PrefabDatabaseInitializationSystem.cs), [조회](../../../Assets/Scripts/Common/PrefabLookupUtility.cs), [실제 스폰·크기 선택](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs).
 
 ## ItemPrefabDatabase

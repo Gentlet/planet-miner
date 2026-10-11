@@ -12,7 +12,7 @@ public struct BuildingRuntimeConfig : IComponentData
 }
 
 /// <summary>
-/// 역할·목적: 건물 종류별 속도·저장 용량의 기존 호환 표현이다. 통합 설정 게시 시 BuildingConfigElement에서 복사한다.
+/// 역할·목적: 건물 종류·티어별 속도·저장 용량의 기존 호환 표현이다. 통합 설정 게시 시 BuildingConfigElement에서 복사한다.
 /// 부착 엔티티: BuildingRuntimeConfig와 BuildingConfig가 함께 있는 동일 설정 엔티티의 버퍼다.
 /// 생성: BuildingConfigInitSystem(Initialization)의 BuildingConfigLoader.PublishConfig가 항목을 채운다.
 /// 이용: BuildingConfigLookupUtility의 조회 API가 있지만 현재 제품 시스템의 직접 호출 Reader는 없다. 실제 생성은 BuildingConfigElement를 읽는다.
@@ -22,12 +22,14 @@ public struct BuildingRuntimeConfig : IComponentData
 public struct BuildingRuntimeConfigElement : IBufferElementData
 {
     public BuildingTypeEnum BuildingType;
+    public int Tier;
     public float Speed;
     public int StorageCapacity;
 
-    public BuildingRuntimeConfigElement(BuildingTypeEnum buildingType, float speed, int storageCapacity = 0)
+    public BuildingRuntimeConfigElement(BuildingTypeEnum buildingType, int tier, float speed, int storageCapacity = 0)
     {
         BuildingType = buildingType;
+        Tier = tier;
         Speed = speed;
         StorageCapacity = storageCapacity;
     }

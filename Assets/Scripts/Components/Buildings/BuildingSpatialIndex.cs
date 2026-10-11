@@ -13,12 +13,14 @@ public struct BuildingInfo
 {
     public Entity Entity;
     public BuildingTypeEnum Type;
+    public int Tier;
     public DirectionEnum Direction;
 
-    public BuildingInfo(Entity entity, BuildingTypeEnum type, DirectionEnum direction)
+    public BuildingInfo(Entity entity, BuildingTypeEnum type, int tier, DirectionEnum direction)
     {
         Entity = entity;
         Type = type;
+        Tier = tier;
         Direction = direction;
     }
 }

@@ -3,7 +3,7 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 역할·목적: 건물 종류별 생성 스펙·현재 해금 상태·건설 비용의 통합 설정 소유자를 식별한다.
+/// 역할·목적: 건물 종류·티어별 생성 스펙·현재 해금 상태·건설 비용의 통합 설정 소유자를 식별한다.
 /// 부착 엔티티: BuildingConfigElement/BuildingConstructionMaterialElement 및 기존 호환 버퍼를 함께 가진 World 단일 설정 엔티티다.
 /// 생성: BuildingConfigInitSystem(Initialization)이 BuildingConfigLoader.PublishConfig로 검증된 설정을 한 번 게시한다.
 /// 이용: BuildingPlacementCommandSystem(Command)이 해금·크기·비용을 읽고 BuildingLifecycleApplySystem/ConstructionLifecycleApplySystem(StateApply)은 공통 생성과 철거 비용 환급에 사용한다.
@@ -14,7 +14,7 @@ public struct BuildingConfig : IComponentData
 }
 
 /// <summary>
-/// 역할·목적: 건물 종류별 속도·저장 슬롯 수·해금 상태·연구 식별자·방향 적용 전 기본 크기를 제공한다.
+/// 역할·목적: 건물 종류·티어별 속도·저장 슬롯 수·해금 상태·연구 식별자·방향 적용 전 기본 크기를 제공한다.
 /// 부착 엔티티: BuildingConfig 통합 설정 엔티티의 버퍼다.
 /// 생성: BuildingConfigInitSystem(Initialization)이 BuildingConfigLoader로 로드·검증하여 게시한다.
 /// 이용: BuildingPlacementCommandSystem(Command)이 배치 해금·기본 크기를 읽고 BuildingLifecycleUtility가 StateApply 건물 생성의 타입별 상태를 초기화한다.
@@ -23,15 +23,20 @@ public struct BuildingConfig : IComponentData
 public struct BuildingConfigElement : IBufferElementData
 {
     public BuildingTypeEnum BuildingType;
+    public int Tier;
+    /// <summary>설정의 표시 이름. 종류·티어 식별과 독립적이며 중복을 허용한다.</summary>
+    public FixedString128Bytes DisplayName;
     public float Speed;
     public int StorageCapacity;
     public bool IsUnlocked;
     public FixedString32Bytes RequiredResearch;
-    /// <summary>이 종류의 방향 적용 전 고정 점유 크기. 명시적 양수 설정이 필수이며 기본값으로 보충하지 않는다.</summary>
+    /// <summary>이 종류·티어의 방향 적용 전 고정 점유 크기. 명시적 양수 설정이 필수이며 기본값으로 보충하지 않는다.</summary>
     public int2 Footprint;
 
     public BuildingConfigElement(
         BuildingTypeEnum buildingType,
+        int tier,
+        FixedString128Bytes displayName,
         float speed,
         int storageCapacity,
         bool isUnlocked,
@@ -39,6 +44,8 @@ public struct BuildingConfigElement : IBufferElementData
         int2 footprint = default)
     {
         BuildingType = buildingType;
+        Tier = tier;
+        DisplayName = displayName;
         Speed = speed;
         StorageCapacity = storageCapacity;
         IsUnlocked = isUnlocked;
@@ -57,12 +64,14 @@ public struct BuildingConfigElement : IBufferElementData
 public struct BuildingConstructionMaterialElement : IBufferElementData
 {
     public BuildingTypeEnum BuildingType;
+    public int Tier;
     public ItemTypeEnum ItemType;
     public int Quantity;
 
-    public BuildingConstructionMaterialElement(BuildingTypeEnum buildingType, ItemTypeEnum itemType, int quantity)
+    public BuildingConstructionMaterialElement(BuildingTypeEnum buildingType, int tier, ItemTypeEnum itemType, int quantity)
     {
         BuildingType = buildingType;
+        Tier = tier;
         ItemType = itemType;
         Quantity = quantity;
     }

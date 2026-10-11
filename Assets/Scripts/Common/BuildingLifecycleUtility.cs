@@ -14,6 +14,7 @@ public static class BuildingLifecycleUtility
     public static Entity SpawnBuilding(
         ref EntityCommandBuffer ecb,
         BuildingTypeEnum targetType,
+        int targetTier,
         int2 position,
         DirectionEnum direction,
         int2 footprintSize,
@@ -30,23 +31,27 @@ public static class BuildingLifecycleUtility
             return Entity.Null;
         }
 
+        if (targetTier <= 0)
+        {
+            return RejectMissingConfiguration(ref ecb, targetType, targetTier);
+        }
         if (!hasConfig)
         {
-            return RejectMissingConfiguration(ref ecb, targetType);
+            return RejectMissingConfiguration(ref ecb, targetType, targetTier);
         }
         if (configEntity == Entity.Null)
         {
-            return RejectMissingConfiguration(ref ecb, targetType);
+            return RejectMissingConfiguration(ref ecb, targetType, targetTier);
         }
         if (!configBufferLookup.HasBuffer(configEntity))
         {
-            return RejectMissingConfiguration(ref ecb, targetType);
+            return RejectMissingConfiguration(ref ecb, targetType, targetTier);
         }
 
         var configBuffer = configBufferLookup[configEntity];
-        if (!BuildingConfigLookupUtility.TryGetConfig(configBuffer, targetType, out var config))
+        if (!BuildingConfigLookupUtility.TryGetConfig(configBuffer, targetType, targetTier, out var config))
         {
-            return RejectMissingConfiguration(ref ecb, targetType);
+            return RejectMissingConfiguration(ref ecb, targetType, targetTier);
         }
 
         // Config가 유일한 크기 원본이다. 전달 크기는 승인된 현장/요청의 일치 확인용이며 덮어쓰기 입력이 아니다.
@@ -73,7 +78,7 @@ public static class BuildingLifecycleUtility
         if (hasPrefabDb && prefabDbEntity != Entity.Null && prefabBufferLookup.HasBuffer(prefabDbEntity))
         {
             var buffer = prefabBufferLookup[prefabDbEntity];
-            PrefabLookupUtility.TryGetBuildingPrefab(buffer, targetType, out prefabEntity);
+            PrefabLookupUtility.TryGetBuildingPrefab(buffer, targetType, targetTier, out prefabEntity);
         }
 
         if (prefabEntity == Entity.Null)
@@ -81,6 +86,8 @@ public static class BuildingLifecycleUtility
             FixedString128Bytes msg = default;
             msg.Append((FixedString128Bytes)"[BuildingLifecycleUtility] Missing prefab for building type '");
             msg.Append(targetType.ToFixedString());
+            msg.Append((FixedString128Bytes)"/Tier ");
+            msg.Append(targetTier);
             msg.Append((FixedString128Bytes)"'. Spawn rejected.");
             SimulationFailureUtility.Record(ref ecb, msg);
             return Entity.Null;
@@ -89,7 +96,7 @@ public static class BuildingLifecycleUtility
         // 프리팹 확보 전에는 건물 생성 명령을 기록하지 않는다. 공사 완료 호출자는 Null을 보고 현장/자재를 보존할 수 있다.
         newBuilding = ecb.Instantiate(prefabEntity);
 
-        ecb.AddComponent(newBuilding, new BuildingType(targetType));
+        ecb.AddComponent(newBuilding, new BuildingType(targetType, targetTier));
         ecb.AddComponent(newBuilding, new BuildingFootprint(baseFootprint));
         ecb.AddComponent(newBuilding, new GridPosition(position));
         ecb.AddComponent(newBuilding, new Direction(direction));
@@ -101,10 +108,12 @@ public static class BuildingLifecycleUtility
         return newBuilding;
     }
 
-    private static Entity RejectMissingConfiguration(ref EntityCommandBuffer ecb, BuildingTypeEnum type)
+    private static Entity RejectMissingConfiguration(ref EntityCommandBuffer ecb, BuildingTypeEnum type, int tier)
     {
         FixedString128Bytes message = "[BuildingLifecycleUtility] Missing configuration for building type '";
         message.Append(type.ToFixedString());
+        message.Append((FixedString128Bytes)"/Tier ");
+        message.Append(tier);
         message.Append((FixedString128Bytes)"'. Spawn rejected.");
         SimulationFailureUtility.Record(ref ecb, message);
         return Entity.Null;
