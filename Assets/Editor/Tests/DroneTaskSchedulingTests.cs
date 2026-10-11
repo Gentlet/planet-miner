@@ -86,13 +86,13 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
     {
         Entity config = _entityManager.CreateEntity(typeof(BuildingConfig));
         _entityManager.AddBuffer<BuildingConfigElement>(config).Add(
-            new BuildingConfigElement(BuildingTypeEnum.Storage, 1f, 4, true, default, new int2(1, 1)));
+            new BuildingConfigElement(BuildingTypeEnum.Storage, 1, "Storage", 1f, 4, true, default, new int2(1, 1)));
         var materials = _entityManager.AddBuffer<BuildingConstructionMaterialElement>(config);
-        materials.Add(new BuildingConstructionMaterialElement(BuildingTypeEnum.Storage, ItemTypeEnum.Iron, 3));
-        materials.Add(new BuildingConstructionMaterialElement(BuildingTypeEnum.Storage, ItemTypeEnum.Copper, 2));
+        materials.Add(new BuildingConstructionMaterialElement(BuildingTypeEnum.Storage, 1, ItemTypeEnum.Iron, 3));
+        materials.Add(new BuildingConstructionMaterialElement(BuildingTypeEnum.Storage, 1, ItemTypeEnum.Copper, 2));
         Entity request = BuildingPlacementRequestUtility.Submit(_entityManager, new BuildingPlacementRequest(), new[]
         {
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(8, 4))
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(1, 1), new int2(8, 4))
         });
 
         CreateStorage(new int2(1, 1), 1, ItemTypeEnum.Iron, 3);
@@ -902,8 +902,8 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
     private Entity CreateSite(int2 position, ulong stamp, ItemTypeEnum itemType, int quantity)
     {
         Entity entity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(entity, new ConstructionSite(BuildingTypeEnum.Storage));
-        _entityManager.AddComponentData(entity, new BuildingType(BuildingTypeEnum.ConstructionSite));
+        _entityManager.AddComponentData(entity, new ConstructionSite(BuildingTypeEnum.Storage, 1));
+        _entityManager.AddComponentData(entity, new BuildingType(BuildingTypeEnum.ConstructionSite, 0));
         _entityManager.AddComponentData(entity, new GridPosition(position));
         _entityManager.AddComponentData(entity, new BuildingFootprint(new int2(1, 1)));
         _entityManager.AddComponentData(entity, new Direction(DirectionEnum.Up));
@@ -936,7 +936,7 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
     private Entity CreateStorage(int2 position, ulong stamp, ItemTypeEnum type, int quantity)
     {
         Entity entity = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(entity, new BuildingType(BuildingTypeEnum.Storage));
+        _entityManager.AddComponentData(entity, new BuildingType(BuildingTypeEnum.Storage, 1));
         _entityManager.AddComponentData(entity, new GridPosition(position));
         _entityManager.AddComponentData(entity, new BuildingFootprint(new int2(1, 1)));
         _entityManager.AddComponentData(entity, new Direction(DirectionEnum.Up));

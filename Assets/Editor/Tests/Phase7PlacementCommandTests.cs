@@ -64,9 +64,9 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
     {
         SetupBuildingConfig((BuildingTypeEnum.Storage, 1f, 4, true, null));
         CreatePlacementRequest(PlacementFlags.StrictAllOrNothing,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(2, 3), int2.zero));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(2, 3), int2.zero));
         CreatePlacementRequest(PlacementFlags.StrictAllOrNothing,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), int2.zero));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(1, 1), int2.zero));
 
         UpdateCommandPhase();
         UpdateBuildingSpatialIndex();
@@ -92,14 +92,14 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
 
         foreach (var c in configs)
         {
-            configBuffer.Add(new BuildingConfigElement(c.type, c.speed, c.storage, c.unlocked,
+            configBuffer.Add(new BuildingConfigElement(c.type, 1, c.type.ToString(), c.speed, c.storage, c.unlocked,
                 footprint: PlanetMiner.Tests.TestEntityFactory.GetFixtureBuildingFootprint(c.type)));
-            runtimeBuffer.Add(new BuildingRuntimeConfigElement(c.type, c.speed, c.storage));
+            runtimeBuffer.Add(new BuildingRuntimeConfigElement(c.type, 1, c.speed, c.storage));
             if (c.mats != null)
             {
                 foreach (var m in c.mats)
                 {
-                    matBuffer.Add(new BuildingConstructionMaterialElement(c.type, m.item, m.qty));
+                    matBuffer.Add(new BuildingConstructionMaterialElement(c.type, 1, m.item, m.qty));
                 }
             }
         }
@@ -121,7 +121,7 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
 
         var req = CreatePlacementRequest(
             PlacementFlags.StrictAllOrNothing,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Miner, new int2(2, 2), new int2(0, 0), DirectionEnum.Up));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Miner, 1, new int2(2, 2), new int2(0, 0), DirectionEnum.Up));
 
         // Act
         UpdateCommandPhase();
@@ -158,14 +158,14 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
     public void Test02_StrictAllOrNothing_Batch_RollsBackAllOnConflict()
     {
         // (1, 0) 타일에 이미 장애물(건물) 존재
-        _buildingMap.Add(new int2(1, 0), new BuildingInfo(new Entity { Index = 10 }, BuildingTypeEnum.Storage, DirectionEnum.Up));
+        _buildingMap.Add(new int2(1, 0), new BuildingInfo(new Entity { Index = 10 }, BuildingTypeEnum.Storage, 1, DirectionEnum.Up));
 
         // 3개 벨트 배치 요청
         var req = CreatePlacementRequest(
             PlacementFlags.StrictAllOrNothing,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, new int2(1, 1), new int2(0, 0)),
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, new int2(1, 1), new int2(1, 0)), // 충돌!
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, new int2(1, 1), new int2(2, 0)));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, 1, new int2(1, 1), new int2(0, 0)),
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, 1, new int2(1, 1), new int2(1, 0)), // 충돌!
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, 1, new int2(1, 1), new int2(2, 0)));
 
         // Act
         UpdateCommandPhase();
@@ -182,14 +182,14 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
     public void Test03_AllowPartialPlacement_Batch_CreatesOnlyValidSites()
     {
         // (1, 0) 타일에 이미 장애물(건물) 존재
-        _buildingMap.Add(new int2(1, 0), new BuildingInfo(new Entity { Index = 10 }, BuildingTypeEnum.Storage, DirectionEnum.Up));
+        _buildingMap.Add(new int2(1, 0), new BuildingInfo(new Entity { Index = 10 }, BuildingTypeEnum.Storage, 1, DirectionEnum.Up));
 
         // 3개 벨트 배치 요청 (AllowPartialPlacement 활성화)
         var req = CreatePlacementRequest(
             PlacementFlags.AllowPartialPlacement,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, new int2(1, 1), new int2(0, 0)),
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, new int2(1, 1), new int2(1, 0)), // 충돌!
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, new int2(1, 1), new int2(2, 0)));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, 1, new int2(1, 1), new int2(0, 0)),
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, 1, new int2(1, 1), new int2(1, 0)), // 충돌!
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, 1, new int2(1, 1), new int2(2, 0)));
 
         // Act
         UpdateCommandPhase();
@@ -219,7 +219,7 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
 
         var req = CreatePlacementRequest(
             PlacementFlags.StrictAllOrNothing,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.ResearchBuilding, new int2(2, 2), new int2(0, 0)));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.ResearchBuilding, 1, new int2(2, 2), new int2(0, 0)));
 
         // Act
         UpdateCommandPhase();
@@ -239,7 +239,7 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
 
         var req = CreatePlacementRequest(
             PlacementFlags.StrictAllOrNothing,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(2, 2)));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(1, 1), new int2(2, 2)));
 
         // Act
         UpdateCommandPhase();
@@ -261,8 +261,8 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
         // Arrange: 동일 묶음 내에서 2개의 후보가 동일한 (0, 0)을 동시 요청
         var req = CreatePlacementRequest(
             PlacementFlags.AllowPartialPlacement,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(0, 0)),
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(0, 0)));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(1, 1), new int2(0, 0)),
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(1, 1), new int2(0, 0)));
 
         // Act
         UpdateCommandPhase();
@@ -291,11 +291,11 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
         SetupBuildingConfig((BuildingTypeEnum.Storage, 1f, 4, true, null));
         Entities.SetBuildingFootprint(BuildingTypeEnum.Storage, new int2(2, 3));
         Entity first = CreatePlacementRequest(firstFlags,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(2, 3), int2.zero, DirectionEnum.Right, 500UL));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(2, 3), int2.zero, DirectionEnum.Right, 500UL));
         int2 overlappingOrigin = sameOrigin ? int2.zero : new int2(2, 1);
         Entity later = CreatePlacementRequest(laterFlags,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(2, 3), overlappingOrigin, DirectionEnum.Up, 1UL),
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(2, 3), new int2(8, 8)));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(2, 3), overlappingOrigin, DirectionEnum.Up, 1UL),
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(2, 3), new int2(8, 8)));
         // 먼저 접수한 요청을 다른 archetype으로 옮겨 Query 배열 순서를 접수 순서의 근거로 삼지 않는다.
         _entityManager.AddComponentData(first, new Direction(DirectionEnum.Right));
 
@@ -327,16 +327,16 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
     public void Test11_StrictFailure_DoesNotKeepTentativeCellsOrReleaseEarlierApproval()
     {
         CreatePlacementRequest(PlacementFlags.StrictAllOrNothing,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), int2.zero));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(1, 1), int2.zero));
         CreatePlacementRequest(PlacementFlags.StrictAllOrNothing,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(2, 0)),
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), int2.zero));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(1, 1), new int2(2, 0)),
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(1, 1), int2.zero));
         CreatePlacementRequest(PlacementFlags.StrictAllOrNothing,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(2, 0)),
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), int2.zero));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(1, 1), new int2(2, 0)),
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(1, 1), int2.zero));
         // 세 번째도 앞 승인과 충돌해 전체 거부한다. 실패 묶음의 빈 셀은 네 번째가 사용할 수 있다.
         CreatePlacementRequest(PlacementFlags.StrictAllOrNothing,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(2, 0)));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(1, 1), new int2(2, 0)));
 
         UpdateCommandPhase();
 
@@ -354,16 +354,16 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
     public void Test12_SeparateBeltDirectionRequests_FirstApprovalWins(PlacementFlags laterFlags)
     {
         Entity belt = _entityManager.CreateEntity(typeof(BuildingType), typeof(BuildingFootprint), typeof(GridPosition), typeof(Direction));
-        _entityManager.SetComponentData(belt, new BuildingType(BuildingTypeEnum.Belt));
+        _entityManager.SetComponentData(belt, new BuildingType(BuildingTypeEnum.Belt, 1));
         _entityManager.SetComponentData(belt, new BuildingFootprint(new int2(1, 1)));
         _entityManager.SetComponentData(belt, new GridPosition(int2.zero));
         _entityManager.SetComponentData(belt, new Direction(DirectionEnum.Up));
-        _buildingMap.Add(int2.zero, new BuildingInfo(belt, BuildingTypeEnum.Belt, DirectionEnum.Up));
+        _buildingMap.Add(int2.zero, new BuildingInfo(belt, BuildingTypeEnum.Belt, 1, DirectionEnum.Up));
         CreatePlacementRequest(PlacementFlags.StrictAllOrNothing,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, new int2(1, 1), int2.zero, DirectionEnum.Right));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, 1, new int2(1, 1), int2.zero, DirectionEnum.Right));
         CreatePlacementRequest(laterFlags,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, new int2(1, 1), int2.zero, DirectionEnum.Down),
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(8, 8)));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, 1, new int2(1, 1), int2.zero, DirectionEnum.Down),
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(1, 1), new int2(8, 8)));
 
         UpdateCommandPhase();
 
@@ -399,7 +399,7 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
         for (int i = 0; i < firstCount; i++)
         {
             int2 position = i == firstCount - 1 ? new int2(1, 0) : new int2(5 + i, 5);
-            candidates[i] = new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), position);
+            candidates[i] = new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(1, 1), position);
         }
         Entity first = BuildingPlacementRequestUtility.Submit(_entityManager,
             new BuildingPlacementRequest(requestTick: firstTick), candidates);
@@ -407,7 +407,7 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
         Entity later = BuildingPlacementRequestUtility.Submit(_entityManager,
             new BuildingPlacementRequest(requestTick: laterTick), new[]
             {
-                new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(-1, 0))
+                new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(1, 1), new int2(-1, 0))
             });
         _entityManager.AddComponentData(first, new Direction(DirectionEnum.Right));
         // 요청과 완공 엔티티의 할당 이력이 설치 순서의 근거가 되지 않도록 재사용 가능한 슬롯을 만든다.
@@ -455,8 +455,8 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
         // 동일 묶음 내에서 2개의 후보가 각각 다른 RequestTick(100UL, 200UL)을 지정
         var req = CreatePlacementRequest(
             PlacementFlags.StrictAllOrNothing,
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(0, 0), DirectionEnum.Up, 100UL),
-            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, new int2(1, 1), new int2(2, 0), DirectionEnum.Up, 200UL));
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(1, 1), new int2(0, 0), DirectionEnum.Up, 100UL),
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 1, new int2(1, 1), new int2(2, 0), DirectionEnum.Up, 200UL));
 
         UpdateCommandPhase();
 

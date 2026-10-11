@@ -41,20 +41,20 @@ ConstructionSite.Progress와 도착 비율 기획은 제거했다. [Progress 제
 
 ## PlacementRequestCandidateElement
 
-- **종류·부착 대상·목적:** `IBufferElementData`. 배치 요청 엔티티에서 후보별 `TargetType`, 방향 적용 전 `FootprintSize`, 좌하단 `OriginPosition`, `Direction`, 개별 `RequestTick`을 보관한다. 요청 하나에 후보 여러 개를 담을 수 있다.
+- **종류·부착 대상·목적:** `IBufferElementData`. 배치 요청 엔티티에서 후보별 `TargetType`, `TargetTier`, 방향 적용 전 `FootprintSize`, 좌하단 `OriginPosition`, `Direction`, 개별 `RequestTick`을 보관한다. 요청 하나에 후보 여러 개를 담을 수 있다.
 - **생성:** 플레이어 입력이 Submit에 헤더와 후보 묶음을 함께 전달한다. 현재 연결된 호출자는 테스트이며 런타임 UI/블루프린트 Producer는 없다. 후보 자체는 현장 또는 건물에 부착하는 버퍼가 아니다.
 - **읽기:** Command는 이 버퍼를 임시 `PlacementCandidate` 배열로 변환해 검증한다. 크기는 Config에서 읽어 미리보기/사전 검사에 사용한 스냅샷이며 Config와 다르면 InvalidFootprint로 거절한다. 개별 크기 덮어쓰기는 지원하지 않는다. 이 변환에는 Tick이 포함되지 않으며, 승인 이후 원본 후보의 RequestTick을 읽어 Stamp를 정한다. 기본 크기의 유효성 및 방향 회전은 배치 검증 유틸리티가 처리한다.
 - **후보 순서:** 버퍼의 앞선 유효 후보가 해당 묶음의 점유 셀을 선점한다. 승인 현장의 Stamp.Order는 후보의 원래 인덱스다. 개별 Tick이 양수이면 요청 헤더/시스템 Tick보다 우선하지만 후보 처리 순서를 Tick으로 정렬하지는 않는다.
-- **소비·결과:** 유효한 후보는 현장의 BuildingType/Footprint/GridPosition/Direction/ConstructionSite/PlacementStamp 및 두 버퍼로 변환된다. 기존 같은 타입 벨트 덮어쓰기는 방향만 바꾼다. 버퍼는 개별 Remove/Clear로 소비하지 않고 요청 엔티티와 함께 EndCommand에 제거된다.
+- **소비·결과:** 유효한 후보는 현장의 BuildingType/Footprint/GridPosition/Direction/ConstructionSite/PlacementStamp 및 두 버퍼로 변환된다. 기존 같은 종류·티어 벨트 덮어쓰기는 방향만 바꾼다. 다른 티어 위의 배치는 거절하며 승급은 후속이다. 버퍼는 개별 Remove/Clear로 소비하지 않고 요청 엔티티와 함께 EndCommand에 제거된다.
 - **근거:** [정의·변환 연산자](../../../Assets/Scripts/Components/Construction/BuildingPlacementRequests.cs), [후보 해석·Stamp 발급](../../../Assets/Scripts/Systems/Command/BuildingPlacementCommandSystem.cs), [순차 검증](../../../Assets/Scripts/Common/BuildingPlacementValidationUtility.cs), [테스트 후보](../../../Assets/Editor/Tests/Phase7PlacementCommandTests.cs).
 
 ## ConstructionSite
 
-- **종류·부착 대상·목적:** 일반 IComponentData. 현장 엔티티에 목표 완공 종류 TargetBuildingType과 AwaitingItemClearance/Cancelled 플래그를 보관한다. 진행도·자재 도착 비율 필드는 없다.
-- **생성·결합:** 배치 Command가 승인 후보에 BuildingType(ConstructionSite), Footprint/GridPosition/Direction/PlacementStamp/LocalTransform, 자재 요구 버퍼와 StoredItemElement를 추가한다. 생성자는 목표 타입과 선택적인 flags를 받으며 바닥 아이템이 있으면 정리 대기 플래그로 시작한다. EndCommand에서 실체화되며 Storage는 붙이지 않는다.
+- **종류·부착 대상·목적:** 일반 IComponentData. 현장 엔티티에 목표 완공 종류 TargetBuildingType·TargetTier와 AwaitingItemClearance/Cancelled 플래그를 보관한다. 진행도·자재 도착 비율 필드는 없다.
+- **생성·결합:** 배치 Command가 승인 후보에 BuildingType(ConstructionSite), Footprint/GridPosition/Direction/PlacementStamp/LocalTransform, 자재 요구 버퍼와 StoredItemElement를 추가한다. 생성자는 목표 종류·명시적 티어와 선택적인 flags를 받으며 바닥 아이템이 있으면 정리 대기 플래그로 시작한다. EndCommand에서 실체화되며 Storage는 붙이지 않는다.
 - **Writer·Reader:** Cancel Job은 Cancelled로 중복 반환을 막는다. Completion Job은 남은 현장의 회전 footprint와 현재 Owner=Null/GridPosition을 비교해 AwaitingItemClearance를 매 틱 설정·해제한다. 활성 Destroy는 제외한다. 새 월드 생성/드론 방출은 현장 밖만 허용하므로 예정 위치 버퍼를 읽지 않는다.
 - **완공 조건:** 취소 현장은 제외한다. 월드 아이템이 footprint에 있으면 차단 플래그를 설정하고 완공을 보류한다. 없으면 플래그를 해제하고 목표 타입과 모든 IsSatisfied를 검사한다. 요구 버퍼가 비어 있으면 자재 검사는 통과하며 진행도 조건은 없다. 지난 틱 드론이 마지막 실물을 회수했다면 이번 틱에 완공할 수 있다. 이번 드론 회수는 다음 틱에 판정하며 건물 처리 중 활성 Destroy는 현재 검사에서 제외한다.
-- **완공·실패:** 공통 Spawn으로 새 건물을 만들고 non-Null을 얻은 경우에만 보관 실물과 현장 삭제를 EndBuilding에 기록한다. 생성 실패 시 현장과 자재를 보존한다. 기존 현장의 컴포넌트를 교체하는 방식은 아니다.
+- **완공·실패:** 공통 Spawn에 목표 종류·티어·기본 크기·PlacementStamp를 전달하여 새 건물을 만들고 non-Null을 얻은 경우에만 보관 실물과 현장 삭제를 EndBuilding에 기록한다. 생성 실패 시 현장과 자재를 보존한다. 기존 현장의 컴포넌트를 교체하는 방식은 아니다.
 - **수명:** 취소 시 보관 실물을 현장 위치의 월드 아이템으로 반환하며 반환과 현장 삭제는 EndCommand에서 확정한다. 완공의 자재/현장 삭제는 EndBuilding, 공간 인덱스 반영은 Synchronization이다. 미충족 현장은 남아 다음 틱의 완공 검사를 받는다.
 - **근거:** [정의](../../../Assets/Scripts/Components/Construction/ConstructionComponents.cs), [배치](../../../Assets/Scripts/Systems/Command/BuildingPlacementCommandSystem.cs), [취소](../../../Assets/Scripts/Systems/Command/ConstructionCancelCommandSystem.cs), [완공](../../../Assets/Scripts/Systems/Construction/StateApply/ConstructionLifecycleApplySystem.cs), [직접 자재 준비와 완공 테스트](../../../Assets/Editor/Tests/Phase7ConstructionCompletionTests.cs).
 

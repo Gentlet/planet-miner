@@ -41,6 +41,9 @@ public class PrefabDatabaseInitializationTests : EcsWorldTestFixture
         _entityManager.AddBuffer<ResourceGenerationConfigElement>(config).Add(
             new ResourceGenerationConfigElement(ItemTypeEnum.Iron_Ore, 1, 1, 1, 1, 1, 1));
         Entities.PrepareSimulationConfiguration();
+        foreach (BuildingTypeEnum type in System.Enum.GetValues(typeof(BuildingTypeEnum)))
+            if (type != BuildingTypeEnum.None && type != BuildingTypeEnum.Count && type != BuildingTypeEnum.ConstructionSite)
+                Entities.PrepareBuildingConfiguration(type);
     }
 
     private void AssertFailed()
@@ -171,6 +174,26 @@ public class PrefabDatabaseInitializationTests : EcsWorldTestFixture
         _simulation.Update();
         Assert.AreEqual(1, _probe.UpdateCount);
     }
+    [TestCase("missing")]
+    [TestCase("duplicate")]
+    [TestCase("invalidTier")]
+    [TestCase("unconfigured")]
+    public void InvalidTierMapping_StopsBeforePublishingReady(string fault)
+    {
+        CreateValidDatabases();
+        using var configs = _entityManager.CreateEntityQuery(typeof(BuildingConfig));
+        _entityManager.GetBuffer<BuildingConfigElement>(configs.GetSingletonEntity()).Add(
+            new BuildingConfigElement(BuildingTypeEnum.Storage, 3, "Storage", 0f, 7, true,
+                footprint: new Unity.Mathematics.int2(2, 3)));
+        var entries = _entityManager.GetBuffer<BuildingPrefabElement>(_buildings);
+        var extra = entries[0];
+        extra.Type = BuildingTypeEnum.Storage;
+        extra.Tier = fault == "invalidTier" ? 0 : fault == "unconfigured" ? 2 : 3;
+        if (fault != "missing") entries.Add(extra);
+        if (fault == "duplicate") entries.Add(extra);
+        AssertFailed();
+    }
+
 }
 
 /// <summary>

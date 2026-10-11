@@ -124,19 +124,17 @@ public partial class PrefabDatabaseInitializationSystem : SystemBase
             return false;
         }
         var entries = EntityManager.GetBuffer<BuildingPrefabElement>(database, true);
-        var types = new HashSet<BuildingTypeEnum>();
-        foreach (var entry in entries)
+        using var configQuery = EntityManager.CreateEntityQuery(ComponentType.ReadOnly<BuildingConfig>(), ComponentType.ReadOnly<BuildingConfigElement>());
+        if (configQuery.CalculateEntityCount() != 1)
         {
-            if (entry.Type <= BuildingTypeEnum.None || entry.Type >= BuildingTypeEnum.Count ||
-                entry.Type == BuildingTypeEnum.ConstructionSite || !types.Add(entry.Type))
-            {
-                error = $"Invalid or duplicate building prefab type: {entry.Type}.";
-                return false;
-            }
-            if (!ValidatePrefab(entry.Prefab, $"Building {entry.Type}", out error))
-            {
-                return false;
-            }
+            error = "Building prefab validation requires one complete BuildingConfig.";
+            return false;
+        }
+        var configs = EntityManager.GetBuffer<BuildingConfigElement>(configQuery.GetSingletonEntity(), true);
+        var expected = new HashSet<(BuildingTypeEnum Type, int Tier)>();
+        foreach (var config in configs)
+        {
+            expected.Add((config.BuildingType, config.Tier));
         }
         foreach (BuildingTypeEnum type in Enum.GetValues(typeof(BuildingTypeEnum)))
         {
@@ -144,9 +142,36 @@ public partial class PrefabDatabaseInitializationSystem : SystemBase
             {
                 continue;
             }
-            if (!types.Contains(type))
+            if (!expected.Contains((type, 1)))
             {
-                error = $"Missing building prefab: {type}.";
+                error = $"Missing building tier 1 configuration: {type}.";
+                return false;
+            }
+        }
+        var types = new HashSet<(BuildingTypeEnum Type, int Tier)>();
+        foreach (var entry in entries)
+        {
+            if (entry.Type <= BuildingTypeEnum.None || entry.Type >= BuildingTypeEnum.Count ||
+                entry.Type == BuildingTypeEnum.ConstructionSite || entry.Tier <= 0 || !types.Add((entry.Type, entry.Tier)))
+            {
+                error = $"Invalid or duplicate building prefab type/tier: {entry.Type}/{entry.Tier}.";
+                return false;
+            }
+            if (!expected.Contains((entry.Type, entry.Tier)))
+            {
+                error = $"Building prefab has no configuration: {entry.Type}/{entry.Tier}.";
+                return false;
+            }
+            if (!ValidatePrefab(entry.Prefab, $"Building {entry.Type}/{entry.Tier}", out error))
+            {
+                return false;
+            }
+        }
+        foreach (var key in expected)
+        {
+            if (!types.Contains(key))
+            {
+                error = $"Missing building prefab: {key.Type}/{key.Tier}.";
                 return false;
             }
         }

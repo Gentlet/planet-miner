@@ -2,6 +2,8 @@
   "buildings": [
     {
       "buildingType": "Belt",
+      "tier": 1,
+      "displayName": "Belt",
       "speed": 7.5,
       "storageCapacity": 0,
       "isUnlockedByDefault": true,
@@ -13,6 +15,8 @@
     },
     {
       "buildingType": "Miner",
+      "tier": 1,
+      "displayName": "Miner",
       "speed": 0.1,
       "storageCapacity": 0,
       "isUnlockedByDefault": true,
@@ -24,6 +28,8 @@
     },
     {
       "buildingType": "Crafter",
+      "tier": 1,
+      "displayName": "Crafter",
       "speed": 1.0,
       "storageCapacity": 0,
       "isUnlockedByDefault": true,
@@ -35,6 +41,8 @@
     },
     {
       "buildingType": "Storage",
+      "tier": 1,
+      "displayName": "Storage",
       "speed": 0.0,
       "storageCapacity": 10,
       "isUnlockedByDefault": true,
@@ -46,6 +54,8 @@
     },
     {
       "buildingType": "PowerPole",
+      "tier": 1,
+      "displayName": "PowerPole",
       "speed": 0.0,
       "storageCapacity": 0,
       "isUnlockedByDefault": true,
@@ -57,6 +67,8 @@
     },
     {
       "buildingType": "Splitter",
+      "tier": 1,
+      "displayName": "Splitter",
       "speed": 0.0,
       "storageCapacity": 0,
       "isUnlockedByDefault": false,
@@ -68,6 +80,8 @@
     },
     {
       "buildingType": "Merger",
+      "tier": 1,
+      "displayName": "Merger",
       "speed": 0.0,
       "storageCapacity": 0,
       "isUnlockedByDefault": false,
@@ -79,6 +93,8 @@
     },
     {
       "buildingType": "CoalGenerator",
+      "tier": 1,
+      "displayName": "CoalGenerator",
       "speed": 0.0,
       "storageCapacity": 0,
       "isUnlockedByDefault": false,
@@ -90,6 +106,8 @@
     },
     {
       "buildingType": "DroneStation",
+      "tier": 1,
+      "displayName": "DroneStation",
       "speed": 0.0,
       "storageCapacity": 20,
       "isUnlockedByDefault": false,
@@ -101,6 +119,8 @@
     },
     {
       "buildingType": "ResearchBuilding",
+      "tier": 1,
+      "displayName": "ResearchBuilding",
       "speed": 1.0,
       "storageCapacity": 0,
       "isUnlockedByDefault": true,
@@ -113,6 +133,8 @@
     },
     {
       "buildingType": "MainFacility",
+      "tier": 1,
+      "displayName": "MainFacility",
       "speed": 0.0,
       "storageCapacity": 50,
       "isUnlockedByDefault": true,

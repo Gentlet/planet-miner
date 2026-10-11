@@ -26,7 +26,7 @@ public enum ConstructionSiteFlags : byte
 }
 
 /// <summary>
-/// 역할·목적: 완공 전 현장의 목표 건물 종류와 취소/바닥 정리 대기 상태를 보관한다.
+/// 역할·목적: 완공 전 현장의 목표 건물 종류·티어와 취소/바닥 정리 대기 상태를 보관한다.
 /// 부착 엔티티: 공사 현장. BuildingType(ConstructionSite), 위치·방향·기본 footprint, 자재 요구/실물 버퍼와 함께 사용한다.
 /// 생성: BuildingPlacementCommandSystem이 승인한 배치 후보로 만들며 EndCommand에서 실체화한다.
 /// 이용: DroneTaskDecisionSystem은 공급·회수 대상을 찾고, ConstructionCancelCommandSystem은 취소를 표시한다.
@@ -40,15 +40,17 @@ public struct ConstructionSite : IComponentData
     /// 완공 시 생성될 건물의 목표 타입.
     /// </summary>
     public BuildingTypeEnum TargetBuildingType;
+    public int TargetTier;
 
     /// <summary>
     /// 공사 현장 상태 플래그.
     /// </summary>
     public ConstructionSiteFlags Flags;
 
-    public ConstructionSite(BuildingTypeEnum targetBuildingType, ConstructionSiteFlags flags = ConstructionSiteFlags.None)
+    public ConstructionSite(BuildingTypeEnum targetBuildingType, int targetTier, ConstructionSiteFlags flags = ConstructionSiteFlags.None)
     {
         TargetBuildingType = targetBuildingType;
+        TargetTier = targetTier;
         Flags = flags;
     }
 }

@@ -521,14 +521,14 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
             TestPrefabDatabaseFactory.RemoveDatabase<BuildingPrefabDatabase>(_entityManager);
             Entity database = _entityManager.CreateEntity(typeof(BuildingPrefabDatabase));
             _entityManager.AddBuffer<BuildingPrefabElement>(database)
-                .Add(new BuildingPrefabElement(BuildingTypeEnum.Crafter, prefab));
+                .Add(new BuildingPrefabElement(BuildingTypeEnum.Crafter, 1, prefab));
         }
 
         Entity source = _entityManager.CreateEntity();
         if (fromConstruction)
         {
-            _entityManager.AddComponentData(source, new BuildingType(BuildingTypeEnum.ConstructionSite));
-            _entityManager.AddComponentData(source, new ConstructionSite(BuildingTypeEnum.Crafter));
+            _entityManager.AddComponentData(source, new BuildingType(BuildingTypeEnum.ConstructionSite, 0));
+            _entityManager.AddComponentData(source, new ConstructionSite(BuildingTypeEnum.Crafter, 1));
             _entityManager.AddComponentData(source, new GridPosition(new int2(1, 0)));
             _entityManager.AddComponentData(source, new Direction(DirectionEnum.Up));
             _entityManager.AddComponentData(source, new BuildingFootprint(new int2(2, 2)));
@@ -538,7 +538,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
         }
         else
         {
-            _entityManager.AddComponentData(source, new SpawnBuildingRequest(BuildingTypeEnum.Crafter, new int2(1, 0)));
+            _entityManager.AddComponentData(source, new SpawnBuildingRequest(BuildingTypeEnum.Crafter, 1, new int2(1, 0)));
         }
 
         return source;

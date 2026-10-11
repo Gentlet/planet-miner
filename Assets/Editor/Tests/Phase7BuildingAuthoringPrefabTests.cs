@@ -1,5 +1,6 @@
 using System.Text.RegularExpressions;
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
 using PlanetMiner.Config;
 using PlanetMiner.Tests;
 using Unity.Entities;
@@ -35,24 +36,33 @@ public class Phase7BuildingAuthoringPrefabTests : EcsWorldTestFixture
         Assert.IsNull(materials);
     }
 
-    [Test]
-    public void InvalidPreregisteredFootprint_StopsSimulationAtInit_AndPreservesSource()
+    [TestCase("footprint")]
+    [TestCase("tier")]
+    [TestCase("displayName")]
+    [TestCase("duplicate")]
+    public void InvalidPreregisteredDefinition_StopsSimulationAtInit_AndPreservesSource(string field)
     {
         Assert.IsTrue(BuildingConfigLoader.TryLoadConfigFromResources(
             BuildingConfigLoader.DefaultResourcePath, out var configs, out var materials));
         Entity configEntity = BuildingConfigLoader.PublishConfig(_entityManager, configs, materials);
         var buffer = _entityManager.GetBuffer<BuildingConfigElement>(configEntity);
         var invalid = buffer[0];
-        invalid.Footprint = int2.zero;
+        if (field == "footprint") invalid.Footprint = int2.zero;
+        if (field == "tier") invalid.Tier = 0;
+        if (field == "displayName") invalid.DisplayName = default;
         buffer[0] = invalid;
+        if (field == "duplicate") buffer.Add(invalid);
 
-        LogAssert.Expect(LogType.Error, new Regex("BuildingConfigLoader.*invalid footprint"));
+        LogAssert.Expect(LogType.Error, new Regex("BuildingConfigLoader.*"));
         LogAssert.Expect(LogType.Error, new Regex("BuildingConfigInitSystem.*Game simulation stopped"));
         _world.GetOrCreateSystemManaged<BuildingConfigInitSystem>();
 
         Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
         Assert.IsTrue(_entityManager.Exists(configEntity));
-        Assert.AreEqual(int2.zero, _entityManager.GetBuffer<BuildingConfigElement>(configEntity)[0].Footprint);
+        var preserved = _entityManager.GetBuffer<BuildingConfigElement>(configEntity)[0];
+        Assert.AreEqual(invalid.Tier, preserved.Tier);
+        Assert.AreEqual(invalid.DisplayName, preserved.DisplayName);
+        Assert.AreEqual(invalid.Footprint, preserved.Footprint);
     }
 
     [Test]
@@ -78,6 +88,8 @@ public class Phase7BuildingAuthoringPrefabTests : EcsWorldTestFixture
 
         foreach (var c in configs)
         {
+            Assert.AreEqual(1, c.Tier);
+            Assert.AreEqual(c.BuildingType.ToString(), c.DisplayName.ToString());
             switch (c.BuildingType)
             {
                 case BuildingTypeEnum.Belt:
@@ -121,38 +133,49 @@ public class Phase7BuildingAuthoringPrefabTests : EcsWorldTestFixture
     {
         var configEntity = _entityManager.CreateEntity(typeof(BuildingConfigElement));
         var buffer = _entityManager.GetBuffer<BuildingConfigElement>(configEntity);
-        buffer.Add(new BuildingConfigElement(BuildingTypeEnum.Belt, 10f, 0, true, footprint: new int2(1, 1)));
-        buffer.Add(new BuildingConfigElement(BuildingTypeEnum.Miner, 0.1f, 0, false, footprint: new int2(2, 2)));
+        buffer.Add(new BuildingConfigElement(BuildingTypeEnum.Belt, 1, "Belt", 10f, 0, true, footprint: new int2(1, 1)));
+        buffer.Add(new BuildingConfigElement(BuildingTypeEnum.Miner, 1, "Miner", 0.1f, 0, false, footprint: new int2(2, 2)));
 
-        Assert.IsTrue(BuildingConfigLookupUtility.IsBuildingUnlocked(buffer, BuildingTypeEnum.Belt));
-        Assert.IsFalse(BuildingConfigLookupUtility.IsBuildingUnlocked(buffer, BuildingTypeEnum.Miner));
-        Assert.IsFalse(BuildingConfigLookupUtility.IsBuildingUnlocked(buffer, BuildingTypeEnum.PowerPole));
-        Assert.IsFalse(BuildingConfigLookupUtility.TryGetConfig(buffer, BuildingTypeEnum.PowerPole, out BuildingConfigElement missing));
+        Assert.IsTrue(BuildingConfigLookupUtility.IsBuildingUnlocked(buffer, BuildingTypeEnum.Belt, 1));
+        Assert.IsFalse(BuildingConfigLookupUtility.IsBuildingUnlocked(buffer, BuildingTypeEnum.Miner, 1));
+        Assert.IsFalse(BuildingConfigLookupUtility.IsBuildingUnlocked(buffer, BuildingTypeEnum.PowerPole, 1));
+        Assert.IsFalse(BuildingConfigLookupUtility.TryGetConfig(buffer, BuildingTypeEnum.PowerPole, 1, out BuildingConfigElement missing));
         Assert.AreEqual(default(BuildingConfigElement), missing);
 
-        Assert.IsTrue(BuildingConfigLookupUtility.SetBuildingUnlocked(ref buffer, BuildingTypeEnum.Miner, true));
-        Assert.IsTrue(BuildingConfigLookupUtility.IsBuildingUnlocked(buffer, BuildingTypeEnum.Miner));
+        Assert.IsTrue(BuildingConfigLookupUtility.SetBuildingUnlocked(ref buffer, BuildingTypeEnum.Miner, 1, true));
+        Assert.IsTrue(BuildingConfigLookupUtility.IsBuildingUnlocked(buffer, BuildingTypeEnum.Miner, 1));
+    }
+
+    [TestCase("tier", null)]
+    [TestCase("tier", "0")]
+    [TestCase("tier", "-1")]
+    [TestCase("tier", "1.5")]
+    [TestCase("tier", "\"1\"")]
+    [TestCase("tier", "2147483648")]
+    [TestCase("displayName", null)]
+    [TestCase("displayName", "\"   \"")]
+    [TestCase("displayName", "123")]
+    public void InvalidDefinitionMetadata_RejectsJsonWithoutPublishingLists(string field, string value)
+    {
+        var json = JObject.Parse(Resources.Load<TextAsset>(BuildingConfigLoader.DefaultResourcePath).text);
+        var entry = (JObject)json["buildings"][0];
+        if (value == null) entry.Remove(field);
+        else entry[field] = JToken.Parse(value);
+        LogAssert.Expect(LogType.Error, new Regex("BuildingConfigLoader.*"));
+        Assert.IsFalse(BuildingConfigLoader.TryParseJson(json.ToString(), out var configs, out var materials));
+        Assert.IsNull(configs);
+        Assert.IsNull(materials);
     }
 
     [Test]
-    public void Test06_PopulateFromResources_LoadsAllExistingBuildingPrefabs()
+    public void DuplicateDefinition_RejectsJsonWithoutPublishingLists()
     {
-        // 임시 Authoring 목록의 Resources 참조만 확인한다. 실제 ECS 베이킹/완공물 생성과 구분한다.
-        var go = new GameObject("TestBuildingPrefabAuthoring");
-        var authoring = go.AddComponent<BuildingPrefabDatabaseAuthoring>();
-
-        authoring.PopulateFromResources();
-
-        // Resources/Prefabs/Building에 11개의 프리팹이 있으므로 11개가 파퓰레이트되어야 함
-        Assert.AreEqual(11, authoring.Prefabs.Count);
-
-        // 크기는 Config가 소유한다. 목록에는 원형 참조만 등록한다.
-        foreach (var entry in authoring.Prefabs)
-        {
-            Assert.IsNotNull(entry.Prefab, $"{entry.Type} 프리팹 GameObject가 null이 아니어야 함");
-        }
-
-        Object.DestroyImmediate(go);
+        var json = JObject.Parse(Resources.Load<TextAsset>(BuildingConfigLoader.DefaultResourcePath).text);
+        var rows = (JArray)json["buildings"];
+        rows.Add(rows[0].DeepClone());
+        LogAssert.Expect(LogType.Error, new Regex("BuildingConfigLoader.*Duplicate building type/tier"));
+        Assert.IsFalse(BuildingConfigLoader.TryParseJson(json.ToString(), out var configs, out var materials));
+        Assert.IsNull(configs);
+        Assert.IsNull(materials);
     }
-
 }

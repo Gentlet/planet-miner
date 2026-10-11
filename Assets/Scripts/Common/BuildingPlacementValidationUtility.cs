@@ -25,6 +25,7 @@ public static class BuildingPlacementValidationUtility
     /// <returns>검증 결과 (성공, 실패 원인, 바닥 아이템 여부)</returns>
     public static PlacementValidationResult ValidateSinglePlacement(
         BuildingTypeEnum targetType,
+        int targetTier,
         int2 footprintSize,
         int2 originPosition,
         DirectionEnum direction,
@@ -38,7 +39,7 @@ public static class BuildingPlacementValidationUtility
             return new PlacementValidationResult(PlacementValidationCode.BlockedByResearch);
         }
 
-        if (footprintSize.x <= 0 || footprintSize.y <= 0)
+        if (targetTier <= 0 || footprintSize.x <= 0 || footprintSize.y <= 0)
         {
             return new PlacementValidationResult(PlacementValidationCode.InvalidFootprint);
         }
@@ -58,9 +59,9 @@ public static class BuildingPlacementValidationUtility
                 // 1. 기존 건물 및 공사 현장 점유 검사
                 if (buildingMap.TryGetValue(cell, out var existingBuilding))
                 {
-                    if (targetType == BuildingTypeEnum.Belt && existingBuilding.Type == BuildingTypeEnum.Belt)
+                    if (targetType == BuildingTypeEnum.Belt && existingBuilding.Type == BuildingTypeEnum.Belt && existingBuilding.Tier == targetTier)
                     {
-                        // 기존 벨트 위에 새 벨트를 설치하는 경우 업그레이드/방향 전환 허용
+                        // 같은 종류·티어의 벨트 방향 변경만 허용한다. 티어 승급은 후속이다.
                         isBeltUpgrade = true;
                     }
                     else if (existingBuilding.Type == BuildingTypeEnum.ConstructionSite)
@@ -129,6 +130,7 @@ public static class BuildingPlacementValidationUtility
             var candidate = candidates[i];
             var singleResult = ValidateSinglePlacement(
                 candidate.TargetType,
+                candidate.TargetTier,
                 candidate.FootprintSize,
                 candidate.OriginPosition,
                 candidate.Direction,
@@ -219,10 +221,18 @@ public static class BuildingPlacementValidationUtility
         for (int i = 0; i < candidates.Length; i++)
         {
             var candidate = candidates[i];
-            bool isUnlocked = BuildingConfigLookupUtility.IsBuildingUnlocked(configBuffer, candidate.TargetType);
+            bool hasConfig = BuildingConfigLookupUtility.TryGetConfig(configBuffer, candidate.TargetType, candidate.TargetTier, out var config);
+            bool isUnlocked = hasConfig && config.IsUnlocked;
+            if (isUnlocked && !math.all(candidate.FootprintSize == config.Footprint))
+            {
+                results[i] = new PlacementValidationResult(PlacementValidationCode.InvalidFootprint);
+                anyFailed = true;
+                continue;
+            }
 
             var singleResult = ValidateSinglePlacement(
                 candidate.TargetType,
+                candidate.TargetTier,
                 candidate.FootprintSize,
                 candidate.OriginPosition,
                 candidate.Direction,
@@ -308,7 +318,7 @@ public static class BuildingPlacementValidationUtility
         for (int i = 0; i < candidates.Length; i++)
         {
             var candidate = candidates[i];
-            bool hasConfig = BuildingConfigLookupUtility.TryGetConfig(configs, candidate.TargetType, out var config);
+            bool hasConfig = BuildingConfigLookupUtility.TryGetConfig(configs, candidate.TargetType, candidate.TargetTier, out var config);
             bool isUnlocked = hasConfig && config.IsUnlocked;
 
             // 전달 크기는 미리보기의 설정 스냅샷이다. 설정과 다르면 어떤 셀도 승인하거나 선점하지 않는다.
@@ -321,6 +331,7 @@ public static class BuildingPlacementValidationUtility
 
             var singleResult = ValidateSinglePlacement(
                 candidate.TargetType,
+                candidate.TargetTier,
                 candidate.FootprintSize,
                 candidate.OriginPosition,
                 candidate.Direction,

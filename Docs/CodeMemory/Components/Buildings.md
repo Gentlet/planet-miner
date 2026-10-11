@@ -6,6 +6,8 @@
 
 2026-10-04 기존 공사 운송의 전용 공급원 등록·자재 수령·운송 예약 처리를 제거하고 현장 취소·완공을 유지했다. 이후 새 드론 계약의 공급원 선택·현장 공급 예약·신호 기반 실물 인계가 연결되었으며 [드론 문서](DroneLogistics.md)를 따른다. 제거 당시의 실행 결과와 한계는 [공사 운송 제거 검증 기록](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/ConstructionTransportRemoval-Verification.md)에 보존한다.
 
+2026-10-11 티어·표시 이름 후속: 정의 키는 종류·명시적 양수 티어이며 표시 이름은 설정에서만 보관한다. JSON/공개 게시/사전 등록은 무효 키·중복 조합·빈 표시 이름·비양수 크기·정의 없는 건축 비용을 거절한다. 자동 Init은 기존 Fatal 정책이고 사전 등록 원본은 보존한다. 표시 이름은 중복 허용/125 UTF-8 bytes 이하이며 공개 조회로 제공한다. 실제 데이터는 기존 11종의 1티어·현재 종류명·기존 수치다. 초기화 호환 버퍼도 같은 키 집합이어야 한다. UI·그림 보정·승급·연구 Writer는 후속이다. [현재 명세](../../Specifications/BuildingTierAndDisplayName.md), [검증 기록](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingTierAndDisplayName-Verification.md).
+
 건물의 공통 데이터는 `BuildingType + BuildingFootprint + GridPosition + Direction + PlacementStamp`다. 배치 Command가 만드는 엔티티는 공사 현장이고, 완공 시에는 `ConstructionLifecycleApplySystem`이 공통 생성 유틸리티로 별도의 완공 건물 엔티티를 만든다. `SpawnBuildingRequest`도 같은 유틸리티를 호출한다. 현장은 EndCommand, 완공 건물의 생성·철거는 EndBuilding에서 실체화되고, 그 후 Synchronization에서 공간 인덱스에 반영된다.
 
 현재 건물 타입별 공통 생성 구성을 읽으면 다음과 같다. 아래 구성이 해당 기능의 전체 게임 흐름이나 자동 생성 Producer까지 존재한다는 의미는 아니다.
@@ -25,9 +27,9 @@
 
 ## BuildingType
 
-- **종류·부착 대상·목적:** 일반 `IComponentData`. 완공 건물과 공사 현장 엔티티의 종류를 `Type: BuildingTypeEnum`으로 식별한다. 타입만으로 저장·채굴·전력 등의 구성이 자동으로 붙는 것은 아니다.
-- **생성:** 배치 Command는 현장에 `ConstructionSite` 값을 EndCommand ECB로 붙인다. `BuildingLifecycleUtility.SpawnBuilding`은 등록된 프리팹을 인스턴스화하고 대상 타입을 EndBuilding ECB로 붙인다. 현재 Building DB Baker는 프리팹 참조 DB를 제공하며 이 런타임 구성은 공통 생성 함수가 담당한다.
-- **읽기:** Command의 `BuildingDemolitionCommandSystem`이 철거 대상 종류를 판정한다. Decision의 `SplitterDecisionSystem`/`MergerDecisionSystem`이 대상 라우터 쿼리·타입을 확인한다. StateApply의 건물 철거가 종류를 확인하고, Synchronization의 `BuildingSpatialSyncSystem`이 각 점유 셀의 `BuildingInfo.Type`으로 복사한다.
+- **종류·부착 대상·목적:** 일반 `IComponentData`. 완공 건물과 공사 현장 엔티티의 종류와 티어를 `Type: BuildingTypeEnum`, `Tier: int`로 식별한다. 완공 건물은 명시적 양수 티어이며 현장 분류는 Tier 0이다. 현장의 목표 티어는 ConstructionSite가 소유한다. 타입만으로 저장·채굴·전력 등의 구성이 자동으로 붙는 것은 아니다.
+- **생성:** 배치 Command는 현장에 `ConstructionSite` 값을 EndCommand ECB로 붙인다. `BuildingLifecycleUtility.SpawnBuilding`은 등록된 프리팹을 인스턴스화하고 대상 종류·티어를 EndBuilding ECB로 붙인다. 현재 Building DB Baker는 프리팹 참조 DB를 제공하며 이 런타임 구성은 공통 생성 함수가 담당한다.
+- **읽기:** Command의 `BuildingDemolitionCommandSystem`이 철거 대상 종류를 판정한다. Decision의 `SplitterDecisionSystem`/`MergerDecisionSystem`이 대상 라우터 쿼리·타입을 확인한다. StateApply의 건물 철거가 종류를 확인하고, Synchronization의 `BuildingSpatialSyncSystem`이 각 점유 셀의 `BuildingInfo.Type/Tier`로 복사한다.
 - **결합 조건:** 공간 등록에는 `BuildingFootprint`, `GridPosition`, `Direction`도 필요하다. 드론은 `DroneSchedulingUtility.IsStorage`로 활성 Storage/DroneStation/MainFacility의 보관 구성을 검사하여 공급원·보관처로 선택한다. 별도의 공급원 등록 요청을 사용하지 않으며 Miner/Crafter의 Product 버퍼는 현재 드론 공급원이 아니다. MainFacility는 태그 유무와 별개로 철거 Command에서 거부한다.
 - **수명:** 생성 후 타입을 교체하는 일반 Writer는 없다. 공사 완료는 기존 현장의 타입 변경이 아니라 새 건물 생성과 기존 현장 삭제다. 철거 또는 현장 취소/완료 때 엔티티와 함께 제거되며, 남은 엔티티는 World 종료 수명을 따른다.
 - **근거:** [정의](../../../Assets/Scripts/Components/Buildings/BuildingComponents.cs), [공통 생성](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs), [철거 검증](../../../Assets/Scripts/Systems/Command/BuildingDemolitionCommandSystem.cs), [공간 등록](../../../Assets/Scripts/Systems/Synchronization/BuildingSpatialSyncSystem.cs), [공사 소비](../../../Assets/Scripts/Systems/Construction/StateApply/ConstructionLifecycleApplySystem.cs), [드론 공급원·보관처 제한](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs).
@@ -35,7 +37,7 @@
 ## BuildingFootprint
 
 - **종류·부착 대상·목적:** 일반 `IComponentData`. 현장·완공 건물에 붙는 `Size: int2`는 방향 적용 전 기본 폭·높이다. `GridPosition`은 회전 후 점유 사각형의 좌하단 기준점으로 사용한다.
-- **생성:** 크기 원본은 BuildingConfigElement.Footprint이며 종류별로 고정한다. 배치 Command는 Config와 일치하는 후보의 양수 크기만 승인하여 그대로 저장한다. 공사 완료는 현장의 Size를 전달하고 공통 Spawn은 Config와 일치하는지 확인한 뒤 같은 기본 크기를 기록한다. 직접 생성의 int2.zero만 생략이며 Config를 사용한다. 다른 입력은 불일치/무효 시 거절한다. DB 크기와 타입 기본 크기 fallback은 없다.
+- **생성:** 크기 원본은 BuildingConfigElement.Footprint이며 종류·티어 조합별로 고정한다. 배치 Command는 Config와 일치하는 후보의 양수 크기만 승인하여 그대로 저장한다. 공사 완료는 현장의 Size를 전달하고 공통 Spawn은 Config와 일치하는지 확인한 뒤 같은 기본 크기를 기록한다. 직접 생성의 int2.zero만 생략이며 Config를 사용한다. 다른 입력은 불일치/무효 시 거절한다. DB 크기와 타입 기본 크기 fallback은 없다.
 - **읽기·계산:** `BuildingFootprintUtility.GetEffectiveSize`가 각 축 최소 1 및 Left/Right에서 폭·높이 교환을 처리한다. Decision의 채굴기는 이 영역의 자원을 찾고, Storage/Product 출고 Decision은 회전된 크기로 출구를 계산한다. Synchronization의 건물 공간 등록도 같은 계산으로 점유 셀을 등록한다.
 - **단계 경계:** 현장 생성은 EndCommand, 완공 건물 생성은 EndBuilding에 반영된다. 이후 매 Synchronization에서 점유 크기를 다시 읽는다. 저장된 크기에 미리 방향 회전을 적용하지 않는다.
 - **수명·결합:** 생성 이후 크기를 갱신하는 런타임 시스템은 현재 없다. 엔티티 삭제 시 함께 제거된다. 배치 후보의 크기 검증, 현장의 기본 크기, 완공으로 전달되는 크기, 각 Reader의 한 번 회전이 연결되어 있다.
@@ -70,19 +72,19 @@
 
 ## BuildingConfigElement
 
-- **종류·부착 대상·목적:** `IBufferElementData`. 통합 설정 엔티티에 건물 종류별 `Speed`, `StorageCapacity`, `IsUnlocked`, `RequiredResearch`, 방향 적용 전 `Footprint`를 보관한다.
+- **종류·부착 대상·목적:** `IBufferElementData`. 통합 설정 엔티티에 건물 종류·티어별 `Tier`, `DisplayName`, `Speed`, `StorageCapacity`, `IsUnlocked`, `RequiredResearch`, 방향 적용 전 `Footprint`를 보관한다.
 - **생성:** `BuildingConfigLoader`가 JSON을 파싱·검증한 목록을 `PublishConfig`에서 버퍼에 복사한다. 초기 게시 시 호환 런타임 버퍼에도 Speed/StorageCapacity를 복사한다. 크기는 명시적 양수 두 축이 필수이며 JSON 생략·무효 입력과 공개 게시/사전 등록의 비양수 크기를 거절한다. 생성자도 int2.zero를 1×1로 보충하지 않는다. 제품 Init 실패는 기존 Fatal 정책이다.
 - **읽기:** Command의 배치 검증은 Footprint와 IsUnlocked를 같은 스냅샷에서 조회한다. StateApply의 공통 건물 생성은 Speed/StorageCapacity/Footprint를 읽어 타입별 런타임 상태를 초기화한다. 이미 생성된 건물이 매 프레임 이 버퍼의 Speed를 다시 읽는 구조는 아니다.
-- **쓰기·현재 연결:** 공개 `BuildingConfigLookupUtility.SetBuildingUnlocked`가 특정 행의 IsUnlocked를 변경할 수 있지만 `Assets/Scripts`에 이를 호출하는 연구 진행 시스템은 없다. RequiredResearch 문자열의 존재만으로 연구가 진행되거나 자동 해금되지는 않는다.
-- **조회·수명 경계:** 조회 유틸리티는 BuildingType의 첫 일치 행을 사용한다. 실제 배치 호출의 설정 NativeArray가 비어 있으면 해금 검사를 통과시키며, 비어 있지 않을 때 미등록 타입은 미해금이다. 생성 시 설정이 없거나 타입을 찾지 못하면 공통 생성의 기본 스펙을 사용한다. 버퍼는 소비·Clear되지 않고 설정 엔티티와 함께 유지된다.
+- **쓰기·현재 연결:** 공개 `BuildingConfigLookupUtility.SetBuildingUnlocked`가 지정한 종류·티어 행의 IsUnlocked만 변경할 수 있지만 `Assets/Scripts`에 이를 호출하는 연구 진행 시스템은 없다. RequiredResearch 문자열의 존재만으로 연구가 진행되거나 자동 해금되지는 않는다.
+- **조회·수명 경계:** 조회 유틸리티는 종류·티어가 모두 일치하는 행만 사용한다. 미등록 조합·빈 설정은 배치에서 미해금이며 공통 Spawn의 설정/조합 누락은 Fatal과 Null이다. 다른 티어/기본 스펙으로 보충하지 않는다. 버퍼는 소비·Clear되지 않고 설정 엔티티와 함께 유지된다.
 - **근거:** [정의](../../../Assets/Scripts/Components/Buildings/BuildingConfigComponents.cs), [로드·게시](../../../Assets/Scripts/Config/BuildingConfigLoader.cs), [조회·해금 변경 API](../../../Assets/Scripts/Common/BuildingConfigLookupUtility.cs), [배치 검증](../../../Assets/Scripts/Common/BuildingPlacementValidationUtility.cs), [생성 시 스펙 사용](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs).
 
 ## BuildingConstructionMaterialElement
 
-- **종류·부착 대상·목적:** `IBufferElementData`. 통합 설정 엔티티에서 `(BuildingType, ItemType, Quantity)`로 종류별 건축 비용을 정의한다. 현장별 Delivered/Reserved 상태와 구별되는 원본 요구량이다.
+- **종류·부착 대상·목적:** `IBufferElementData`. 통합 설정 엔티티에서 `(BuildingType, Tier, ItemType, Quantity)`로 종류·티어별 건축 비용을 정의한다. 현장별 Delivered/Reserved 상태와 구별되는 원본 요구량이다.
 - **생성:** 설정 로더가 검증한 자재 목록을 `PublishConfig`가 초기화 시 직접 게시한다. 건물 인스턴스마다 붙이지 않는다.
 - **배치에서 읽기:** Command는 설정 버퍼를 임시 NativeArray로 복사하고, 승인된 현장마다 `PopulateRequirements`로 해당 건물의 행을 `ConstructionMaterialRequirementElement`로 만든다. 새 현장의 도착량·예약량은 0이며 EndCommand에 현장과 함께 생성된다.
-- **철거에서 읽기:** StateApply의 `DemolishBuildingApplyJob`은 철거 대상 종류의 각 행을 조회하고 Quantity만큼 신규 월드 아이템을 환급 생성한다. 기존 Stored/Product 실물 반환과 별도의 처리다. 환급 프리팹이 없으면 해당 환급 생성은 생략하고 중단 오류를 기록하며 철거 명령 자체는 계속 기록한다.
+- **철거에서 읽기:** StateApply의 `DemolishBuildingApplyJob`은 철거 대상 종류·티어에 일치하는 행만 조회하고 Quantity만큼 신규 월드 아이템을 환급 생성한다. 기존 Stored/Product 실물 반환과 별도의 처리다. 환급 프리팹이 없으면 해당 환급 생성은 생략하고 중단 오류를 기록하며 철거 명령 자체는 계속 기록한다.
 - **수명·결합:** 설정 버퍼를 소비하거나 차감하지 않는다. 현장의 요구량은 배치 때 복사된 상태이고 철거 환급은 철거 시점 설정을 조회한다. 설정 엔티티/World 수명 동안 유지되며, 품목별 프리팹 DB와 결합해 환급 실물을 만든다.
 - **근거:** [정의](../../../Assets/Scripts/Components/Buildings/BuildingConfigComponents.cs), [게시](../../../Assets/Scripts/Config/BuildingConfigLoader.cs), [요구량 복사](../../../Assets/Scripts/Common/BuildingConfigLookupUtility.cs), [배치](../../../Assets/Scripts/Systems/Command/BuildingPlacementCommandSystem.cs), [철거 환급](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingLifecycleApplySystem.cs).
 
@@ -96,15 +98,15 @@
 
 ## BuildingRuntimeConfigElement
 
-- **종류·부착 대상·목적:** `IBufferElementData`, `InternalBufferCapacity(8)`. 통합 설정 엔티티에서 건물 종류별 Speed/StorageCapacity의 호환 표현을 보관한다. 용량 8은 전체 행 개수 상한이 아니다.
-- **생성:** 통합 설정을 게시할 때 `BuildingConfigElement`마다 BuildingType/Speed/StorageCapacity를 복사하여 버퍼에 추가한다. Footprint·해금·건축 비용 필드는 포함하지 않는다.
+- **종류·부착 대상·목적:** `IBufferElementData`, `InternalBufferCapacity(8)`. 통합 설정 엔티티에서 건물 종류·티어별 Speed/StorageCapacity의 호환 표현을 보관한다. 용량 8은 전체 행 개수 상한이 아니다.
+- **생성:** 통합 설정을 게시할 때 `BuildingConfigElement`마다 BuildingType/Tier/Speed/StorageCapacity를 복사하여 버퍼에 추가한다. Footprint·해금·건축 비용 필드는 포함하지 않는다.
 - **현재 읽기:** `BuildingConfigLookupUtility.TryGetConfig`의 호환 버퍼 오버로드가 존재하지만, 현재 `Assets/Scripts` 시스템에서 이 버퍼를 얻어 호출하는 소비 경로는 없다. 테스트의 직접 구성/조회와 런타임 호출을 구분한다.
 - **쓰기·동기화:** 초기 복사 이후 두 설정 버퍼를 계속 동기화하는 시스템은 없다. 현재 공통 건물 생성의 원본은 BuildingConfigElement다.
 - **수명·근거:** 일회성 결과 버퍼가 아니므로 Clear·소비되지 않고 설정 엔티티/World 수명을 따른다. [정의](../../../Assets/Scripts/Components/Buildings/BuildingRuntimeConfigComponents.cs), [복사 게시](../../../Assets/Scripts/Config/BuildingConfigLoader.cs), [호환 조회 API](../../../Assets/Scripts/Common/BuildingConfigLookupUtility.cs), [설정 테스트 소스](../../../Assets/Editor/Tests/Phase3BuildingRuntimeConfigTests.cs).
 
 ## SpawnBuildingRequest
 
-- **종류·부착 대상·목적:** 일반 `IComponentData`이자 `IRequestComponent`. 별도 일회성 요청의 TargetType/Position/Direction/FootprintSize/Stamp/HasPlacementStamp가 직접 생성을 전달한다. HasPlacementStamp는 명시적 0/0과 생성자에서 생략한 표식을 구별한다. 배치 타당성 검사나 공사 비용 납부를 수행하는 요청은 아니다.
+- **종류·부착 대상·목적:** 일반 `IComponentData`이자 `IRequestComponent`. 별도 일회성 요청의 TargetType/TargetTier/Position/Direction/FootprintSize/Stamp/HasPlacementStamp가 직접 생성을 전달한다. HasPlacementStamp는 명시적 0/0과 생성자에서 생략한 표식을 구별한다. 배치 타당성 검사나 공사 비용 납부를 수행하는 요청은 아니다.
 - **생성 경로:** `BuildingPlacementRequestUtility.SubmitSpawn`이 생략 표식만 공통 Tick/접수번호로 준비한다. 실제 런타임 게임플레이 Producer는 후속이며 현재 호출은 테스트에서 확인된다. 원시 요청은 Apply의 Job/Lookup 준비 전에 생략 표식을 처리 묶음 단위로 발급하며 실제 접수 순서를 추정하지 않는다. 공사 완료는 요청을 발행하지 않고 공통 SpawnBuilding에 현장의 기존 표식을 바로 전달한다.
 - **소비·순서:** StateApply의 `BuildingLifecycleApplySystem`이 철거 Job 및 벨트 아이템 정리 Job 뒤에 Spawn Job을 연결한다. 공통 생성 함수가 프리팹 인스턴스화와 공통/타입별 구성을 같은 EndBuilding ECB에 기록한다. 시스템은 Routing/Storage Apply 이후이며 Construction Lifecycle은 같은 건물 StateApply의 OrderLast다. 건물 생성/삭제 결과는 EndBuilding 뒤 같은 틱 드론에 보인다.
 - **실패·소비:** None/ConstructionSite 대상은 Null을 반환한다. 설정/대상 종류/프리팹 누락과 무효 설정 크기는 SimulationFatalError 기록 후 Null이다. 명시 요청 크기가 Config와 다르면 오류 로그 후 Null이며 설정을 덮어쓰지 않는다. Spawn Job은 반환 성공 여부에 관계없이 요청 삭제를 기록하므로 이 요청 자체는 자동 재시도하지 않는다. 완공 호출자의 현장/자재 보존 계약은 유지한다.

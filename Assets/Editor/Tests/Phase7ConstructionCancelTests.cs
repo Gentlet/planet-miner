@@ -49,12 +49,12 @@ public class Phase7ConstructionCancelTests : EcsWorldTestFixture
         }
 
         var site = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(site, new BuildingType(BuildingTypeEnum.ConstructionSite));
+        _entityManager.AddComponentData(site, new BuildingType(BuildingTypeEnum.ConstructionSite, 0));
         _entityManager.AddComponentData(site, new BuildingFootprint(size));
         _entityManager.AddComponentData(site, new GridPosition(pos));
         _entityManager.AddComponentData(site, new Direction(dir));
         _entityManager.AddComponentData(site, stamp);
-        _entityManager.AddComponentData(site, new ConstructionSite(targetType, flags));
+        _entityManager.AddComponentData(site, new ConstructionSite(targetType, 1, flags));
         _entityManager.AddBuffer<ConstructionMaterialRequirementElement>(site);
         _entityManager.AddBuffer<StoredItemElement>(site);
         return site;
@@ -150,7 +150,7 @@ public class Phase7ConstructionCancelTests : EcsWorldTestFixture
     {
         // 1. 완공된 건물 엔티티 (ConstructionSite 컴포넌트가 없음)
         var building = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(building, new BuildingType(BuildingTypeEnum.Miner));
+        _entityManager.AddComponentData(building, new BuildingType(BuildingTypeEnum.Miner, 1));
         _entityManager.AddComponentData(building, new GridPosition(new int2(2, 2)));
 
         // 2. 완공 건물에 대해 취소 요청 발행

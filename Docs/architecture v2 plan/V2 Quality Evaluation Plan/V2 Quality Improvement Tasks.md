@@ -17,6 +17,8 @@
 | 판단 보류 | 4 | 3 | 1 |
 | 합계 | 43 | 40 | 3 |
 
+- 티어·표시 이름 직접 영향 후속 (2026-10-11): 티어/이름 지원 구조와 건물 자동 탐색 제거는 구현 완료로 정리했다. F-009/F-011/F-012·F-018/F-019/F-020/F-021/F-022/F-023/F-024/F-041의 기존 완료/추적 종료를 유지하며 같은 구현의 111/111 및 독립 실제 Baker 근거를 해당 범위에 연결했다. F-025의 이관 대상은 Type/Tier/Prefab과 Config의 명시 메타데이터로 갱신했지만 F-006/F-017/F-025는 그대로 남는다. 추가 F 완료/종료 0건, 40/43을 유지한다. 이번 후속은 문서만 변경하며 새 컴파일·테스트·베이킹은 실행하지 않았다. [티어·표시 이름 영향 정리](Results/BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
+
 - F-022 직접 영향 후속 (2026-10-11): 남은 F-006/F-017/F-025의 현재 코드·완료 조건과 이번 검증 범위를 대조했다. 추가 완료/종료는 0건이며 40/43을 유지한다. F-006은 건물 설정 오류의 시작 차단과 실행 중 생산 결과 보존을 구분했다. F-017/R-01은 개별 정수 형식 검증과 복합 산술/지원 상한을 구분했다. F-025는 Building DB의 이관 대상 크기 필드가 제거된 계약과 두 모드의 실제 Baker 근거를 연결하되 SampleScene 진입 선택·세 DB 연결 문제는 남겼다. 이미 종료된 F-021에는 선택 검증 근거만 보강했다. 이번 후속은 문서만 변경하며 새 컴파일·테스트·베이킹은 실행하지 않았다. [관련 이슈 정리](Results/F022-Verification.md#2026-10-11-관련-이슈-후속-정리).
 
 - 2026-10-11 F-022 완료: 크기 원본을 BuildingConfig의 명시적 양수 footprint로 고정하고 프리팹 목록/DB의 크기와 타입 기본 크기 fallback을 제거했다. 요청은 설정 크기를 덮어쓰지 않는다. 누락·형식 오류·소수/문자열 숫자·int 표현 범위 밖 입력과 비양수 크기는 로드 오류다. 최종 Unity 컴파일·실행/테스트 어셈블리 최신성, 선별 EditMode 59/59 및 실제 SubScene 입력의 두 DB 모드 Baker→배치/완공·직접 생성→4방향 점유를 확인했다. 40/43·미완료 F-006/F-017/F-025이며 과거 집계는 당시 기록으로 보존한다. Play Mode·자동 SubScene 시작·Player 빌드·시각·성능은 미실행이다. [F-022 구현·검증 기록](Results/F022-Verification.md).
@@ -131,6 +133,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 ### F-024 — 공사 완료 Spawn 실패 후 자재·현장 삭제
 
 - [x] 완료 — **P1** · [최초 평가: Q09](Results/Q09.md) · [완료 경로 평가: Q25](Results/Q25.md)
+- 티어·표시 이름 후속 (2026-10-11): 공통 Spawn은 요청/현장의 종류·티어를 정확히 조회하므로 미등록 조합/필수 프리팹 누락도 Null과 중단 진단의 원인이다. non-Null 이후에만 현장/자재 삭제를 기록하는 기존 보존 경계는 유지했다(코드 확인). 완공 8/8과 추가 티어의 부분 자재 보류/정상 완공을 확인했으나 실제 Bake 상위 티어의 Spawn 실패 주입·전체 ECB rollback은 검증하지 않았다. 기존 완료를 유지한다. [티어·표시 이름 영향 정리](Results/BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
 - 문제: 활성 Building DB의 prefab 누락/Null로 Spawn이 거부돼도 자재와 현장 삭제를 기록한다.
 - 작업: 거부 가능한 조건을 자재 소비 전에 확인하고, Spawn의 성공·실패 결과에 맞춰 자재와 현장을 처리한다.
 - 완료 기준: 충족 현장과 실제 도착 자재를 준비한 prefab 누락/Null 사례에서 건물 수·현장 생존·자재 참조가 선택한 정책과 일치한다. 정상 완료를 유지하고 DB 부재는 시작 차단/Spawn 거부로 검증한다(2026-09-30 사용자 결정으로 fallback 제거). non-Null 반환을 ECB 전체 rollback 보장으로 간주하지 않는다.
@@ -260,6 +263,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 ### F-009 — 설정 로드 실패 경로의 선택 실행 검증
 
 - [x] 선택 검증으로 분리·이번 개선 추적 종료 — **P2** · 종료일: 2026-10-08 · [최초 평가: Q04](Results/Q04.md)
+- 티어·표시 이름 후속 (2026-10-11): 건물 tier/displayName의 malformed JSON·중복 조합은 false/out=null로 거절하고, 무효 사전 등록의 티어/이름/중복은 Init Fatal·원본 보존을 확인했다. 이는 기존 선택 검증 범위 중 건물 메타데이터의 근거 보강이며 파일 누락/읽기 실패/일반 JSON 문법 오류의 실행은 아니다. 기존 추적 종료를 유지한다. [티어·표시 이름 영향 정리](Results/BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
 - 평가 당시 문제: Item Test02가 실제 ItemConfig.json을 읽으면서 순수 기본값 검증으로 설명됐고, Test04·Test06도 실제 파일의 고정값에 의존했다.
 - 현재 대상 정리 (2026-10-02): 위 Test02·Test04·Test06은 F-008 이전 테스트 축소 커밋 `199478b`에서 삭제됐다. 해당 조회·Burst 테스트를 고치는 작업은 남은 범위에서 제외하며 F-008의 신규 해결로 집계하지 않는다. 현재 Item Test03은 명시 JSON, Test05는 자동 초기화 연동 검사다. `Phase5RecipeConfigTests.Test02`는 의도된 Resources 연동 검사이며 파일 연동 자체를 결함으로 간주하지 않는다.
 - F-014로 확인한 범위 (실행 2026-10-07, 문서 정리 2026-10-08): 레시피 재료 중복 [1,1]/[2,3]/[int.MaxValue,1]과 수량 2147483648의 입력 검증 실패는 설정 미게시·로그·즉시 `SimulationFatalError`로 처리함을 확인했다. 중복 세 사례는 이후 자동 Init이 기본 레시피로 재시도하지 않는 것도 확인했다. 이 네 사례는 초기화 입력 실패의 실행 근거로 재사용하며 같은 검증을 다시 만드는 작업은 제외한다. [F-014 검증 기록](Results/F014-Verification.md). 이 결과는 파일 부재나 일반 JSON 문법 오류의 fallback 검증이 아니다.
@@ -283,6 +287,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 ### F-011 — 설정 로드 실패와 의도적 무설정 상태 혼동
 
 - [x] 완료 — **P2** · [최초 평가: Q05](Results/Q05.md) · 2026-10-08
+- 티어·표시 이름 후속 (2026-10-11): 종류·티어 조합/표시 이름/호환 키 집합/정의 없는 비용/필수 프리팹 실패를 기존 미게시·로그·Fatal 정책으로 연결했다. 기존 실제 11종의 1티어를 요구하며 별도 오류 시스템/자동 보충/재시도는 추가하지 않았다. 사전 등록 오류의 원본 보존과 프리팹 실패의 Ready 미게시·게임 그룹 차단은 이번 선별 실행으로 확인했다. 기존 완료를 유지한다. [티어·표시 이름 영향 정리](Results/BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
 - 문제: 건물 Config 검증 실패 후 무설정 fallback으로 배치가 진행돼 해금·자재 비용 제한을 건너뛸 수 있다.
 - F-030 영향 (2026-09-30 코드 확인): `BuildingConfigLoader`가 벨트 속도의 상한 초과·비유한 값을 거부하므로 이 입력도 건물 설정 전체의 게시 실패로 이어진다. `BuildingConfigInitSystem`은 실패 시 오류만 기록하고, 배치는 설정 부재 시 해금을 허용하며 자재 요구량을 채우지 않는 기존 경로를 유지한다. 공통 Spawn의 벨트 속도 상한은 이동 속도를 보호하지만 설정 실패 후 해금·비용 처리 정책은 해결하지 않으므로 F-011은 미완료다. 현재 정상 속도 7.5에서 실패를 재현한 결과가 아니라 잘못된 입력에 대한 코드 분석이다.
 - F-012 영향 (2026-09-30 코드 확인): UTF-8 29바이트를 넘는 requiredResearch도 이제 예외 탈출이나 잘림 대신 정상 파싱 실패(false 및 두 out=null)로 반환한다. Init의 실패 후 미게시와 배치의 무설정 허용 경로는 그대로이므로 이 입력도 설정 실패→배치→완료 확인 조건에 포함한다. 문자열 길이 검사를 다시 구현하는 범위가 아니며, 해당 연쇄 동작은 아직 실행 미검증이다.
@@ -301,6 +306,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 ### F-012 — 긴 requiredResearch의 파싱 실패 경계 이탈
 
 - [x] 완료 — **P2** · [최초 평가: Q05](Results/Q05.md)
+- 티어·표시 이름 후속 (2026-10-11): displayName은 별도 표시 문자열로 125 UTF-8 bytes 이하이며 RequiredResearch는 기존 29-byte 식별자 제한을 유지한다. 두 문자열을 같은 키/길이로 취급하지 않는다. 표시 이름의 용량 초과 거절은 코드 확인이며 UTF-8 길이 경계의 새 실행 증거는 없다. 기존 완료와 당시 실행 한계를 유지한다. [티어·표시 이름 영향 정리](Results/BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
 - 문제: UTF-8 29바이트를 넘는 키를 FixedString32Bytes로 변환할 때 검사 환경에서는 예외가 탈출하고 다른 환경에서는 잘림이 발생할 수 있다.
 - 작업: 변환 전에 표현 가능한 길이를 검증해 파싱 실패 계약으로 반환한다. 더 긴 키가 필요하면 표현 변경을 별도로 결정한다.
 - 완료 기준: ASCII 29/30바이트, 다바이트 경계, 후반 항목 오류에서 반환값·out 값·게시 상태가 일관되고 잘린 식별자를 성공 처리하지 않는다. 실행 환경별 확인 범위를 기록한다.
@@ -362,6 +368,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 ### F-017 — 설정 허용 범위와 정수 연산 한계 불일치
 
 - [ ] 완료 — **P2** · [최초 평가: Q07](Results/Q07.md)
+- 티어·표시 이름 후속 (2026-10-11): 명시적 양수 int 티어와 기본 크기 입력 검증은 월드 반경·전이 폭·좌표/면적의 복합 산술 한계를 해결하지 않는다. 실제 수치는 기존 값을 유지하며 산술 연산/지원 상한을 변경하지 않았으므로 미완료와 별도 R-01 검토를 유지한다. [티어·표시 이름 영향 정리](Results/BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
 - F-022 후속 (2026-10-11): 건물 footprint의 양수·JSON 정수·int 표현 범위 검증은 월드 반경/초기 크기/region/transition의 지원 상한이 아니다. WorldGenerationConfigLoader의 상한 없는 범위 검사, ResourceGenerationUtility의 maxRadius+1·제곱, FloorBiomeSampler의 전이 폭×청크 크기 int 곱셈은 그대로다. R-01도 50,000×50,000의 개별 축은 F-022 검증을 통과하지만 공간 용량의 int 면적 연산은 안전하지 않다. 남은 결정은 지원 범위와 소비 산술이며, 크기 원본/무효 입력 중단 정책을 다시 정하거나 여러 Loader에 임의 숫자를 복제하지 않는다. F-017 미완료와 R-01 별도 검토를 유지한다. [후속 근거](Results/F022-Verification.md#2026-10-11-관련-이슈-후속-정리).
 - 문제: 검증을 통과한 큰 반경·전이 폭이 소비자의 덧셈·제곱·셀 변환에서 overflow를 일으킬 수 있다.
 - 작업: 지원 범위와 안전한 산술 계약을 맞추고 소비자 연산 순서·자료형을 검토한다.
@@ -374,6 +381,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 ### F-018 — DB 등록과 singleton 유일성 검증 누락
 
 - [x] 완료 — **P2** · [최초 평가: Q08](Results/Q08.md) · [Building 추가 근거: Q09](Results/Q09.md)
+- 티어·표시 이름 후속 (2026-10-11): 건물 DB의 중복 단위는 Type/Tier 조합으로 확장했고, 비양수 티어·설정 없는 조합·Config에 등록한 조합의 누락도 Init에서 거절한다. 같은 Prefab 참조를 여러 조합이 공유하는 것은 중복 키가 아니다. PrefabDatabaseInitializationTests 19/19와 독립 실제 Baker의 12조합 산출물을 기존 완료의 근거로 연결한다. 실제 Bake 산출물로 모든 오류 조합/세 DB를 검증한 결과는 아니다. [티어·표시 이름 영향 정리](Results/BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
 - 최초 문제: 중복 타입 등록과 복수 DB의 정책·검증이 없어 첫 일치와 singleton 전제에 의존했다.
 - F-024에서 구현 해결 (2026-09-30): `PrefabDatabaseInitializationSystem.TryGetDatabase`가 도메인별 DB와 매핑 버퍼를 정확히 하나로 제한하고, 각 도메인 검증이 중복 타입을 거부한다. 정책은 **중복·복수 DB 거부 및 게임 시작 차단**으로 확정됐으며 병합·우선순위를 다시 결정하지 않는다. Ready 이후 DB 불변 계약을 따른다.
 - 확인 근거: 현재 소스와 `PrefabDatabaseInitializationTests.DuplicateDatabase_Stops`, `DuplicateMapping_Stops`를 확인했다. F-024 구현 당시 해당 테스트를 포함한 초기화 검증이 통과했다. 두 중복 사례는 수동 ECS 건물 DB를 구성하며 실제 수동 Authoring/자동 수집·모든 도메인의 실행 증거로 확대하지 않는다.
@@ -385,6 +393,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 ### F-019 — prefab 식별·필수 구성 검증 부족
 
 - [x] 완료 — **P2** · [최초 평가: Q08](Results/Q08.md) · [실제 자산 근거: Q11](Results/Q11.md) · 실제 Baker의 확인/선택 검증 경계: **F-021**
+- 티어·표시 이름 후속 (2026-10-11): 건물 프리팹 이름의 enum 추론을 제거하고 Type/Tier/Prefab 명시 등록으로 통일했다. Baker는 DB 매핑을 제공하고 런타임 BuildingType/Tier와 크기는 공통 Spawn이 설정한다. 기존 Prefab/LocalTransform·아이템 Identity 일치 검증은 유지한다. 상위 티어 통합 사례의 별도 원형 payload와 실제 Storage Baker 생성은 선택 경로 근거이며 전체 종류/Item·Resource의 오류 Bake 검증은 아니다. [티어·표시 이름 영향 정리](Results/BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
 - 최초 문제: prefab 식별·필수 구성의 사전 검증이 없었고, 등록 Item prefab 8개에 `ItemAuthoring`이 없었다.
 - 완료 구현 (2026-09-30, F-024에 포함): `PrefabDatabaseInitializationSystem`이 엔티티 생존·`Prefab`·`LocalTransform` 및 아이템 `ItemIdentity` 존재·등록 타입 일치를 검증한다. 무효 타입·누락·불일치는 시작 전에 거부한다. 등록 key와 베이킹된 식별 타입은 같아야 하며 불일치 alias는 허용하지 않는다.
 - 에셋·검증 근거: 기존 아이템 8개의 `ItemAuthoring`을 보완하고 Drone 아이템을 등록했다. F-024 당시 초기화 검증 및 실제 Resources 아이템의 타입별 Authoring 검사가 통과했고, Editor에서 V2 SubScene의 DB 등록·참조·아이템 타입 일치를 확인했다. 상세 실행 기록은 F-024를 따른다.
@@ -394,6 +403,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 ### F-020 — 철거 환급의 Item 초기화 규칙 복제
 
 - [x] 완료 — **P2** · [최초 평가: Q08](Results/Q08.md) · [환급 평가: Q28](Results/Q28.md)
+- 티어·표시 이름 후속 (2026-10-11): 철거 비용 조회만 완공 건물의 종류·티어로 확장했고 신규 환급품 초기화는 기존 ItemLifecycleUtility.SpawnPrefabItem·EndBuilding 경계를 유지했다. 상위 Storage 티어의 Copper 3개만 월드로 환급하고 1티어 Iron 비용을 섞지 않는 통합 사례 및 기존 철거 19/19가 통과했다. 기존 완료를 유지하며 환급 실패 보상/전체 rollback을 추가 구현한 것은 아니다. [티어·표시 이름 영향 정리](Results/BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
 - 문제: 일반 Item 생성과 철거 환급이 초기화 규칙을 따로 유지해 한쪽 변경이 다른 경로의 회귀로 이어질 수 있다. 현재 주요 초기값의 불일치를 확인한 것은 아니다.
 - F-005의 영향 (2026-09-30): `Phase7ItemCreationDemolitionTests`의 기존 실물 반환·건축 비용 환급·World Spawn 유지 사례를 공통화 시 회귀 검증에 활용할 수 있다. 해당 테스트가 초기화 코드 중복 제거 또는 모든 필수 컴포넌트·enable 상태의 동등성을 증명하는 것은 아니다. `SpawnRefundPrefabItem`과 일반 Spawn·Product의 초기화는 현재 별도 경로다.
 - 작업: 생성 책임을 공유하는 공개 계약이나 공통 초기화 경계를 마련하되 환급 시점·ECB·누락 정책을 보존한다.
@@ -405,6 +415,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 ### F-021 — 실제 Baker를 실행하지 않는 계약 테스트
 
 - [x] 실제 베이킹 근거 반영·선택 검증 추적 종료 — **P2** · 종료일: 2026-10-08 · [최초 평가: Q08](Results/Q08.md)
+- 티어·표시 이름 후속 (2026-10-11): 건물 ResourcesAutoLoad/자동 채우기 경로를 삭제했으므로 현재 건물 검증 대상은 명시 등록 Baker다. V2 저장 입력 11개/Tier 1을 확인하고 PreviewScene에만 공유 프리팹의 3티어를 추가해 실제 BakeGameObjects 12조합→완공 4·직접 생성 4·정확한 48셀을 확인했다. 111건과 별도 근거이며 기존 추적 종료를 유지한다. 건물 자동 수집 제외 검증은 현 경로에서 제거되었고 Item/Resource 자동 수집·전수/오류 Bake·자동 SubScene 시작·Player 빌드의 미검증 범위는 남는다. [티어·표시 이름 영향 정리](Results/BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
 - F-022 후속 (2026-10-11): 실제 V2 SubScene 입력과 프리팹 참조로 InspectorList/ResourcesAutoLoad 각각 11원형을 BakeGameObjects에서 베이킹한 뒤 2×3 Storage의 4방향 현장→완공/직접 생성과 각 모드의 정확한 48셀을 확인했다. 기존 종료 상태에 선택 검증 근거를 보강하며 추가 완료로 합산하지 않는다. 전체 타입 구성·오류 Authoring/등록 전 조합·Item/Resource 전체 Bake·자동 SubScene 시작·지속 자동 회귀·SampleScene·Player 빌드의 공백은 남는다. [현재 근거·한계](Results/F022-Verification.md#2026-10-11-관련-이슈-후속-정리).
 - 평가 당시 문제와 현재 테스트 경계: Item/Building Authoring 목록 수집과 수동 ECS 자원·DB/Spawn 테스트는 실제 Bake 회귀가 아니다. F-037 제작 연결·F-020 환급·F-011 프리팹 15/15를 실제 Baker 통과로 확대하지 않는다. 현재 테스트 설명과 준비 코드를 확인했다.
 - 기존 실제 실행: [도메인 분리 기록의 일회 Play Mode 절](Results/BuildingDroneDomainSplit-Verification.md)은 V2 Test Scene·자동 로드 sub.unity의 실제 Default Game World/Player Loop와 베이킹된 창고·벨트·철 프리팹을 사용한다. 제어 입력의 Supply=Completed/1·Delivered=1·Reserved=0, 다음 Building 틱의 완공 창고 생성·현장/자재 삭제를 원본 결과와 대조했다. 실제 베이킹 정상 경로를 전혀 확인하지 않았다는 현황 설명은 갱신한다.
@@ -415,7 +426,8 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 ### F-022 — DB FootprintSize 편집과 실제 Spawn 크기 불일치
 
 - [x] 완료 — **P2** · [최초 평가: Q09](Results/Q09.md)
-- 2026-10-11 사용자 결정·구현: Config만 종류별 크기를 소유하고 DB의 크기는 삭제한다. 요청 크기는 미리보기/현장과 Config의 일치 확인용 스냅샷이며 개별 덮어쓰기는 거절한다. 직접 생성의 int2.zero만 생략이다. Config 크기 생략·무효는 Init의 기존 로그·미게시·Fatal 정책을 사용한다. 티어 구분과 건물명 별도 지정은 후속이다. 아래 출처 선택·미완료 설명은 각 날짜의 원본 기록이다.
+- 티어·표시 이름 후속 (2026-10-11): 당시 후속인 티어 구분·표시 이름 지원 구조는 구현 완료로 정리한다. Config가 종류·티어별 크기를 소유하며 요청→현장→완공/직접 Spawn→인덱스가 동일 조합을 유지한다. 실제 프로젝트는 기존 11종의 1티어·현재 종류명·기존 수치이며 실제 상위 티어 데이터는 추가하지 않았다. 프리팹 자동 탐색은 제거했고 UI·그림 보정·승급·연구 Writer는 계속 후속이다. F-022 완료에 다시 합산하지 않는다. [티어·표시 이름 영향 정리](Results/BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
+- 2026-10-11 사용자 결정·구현: Config만 종류별 크기를 소유하고 DB의 크기는 삭제한다. 요청 크기는 미리보기/현장과 Config의 일치 확인용 스냅샷이며 개별 덮어쓰기는 거절한다. 직접 생성의 int2.zero만 생략이다. Config 크기 생략·무효는 Init의 기존 로그·미게시·Fatal 정책을 사용한다. 당시 후속인 티어 구분·표시 이름은 같은 날 [별도 구현](../../Specifications/BuildingTierAndDisplayName.md)으로 진행했다. 실제 상위 티어 데이터·UI·승급·연구 Writer는 계속 후속이다. 아래 출처 선택·미완료 설명은 각 날짜의 원본 기록이다.
 - 2026-10-11 검증: JSON/공개 게시/사전 등록의 크기 검증과 설정 크기→현장→완공/직접 Spawn→Sync의 동일성을 확인했다. 최종 컴파일 completed/failed:false/errors:[], Editor ready/비컴파일/비리로드 및 실행·테스트 DLL 최신이다. 선별 EditMode 59/59. 실제 Baker는 InspectorList/ResourcesAutoLoad 각각 11원형을 베이킹하고 2×3 창고의 완공 4·직접 생성 4건을 4방향으로 검사하여 각 모드의 정확한 48셀과 완공 접수 표식을 확인했다. 두 모드 실행은 59건과 별개다. 최초 fixture 1건 실패·연결 중단과 최종 복구 근거, 자동 SubScene 시작/Play Mode·그림·Player 빌드·성능 미검증은 [F-022 기록](Results/F022-Verification.md)을 따른다.
 - 문제: Inspector/DB의 FootprintSize가 Spawn 크기 선택에 사용되지 않아 사용자가 편집한 값이 생성 결과에 반영되지 않는다.
 - F-023 영향 (2026-09-30 코드 확인): 현장·완공의 BuildingFootprint.Size는 방향 적용 전 기본 크기로 통일했고 각 점유 Reader가 한 번 회전한다. 이중 회전 수정은 완료 범위로 제외한다. 현재 Spawn의 크기 선택은 request→Config→기본 규격이며 조회한 dbFootprint는 여전히 사용하지 않는다. 남은 결정은 크기 출처의 권위와 DB Size의 의미다. 출처를 변경할 때 기존 기본 크기 표현과 회전 계약은 유지한다.
@@ -431,6 +443,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 ### F-023 — footprint의 기본 크기·회전 크기 혼용
 
 - [x] 완료 — **P2** · [최초 평가: Q09](Results/Q09.md)
+- 티어·표시 이름 후속 (2026-10-11): 종류·티어별 기본 크기와 기존 한 번 회전 계약을 유지했다. 실제 Baker의 3티어 2×3 Storage를 4방향으로 현장→완공/직접 Spawn하여 총 48셀과 Tier 3·7슬롯을 확인했다. 기존 완료의 동일성 근거를 보강하며 그림 자동 회전/배율/중심 복원은 실행·구현 범위가 아니다. [티어·표시 이름 영향 정리](Results/BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
 - 문제: 이미 회전한 크기를 저장한 뒤 Spatial Sync가 다시 회전해 비정사각형의 검증·현장·완공 점유가 달라질 수 있다.
 - 작업: `BuildingFootprint.Size`의 표현 계약을 일관되게 적용하고 모든 Writer/Reader에서 회전이 한 번만 반영되게 한다.
 - 완료 기준: 비정사각형 4방향의 직접 Spawn→Sync와 Placement→현장 Sync→완료→Sync가 정확히 같은 기대 셀 집합을 점유한다. 생산자별 임시 보정에 의존하지 않는다.
@@ -442,7 +455,8 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 ### F-025 — 활성 빌드 장면 DB의 오래된 직렬화 연결
 
 - [ ] 완료 — **P2** · [최초 평가: Q11](Results/Q11.md)
-- F-022 후속 (2026-10-11): 현재 Building DB의 이관 대상은 Type/Prefab뿐이며 점유 크기는 Config가 소유한다. SampleScene의 구형 size를 DB 크기로 복원하지 않는다. V2 SubScene은 실제 두 DB 모드의 정상 Baker→Storage 생성/4방향 점유 근거가 생겼지만 EditorBuildSettings는 여전히 SampleScene이며 그 Sub의 세 script GUID는 현재 Authoring과 다르다. 구형 type/prefab 이름·enum 숫자 대응도 남아 GUID 치환만으로 이관할 수 없다. 남은 결정은 SampleScene 수리 또는 V2 계열 진입 선택이며, 선택한 경로의 Building/Item/Resource 세 DB를 확인해야 한다. 이번 근거를 SampleScene·자동 시작·Player 빌드 성공으로 확대하지 않고 미완료를 유지한다. [후속 근거](Results/F022-Verification.md#2026-10-11-관련-이슈-후속-정리).
+- 티어·표시 이름 후속 (2026-10-11): 현재 이관해야 하는 건물 등록 필드는 Type/Tier/Prefab이고, Config에는 명시적 tier/displayName/footprint가 필요하다. 삭제한 LoadMode/Resources 자동 수집과 DB size를 복원하지 않는다. V2 SubScene의 11개 Tier 1 수동 등록과 실제 명시 Baker는 확인했지만 활성 빌드는 계속 SampleScene이다. 진입 장면 선택·구형 GUID/enum·세 DB 이관·자동 시작/Player 빌드는 남아 미완료를 유지한다. [티어·표시 이름 영향 정리](Results/BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
+- F-022 후속 (2026-10-11): F-022 당시 Building DB의 이관 대상은 Type/Prefab뿐이며 점유 크기는 Config가 소유한다. SampleScene의 구형 size를 DB 크기로 복원하지 않는다. V2 SubScene은 실제 두 DB 모드의 정상 Baker→Storage 생성/4방향 점유 근거가 생겼지만 EditorBuildSettings는 여전히 SampleScene이며 그 Sub의 세 script GUID는 현재 Authoring과 다르다. 구형 type/prefab 이름·enum 숫자 대응도 남아 GUID 치환만으로 이관할 수 없다. 남은 결정은 SampleScene 수리 또는 V2 계열 진입 선택이며, 선택한 경로의 Building/Item/Resource 세 DB를 확인해야 한다. 이번 근거를 SampleScene·자동 시작·Player 빌드 성공으로 확대하지 않고 미완료를 유지한다. [후속 근거](Results/F022-Verification.md#2026-10-11-관련-이슈-후속-정리).
 - 문제: 활성 SampleScene의 세 DB script GUID가 현재 스크립트와 연결되지 않으며 필드 구조·enum 의미도 다르다. 실제 Bake/빌드 실패 여부는 미확인이다.
 - 작업: 사용할 진입 장면을 결정한 뒤 해당 경로의 DB를 현재 Authoring 계약으로 검증·이관한다.
 - 완료 기준: 선택한 장면의 실제 Bake에서 세 DB·entry 타입·prefab 참조·필수 구성을 확인한다. GUID만 교체하지 않고 필드와 enum 매핑을 함께 검증한다.
@@ -537,6 +551,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 ### F-041 — 별도 요청의 PlacementStamp 중복과 서로 다른 동률 규칙
 
 - [x] 완료 — **P2** · [최초 평가: Q23](Results/Q23.md)
+- 티어·표시 이름 후속 (2026-10-11): 새 티어의 현장→완공에서도 기존 PlacementStamp 전체 승계를 유지했고 추가 Storage 통합 사례와 실제 4방향 Baker의 ReceiptSequence 보존을 확인했다. 티어/표시 이름을 설치 우선순위나 동률 비교 키로 추가하지 않았다. 기존 완료를 유지하며 모든 동률/Entity 재사용 경합을 새로 실행한 것으로 확대하지 않는다. [티어·표시 이름 영향 정리](Results/BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
 - 문제: 같은 tick의 별도 요청이 같은 Order를 발급하고, 목적지 예약과 Routing 연결 선택이 서로 다른 동률 처리에 의존한다.
 - F-029 영향 (2026-09-30): 출고·Routing의 기존 설치 순서 우선정책 유지는 확정했다. 새 후보 종류 우선권이나 라운드로빈을 이 항목에서 다시 설계하지 않는다. 다만 이번 Test03은 서로 다른 Tick의 양쪽 승패를 확인한 것이며 Stamp 동률·누락·Entity 재사용 검증은 아니다.
 - F-026·F-023 영향 (2026-09-30 코드 확인): 배치의 Writer 대기와 footprint 표현 수정은 Stamp 발급 규칙을 변경하지 않았다. Order는 여전히 각 요청의 후보 인덱스 i로 발급되므로 같은 tick의 별도 요청에서 중복될 수 있다. F-027과 같은 요청 처리 경계를 검토하되, 이 항목은 비중첩 요청에서도 필요한 Stamp 유일성/동순위 의미와 후속 소비자의 tie 규칙에 집중한다.
@@ -638,6 +653,7 @@ OpenAI의 [GPT-6.1 Sol 공식 안내](https://developers.openai.com/api/docs/mod
 ### F-006 — 치명적 오류로 중단된 월드의 ProductResult 보존 정책
 
 - [ ] 완료 — **판단 보류 / 정책 미확정** · [최초 평가: Q03](Results/Q03.md) · [Config/DB 추가 근거: Q11](Results/Q11.md)
+- 티어·표시 이름 후속 (2026-10-11): Config/프리팹 조합 오류의 시작 차단과 현장 보존은 실행 중 ProductResult 보존 정책과 별개다. ProductResultApplyJob은 누락 프리팹의 중단 오류 뒤에도 마지막 Clear를 유지한다(현재 코드 확인). 이번 상위 티어 건설/직접 Spawn/정상 환급·111건·실제 Baker를 실패 생산 결과 보존이나 현재 틱 rollback의 근거로 쓰지 않고 정책 보류를 유지한다. [티어·표시 이름 영향 정리](Results/BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
 - F-022 후속 (2026-10-11): 누락·무효 건물 크기로 생산을 시작하는 경로는 Init에서 미게시/Fatal로 차단한다. 이 시작 차단과 Building DB 크기 제거는 유효한 설정으로 이미 만든 ProductResult의 Item 프리팹 누락/부분 생성과 관계가 없다. 현재 ProductResultApplyJob은 실패를 기록한 뒤 마지막 Clear를 수행한다. 현장/자재 보존·설정 검증·59/59·실제 Storage Baker 실행을 미실체화 생산 결과 보존/현재 틱 rollback의 근거로 쓰지 않는다. 남은 결정은 중단된 월드의 결과 보존/소비 정책이며 판단 보류를 유지한다. [후속 근거](Results/F022-Verification.md#2026-10-11-관련-이슈-후속-정리).
 - F-005로 확정된 범위 (2026-09-30): 정상적으로 승인된 철거와 겹친 완료 생산 결과는 생성 없이 폐기하며 선소비 재료·광물을 보상하지 않는다. 이 의도적 폐기 정책은 F-006의 미확정 선택에서 제외한다. 철거 승인과 무관한 치명적 생성 실패·부분 생성 시의 결과 보존은 여전히 별도 문제다.
 - F-024의 영향: 필수 DB 검증과 검증 후 DB 불변 계약으로 정상 게임 시작 시의 prefab 누락/Null을 차단했다. DB 부재 fallback도 제거했다. 실행 중 예상 밖 프리팹 누락은 `SimulationFatalError`를 게시하여 다음 틱을 차단한다.

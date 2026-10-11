@@ -549,8 +549,8 @@ public class DroneRetargetingTests : EcsWorldTestFixture
     private Entity CreateSite(int2 position, ulong stamp, int required)
     {
         Entity site = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(site, new BuildingType(BuildingTypeEnum.ConstructionSite));
-        _entityManager.AddComponentData(site, new ConstructionSite(BuildingTypeEnum.Storage));
+        _entityManager.AddComponentData(site, new BuildingType(BuildingTypeEnum.ConstructionSite, 0));
+        _entityManager.AddComponentData(site, new ConstructionSite(BuildingTypeEnum.Storage, 1));
         _entityManager.AddComponentData(site, new GridPosition(position));
         _entityManager.AddComponentData(site, new BuildingFootprint(new int2(1, 1)));
         _entityManager.AddComponentData(site, new Direction(DirectionEnum.Up));
@@ -573,7 +573,7 @@ public class DroneRetargetingTests : EcsWorldTestFixture
     private Entity CreateStorage(int2 position, ulong stamp, int itemCount = 0, int slots = 4)
     {
         Entity storage = _entityManager.CreateEntity();
-        _entityManager.AddComponentData(storage, new BuildingType(BuildingTypeEnum.Storage));
+        _entityManager.AddComponentData(storage, new BuildingType(BuildingTypeEnum.Storage, 1));
         _entityManager.AddComponentData(storage, new GridPosition(position));
         _entityManager.AddComponentData(storage, new PlacementStamp(stamp, 0));
         _entityManager.AddComponentData(storage, new Storage(slots));

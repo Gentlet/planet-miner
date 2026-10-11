@@ -94,7 +94,7 @@ public class Phase6BeltDestinationReservationTests : EcsWorldTestFixture
             typeof(SplitterRoutingState),
             typeof(RoutingTransferDecision),
             typeof(PlacementStamp));
-        _entityManager.SetComponentData(routerEntity, new BuildingType(BuildingTypeEnum.Splitter));
+        _entityManager.SetComponentData(routerEntity, new BuildingType(BuildingTypeEnum.Splitter, 1));
         _entityManager.SetComponentData(routerEntity, new GridPosition(new int2(-1, 0)));
         _entityManager.SetComponentData(routerEntity, new PlacementStamp(tick: routingWins ? 10UL : 20UL, order: 0));
         _entityManager.SetComponentData(routerEntity, new SplitterRoutingState(sourceBelt, DirectionEnum.Right));
@@ -322,7 +322,7 @@ public class Phase6BeltDestinationReservationTests : EcsWorldTestFixture
                 return (source, item, _world.GetOrCreateSystem<StorageItemOutputDecisionSystem>());
             }
 
-            _entityManager.SetComponentData(source, new BuildingType(sourceType));
+            _entityManager.SetComponentData(source, new BuildingType(sourceType, 1));
             _entityManager.GetBuffer<StoredItemElement>(source).Clear();
             _entityManager.AddBuffer<ProductItemElement>(source)
                 .Add(new ProductItemElement(item, ItemTypeEnum.Iron_Ore));

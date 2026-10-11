@@ -148,29 +148,39 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a441fe642af56014ead8ac86241f227a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BuildingPrefabDatabaseAuthoring
-  LoadMode: 0
   Prefabs:
   - Type: 11
+    Tier: 1
     Prefab: {fileID: 9106238281758111696, guid: e2e1a0860e6ffc4448740f1c3edce5e9, type: 3}
   - Type: 5
+    Tier: 1
     Prefab: {fileID: 2222127362126821372, guid: b7c58e30127b42c8b23e69d12fa45d91, type: 3}
   - Type: 3
+    Tier: 1
     Prefab: {fileID: 2222127362126821372, guid: 59786e42313e48643b545ce5462797da, type: 3}
   - Type: 8
+    Tier: 1
     Prefab: {fileID: 2222127362126821372, guid: d4b5408225a54ef5874d7eac0cbb0f2f, type: 3}
   - Type: 7
+    Tier: 1
     Prefab: {fileID: 2222127362126821372, guid: 4c6b940515f54fe9b8bdf9535cb15799, type: 3}
   - Type: 10
+    Tier: 1
     Prefab: {fileID: 2222127362126821372, guid: 89e5f75603e6e164ebfc4d6358cb8098, type: 3}
   - Type: 2
+    Tier: 1
     Prefab: {fileID: 2222127362126821372, guid: 9d5459b95a4bac147a7d1a00418fdc36, type: 3}
   - Type: 4
+    Tier: 1
     Prefab: {fileID: 2222127362126821372, guid: 8552349de996420599300b397d057db8, type: 3}
   - Type: 6
+    Tier: 1
     Prefab: {fileID: 2222127362126821372, guid: 185e9f5b58f333045a2c3a39f2de1555, type: 3}
   - Type: 9
+    Tier: 1
     Prefab: {fileID: 2222127362126821372, guid: 4e1b8365c3829e64dad69342e5d3dd2f, type: 3}
   - Type: 1
+    Tier: 1
     Prefab: {fileID: 2222127362126821372, guid: 00d230803ef2fcf4985f4410a78e5677, type: 3}
 --- !u!4 &127414535
 Transform:

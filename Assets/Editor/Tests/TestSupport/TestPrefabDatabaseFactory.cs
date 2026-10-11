@@ -24,7 +24,7 @@ namespace PlanetMiner.Tests
                     continue;
                 }
                 Entity prefab = manager.CreateEntity(typeof(Prefab), typeof(LocalTransform));
-                manager.GetBuffer<BuildingPrefabElement>(database).Add(new BuildingPrefabElement(type, prefab));
+                manager.GetBuffer<BuildingPrefabElement>(database).Add(new BuildingPrefabElement(type, 1, prefab));
             }
             return database;
         }

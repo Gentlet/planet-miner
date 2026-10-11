@@ -121,6 +121,8 @@ Item/Recipe는 ECS 버퍼로 시작 시 한 번 게시하고 런타임 교체를
 
 ### R-01 — 건물 크기와 새 현장 자재 합산의 산술 한계
 
+2026-10-11 티어·표시 이름 후속: 크기/비용 조회 키를 종류·티어로 확장하고 개별 양수 int/중복 조합을 검사했으나 size.x*size.y·requiredCapacity*2·현장 자재 누적 연산과 실행량/지원 상한은 변경하지 않았다. 티어 번호를 크기 배율로 쓰지도 않는다. 기존 11종 수치는 유지하고 검증용 3티어 2×3 실행만 확인했으므로 R-01 검토 상태를 유지한다. 이 후속은 문서만 변경하며 새 산술 경계 실행은 없다. [관련 영향 정리](BuildingTierAndDisplayName-Verification.md#2026-10-11-관련-이슈-후속-정리).
+
 2026-10-11 F-022 후속: 건물 크기의 원본은 Config 한 곳으로 확정했고 누락·소수/문자열 숫자·int 표현 범위 밖·비양수 축을 거절한다. 하지만 각 축이 양수 int인 50,000×50,000은 계속 허용되고 공간 Sync의 int 면적/용량 계산은 바뀌지 않았다. 개별 값 검증과 면적·좌표·누적량·실행량 상한은 구분한다. 아래 원본 위험과 별도 검토 상태를 유지하며 새 overflow/거대 맵 실행은 없다. [현재 근거](F022-Verification.md#2026-10-11-관련-이슈-후속-정리).
 
 코드 확인: 건물 설정의 Footprint는 양수와 2개 차원만 검사한다. BuildingSpatialSyncSystem은 size.x*size.y와 requiredCapacity*2를 int로 계산한다. 예를 들어 양수 50,000×50,000은 int 양수 범위를 초과한다. 배치/등록 루프의 실행량 제한도 없다. 새 ConstructionSupplyReservationUtility는 같은 품목의 Required/Delivered/Reserved를 int로 합산하므로 여러 개의 큰 정상 양수 행을 입력할 때도 합산 한계가 생긴다.

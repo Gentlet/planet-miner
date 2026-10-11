@@ -100,13 +100,15 @@ public struct PlacementValidationResult
 public struct PlacementCandidate
 {
     public BuildingTypeEnum TargetType;
+    public int TargetTier;
     public int2 FootprintSize;
     public int2 OriginPosition;
     public DirectionEnum Direction;
 
-    public PlacementCandidate(BuildingTypeEnum targetType, int2 footprintSize, int2 originPosition, DirectionEnum direction = DirectionEnum.Up)
+    public PlacementCandidate(BuildingTypeEnum targetType, int targetTier, int2 footprintSize, int2 originPosition, DirectionEnum direction = DirectionEnum.Up)
     {
         TargetType = targetType;
+        TargetTier = targetTier;
         FootprintSize = footprintSize;
         OriginPosition = originPosition;
         Direction = direction;

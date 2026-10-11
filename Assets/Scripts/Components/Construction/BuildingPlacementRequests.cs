@@ -53,6 +53,7 @@ public struct BuildingPlacementReceiptSequence : IComponentData
 public struct PlacementRequestCandidateElement : IBufferElementData
 {
     public BuildingTypeEnum TargetType;
+    public int TargetTier;
     /// <summary>미리보기/사전 검사에 사용한 Config 크기. Command가 원본 설정과 일치하는지 확인하며 덮어쓰기를 허용하지 않는다.</summary>
     public int2 FootprintSize;
     public int2 OriginPosition;
@@ -61,12 +62,14 @@ public struct PlacementRequestCandidateElement : IBufferElementData
 
     public PlacementRequestCandidateElement(
         BuildingTypeEnum targetType,
+        int targetTier,
         int2 footprintSize,
         int2 originPosition,
         DirectionEnum direction = DirectionEnum.Up,
         ulong requestTick = 0)
     {
         TargetType = targetType;
+        TargetTier = targetTier;
         FootprintSize = footprintSize;
         OriginPosition = originPosition;
         Direction = direction;
@@ -75,6 +78,6 @@ public struct PlacementRequestCandidateElement : IBufferElementData
 
     public static implicit operator PlacementCandidate(PlacementRequestCandidateElement elem)
     {
-        return new PlacementCandidate(elem.TargetType, elem.FootprintSize, elem.OriginPosition, elem.Direction);
+        return new PlacementCandidate(elem.TargetType, elem.TargetTier, elem.FootprintSize, elem.OriginPosition, elem.Direction);
     }
 }

@@ -144,7 +144,7 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
         Entity site = CreateSite(int2.zero, new int2(1, 1));
         Entity building = _entityManager.CreateEntity(typeof(BuildingType), typeof(GridPosition),
             typeof(PendingBuildingDemolition), typeof(StoredItemElement));
-        _entityManager.SetComponentData(building, new BuildingType(BuildingTypeEnum.Storage));
+        _entityManager.SetComponentData(building, new BuildingType(BuildingTypeEnum.Storage, 1));
         _entityManager.SetComponentData(building, new GridPosition(new int2(3, 0)));
         Entity item = CreateItem(new int2(9, 9), building);
         _entityManager.GetBuffer<StoredItemElement>(building).Add(new StoredItemElement(item, ItemTypeEnum.Iron, 0));
@@ -179,8 +179,8 @@ public class ConstructionClearanceTests : EcsWorldTestFixture
     {
         Entity site = _entityManager.CreateEntity(typeof(ConstructionSite), typeof(BuildingType),
             typeof(GridPosition), typeof(BuildingFootprint), typeof(Direction), typeof(PlacementStamp));
-        _entityManager.SetComponentData(site, new ConstructionSite(BuildingTypeEnum.Storage, flags));
-        _entityManager.SetComponentData(site, new BuildingType(BuildingTypeEnum.ConstructionSite));
+        _entityManager.SetComponentData(site, new ConstructionSite(BuildingTypeEnum.Storage, 1, flags));
+        _entityManager.SetComponentData(site, new BuildingType(BuildingTypeEnum.ConstructionSite, 0));
         _entityManager.SetComponentData(site, new GridPosition(position));
         _entityManager.SetComponentData(site, new BuildingFootprint(size));
         _entityManager.SetComponentData(site, new Direction(direction));

@@ -1,4 +1,6 @@
 using NUnit.Framework;
+using Newtonsoft.Json.Linq;
+using UnityEngine;
 using PlanetMiner.Config;
 using PlanetMiner.Tests;
 using Unity.Collections;
@@ -122,24 +124,24 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         var matBuffer = _entityManager.GetBuffer<BuildingConstructionMaterialElement>(entity);
 
         // Belt: 1x1, 속도 2.0, 자재 Iron 1개
-        configBuffer.Add(new BuildingConfigElement(BuildingTypeEnum.Belt, 2.0f, 0, true, default, new int2(1, 1)));
-        runtimeBuffer.Add(new BuildingRuntimeConfigElement(BuildingTypeEnum.Belt, 2.0f, 0));
-        matBuffer.Add(new BuildingConstructionMaterialElement(BuildingTypeEnum.Belt, ItemTypeEnum.Iron, 1));
+        configBuffer.Add(new BuildingConfigElement(BuildingTypeEnum.Belt, 1, "Belt", 2.0f, 0, true, default, new int2(1, 1)));
+        runtimeBuffer.Add(new BuildingRuntimeConfigElement(BuildingTypeEnum.Belt, 1, 2.0f, 0));
+        matBuffer.Add(new BuildingConstructionMaterialElement(BuildingTypeEnum.Belt, 1, ItemTypeEnum.Iron, 1));
 
         // Miner: 2x2, 채굴속도 2.0, 자재 Iron 2개
-        configBuffer.Add(new BuildingConfigElement(BuildingTypeEnum.Miner, 2.0f, 0, true, default, new int2(2, 2)));
-        runtimeBuffer.Add(new BuildingRuntimeConfigElement(BuildingTypeEnum.Miner, 2.0f, 0));
-        matBuffer.Add(new BuildingConstructionMaterialElement(BuildingTypeEnum.Miner, ItemTypeEnum.Iron, 2));
+        configBuffer.Add(new BuildingConfigElement(BuildingTypeEnum.Miner, 1, "Miner", 2.0f, 0, true, default, new int2(2, 2)));
+        runtimeBuffer.Add(new BuildingRuntimeConfigElement(BuildingTypeEnum.Miner, 1, 2.0f, 0));
+        matBuffer.Add(new BuildingConstructionMaterialElement(BuildingTypeEnum.Miner, 1, ItemTypeEnum.Iron, 2));
 
         // Storage: 1x1, 슬롯 4, 자재 Iron 3개
-        configBuffer.Add(new BuildingConfigElement(BuildingTypeEnum.Storage, 0.0f, 4, true, default, new int2(1, 1)));
-        runtimeBuffer.Add(new BuildingRuntimeConfigElement(BuildingTypeEnum.Storage, 0.0f, 4));
-        matBuffer.Add(new BuildingConstructionMaterialElement(BuildingTypeEnum.Storage, ItemTypeEnum.Iron, 3));
+        configBuffer.Add(new BuildingConfigElement(BuildingTypeEnum.Storage, 1, "Storage", 0.0f, 4, true, default, new int2(1, 1)));
+        runtimeBuffer.Add(new BuildingRuntimeConfigElement(BuildingTypeEnum.Storage, 1, 0.0f, 4));
+        matBuffer.Add(new BuildingConstructionMaterialElement(BuildingTypeEnum.Storage, 1, ItemTypeEnum.Iron, 3));
 
         // Crafter: 2x2, 속도 2.0, 자재 Iron 4개
-        configBuffer.Add(new BuildingConfigElement(BuildingTypeEnum.Crafter, 2.0f, 0, true, default, new int2(2, 2)));
-        runtimeBuffer.Add(new BuildingRuntimeConfigElement(BuildingTypeEnum.Crafter, 2.0f, 0));
-        matBuffer.Add(new BuildingConstructionMaterialElement(BuildingTypeEnum.Crafter, ItemTypeEnum.Iron, 4));
+        configBuffer.Add(new BuildingConfigElement(BuildingTypeEnum.Crafter, 1, "Crafter", 2.0f, 0, true, default, new int2(2, 2)));
+        runtimeBuffer.Add(new BuildingRuntimeConfigElement(BuildingTypeEnum.Crafter, 1, 2.0f, 0));
+        matBuffer.Add(new BuildingConstructionMaterialElement(BuildingTypeEnum.Crafter, 1, ItemTypeEnum.Iron, 4));
     }
 
     private void RunSimulationTicks(int tickCount, float deltaTime = 0.05f)
@@ -159,7 +161,7 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         return BuildingPlacementRequestUtility.Submit(
             _entityManager, new BuildingPlacementRequest(PlacementFlags.StrictAllOrNothing), new[]
             {
-                new PlacementRequestCandidateElement(type, size, pos, dir)
+                new PlacementRequestCandidateElement(type, 1, size, pos, dir)
             });
     }
 
@@ -212,7 +214,7 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
     private Entity CreateCompletedBelt(int2 pos, DirectionEnum dir, float speed = 2.0f)
     {
         var entity = Entities.CreateBelt(pos, dir, speed);
-        _entityManager.AddComponentData(entity, new BuildingType(BuildingTypeEnum.Belt));
+        _entityManager.AddComponentData(entity, new BuildingType(BuildingTypeEnum.Belt, 1));
         _entityManager.AddComponentData(entity, new BuildingFootprint(new int2(1, 1)));
         return entity;
     }
@@ -389,6 +391,18 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         Assert.AreEqual(0, siteQuery.CalculateEntityCount(), "충돌 배치 시 공사 현장이 생성되지 않아야 함");
         Assert.IsTrue(_entityManager.Exists(beltEntity), "기존 벨트는 안전하게 유지되어야 함");
 
+        // 같은 종류라도 다른 티어 요청을 방향 변경으로 소비하지 않는다.
+        using (var configQuery = _entityManager.CreateEntityQuery(typeof(BuildingConfig)))
+            _entityManager.GetBuffer<BuildingConfigElement>(configQuery.GetSingletonEntity()).Add(
+                new BuildingConfigElement(BuildingTypeEnum.Belt, 3, "Belt", 2f, 0, true, footprint: new int2(1, 1)));
+        BuildingPlacementRequestUtility.Submit(_entityManager, new BuildingPlacementRequest(), new[]
+        {
+            new PlacementRequestCandidateElement(BuildingTypeEnum.Belt, 3, new int2(1, 1), beltPos, DirectionEnum.Down)
+        });
+        RunSimulationTicks(1);
+        Assert.AreEqual(0, siteQuery.CalculateEntityCount());
+        Assert.AreEqual(1, _entityManager.GetComponentData<BuildingType>(beltEntity).Tier);
+        Assert.AreEqual(DirectionEnum.Right, _entityManager.GetComponentData<Direction>(beltEntity).dir);
         Assert.AreEqual(0, _invariantValidationSystem.TotalViolationCount);
         siteQuery.Dispose();
     }
@@ -450,6 +464,95 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
 
         Assert.AreEqual(0, _invariantValidationSystem.TotalViolationCount);
         siteQuery.Dispose();
+    }
+
+    [Test]
+    public void TieredStorage_UsesSelectedUnlockCostSizePrefabCapacityAndRefund()
+    {
+        // 종류만 조회하면 1티어 크기·비용·용량을 잘못 적용하는 전체 흐름 회귀를 검증한다.
+        var json = JObject.Parse(Resources.Load<TextAsset>(BuildingConfigLoader.DefaultResourcePath).text);
+        var rows = (JArray)json["buildings"];
+        JObject tier = null;
+        foreach (JObject row in rows)
+            if (row["buildingType"].Value<string>() == "Storage") tier = (JObject)row.DeepClone();
+        tier["tier"] = 3;
+        tier["displayName"] = "Storage"; // 표시 이름 중복과 연속하지 않는 티어 번호를 허용한다.
+        tier["storageCapacity"] = 7;
+        tier["footprint"] = new JArray(2, 3);
+        tier["isUnlockedByDefault"] = false;
+        tier["requiredResearch"] = "storage_3";
+        tier["materials"] = new JArray(new JObject { ["itemType"] = "Copper", ["quantity"] = 3 });
+        rows.Add(tier);
+        Assert.IsTrue(BuildingConfigLoader.TryParseJson(json.ToString(), out var configs, out var costs));
+        using (var oldConfig = _entityManager.CreateEntityQuery(typeof(BuildingConfig)))
+            _entityManager.DestroyEntity(oldConfig.GetSingletonEntity());
+        Entity configEntity = BuildingConfigLoader.PublishConfig(_entityManager, configs, costs);
+        Assert.AreNotEqual(Entity.Null, configEntity);
+        using (var dbQuery = _entityManager.CreateEntityQuery(typeof(BuildingPrefabDatabase)))
+        {
+            Entity tierPrefab = _entityManager.CreateEntity(typeof(Prefab), typeof(LocalTransform), typeof(PostTransformMatrix));
+            _entityManager.SetComponentData(tierPrefab, LocalTransform.Identity);
+            _entityManager.SetComponentData(tierPrefab, new PostTransformMatrix { Value = float4x4.Scale(1.25f) });
+            _entityManager.GetBuffer<BuildingPrefabElement>(dbQuery.GetSingletonEntity()).Add(
+                new BuildingPrefabElement(BuildingTypeEnum.Storage, 3, tierPrefab));
+        }
+        int2 position = new int2(50, 50);
+        var candidate = new PlacementRequestCandidateElement(BuildingTypeEnum.Storage, 3, new int2(2, 3), position, DirectionEnum.Right);
+        BuildingPlacementRequestUtility.Submit(_entityManager, new BuildingPlacementRequest(), new[] { candidate });
+        RunSimulationTicks(1);
+        using var sites = _entityManager.CreateEntityQuery(typeof(ConstructionSite));
+        Assert.AreEqual(0, sites.CalculateEntityCount(), "3티어 잠금은 1티어의 해금 상태로 우회할 수 없다.");
+        var configBuffer = _entityManager.GetBuffer<BuildingConfigElement>(configEntity);
+        Assert.IsTrue(BuildingConfigLookupUtility.SetBuildingUnlocked(ref configBuffer, BuildingTypeEnum.Storage, 3, true));
+        BuildingPlacementRequestUtility.Submit(_entityManager, new BuildingPlacementRequest(), new[] { candidate });
+        RunSimulationTicks(1);
+        Entity site = sites.GetSingletonEntity();
+        Assert.AreEqual(3, _entityManager.GetComponentData<ConstructionSite>(site).TargetTier);
+        PlacementStamp stamp = _entityManager.GetComponentData<PlacementStamp>(site);
+        var requirements = _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site);
+        Assert.AreEqual(1, requirements.Length);
+        Assert.AreEqual(ItemTypeEnum.Copper, requirements[0].ItemType);
+        Assert.AreEqual(3, requirements[0].RequiredQuantity);
+        PrepareDeliveredMaterial(site, ItemTypeEnum.Copper);
+        PrepareDeliveredMaterial(site, ItemTypeEnum.Copper);
+        RunSimulationTicks(1);
+        Assert.IsTrue(_entityManager.Exists(site), "해당 티어의 모든 자재가 도착해야 완공한다.");
+        PrepareDeliveredMaterial(site, ItemTypeEnum.Copper);
+        RunSimulationTicks(1);
+        Assert.IsFalse(_entityManager.Exists(site));
+        var map = _entityManager.CreateEntityQuery(typeof(BuildingSpatialIndex)).GetSingleton<BuildingSpatialIndex>().Map;
+        Entity building = map[position].Entity;
+        Assert.AreEqual(3, _entityManager.GetComponentData<BuildingType>(building).Tier);
+        Assert.AreEqual(7, _entityManager.GetComponentData<Storage>(building).SlotCount);
+        Assert.IsTrue(_entityManager.HasComponent<PostTransformMatrix>(building), "선택한 3티어 원형의 고유 데이터를 보존한다.");
+        Assert.AreEqual(new int2(2, 3), _entityManager.GetComponentData<BuildingFootprint>(building).Size);
+        Assert.AreEqual(stamp, _entityManager.GetComponentData<PlacementStamp>(building));
+        for (int y = 0; y < 2; y++)
+            for (int x = 0; x < 3; x++)
+                Assert.AreEqual(3, map[position + new int2(x, y)].Tier);
+        int2 directPosition = new int2(70, 70);
+        BuildingPlacementRequestUtility.SubmitSpawn(_entityManager,
+            new SpawnBuildingRequest(BuildingTypeEnum.Storage, 3, directPosition, DirectionEnum.Left));
+        RunSimulationTicks(1);
+        map = _entityManager.CreateEntityQuery(typeof(BuildingSpatialIndex)).GetSingleton<BuildingSpatialIndex>().Map;
+        Entity direct = map[directPosition].Entity;
+        Assert.AreEqual(3, _entityManager.GetComponentData<BuildingType>(direct).Tier);
+        Assert.AreEqual(new int2(2, 3), _entityManager.GetComponentData<BuildingFootprint>(direct).Size);
+        Assert.AreEqual(7, _entityManager.GetComponentData<Storage>(direct).SlotCount);
+        Assert.IsTrue(_entityManager.HasComponent<PostTransformMatrix>(direct));
+        RequestDemolish(building);
+        RunSimulationTicks(1);
+        Assert.IsFalse(_entityManager.Exists(building));
+        using var items = _entityManager.CreateEntityQuery(typeof(ItemIdentity), typeof(ItemOwnership));
+        using var identities = items.ToComponentDataArray<ItemIdentity>(Allocator.Temp);
+        using var owners = items.ToComponentDataArray<ItemOwnership>(Allocator.Temp);
+        Assert.AreEqual(3, identities.Length, "환급은 선택한 티어의 Copper 3개만 생성한다.");
+        for (int i = 0; i < identities.Length; i++)
+        {
+            Assert.AreEqual(ItemTypeEnum.Copper, identities[i].Type);
+            Assert.AreEqual(Entity.Null, owners[i].Owner);
+        }
+        Assert.AreEqual(0, _invariantValidationSystem.TotalViolationCount);
     }
 
 }

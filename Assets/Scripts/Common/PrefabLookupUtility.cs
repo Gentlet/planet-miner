@@ -13,11 +13,12 @@ public static class PrefabLookupUtility
     public static bool TryGetBuildingPrefab(
         in DynamicBuffer<BuildingPrefabElement> buffer,
         BuildingTypeEnum type,
+        int tier,
         out Entity prefab)
     {
         for (int i = 0; i < buffer.Length; i++)
         {
-            if (buffer[i].Type == type)
+            if (buffer[i].Type == type && buffer[i].Tier == tier)
             {
                 prefab = buffer[i].Prefab;
                 return prefab != Entity.Null;
