@@ -2,7 +2,7 @@
 
 2026-10-06 도메인 그룹 분리 후 모든 등재 경로를 현재 파일과 대조하고 새 그룹·ECB·공개 대기 예약·통합 테스트를 추가했다. 경로는 저장소 루트 기준이다. 주요 파일의 탐색 색인이며 전체 C# 파일을 빠짐없이 나열하거나 모든 본문을 재감사한 목록은 아니다. 역할·타입 목록은 테스트 실행 결과가 아니다. 위쪽 설계·흐름은 [README.md](README.md)를, 폴더 분류 기준은 [AGENTS.md](../../../AGENTS.md)를 참조한다.
 
-2026-10-04 공사 운송·Progress 제거와 취소/완공의 단계 분리를 반영했다. 현장 취소 요청은 ConstructionCancelCommandSystem이 Command에서 처리하고 Lifecycle Apply는 완공만 담당한다. `TransferOwnershipRequest`의 같은 틱 처리 표시도 제거되었다. 실행 결과와 한계는 [공사 운송 제거 검증](../V2%20Quality%20Evaluation%20Plan/Results/ConstructionTransportRemoval-Verification.md)과 [취소 Command 이동 검증](../V2%20Quality%20Evaluation%20Plan/Results/ConstructionCancelCommand-Verification.md)을 따른다.
+2026-10-04 공사 운송·Progress 제거와 취소/완공의 단계 분리를 반영했다. 현장 취소 요청은 ConstructionCancelCommandSystem이 Command에서 처리하고 Lifecycle Apply는 완공만 담당한다. `TransferOwnershipRequest`의 같은 틱 처리 표시도 제거되었다.
 
 ## 공통, 데이터, 설정, Phase
 

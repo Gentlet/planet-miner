@@ -2,7 +2,7 @@
 
 [전체 색인](README.md) · [아이템·보관](ItemsAndStorage.md) · 최초 조사 2026-10-03 · 2026-10-06 도메인 분리·드론 인계 계약 대조
 
-2026-10-04 공사 운송 제거에 따른 BeltMovementState Writer 설명을 갱신했다. 이번 변경의 실행 결과와 한계는 [공사 운송 제거 검증 기록](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/ConstructionTransportRemoval-Verification.md)을 따른다.
+2026-10-04 공사 운송 제거에 따른 BeltMovementState Writer 설명을 갱신했다.
 
 현재 소스의 생성·쿼리·Job 본문을 확인한 정적 분석이다. 이번 문서 작업에서 Unity 컴파일, 테스트, Play Mode, 입력·화면·성능 실행은 검증하지 않았다. 공간 인덱스와 Fence 자체는 전체 색인의 공간 문서에서 다룬다.
 
@@ -10,7 +10,7 @@
 
 `BeltDestinationReservationSystem`의 후보는 건물 출고와 Routing 전달이다. 일반 `BeltMovementDecision`은 이 예약을 거치지 않는다. 공간 조회는 Synchronization에서 구축된 Belt/Item 맵과 각 Fence를 사용하며 실제 이동·출고·Routing 이후의 공간 위치는 다음 Synchronization에서 다시 등록한다. [일반 이동](../../../Assets/Scripts/Systems/Buildings/Decision/BeltMovementDecisionSystem.cs), [Execution](../../../Assets/Scripts/Systems/Buildings/Execution/BeltMovementExecutionSystem.cs), [예약 후보](../../../Assets/Scripts/Systems/Buildings/Reservation/BeltDestinationReservationSystem.cs), [Routing 반영](../../../Assets/Scripts/Systems/Buildings/StateApply/RoutingApplySystem.cs).
 
-2026-10-04 철거가 Command에서 승인되면 EndCommand에 PendingBuildingDemolition이 게시된다. Belt Movement Decision은 현재 철거 벨트의 이동을 0으로 하고 다음 철거 벨트로 넘어가지 않도록 경계 직전까지 접근한다. Input Decision도 철거 출발 벨트/목적 건물을 제외하며 출고·Split/Merge는 철거 owner 및 입력/출력 벨트를 제외한다. 공간 인덱스를 조기에 변경하지 않는다. 실제 벨트 아이템 정지와 철거는 기존 EndBuilding, 인덱스 갱신은 Synchronization이다. [현재 검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDemolitionStop-Verification.md)을 따른다.
+2026-10-04 철거가 Command에서 승인되면 EndCommand에 PendingBuildingDemolition이 게시된다. Belt Movement Decision은 현재 철거 벨트의 이동을 0으로 하고 다음 철거 벨트로 넘어가지 않도록 경계 직전까지 접근한다. Input Decision도 철거 출발 벨트/목적 건물을 제외하며 출고·Split/Merge는 철거 owner 및 입력/출력 벨트를 제외한다. 공간 인덱스를 조기에 변경하지 않는다. 실제 벨트 아이템 정지와 철거는 기존 EndBuilding, 인덱스 갱신은 Synchronization이다.
 
 ## BeltComponent
 
@@ -25,7 +25,7 @@
 
 - **종류·부착 대상:** 아이템의 `IComponentData, IEnableableComponent`. `Progress`는 현재 타일 입구 0, 중심 0.5, 출구 1의 영속 진행도다. 활성 상태는 일반 벨트 이동 Job의 처리 대상 여부를 결정한다.
 - **초기화·활성화:** `ItemLifecycleUtility`는 모든 새 아이템에 미리 붙이고 비활성화한다. World 목적지로 벨트 셀에 스폰했다는 이유만으로 여기서 켜지지는 않는다. Storage Apply의 출고와 Routing Apply의 전달이 Progress=0과 활성 상태를 직접 기록한다.
-- **Reader:** 일반 이동, 건물 입고와 Splitter/Merger의 종단 원본 선택은 월드 소유와 활성 이동 상태를 요구한다. 입고 쿼리는 비활성 프레임 결정을 다시 판단하려고 enable 필터를 무시하지만 Job의 `EnabledRefRO<BeltMovementState>`로 실제 이동 활성 여부를 검사한다. Routing은 원본 lookup의 `IsComponentEnabled`를 확인한 뒤 기존 종단 진행도를 비교한다. 정체된 활성 실물도 후보이며 비활성 실물의 잔여 Progress는 자격이 아니다. 목적지 공간의 `BeltEntryUtility`도 월드 소유·활성 이동 실물만 점유로 센다. 원본 자격과 목적지 공간/경합은 서로 다른 검사다. [F-032 구현·검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/F032-Verification.md).
+- **Reader:** 일반 이동, 건물 입고와 Splitter/Merger의 종단 원본 선택은 월드 소유와 활성 이동 상태를 요구한다. 입고 쿼리는 비활성 프레임 결정을 다시 판단하려고 enable 필터를 무시하지만 Job의 `EnabledRefRO<BeltMovementState>`로 실제 이동 활성 여부를 검사한다. Routing은 원본 lookup의 `IsComponentEnabled`를 확인한 뒤 기존 종단 진행도를 비교한다. 정체된 활성 실물도 후보이며 비활성 실물의 잔여 Progress는 자격이 아니다. 목적지 공간의 `BeltEntryUtility`도 월드 소유·활성 이동 실물만 점유로 센다. 원본 자격과 목적지 공간/경합은 서로 다른 검사다.
 - **Writer·처리:** Execution의 `BeltMovementExecutionSystem`이 계획을 Progress에 더하고 다음 벨트로 넘어가면 GridPosition과 잔여 진행도를 갱신한다. 종단은 1에서 멈추며 위치는 `셀 중심 + 방향*(Progress-0.5)`다. StateApply의 출고/Routing은 새 벨트 입구로 재설정한다.
 - **비활성·수명:** 일반 입고는 즉시 비활성화한다. 드론 인계의 `ItemOwnershipApplySystem.TryTransferItem`도 성공 실물의 이동 상태를 즉시 비활성화하며 새 방출품을 자동 벨트 이동시키지 않는다. Building Lifecycle은 철거한 벨트 셀에 있는 아이템의 비활성화를 EndBuilding ECB에 기록하며 활성 Destroy는 건너뛴다. 이전 공사 운송의 전용 수령 경로는 제거되었다. 컴포넌트는 보관 중에도 남고 실물 삭제 시 소멸한다. 매 틱 소비되는 Decision과 달리 Progress는 보존된다.
 - **근거:** [선언](../../../Assets/Scripts/Components/Belts/BeltComponents.cs), [초기화](../../../Assets/Scripts/Common/ItemLifecycleUtility.cs), [Execution](../../../Assets/Scripts/Systems/Buildings/Execution/BeltMovementExecutionSystem.cs), [입출고](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingItemStorageApplySystem.cs), [Routing](../../../Assets/Scripts/Systems/Buildings/StateApply/RoutingApplySystem.cs), [철거](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingLifecycleApplySystem.cs).

@@ -24,7 +24,7 @@ SimulationSystemGroup
 - Synchronization은 최상위 OrderLast로 최종 확정 후 공간 맵을 재구축한다. 각 NativeContainer의 Fence와 ECS Job 의존성은 그룹 순서와 별도로 유지한다. WorldInvariantValidationSystem은 내부 마지막 검증이다.
 - Ready/Fatal은 GameSimulationGroup의 틱 시작에 검사한다. 중간 ECB에서 Fatal이 생겨도 현재 틱은 마치고 다음 틱부터 차단한다. 전체 rollback을 보장하지 않는다.
 
-현재 상세 계약과 실행 원본은 [건설·드론 명세](../../Specifications/ConstructionAndDroneSupply.md), [드론 컴포넌트](../../CodeMemory/Components/DroneLogistics.md), [도메인 분리 검증](../V2%20Quality%20Evaluation%20Plan/Results/BuildingDroneDomainSplit-Verification.md)을 따른다. 프로젝트 ECS 정의는 103개이고 드론 계약은 그중 23개다. 수는 파일 수나 런타임 엔티티 수가 아니다.
+현재 상세 계약은 [건설·드론 명세](../../Specifications/ConstructionAndDroneSupply.md), [드론 컴포넌트](../../CodeMemory/Components/DroneLogistics.md)를 따른다. 프로젝트 ECS 정의는 103개이고 드론 계약은 그중 23개다. 수는 파일 수나 런타임 엔티티 수가 아니다.
 
 같은 그룹 내부 순서는 UpdateBefore/UpdateAfter/OrderLast로 확인한다. 그룹 간 관계는 같은 부모의 그룹에 선언한다. 숫자 폴더·파일 나열·등록 순서로 실행이나 Job 완료를 추정하지 않는다. 각 시스템은 본체 한 파일을 유지한다.
 
@@ -58,14 +58,14 @@ SimulationSystemGroup
 ### 공사·철거와 품질 개선 연결 (2026-10-04 운송 제거 반영)
 
 - 배치 Command가 현장을 만들고 `ConstructionCancelCommandSystem`은 같은 Command에서 취소를 처리한다. 취소와 완공은 단계별로 분리했으며 StateApply의 `ConstructionLifecycleApplySystem`은 완공 Job만 실행한다. 기존 운송 등록·실물 선점·수령·예약 정산·결과 처리 구조는 없다.
-- 취소는 즉시 Cancelled를 설정해 중복 반환을 막고 보관 실물의 Owner·렌더·좌표 복원 및 현장/요청 삭제를 EndCommand에 반영한다. 같은 틱 재배치는 기존 공간 인덱스 점유로 거부하고 Synchronization 이후 새 요청부터 검증한다. 현재 BuildingStateApply 마지막의 Completion은 실제 도착량과 바닥 차단을 확인하고 공통 Spawn 성공 후에만 자재/현장을 EndBuilding에 삭제하며 실패 시 보존한다. 취소의 당시 실행 근거는 [취소 Command 이동 검증](../V2%20Quality%20Evaluation%20Plan/Results/ConstructionCancelCommand-Verification.md), 현재 완공 시점은 도메인 분리 검증을 따른다.
-- `ConstructionSite.Progress` 필드와 생성자 인자는 제거했다. `ConstructionMaterialRequirementElement`의 예약량은 배정·공개 재검사·무효화와 3단계 실물 인계에서 정산하며, DroneTaskLifecycleApplySystem이 실제 공급한 수량을 DeliveredQuantity에 더한다. Storage/DroneStation/MainFacility의 공통 보관 구성은 유지한다. Progress 제거 당시 실행 근거는 [검증 기록](../V2%20Quality%20Evaluation%20Plan/Results/ConstructionProgressRemoval-Verification.md)을 따른다.
-- [F-003 기록](../V2%20Quality%20Evaluation%20Plan/Results/F003-Verification.md)은 2026-10-02 당시 공사 운송 구현과 실행 결과를 보존한 과거 기록이다. 해당 운송 컴포넌트·요청·처리는 2026-10-04 제거되어 현재 구현 근거로 적용하지 않는다. 제거 범위와 새 검증은 [공사 운송 제거 검증 기록](../V2%20Quality%20Evaluation%20Plan/Results/ConstructionTransportRemoval-Verification.md)을 따른다.
-- 철거 승인과 중복 제거는 BuildingDemolitionCommandSystem, 실제 반환/환급/파괴는 BuildingLifecycleApplySystem이 소유한다. EndCommand에서 PendingBuildingDemolition을 게시하고 요청을 모두 삭제한다. Decision은 건물 작업을 중단하며 새 아이템의 건물 입고도 ItemSpawnAdmissionDecisionSystem이 비활성화한다. Item Lifecycle/Ownership은 철거 요청과 상태를 조회하지 않는다. 실행 근거는 [철거 상태·동작 중단 검증](../V2%20Quality%20Evaluation%20Plan/Results/BuildingDemolitionStop-Verification.md)을 따른다.
-- 기존 F-004의 같은 틱 입고/출고와 철거 충돌 처리는 앞단 중단으로 대체했다. Command가 보관 실물의 이전 Transfer와 ProductResult를 소비하고 이후 Decision 후보를 막는다. 활성 Destroy 제외, 기존 내용물 반환/비용 환급 및 일반 생성 실패 계약은 유지한다. [F-004 기록](../V2%20Quality%20Evaluation%20Plan/Results/F004-Verification.md)은 당시 결과를 보존하며 현재 계약은 AGENTS 및 새 철거 상태 검증을 따른다.
+- 취소는 즉시 Cancelled를 설정해 중복 반환을 막고 보관 실물의 Owner·렌더·좌표 복원 및 현장/요청 삭제를 EndCommand에 반영한다. 같은 틱 재배치는 기존 공간 인덱스 점유로 거부하고 Synchronization 이후 새 요청부터 검증한다. 현재 BuildingStateApply 마지막의 Completion은 실제 도착량과 바닥 차단을 확인하고 공통 Spawn 성공 후에만 자재/현장을 EndBuilding에 삭제하며 실패 시 보존한다.
+- `ConstructionSite.Progress` 필드와 생성자 인자는 제거했다. `ConstructionMaterialRequirementElement`의 예약량은 배정·공개 재검사·무효화와 3단계 실물 인계에서 정산하며, DroneTaskLifecycleApplySystem이 실제 공급한 수량을 DeliveredQuantity에 더한다. Storage/DroneStation/MainFacility의 공통 보관 구성은 유지한다.
+- 기존 공사 운송 컴포넌트·요청·처리는 2026-10-04 제거되어 현재 구현으로 적용하지 않는다.
+- 철거 승인과 중복 제거는 BuildingDemolitionCommandSystem, 실제 반환/환급/파괴는 BuildingLifecycleApplySystem이 소유한다. EndCommand에서 PendingBuildingDemolition을 게시하고 요청을 모두 삭제한다. Decision은 건물 작업을 중단하며 새 아이템의 건물 입고도 ItemSpawnAdmissionDecisionSystem이 비활성화한다. Item Lifecycle/Ownership은 철거 요청과 상태를 조회하지 않는다.
+- 기존 F-004의 같은 틱 입고/출고와 철거 충돌 처리는 앞단 중단으로 대체했다. Command가 보관 실물의 이전 Transfer와 ProductResult를 소비하고 이후 Decision 후보를 막는다. 활성 Destroy 제외, 기존 내용물 반환/비용 환급 및 일반 생성 실패 계약은 유지한다. 현재 계약은 [AGENTS.md](../../../AGENTS.md)의 철거 승인·동작 정지 규칙을 따른다.
 - Footprint는 현장/완공 모두 회전 전 크기를 저장하며 점유 Reader가 한 번 회전한다. 배치는 세 인덱스 Writer를 기다리고, 일반 창고 입고 예약은 품목과 수량을 함께 보관한다. 세부 계약은 [AGENTS.md](../../../AGENTS.md)를 따른다.
 - Validator는 Storage 없는 현장을 포함해 두 소유 버퍼의 중복·실존·Identity·Owner를 검사한다. 진단 파일은 World별 세션/보고 순번과 CreateNew로 구분·보존한다. 기본 출력은 `Logs/InvariantErrors`이며 `SetLogDirectory`는 해당 World의 출력 경로만 바꾼다. Phase2BeltIntegrationTests는 사례마다 `Logs/Tests/Phase2BeltIntegrationTests/<실행 GUID>`를 지정하고 로그를 성공·실패 모두 보존하며 공용 로그를 정리하지 않는다. 이 검사는 공사 운송·자재 수령을 수행하지 않는다.
-- 이 절은 소스 대조 결과이며 공사 전체·실제 베이킹·Play Mode 성공을 주장하지 않는다. 이슈별 새 검증과 제한은 [품질 개선 Tasks](../V2%20Quality%20Evaluation%20Plan/V2%20Quality%20Improvement%20Tasks.md)에 기록한다.
+- 이 절은 소스 대조 결과이며 공사 전체·실제 베이킹·Play Mode 성공을 주장하지 않는다.
 
 ### F-037 입력 슬롯 계산·런타임 연결·통합 검증 (2026-09-29 완료)
 
@@ -79,7 +79,7 @@ SimulationSystemGroup
 - `CrafterRecipeCommandSystem`은 계산을 먼저 검증한 뒤 슬롯 수·품목 배정·필터를 함께 갱신한다. 레시피/아이템 설정 미게시 시 선택 요청을 유지하고, 잘못된 레시피/계산 실패는 기존 상태를 보존한 채 오류와 함께 요청을 소비한다. 레시피 해제는 설정 없이도 0슬롯/빈 필터로 처리한다. 잔여 입력은 원래 슬롯 구분을 유지하여 기존 출력 슬롯 뒤로 옮기고, 배출 완료 전 입고/제작 대기를 유지한다.
 - 입고 Decision은 0슬롯을 거부하고, Reservation은 입력 슬롯 버퍼가 있는 건물에 해당 품목 슬롯만 배정한다. 같은 프레임의 예약 수량과 기존 보관량을 합산해 MaxStack을 적용한다. 버퍼가 없는 일반 창고의 기존 예약 규칙은 유지한다. 불변식 검사는 입력 슬롯 길이·보관 품목 대응을 확인하며, 미선택/무재료 Crafter의 정상적인 빈 입력 구성만 0슬롯으로 허용한다.
 - 당시 회귀는 `Phase5CrafterInputPipelineTests`의 개별 시스템 15개와 실제 정렬된 제작·물류 여섯 단계 통합 4개로 검증했다. 직접 생성/공사 완료 × 전체 테스트 DB/선택 타입 테스트 DB의 네 경로에서 아이템 요청→공급 창고→벨트→제작기 입고→선소비→생산→벨트→목적지 창고를 실행했고, 레시피 미선택 입고 차단·변경 시 잔여물 배출·해제와 불변식 위반 0건을 확인했다. 현재 fixture는 Command→Building→Synchronization이며 당시 그룹 설명과 구분한다.
-- 3단계 결과: Unity 6000.4.11f1 재컴파일 `completed`, 오류 0, 런타임/테스트 어셈블리 최신성 확인. 입력 연결 EditMode 19/19 통과(실패/생략/Inconclusive 0). 로그는 `Logs/Codex/F037-stage3-integration-verification.json`, 상세 기록은 [F-037 검증 기록](../V2%20Quality%20Evaluation%20Plan/Results/F037-Verification.md). 실제 SubScene baked prefab, Play Mode, 전체 게임 시스템, 전체 EditMode는 실행하지 않았다. 당시 `RecipeBlob.TryFindIngredient` 및 제작 재료 집계(F-014)는 변경하지 않았다. F-008에서 데이터 표현을 버퍼로 바꿨으며 재료 첫 일치 조회·제작 집계의 의미는 유지한다.
+- 3단계 결과: Unity 6000.4.11f1 재컴파일 `completed`, 오류 0, 런타임/테스트 어셈블리 최신성 확인. 입력 연결 EditMode 19/19 통과(실패/생략/Inconclusive 0). 로그는 `Logs/Codex/F037-stage3-integration-verification.json`. 실제 SubScene baked prefab, Play Mode, 전체 게임 시스템, 전체 EditMode는 실행하지 않았다. 당시 `RecipeBlob.TryFindIngredient` 및 제작 재료 집계(F-014)는 변경하지 않았다. F-008에서 데이터 표현을 버퍼로 바꿨으며 재료 첫 일치 조회·제작 집계의 의미는 유지한다.
 - 2단계 검증: Unity 재컴파일 `completed`, 오류 0·어셈블리 최신성 확인. 관련 EditMode 59개 사례가 각 최종 실행에서 통과했다(새 입력 연결 15, 기존 제작 8, 레시피 변경 2, 건물 생성 10, 공사 완료 8, 저장 소유권/결정/불변식 15, 기존 물류 통합 1). 최초 실행의 테스트 준비 오류는 설정 기반 MaxStack, 공간 인덱스 초기화, 실제 아이템 생성 계약에 맞춰 수정했다. 마지막 입력 연결 결과는 `Logs/Codex/F037-stage2-input-verification.json`; 이전 실패/중간 결과는 `Logs/Codex/F037-stage2-verification.json`과 구분한다. 전체 EditMode 및 Play Mode는 실행하지 않았다.
 
 ### Task 4.5~4.8 월드 생성 수명주기 (2026-09-27 갱신)

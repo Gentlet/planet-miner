@@ -51,6 +51,13 @@
 - **생명주기·결합:** 항목은 요청처럼 소비하지 않는다. 런타임 Writer·삭제 경로는 없고 ECS가 버퍼를 정리한다. `TransitionVariantCount`와 바이옴의 시작/개수는 이 버퍼의 배치를 함께 설명하는 필드다.
 - **소스:** [정의](../../../Assets/Scripts/Components/World/FloorGenerationConfigComponents.cs), [Sprite 확인·배열 구성](../../../Assets/Scripts/Config/WorldGenerationConfigLoader.cs), [선택·조회](../../../Assets/Scripts/Chunks/FloorBiomeSampler.cs), [미리보기 사용 범위](../../../Assets/Scripts/Debug/V2FloorBiomePreview.cs).
 
+## 바닥 선택과 진단 표시 계약
+
+- 자원과 바닥은 `WorldGenerationConfig.json`의 단일 `worldSeed`를 공유한다. `FloorBiomeSampler.SelectFloor`는 설정·바이옴/변형 버퍼·월드 셀 좌표로 결과를 계산하며 건물·자원 점유를 읽지 않는다. 고정 입력의 결과는 청크·카메라 로드 순서에 의존하지 않는다. 이는 소스 확인이며 이번 문서 정리에서 새 실행 검증을 하지 않았다.
+- 현재 JSON의 바이옴 영역은 3청크, 전이 폭은 총 2청크, 가까운 바이옴 선택 편향 지수는 0.5다. 이는 편집 가능한 현재 설정값이며 지원 상한이나 코드의 고정 기본값이 아니다. 경계 좌표는 노이즈로 변형하고 셀 해시와 가중치로 바이옴·변형을 선택한다. 실제 서로 다른 바이옴 경계의 전이용 변형은 경계 중심에 가까울수록 선택 확률이 높다.
+- 일반 바닥 Sprite 경로·가중치는 바이옴별 `floorVariants`, 전이 Sprite는 `transitionFloorVariants`로 관리한다. `GetVariant`는 전이 구간 또는 바이옴 시작 오프셋을 적용한다. 추가 바이옴·변형을 위한 종류별 코드 분기나 별도 점유 원본을 만들지 않는다.
+- `V2FloorBiomePreview`는 ECS 설정을 읽어 색상 텍스처로 보여 주는 진단 소비자다. 실제 Sprite·메시·머티리얼의 바닥 청크 렌더러가 아니며 미리보기 생성 후 매 프레임 다시 만들지 않는다. 실제 바닥 표시·청크 해제 수명주기는 [Task 10B.6](../../architecture%20v2%20plan/Architecture%20V2%20Tasks.md)에 남는다.
+
 ## ChunkLoadRequestQueue
 
 - **목적·종류:** 청크 좌표 요청 버퍼의 엔티티를 찾는 필드 없는 `IComponentData` 태그다. 청크 하나마다 붙는 태그가 아니며 요청 큐 싱글톤에 부착된다.

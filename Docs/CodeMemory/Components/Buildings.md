@@ -4,9 +4,9 @@
 
 최초 조사 2026-10-03, 2026-10-06 도메인 분리·드론 인계의 직접 계약을 현재 소스와 대조했다. 아래의 처리·순서는 구현된 호출과 쿼리 기준이며, 이번 문서 감사에서 컴파일·테스트·Play Mode는 실행하지 않았다. `BuildingSpatialIndex`와 Fence는 전체 색인의 공간 인덱스 문서에서 다룬다.
 
-2026-10-04 기존 공사 운송의 전용 공급원 등록·자재 수령·운송 예약 처리를 제거하고 현장 취소·완공을 유지했다. 이후 새 드론 계약의 공급원 선택·현장 공급 예약·신호 기반 실물 인계가 연결되었으며 [드론 문서](DroneLogistics.md)를 따른다. 제거 당시의 실행 결과와 한계는 [공사 운송 제거 검증 기록](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/ConstructionTransportRemoval-Verification.md)에 보존한다.
+2026-10-04 기존 공사 운송의 전용 공급원 등록·자재 수령·운송 예약 처리를 제거하고 현장 취소·완공을 유지했다. 이후 새 드론 계약의 공급원 선택·현장 공급 예약·신호 기반 실물 인계가 연결되었으며 [드론 문서](DroneLogistics.md)를 따른다.
 
-2026-10-11 티어·표시 이름 후속: 정의 키는 종류·명시적 양수 티어이며 표시 이름은 설정에서만 보관한다. JSON/공개 게시/사전 등록은 무효 키·중복 조합·빈 표시 이름·비양수 크기·정의 없는 건축 비용을 거절한다. 자동 Init은 기존 Fatal 정책이고 사전 등록 원본은 보존한다. 표시 이름은 중복 허용/125 UTF-8 bytes 이하이며 공개 조회로 제공한다. 실제 데이터는 기존 11종의 1티어·현재 종류명·기존 수치다. 초기화 호환 버퍼도 같은 키 집합이어야 한다. UI·그림 보정·승급·연구 Writer는 후속이다. [현재 명세](../../Specifications/BuildingTierAndDisplayName.md), [검증 기록](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingTierAndDisplayName-Verification.md).
+2026-10-11 티어·표시 이름 후속: 정의 키는 종류·명시적 양수 티어이며 표시 이름은 설정에서만 보관한다. JSON/공개 게시/사전 등록은 무효 키·중복 조합·빈 표시 이름·비양수 크기·정의 없는 건축 비용을 거절한다. 자동 Init은 기존 Fatal 정책이고 사전 등록 원본은 보존한다. 표시 이름은 중복 허용/125 UTF-8 bytes 이하이며 공개 조회로 제공한다. 실제 데이터는 기존 11종의 1티어·현재 종류명·기존 수치다. 초기화 호환 버퍼도 같은 키 집합이어야 한다. UI·그림 보정·승급·연구 Writer는 후속이다. [현재 명세](../../Specifications/BuildingTierAndDisplayName.md).
 
 건물의 공통 데이터는 `BuildingType + BuildingFootprint + GridPosition + Direction + PlacementStamp`다. 배치 Command가 만드는 엔티티는 공사 현장이고, 완공 시에는 `ConstructionLifecycleApplySystem`이 공통 생성 유틸리티로 별도의 완공 건물 엔티티를 만든다. `SpawnBuildingRequest`도 같은 유틸리티를 호출한다. 현장은 EndCommand, 완공 건물의 생성·철거는 EndBuilding에서 실체화되고, 그 후 Synchronization에서 공간 인덱스에 반영된다.
 
@@ -129,4 +129,4 @@
 - **Reader·중단:** 입고 Decision은 철거 목적지와 철거 출발 벨트를 제외한다. 저장/생산품 출고와 채굴/제작 Decision은 승인 건물의 이전 결정을 초기화하고 비활성화한다. 벨트 이동은 현재 철거 벨트에서 정지하고 다음 철거 벨트의 경계 직전까지만 접근한다. Splitter/Merger는 철거 라우터·입력/출력 벨트를 후보에서 제외한다. ItemSpawnAdmissionDecisionSystem은 해당 Storage/Product 요청을 비활성화해 생성 후보에서 빼고 EndBuilding에 삭제한다.
 - **StateApply·소비:** BuildingLifecycleApplySystem이 승인 태그로 대상을 조회하며 철거 정책을 재검증하지 않는다. BuildingType 소실만 방어하고 이 경우 태그만 제거한다. 유효 대상의 Stored/Product 실물 반환, 건축 비용 환급, 벨트 아이템 정지를 기록하고 EndBuilding에서 건물·태그를 함께 삭제한다. 기존 Disabled 대상의 적용 범위도 유지한다.
 - **반환·실패:** 실물은 새로 생성하지 않고 Owner/렌더/좌표를 건물 위치의 월드 상태로 되돌린다. 활성 Destroy는 반환하지 않는다. 환급은 설정된 비용을 신규 생성하며 프리팹 누락 실패 계약은 기존과 같다. 앞선 틱에 소비한 제작 재료·광물의 별도 보상이나 취소/승인 철회는 추가하지 않았다.
-- **근거:** [상태 정의](../../../Assets/Scripts/Components/Buildings/BuildingComponents.cs), [승인](../../../Assets/Scripts/Systems/Command/BuildingDemolitionCommandSystem.cs), [반환·철거](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingLifecycleApplySystem.cs), [생성 후보 차단](../../../Assets/Scripts/Systems/Items/Decision/ItemSpawnAdmissionDecisionSystem.cs), [검증 기록](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDemolitionStop-Verification.md).
+- **근거:** [상태 정의](../../../Assets/Scripts/Components/Buildings/BuildingComponents.cs), [승인](../../../Assets/Scripts/Systems/Command/BuildingDemolitionCommandSystem.cs), [반환·철거](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingLifecycleApplySystem.cs), [생성 후보 차단](../../../Assets/Scripts/Systems/Items/Decision/ItemSpawnAdmissionDecisionSystem.cs).
