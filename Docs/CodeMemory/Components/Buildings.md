@@ -27,6 +27,8 @@
 
 ## BuildingType
 
+2026-10-12 Task 8.1은 BuildingConfigElement.Power를 게시하고 석탄 발전기의 설정 슬롯을 임시 1로 변경했다. JSON·공개 게시·사전 등록의 전력 검증과 정의/실행 경계는 [전력 계약](PowerGrid.md)을 따른다. 위 공통 생성 표의 전력 참가자 부착/실제 발전은 여전히 후속이며 설정 게시와 구분한다.
+
 - **종류·부착 대상·목적:** 일반 `IComponentData`. 완공 건물과 공사 현장 엔티티의 종류와 티어를 `Type: BuildingTypeEnum`, `Tier: int`로 식별한다. 완공 건물은 명시적 양수 티어이며 현장 분류는 Tier 0이다. 현장의 목표 티어는 ConstructionSite가 소유한다. 타입만으로 저장·채굴·전력 등의 구성이 자동으로 붙는 것은 아니다.
 - **생성:** 배치 Command는 현장에 `ConstructionSite` 값을 EndCommand ECB로 붙인다. `BuildingLifecycleUtility.SpawnBuilding`은 등록된 프리팹을 인스턴스화하고 대상 종류·티어를 EndBuilding ECB로 붙인다. 현재 Building DB Baker는 프리팹 참조 DB를 제공하며 이 런타임 구성은 공통 생성 함수가 담당한다.
 - **읽기:** Command의 `BuildingDemolitionCommandSystem`이 철거 대상 종류를 판정한다. Decision의 `SplitterDecisionSystem`/`MergerDecisionSystem`이 대상 라우터 쿼리·타입을 확인한다. StateApply의 건물 철거가 종류를 확인하고, Synchronization의 `BuildingSpatialSyncSystem`이 각 점유 셀의 `BuildingInfo.Type/Tier`로 복사한다.

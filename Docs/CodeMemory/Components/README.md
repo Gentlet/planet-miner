@@ -17,10 +17,13 @@
 
 ## 문서 구성
 
+2026-10-12 Task 8.1 후속 정리의 전력 ECS 계약 10개를 별도 문서로 연결했다. 위 103개/9개 문서는 이전 조사 기록이며 현재 전체 소스 수를 새로 집계한 수치가 아니다. 전력 Writer와 참가자 생성 연결은 아직 후속이다.
+
 | 하위 문서 | 타입 수 | 설명 범위 |
 | --- | ---: | --- |
 | [공통 좌표와 공간 인덱스](CommonAndSpatial.md) | 10 | GridPosition/Direction, 공간 조회 맵과 Job 의존성 |
 | [건물과 건물 설정](Buildings.md) | 12 | 건물 식별·크기·배치 순번, 설정, 직접 생성과 철거 요청 |
+| [전력 설정과 상태 계약](PowerGrid.md) | 10 | 통합 능력 설정, 토폴로지·연료 원본과 프레임 수요/공급/사용, 준비·공급 실행·정산 경계; 실제 Writer는 후속 |
 | [배치와 공사](Construction.md) | 5 | 배치 묶음, 현장, 자재 요구 데이터, 현장 취소·완공 |
 | [드론 작업 관리 계약](DroneLogistics.md) | 23 | 작업·배정·예약·공통 적재량, 인계 계획·정산·적재품 Direct 재배정·외부 결과 소비 |
 | [아이템과 저장](ItemsAndStorage.md) | 13 | 아이템·소유권·요청, 보관·입출고·입력 슬롯, 현장 내부 World Spawn 거부 |
@@ -82,6 +85,23 @@ flowchart LR
 ## 전체 컴포넌트 색인
 
 종류의 **상태**는 일반 IComponentData, **활성 상태**는 IEnableableComponent 구현, **버퍼**는 IBufferElementData를 뜻한다. 활성 상태에는 IEnableableRequest의 간접 구현도 포함했다.
+
+### 전력 계약 (Task 8.1)
+
+아래 타입의 실제 Writer와 참가자 부착은 후속이며 현재는 정의와 실행 경계가 준비됐다.
+
+| 컴포넌트 상세 | 종류 | 정의 파일 |
+| --- | --- | --- |
+| [PowerPole](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
+| [PowerGenerator](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
+| [PowerConsumer](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
+| [PowerGrid](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
+| [PowerGridConnection](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
+| [FuelEnergyState](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
+| [PowerDemand](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
+| [PowerSupplyResult](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
+| [PowerUsageResult](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
+| [PowerGeneratorSupplyPlan](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
 
 ### 공통 좌표와 공간 인덱스
 

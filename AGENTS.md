@@ -78,6 +78,8 @@ Decision은 생성·무효화·경로 의도와 후보만 작성한다. Executio
 다음 추천인 [공통 적재량 초기화 검토안](Docs/Specifications/DroneCapacityInitializationPlan.md)은 설정 출처·오류 정책·기존 singleton 처리 결정 전의 제안으로 구현 승인이 아니다. 개발 마일스톤 Phase7 등의 숫자는 런타임 그룹 개수를 뜻하지 않는다.
 ## 핵심 데이터와 변경 규칙
 
+2026-10-12 Task 8.1은 BuildingConfig의 종류·Tier별 전력 능력 검증/게시, 전력 ECS 컴포넌트 계약과 빈 실행 그룹을 추가했다. PowerPreparationGroup은 BuildingReservation 마지막, PowerSupplyExecutionGroup은 BuildingExecution 처음, PowerSettlementGroup은 SimulationCommit의 EndSimulation ECB 앞이다. 실제 토폴로지·수요/공급·연료·생산/충전 Writer와 참가자 부착은 후속이며 현재 전력 가동으로 표시하지 않는다. 필드·소유자·석탄 전환/실제 사용 정산과 검증 범위는 [전력 명세](Docs/Specifications/PowerGrid.md), [전력 컴포넌트 계약](Docs/CodeMemory/Components/PowerGrid.md)을 따른다.
+
 ### 공간과 작업 의존성
 
 - ECS 컴포넌트가 원본 상태다. `GridPosition.Value`가 격자 좌표이며 건물·공사 현장은 좌하단 기준점으로 사용한다. `LocalTransform`만 바꾸어 공간 이동을 전달하는 기존 방식은 현재 구조에 없다.
@@ -123,10 +125,10 @@ Decision은 생성·무효화·경로 의도와 후보만 작성한다. Executio
 | --- | --- |
 | `Assets/StreamingAssets/ItemConfig.json` | `ItemConfigInitSystem` → `ItemRegistry` 태그 / `ItemConfigElement` 버퍼. None을 제외한 모든 품목의 명시적 양수 MaxStack이 필수이며 파일/파싱/검증 실패는 중단 오류다. |
 | `Assets/Resources/Config/CrafterRecipeConfig.json` | `RecipeInitSystem` / `RecipeConfigLoader` → `RecipeRegistry`와 레시피·재료·출력 버퍼. 전체 초기화는 ID 1~5를 요구하며 파일 실패 뒤 기본 레시피로 대체하지 않는다. |
-| `Assets/Resources/Config/BuildingConfig.json` | `BuildingConfigInitSystem` / `BuildingConfigLoader` → `BuildingConfigElement`, `BuildingConstructionMaterialElement`, 호환용 `BuildingRuntimeConfigElement`. 검증 실패 시 게시하지 않는다. |
+| `Assets/Resources/Config/BuildingConfig.json` | `BuildingConfigInitSystem` / `BuildingConfigLoader` → 전력 능력 Power를 포함한 `BuildingConfigElement`, `BuildingConstructionMaterialElement`, 호환용 `BuildingRuntimeConfigElement`. 역할별 전력 검증을 포함하며 실패 시 게시하지 않는다. |
 | `Assets/Resources/Config/WorldGenerationConfig.json` | `WorldGenerationConfigLoadSystem` / `WorldGenerationConfigLoader` → 자원 설정과 `FloorGenerationSettings`, `FloorBiomeElement`, `FloorVariantElement`를 같은 엔티티에 게시한다. 자원·바닥·Sprite 참조 검증 실패 시 부분 게시하지 않는다. |
 
-`BuildingConfigLoadSystem.cs`에는 실제 로더인 managed `BuildingConfigInitSystem`과, `BuildingConfig`를 요구하고 한 번 실행 후 비활성화되는 `BuildingConfigLoadSystem`이 함께 있다. 이름만 보고 로드 책임을 잘못 배정하지 않는다. 기존 전력·드론·연구·시작 아이템 JSON의 존재는 현재 로더가 사용한다는 증거가 아니다.
+`BuildingConfigLoadSystem.cs`에는 실제 로더인 managed `BuildingConfigInitSystem`과, `BuildingConfig`를 요구하고 한 번 실행 후 비활성화되는 `BuildingConfigLoadSystem`이 함께 있다. 이름만 보고 로드 책임을 잘못 배정하지 않는다. 전력 능력은 BuildingConfig로 통합했고 별도 PowerConfig.json은 제거했다. 기존 드론·연구·시작 아이템 JSON의 존재는 현재 로더가 사용한다는 증거가 아니다.
 
 - 2026-10-08 F-011: 현재 네 설정 로드 경로와 프리팹 준비는 파일 누락·읽기/파싱 실패·필수 데이터 누락을 로그·해당 설정 미게시·즉시 `SimulationFatalError`로 처리한다. 앱 종료·자동 재시도는 추가하지 않는다. 건물은 None/Count/ConstructionSite를 제외한 11종, 레시피는 ID 1~5가 필수다. 자원과 바닥은 같은 엔티티의 전체 구성을 요구한다. 정상 설정의 빈 건축 자재는 유지한다. 당시의 기본 footprint는 후속 F-022에서 명시적 양수 설정으로 변경했다. 당시 아이템의 공통값/품목별 기본 규칙은 후속 F-007에서 전체 명시 설정으로 변경했다. 격리 테스트는 Init 없이 필요한 최소 데이터를 명시적으로 게시한다. 배치와 공통 Spawn은 설정 부재를 허용하지 않으며 Spawn의 대상 종류 누락도 거부한다.
 - 2026-10-11 F-022: 건물 크기는 `Assets/Resources/Config/BuildingConfig.json`의 footprint만 편집한다. 모든 건물에 양수 두 축을 명시하며 누락·빈 배열·형식 오류·0·음수는 로드 실패다. 공개 게시와 사전 등록 Init도 양수 크기를 검사한다. Init 실패는 기존 로그·미게시·Fatal 정책을 재사용하고 무효 사전 등록 원본은 보존한다. 프리팹 Authoring/DB의 크기 필드와 자동 기본 규격 표를 제거했다. 티어 구분·건물명 별도 지정, 그림 자동 배율/회전 복원, R-01 산술 상한과 F-025 진입 장면은 후속이며 이번 범위가 아니다.

@@ -4,6 +4,7 @@ using System.Globalization;
 using System.Text;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using PlanetMiner.Config;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -142,9 +143,10 @@ public static class BuildingConfigLoader
             }
 
             // 용량 및 속도 검증
-            if (buildingType == BuildingTypeEnum.Storage ||
+            bool hasStorageSettings = buildingType == BuildingTypeEnum.Storage ||
                 buildingType == BuildingTypeEnum.MainFacility ||
-                buildingType == BuildingTypeEnum.DroneStation)
+                buildingType == BuildingTypeEnum.DroneStation;
+            if (hasStorageSettings || buildingType == BuildingTypeEnum.CoalGenerator)
             {
                 if (entry.storageCapacity <= 0 || entry.storageCapacity > GameConstants.MaxStorageSlots)
                 {
@@ -152,7 +154,7 @@ public static class BuildingConfigLoader
                     return false;
                 }
             }
-            else if (entry.speed < 0f)
+            if (!hasStorageSettings && entry.speed < 0f)
             {
                 Debug.LogError($"[BuildingConfigLoader] {buildingType} has invalid speed {entry.speed} (cannot be negative).");
                 return false;
@@ -186,6 +188,10 @@ public static class BuildingConfigLoader
             {
                 return false;
             }
+            if (!BuildingPowerConfigParser.TryRead(rawEntry, buildingType, tier, out var power))
+            {
+                return false;
+            }
 
             FixedString32Bytes reqResearch = default;
             if (!string.IsNullOrEmpty(entry.requiredResearch))
@@ -207,7 +213,8 @@ public static class BuildingConfigLoader
                 entry.storageCapacity,
                 entry.isUnlockedByDefault,
                 reqResearch,
-                footprint));
+                footprint,
+                power));
 
             // 건설 자재 검증
             if (entry.materials != null)
@@ -240,7 +247,7 @@ public static class BuildingConfigLoader
             }
         }
 
-        if (!ValidateRequiredTypes(seenTypes))
+        if (!ValidateDefinitions(configList, materialList, out _) || !ValidateRequiredTypes(seenTypes))
         {
             return false;
         }
@@ -345,6 +352,10 @@ public static class BuildingConfigLoader
                 return false;
             }
             if (!ValidateFootprint(config.BuildingType, config.Footprint))
+            {
+                return false;
+            }
+            if (!BuildingPowerConfigParser.Validate(config))
             {
                 return false;
             }
