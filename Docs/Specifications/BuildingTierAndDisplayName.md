@@ -28,6 +28,14 @@ PrefabDatabaseInitializationSystem은 기존 단일 DB·원형 생존/Prefab/Loc
 
 표시 이름은 Config 조회 결과로 제공하며 건물마다 복제하지 않는다. 해금 상태와 RequiredResearch는 티어별 행이다. SetBuildingUnlocked는 지정 조합만 갱신하지만 실제 연구 진행 Writer는 후속이다. 티어 변경·기존 건물 승급 Writer는 추가하지 않았다.
 
+## 전력 설정 통합 (2026-10-12 Task 8.1)
+
+사용자는 기존 PowerConfig.json의 전신주 범위·발전량·소비량·석탄 연료 설정을 BuildingConfig.json으로 통합하기로 확정했다. 건물별 전력 능력은 이 문서의 종류·Tier 정의에 연결하며 다른 티어의 값으로 보충하지 않는다. 전신주의 공급 범위와 연결 범위는 각각 단일 스칼라 셀 반경 range를 사용하여 중심 ± range의 경계 포함 정사각형으로 조회·표시하고 X/Y별 설정은 제거할 대상이다. 서로 다른 Tier/range의 전신주도 둘 중 한쪽 연결 범위에 상대 중심이 포함되면 연결한다(OR).
+
+석탄 발전기의 저장 슬롯 수는 해당 종류·Tier의 기존 storageCapacity 필드를 사용하고 슬롯당 수용량은 ItemConfig/ItemRegistry의 Coal MaxStack을 사용한다(현재 50). 별도 실물 10개 제한은 유지하지 않는다. CoalGenerator Tier 1은 사용자 지정 임시 1슬롯이다. coalEnergyPerItem은 발전기 종류·Tier별 연료 효율 설정이며 CoalGenerator Tier 1의 임시값은 기존 600으로 두고 향후 밸런스 조정에서 변경한다.
+
+JSON의 역할별 power 객체를 검증하여 기존 BuildingConfigElement.Power에 함께 게시한다. 전력 능력과 슬롯 의미는 JSON·공개 게시·사전 등록에서 검사하며 무효 입력은 부분 게시하지 않는다. 별도 PowerConfig.json은 이관 후 제거했다. 필수 필드·실행 순서·상태 소유권·실제 사용 정산과 검증 범위는 [전력 명세](PowerGrid.md)를 따른다. 실제 망/연료/생산/충전 Writer와 참가자 생성 연결은 후속이며 설정 게시를 해당 제품 동작 완료로 확대하지 않는다.
+
 ## 후속과 검증
 
 실제 추가 창고 티어 수치/명칭/프리팹, 표시 이름과 티어 선택 UI, 그림 자동 배율·회전·위치 보정, 기존 건물 승급, 연구 진행 연동은 후속이다. 극단적인 크기의 산술 상한은 이번 구현 범위에 포함하지 않는다. F-025는 기존 V2를 빌드·편집 공통 진입으로 선택하고 세 DB의 실제 베이킹/초기 검증을 확인해 완료했다. Play Mode·Player 빌드 실행 근거는 추가하지 않았다.

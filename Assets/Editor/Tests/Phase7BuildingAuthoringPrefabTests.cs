@@ -134,7 +134,8 @@ public class Phase7BuildingAuthoringPrefabTests : EcsWorldTestFixture
         var configEntity = _entityManager.CreateEntity(typeof(BuildingConfigElement));
         var buffer = _entityManager.GetBuffer<BuildingConfigElement>(configEntity);
         buffer.Add(new BuildingConfigElement(BuildingTypeEnum.Belt, 1, "Belt", 10f, 0, true, footprint: new int2(1, 1)));
-        buffer.Add(new BuildingConfigElement(BuildingTypeEnum.Miner, 1, "Miner", 0.1f, 0, false, footprint: new int2(2, 2)));
+        buffer.Add(new BuildingConfigElement(BuildingTypeEnum.Miner, 1, "Miner", 0.1f, 0, false,
+            footprint: new int2(2, 2), power: TestEntityFactory.GetFixtureBuildingPower(BuildingTypeEnum.Miner)));
 
         Assert.IsTrue(BuildingConfigLookupUtility.IsBuildingUnlocked(buffer, BuildingTypeEnum.Belt, 1));
         Assert.IsFalse(BuildingConfigLookupUtility.IsBuildingUnlocked(buffer, BuildingTypeEnum.Miner, 1));

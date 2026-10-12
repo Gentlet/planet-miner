@@ -15,6 +15,14 @@
 | `Assets/Scripts/Common/GameConstants.cs` | 청크 크기, 아이템 최소 간격 `0.25f`, 간격·델타타임에서 파생한 벨트 속도 상한, 슬롯/타일 홉/델타타임 상한을 정의한다. |
 | `Assets/Scripts/Common/BuildingInputSlotUtility.cs` | 재료 목록의 요구량/최대 스택으로 건물 공통 품목 전용 입력 슬롯을 계산하고 실패 사유를 반환한다. Crafter 레시피 변경에서 사용한다. |
 | `Assets/Scripts/Common/BuildingConfigLookupUtility.cs` | 건물 통합/호환 런타임 설정 조회, footprint·해금·건설 자재 조회를 제공한다. |
+| `Assets/Scripts/Common/PowerRangeUtility.cs` | Task 8.1의 단일 셀 반경 정사각형/OR 연결 순수 판정. 실제 토폴로지는 후속이다. |
+| `Assets/Scripts/Config/BuildingPowerConfigParser.cs` | BuildingConfig의 역할별 power JSON와 공개/사전 등록 능력을 공통 검증한다. |
+| `Assets/Scripts/Components/Power/BuildingPowerConfig.cs` | BuildingConfigElement 안의 종류·Tier별 능력 설정 값. 독립 ECS 원본은 아니다. |
+| `Assets/Scripts/Components/Power/PowerComponents.cs` | 전력 참가자·연료 원본과 수요/공급/사용/발전 계획의 10개 ECS 계약을 정의한다. 전용 시계·연료 참조 버퍼·발전 결과·망 집계 컴포넌트는 제거했고 Writer는 후속이다. |
+| `Assets/Scripts/Phases/Power/PowerPreparationGroup.cs` | BuildingReservation 마지막의 프레임 초기화·수요·토폴로지/연료 가용량·배분 준비 경계. 현재 빈 그룹이다. |
+| `Assets/Scripts/Phases/Power/PowerSupplyExecutionGroup.cs` | BuildingExecution 처음의 연료 전환과 공급 게시 경계. 현재 빈 그룹이다. |
+| `Assets/Scripts/Phases/Power/PowerSettlementGroup.cs` | SimulationCommit의 EndSimulation ECB 앞에서 실제 사용 에너지를 정산할 경계. 현재 빈 그룹이다. |
+| `Assets/Editor/Tests/Phase8PowerContractTests.cs` | 통합 설정/원자적 게시/사전 등록 실패·Tier 분리·순수 범위 계약의 EditMode 검증. 실제 전력 가동 검증은 아니다. |
 | `Assets/Scripts/Common/BuildingFootprintUtility.cs` | 점유 크기의 최소 1칸 정규화와 방향 회전을 계산하며 BuildingFootprint 확장 메서드도 제공한다. |
 | `Assets/Scripts/Common/BuildingPlacementRequestUtility.cs` | 플레이어 배치 묶음의 World 접수번호를 발급하고 요청/후보를 함께 준비한다. 최종 승인과 임시 셀 중재는 기존 Command가 담당한다. |
 | `Assets/Scripts/Common/BuildingTypeExtensions.cs` | 건물 종류의 Burst 호환 FixedString 변환을 제공한다. |

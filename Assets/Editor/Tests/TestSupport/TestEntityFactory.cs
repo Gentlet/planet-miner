@@ -39,8 +39,22 @@ namespace PlanetMiner.Tests
                 if (BuildingConfigLookupUtility.TryGetConfig(configs, type, 1, out _))
                     continue;
                 configs.Add(new BuildingConfigElement(type, 1, type.ToString(), type == BuildingTypeEnum.Belt ? 2f : 1f, 20, true,
-                    footprint: GetFixtureBuildingFootprint(type)));
+                    footprint: GetFixtureBuildingFootprint(type), power: GetFixtureBuildingPower(type)));
             }
+        }
+
+        /// <summary>격리 fixture의 명시적 전력 능력. 제품 로더의 값 보충 경로가 아니다.</summary>
+        public static BuildingPowerConfig GetFixtureBuildingPower(BuildingTypeEnum type)
+        {
+            return type switch
+            {
+                BuildingTypeEnum.PowerPole => new BuildingPowerConfig(supplyRange: 5, connectionRange: 8),
+                BuildingTypeEnum.MainFacility => new BuildingPowerConfig(supplyRange: 0, connectionRange: 8, maximumGeneration: 40f),
+                BuildingTypeEnum.CoalGenerator => new BuildingPowerConfig(maximumGeneration: 100f, coalEnergyPerItem: 600f),
+                BuildingTypeEnum.Miner => new BuildingPowerConfig(maximumConsumption: 10f),
+                BuildingTypeEnum.Crafter or BuildingTypeEnum.ResearchBuilding => new BuildingPowerConfig(maximumConsumption: 20f),
+                _ => default
+            };
         }
 
         /// <summary>격리 fixture의 명시적 크기다. 제품 Spawn/Init의 기본값 경로가 아니다.</summary>

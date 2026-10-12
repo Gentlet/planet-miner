@@ -22,6 +22,7 @@
       "isUnlockedByDefault": true,
       "requiredResearch": "",
       "footprint": [2, 2],
+      "power": { "maximumConsumption": 10.0 },
       "materials": [
         { "itemType": "Iron", "quantity": 3 }
       ]
@@ -35,6 +36,7 @@
       "isUnlockedByDefault": true,
       "requiredResearch": "",
       "footprint": [2, 2],
+      "power": { "maximumConsumption": 20.0 },
       "materials": [
         { "itemType": "Iron", "quantity": 3 }
       ]
@@ -61,6 +63,7 @@
       "isUnlockedByDefault": true,
       "requiredResearch": "",
       "footprint": [1, 1],
+      "power": { "supplyRange": 5, "connectionRange": 8 },
       "materials": [
         { "itemType": "Copper", "quantity": 1 }
       ]
@@ -96,10 +99,11 @@
       "tier": 1,
       "displayName": "CoalGenerator",
       "speed": 0.0,
-      "storageCapacity": 0,
+      "storageCapacity": 1,
       "isUnlockedByDefault": false,
       "requiredResearch": "coal_power",
       "footprint": [3, 3],
+      "power": { "maximumGeneration": 100.0, "coalEnergyPerItem": 600.0 },
       "materials": [
         { "itemType": "Iron", "quantity": 4 }
       ]
@@ -126,6 +130,7 @@
       "isUnlockedByDefault": true,
       "requiredResearch": "",
       "footprint": [3, 3],
+      "power": { "maximumConsumption": 20.0 },
       "materials": [
         { "itemType": "Iron", "quantity": 3 },
         { "itemType": "Copper", "quantity": 3 }
@@ -140,6 +145,7 @@
       "isUnlockedByDefault": true,
       "requiredResearch": "",
       "footprint": [3, 3],
+      "power": { "supplyRange": 0, "connectionRange": 8, "maximumGeneration": 40.0 },
       "materials": [
         { "itemType": "Iron", "quantity": 10 }
       ]

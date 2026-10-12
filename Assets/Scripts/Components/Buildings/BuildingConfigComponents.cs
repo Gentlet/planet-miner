@@ -32,6 +32,8 @@ public struct BuildingConfigElement : IBufferElementData
     public FixedString32Bytes RequiredResearch;
     /// <summary>이 종류·티어의 방향 적용 전 고정 점유 크기. 명시적 양수 설정이 필수이며 기본값으로 보충하지 않는다.</summary>
     public int2 Footprint;
+    /// <summary>이 종류·Tier의 전력 능력 원본. 미대상 종류는 default이며 런타임 수요/공급은 별도 컴포넌트다.</summary>
+    public BuildingPowerConfig Power;
 
     public BuildingConfigElement(
         BuildingTypeEnum buildingType,
@@ -41,7 +43,8 @@ public struct BuildingConfigElement : IBufferElementData
         int storageCapacity,
         bool isUnlocked,
         FixedString32Bytes requiredResearch = default,
-        int2 footprint = default)
+        int2 footprint = default,
+        BuildingPowerConfig power = default)
     {
         BuildingType = buildingType;
         Tier = tier;
@@ -51,6 +54,7 @@ public struct BuildingConfigElement : IBufferElementData
         IsUnlocked = isUnlocked;
         RequiredResearch = requiredResearch;
         Footprint = footprint;
+        Power = power;
     }
 }
 
