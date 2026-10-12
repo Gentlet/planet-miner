@@ -2,7 +2,7 @@
 
 [전체 색인](README.md) · [건물 공통 컴포넌트](Buildings.md)
 
-2026-10-08 배치 접수 순서·요청 간 중재와 2026-10-06 건물·드론 도메인 분리 이후의 현재 소스를 설명한다. 공사 ECS 타입은 접수번호 상태를 포함해 6개다. 확정 규칙은 [건설·드론 공급 명세](../../Specifications/ConstructionAndDroneSupply.md), 현재 입력·완공 시점의 근거와 한계는 [도메인 분리 검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDroneDomainSplit-Verification.md)을 따른다. [안전 방출·기록 제거 검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneSafeDropAndJournalRemoval-Verification.md)은 이전 실행 구조의 당시 근거다.
+2026-10-08 배치 접수 순서·요청 간 중재와 2026-10-06 건물·드론 도메인 분리 이후의 현재 소스를 설명한다. 공사 ECS 타입은 접수번호 상태를 포함해 6개다. 확정 규칙은 [건설·드론 공급 명세](../../Specifications/ConstructionAndDroneSupply.md)를 따른다.
 
 DroneLifecycle 행동 정산·공통 Ownership 인계·Direct 재배정은 유지한다. 방출 목표는 현장 밖만 허용하고 현장 내부의 새 월드 Spawn도 앞단/최종 Apply에서 거부한다. Construction은 현재 월드 Owner/GridPosition과 활성 Destroy만 조회해 차단을 설정·해제한다. 예정 월드 위치 결과 버퍼는 제거했으며 실제 수행부·경로·관측 원본 Writer는 후속이다.
 
@@ -18,9 +18,9 @@ CancelConstructionRequest
 
 취소는 Command에서 EndCommand 반환/삭제를 확정한다. Construction은 BuildingStateApply 마지막에서 현재 월드 실물·활성 Destroy와 지난 틱 도착 자재를 조회한다. 건물 종료 후 드론이 실행되므로 이번 틱 드론 납품·방해물 회수는 다음 틱 완공에 반영된다. ConstructionSiteWorldItemUtility는 현재 활성·비취소 현장의 회전 footprint 내부 새 생성/방출을 공통으로 거부한다. 같은 틱 취소/철거와 재배치는 기존 인덱스 점유로 거부한다.
 
-ConstructionSite.Progress와 도착 비율 기획은 제거했다. [Progress 제거](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/ConstructionProgressRemoval-Verification.md)·[취소 Command 이동](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/ConstructionCancelCommand-Verification.md)은 당시 근거다. 현재 공급·회수 작업과 신호 인계·완공 차단 연결은 구현했으며 실제 드론 수행부는 후속이다.
+ConstructionSite.Progress와 도착 비율 기획은 제거했다. Progress 제거·취소 Command 이동은 당시 근거다. 현재 공급·회수 작업과 신호 인계·완공 차단 연결은 구현했으며 실제 드론 수행부는 후속이다.
 
-드론 인계는 EndBuilding에서 확정된 건물 결과를 입력으로 Decision 자격 검사와 Execution 실물/수량/공간 계획을 만든다. Drone StateApply는 계획의 실물을 현재 원본으로 재검사해 수령·도착량·예약을 반영한다. 같은 틱 건물 입고품·건물 출고 공간은 사용할 수 있으나 드론 처리 중 새 수집품·새 공간은 계획에 더하지 않는다. 새 작업·배정·경로는 EndSimulation에 공개하여 다음 틱부터 사용한다. 현재 구조와 검증은 [도메인 분리 검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDroneDomainSplit-Verification.md)을 따른다.
+드론 인계는 EndBuilding에서 확정된 건물 결과를 입력으로 Decision 자격 검사와 Execution 실물/수량/공간 계획을 만든다. Drone StateApply는 계획의 실물을 현재 원본으로 재검사해 수령·도착량·예약을 반영한다. 같은 틱 건물 입고품·건물 출고 공간은 사용할 수 있으나 드론 처리 중 새 수집품·새 공간은 계획에 더하지 않는다. 새 작업·배정·경로는 EndSimulation에 공개하여 다음 틱부터 사용한다.
 
 ## BuildingPlacementRequest
 

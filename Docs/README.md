@@ -11,7 +11,6 @@
 | 아직 결정이 필요한 초기화 | [공통 적재량 초기화 검토안](Specifications/DroneCapacityInitializationPlan.md) | 설정 출처·오류·기존 singleton 처리 정책이 미확정인 제안이다. 구현 승인으로 해석하지 않는다. |
 | 연구의 합의된 게임 규칙 | [연구건물 명세](Specifications/ResearchBuilding.md) | 설계 규칙과 임시 데이터를 구분한다. 현재 V2 연구 진행 Writer의 구현 증거는 아니다. |
 | 개발 마일스톤·설계 배경 | [V2 작업 목록](architecture%20v2%20plan/Architecture%20V2%20Tasks.md), [V2 설계](architecture%20v2%20plan/Architecture%20V2%20Plan_0.2.md) | Phase 번호와 체크는 해당 개발 작업의 범위다. 현재 런타임 그룹 수/순서나 전체 기능 완료를 뜻하지 않는다. |
-| 실제 변경 검증 | [도메인 분리 검증](architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDroneDomainSplit-Verification.md) | 컴파일·선택 EditMode·제어 입력 Play Mode·유휴 성능 표본과 한계를 따로 기록한다. 이전 결과를 합산하거나 새 구조로 소급 해석하지 않는다. |
-| 이전 구조의 도메인 상세·피드백 | CodeMemory 바로 아래 문서, [과거 피드백 목록](KnownIssues_Feedback/README.md) | 각 문서 첫머리의 참고 기록 표시를 따른다. 옛 심볼·기능을 현재 V2 동작으로 읽지 않는다. |
+| 아직 이식하지 않은 게임 동작·정책 차이 | [V2 작업 목록](architecture%20v2%20plan/Architecture%20V2%20Tasks.md)의 도메인별 레거시 검토 항목 | 이전 CodeMemory에서 필요한 동작만 보존했다. 현재 확정 계약과 충돌하는 내용은 후속 결정 사항이며 구현 승인이나 완료를 뜻하지 않는다. |
 
 문서가 충돌하면 현재 코드의 타입·쿼리·Writer/Reader·그룹 속성·ECB 소비 시점을 확인한다. 코드 정의, 테스트 구성, 실제 실행 결과는 서로 다른 근거다. 미확정 게임 규칙은 문서 보완 과정에서 새로 정하지 않는다.

@@ -2,9 +2,9 @@
 
 [전체 색인](README.md) · [배치와 공사](Construction.md) · [아이템과 저장](ItemsAndStorage.md)
 
-2026-10-06 건물·드론 도메인 분리 이후 드론 ECS 타입 23개를 설명한다. 관리 계층의 작업·예약·인계·재배정·안전 방출 계약과 순수 후보/공개 대기 예약 분리를 포함한다. 이번 변경의 소스·실행 증거는 [도메인 분리 검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDroneDomainSplit-Verification.md)을 따른다.
+2026-10-06 건물·드론 도메인 분리 이후 드론 ECS 타입 23개를 설명한다. 관리 계층의 작업·예약·인계·재배정·안전 방출 계약과 순수 후보/공개 대기 예약 분리를 포함한다.
 
-[기존 142사례](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneSafeDropAndJournalRemoval-Verification.md)와 [기존 통합 4사례](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneLifecycleIntegration-Verification.md)는 이전 공통 여섯 phase의 별도 실행 기록이다. 새 입력·완공 시점의 검증으로 소급 해석하거나 합산하지 않는다. 실제 수행자 생성·이동·경로 계산·관측·행동 신호와 공통 능력/연구 Writer는 후속이다. DropPosition은 선택 목표이며 실제 위치 원본이 아니다. [공통 적재량 초기화 검토안](../../Specifications/DroneCapacityInitializationPlan.md)은 미확정 정책의 제안이다.
+기존 142사례와 기존 통합 4사례는 이전 공통 여섯 phase의 별도 실행 기록이다. 새 입력·완공 시점의 검증으로 소급 해석하거나 합산하지 않는다. 실제 수행자 생성·이동·경로 계산·관측·행동 신호와 공통 능력/연구 Writer는 후속이다. DropPosition은 선택 목표이며 실제 위치 원본이 아니다. [공통 적재량 초기화 검토안](../../Specifications/DroneCapacityInitializationPlan.md)은 미확정 정책의 제안이다.
 
 ```text
 Command / EndCommand: 현장·자재 요구와 취소 반환·삭제 공개
@@ -141,7 +141,7 @@ Construction은 BuildingStateApply 마지막에서 현재 Owner=Null/GridPositio
 - **필드·검사:** Position은 출발 월드 좌표, Revision은 양수 관측 버전, CanAcceptTask는 신규 작업 가능 여부다. 후보에는 유한한 위치·양수 버전·작업 가능 상태가 필요하며 경로 결과와 후보 공개 시 요청의 버전·위치와 대조한다.
 - **현재 Reader·후속 Writer:** Decision과 예약·공개 검사에서 읽는다. 실제 관측을 게시·갱신하거나 드론을 이동시키는 시스템은 없다. 위치·경로 조건이 바뀌면 수행부가 Revision을 갱신해야 한다.
 - **수명:** 수행자 수명 동안 최신 스냅샷을 유지하는 계약이다. GridPosition이나 렌더 위치 원본을 대체하지 않는다.
-- **현재 원본 연결 한계:** 관리 측은 Position/Revision을 서로 비교하지만 실제 드론 위치 원본을 요구하거나 관측이 원본에서 갱신되었는지 검사하지 않는다. 위치/관측 Producer가 아직 없어 실제 이동과 관측의 정합성은 구현된 계약이 아니다. 스냅샷과 다른 드론 값의 SoT 구분은 [검토 기록](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneSnapshotSotReview.md)을 따른다.
+- **현재 원본 연결 한계:** 관리 측은 Position/Revision을 서로 비교하지만 실제 드론 위치 원본을 요구하거나 관측이 원본에서 갱신되었는지 검사하지 않는다. 위치/관측 Producer가 아직 없어 실제 이동과 관측의 정합성은 구현된 계약이 아니다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneWorkerComponents.cs), [경로·후보 검사](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs).
 
 ## DroneWorkerAssignment

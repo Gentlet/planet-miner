@@ -4,11 +4,11 @@
 
 최초 조사는 **2026-10-03**, 조사 시작 커밋은 `0998016624ee15ee035beb8dc306d68990a69bb0`이다. **2026-10-06 건물·드론 도메인 분리와 후보/공개 대기 예약 분리까지**의 정의와 경로로 갱신했다. **프로젝트 ECS 컴포넌트/버퍼 요소 103개를 9개 하위 문서에 정리**하며 드론은 23개다. 현장 내부의 새 월드 생성·방출은 금지하고 완공은 현재 월드 실물과 활성 Destroy만 조회한다. 실제 수행부·관측/경로 계산·공통 능력/연구 Writer는 후속이다. 소스와 실행 검증을 구분한다.
 
-드론 관리 1~4단계의 작업·예약·인계·Direct 재배정·현장 외부 방출·완공 차단과 5단계 선별 통합 회귀를 연결했다. [기존 142사례](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneSafeDropAndJournalRemoval-Verification.md)와 [신규 4사례](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneLifecycleIntegration-Verification.md)는 이전 구조의 별도 실행이다. 현재 구조의 컴파일·선택 EditMode·제한된 Play Mode 검증은 [도메인 분리 검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDroneDomainSplit-Verification.md)에 기록하며 과거 실행과 합산하지 않는다. 실제 수행부·관측/경로·초기 능력/연구 Writer는 후속이며 다음 추천은 [공통 적재량 초기화 검토안](../../Specifications/DroneCapacityInitializationPlan.md)이다. 설정 출처·오류·기존 singleton 정책은 미확정이므로 구현 승인으로 해석하지 않는다. 세부 계약은 [명세](../../Specifications/ConstructionAndDroneSupply.md)와 [드론 컴포넌트 계약](DroneLogistics.md)을 따른다.
+드론 관리 1~4단계의 작업·예약·인계·Direct 재배정·현장 외부 방출·완공 차단과 5단계 선별 통합 회귀를 연결했다. 기존 142사례와 신규 4사례는 이전 구조의 별도 실행이다. 현재 구조에서 수행한 컴파일·선택 EditMode·제한된 Play Mode 검증은 과거 실행과 합산하지 않는다. 실제 수행부·관측/경로·초기 능력/연구 Writer는 후속이며 다음 추천은 [공통 적재량 초기화 검토안](../../Specifications/DroneCapacityInitializationPlan.md)이다. 설정 출처·오류·기존 singleton 정책은 미확정이므로 구현 승인으로 해석하지 않는다. 세부 계약은 [명세](../../Specifications/ConstructionAndDroneSupply.md)와 [드론 컴포넌트 계약](DroneLogistics.md)을 따른다.
 
 ## 읽는 방법
 
-5단계의 신규 수명주기 통합 4사례와 정상/방어 fixture 범위는 [통합 검증 기록](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneLifecycleIntegration-Verification.md)을 따른다. 앞선 실행 기록과 합산하지 않으며 실제 이동·경로/관측 Producer는 후속이다.
+5단계의 신규 수명주기 통합 4사례는 정상/방어 fixture를 사용했다. 앞선 실행 기록과 합산하지 않으며 실제 이동·경로/관측 Producer는 후속이다.
 
 1. 이름을 알고 있으면 아래 전체 색인에서 타입을 선택한다. 각 링크가 그 타입의 독립 설명으로 이동한다.
 2. 이름을 모르면 도메인 목록이나 엔티티별 진입점을 사용한다.
@@ -68,7 +68,7 @@ flowchart LR
 | 최종 확정 | EndSimulation은 작업·경로·배정·개별 예약·인계 결과를 공개하고 요청/계획·종료 엔티티를 제거한다. 새 작업·배정·경로는 다음 틱부터 쓴다. |
 | Synchronization | 원본 ECS 상태로 공간 인덱스를 재구축한다. WorldInvariantValidationSystem은 마지막이다. 중간 ECB 재생만으로 맵이 갱신되지는 않는다. |
 
-각 그룹은 한 번 실행한다. 같은 부모 그룹의 도메인 순서와 각 그룹 내부 UpdateBefore/After·OrderLast를 구분하고 Job/Fence 의존성을 유지한다. 근거: [건물 그룹](../../../Assets/Scripts/Phases/Buildings/BuildingSimulationGroup.cs), [드론 그룹](../../../Assets/Scripts/Phases/Drones/DroneSimulationGroup.cs), [완공](../../../Assets/Scripts/Systems/Construction/StateApply/ConstructionLifecycleApplySystem.cs), [드론 인계](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs), [도메인 분리 검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDroneDomainSplit-Verification.md).
+각 그룹은 한 번 실행한다. 같은 부모 그룹의 도메인 순서와 각 그룹 내부 UpdateBefore/After·OrderLast를 구분하고 Job/Fence 의존성을 유지한다. 근거: [건물 그룹](../../../Assets/Scripts/Phases/Buildings/BuildingSimulationGroup.cs), [드론 그룹](../../../Assets/Scripts/Phases/Drones/DroneSimulationGroup.cs), [완공](../../../Assets/Scripts/Systems/Construction/StateApply/ConstructionLifecycleApplySystem.cs), [드론 인계](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs).
 ## 생명주기 표기
 
 - **일반 컴포넌트:** 엔티티 상태/설정/참조를 유지한다. 이름이 Decision이어도 enableable이 아닐 수 있다.
@@ -236,8 +236,8 @@ flowchart LR
 
 ## 확인 범위와 문서 유지
 
-최초 작성은 정적 소스 분석이며, 현재도 타입 선언과 문서 항목·링크를 대조한다. 2026-10-04 운송 제거 변경은 컴파일과 관련 5개 EditMode 클래스 41개를 확인했다. 해당 결과는 [검증 기록](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/ConstructionTransportRemoval-Verification.md)의 범위에 한정한다. Play Mode·실제 SubScene 베이킹·시각·성능 검증은 수행하지 않았다.
+최초 작성은 정적 소스 분석이며, 현재도 타입 선언과 문서 항목·링크를 대조한다. 2026-10-04 운송 제거 변경은 컴파일과 관련 5개 EditMode 클래스 41개를 확인했다.  Play Mode·실제 SubScene 베이킹·시각·성능 검증은 수행하지 않았다.
 
-기존 [AGENTS.md](../../../AGENTS.md)는 프로젝트 공통 계약과 탐색 기준이며, [V2 코드 지도](../../architecture%20v2%20plan/CodeMemory/README.md)는 시스템 중심 탐색 보조다. 이 문서 묶음은 컴포넌트별 상세 진입점이다. 이전 구조를 다루는 다른 CodeMemory 문서의 시스템 이름을 현재 V2의 구현으로 전제하지 않았다.
+기존 [AGENTS.md](../../../AGENTS.md)는 프로젝트 공통 계약과 탐색 기준이며, [V2 코드 지도](../../architecture%20v2%20plan/CodeMemory/README.md)는 시스템 중심 탐색 보조다. 이 문서 묶음은 컴포넌트별 상세 진입점이다. 미이식 동작과 레거시 정책 차이는 [구현 작업 목록](../../architecture%20v2%20plan/Architecture%20V2%20Tasks.md)의 해당 Task에서 확인하며 현재 컴포넌트 계약을 과거 구조로 대체하지 않는다.
 
 컴포넌트의 정의·생성 위치·Writer·쿼리·소비 방식이 바뀌면 해당 타입 절과 이 색인의 종류/연결을 함께 갱신한다. 엔티티 삭제와 enable 상태 변경, ECB 반영 전후의 설명을 우선 대조하면 생명주기를 이어서 추적할 수 있다.

@@ -4,7 +4,7 @@
 
 이 문서는 사용자가 확정한 공사·드론 공급/회수 규칙과 2026-10-06 건물·드론 도메인 분리 규칙을 기록한다. [현재 컴포넌트 색인](../CodeMemory/Components/README.md), [공사 계약](../CodeMemory/Components/Construction.md), [드론 계약](../CodeMemory/Components/DroneLogistics.md)은 소스의 데이터 소유자와 수명을 설명한다. 실제 드론 생성·이동·경로 계산·관측·행동 신호·공통 적재량 초기화/연구 Writer는 후속이며 아래 규칙 전체의 실행 완료를 뜻하지 않는다.
 
-이번 분리의 소스 확인·컴파일·선별 EditMode와 일회 Play Mode 범위는 [도메인 분리 검증](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDroneDomainSplit-Verification.md)을 따른다. Play Mode는 실제 V2 장면/Default World에서 수행자·관측·경로 결과·행동 신호를 검증 입력으로 제공한 관리/인계 검증이다. 실제 자동 비행·도착·게임 입력 또는 수행부 구현의 증거가 아니다. [기존 142사례](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneSafeDropAndJournalRemoval-Verification.md)와 [기존 통합 4사례](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneLifecycleIntegration-Verification.md)는 이전 공통 여섯 phase의 별도 실행 근거로 보존한다. 변경된 입력·완공 시점의 실행 증거로 소급 해석하거나 합산하지 않는다. 현재 드론 ECS 타입은 23개다.
+Play Mode는 실제 V2 장면/Default World에서 수행자·관측·경로 결과·행동 신호를 검증 입력으로 제공한 관리/인계 검증이다. 실제 자동 비행·도착·게임 입력 또는 수행부 구현의 증거가 아니다. 기존 142사례와 기존 통합 4사례는 이전 공통 여섯 phase의 별도 실행 기록이다. 변경된 입력·완공 시점의 실행 증거로 소급 해석하거나 합산하지 않는다. 현재 드론 ECS 타입은 23개다.
 
 ## 사용자 확정 실행 경계
 
@@ -23,7 +23,7 @@
 
 ## 배치 요청의 접수와 승인
 
-2026-10-11 F-022 사용자 확정: 종류별 점유 크기는 BuildingConfig.json의 명시적 양수 footprint만 원본으로 사용한다. 배치 후보는 사전 검사에 사용한 Config 크기를 전달하며 Command가 일치 여부를 확인한다. 승인 크기는 현장→완공까지 보존하고 방향은 각 점유 Reader가 한 번 적용한다. DB에는 크기를 담지 않는다. 티어 구분과 건물명 별도 지정은 후속이며 이번에는 종류별 고정 크기다. [구현·검증과 한계](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/F022-Verification.md).
+2026-10-11 F-022 사용자 확정: 종류별 점유 크기는 BuildingConfig.json의 명시적 양수 footprint만 원본으로 사용한다. 배치 후보는 사전 검사에 사용한 Config 크기를 전달하며 Command가 일치 여부를 확인한다. 승인 크기는 현장→완공까지 보존하고 방향은 각 점유 Reader가 한 번 적용한다. DB에는 크기를 담지 않는다. 티어 구분과 건물명 별도 지정은 후속이며 이번에는 종류별 고정 크기다.
 
 2026-10-11 후속 구현: 크기·해금·비용·프리팹 조회 키를 종류·티어로 확장했다. 현장은 목표 티어를 보존하며 완공과 철거 환급도 같은 조합을 사용한다. 표시 이름은 Config 소유다. 기존 종류의 1티어만 실제 데이터로 전환했고 승급·UI·연구 Writer는 후속이다. [현재 티어·표시 이름 명세](BuildingTierAndDisplayName.md).
 
@@ -57,9 +57,9 @@ DroneWorker는 수행자 표시만 맡고 공통 적재량은 DroneCapacityState
 ## 기존 기능의 변경 방향
 
 - 기존 공사 자재 운송의 기록·등록·수령·예약·결과 처리와 전용 테스트/헬퍼는 제거했다. 현재 공급/회수 작업·예약·실물 인계는 새 드론 관리 소유자가 담당한다.
-- `ConstructionSite.Progress`와 생성자 인자·초기화·테스트 참조를 제거했다. 자재 도착 비율의 계산·표시 기획도 제거한다. 변경의 실행 근거는 [Progress 제거 검증](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/ConstructionProgressRemoval-Verification.md)에 기록한다.
-- `CancelConstructionRequest`는 Command의 ConstructionCancelCommandSystem이 처리하며, 기존 실물 반환과 현장/요청 삭제는 EndCommand에서 확정한다. 실행 근거는 [취소 Command 이동 검증](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/ConstructionCancelCommand-Verification.md)을 따른다.
-- DemolishBuildingRequest 이름 변경 제안은 철회하여 기존 이름을 유지하고 CancelConstructionRequest와 분리한다. Command 승인 대상에 PendingBuildingDemolition 상태를 기록하고 모든 철거 요청을 EndCommand에 삭제한다. 이후 건물의 입고·생산·출고·벨트 이동/진입·분배·합류 운송을 앞단에서 중단한다. 실제 반환/환급/철거는 BuildingStateApply/EndBuilding에서 확정한다. 실행 근거는 [철거 예정 상태·동작 중단 검증](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDemolitionStop-Verification.md)을 따른다.
+- `ConstructionSite.Progress`와 생성자 인자·초기화·테스트 참조를 제거했다. 자재 도착 비율의 계산·표시 기획도 제거한다.
+- `CancelConstructionRequest`는 Command의 ConstructionCancelCommandSystem이 처리하며, 기존 실물 반환과 현장/요청 삭제는 EndCommand에서 확정한다.
+- DemolishBuildingRequest 이름 변경 제안은 철회하여 기존 이름을 유지하고 CancelConstructionRequest와 분리한다. Command 승인 대상에 PendingBuildingDemolition 상태를 기록하고 모든 철거 요청을 EndCommand에 삭제한다. 이후 건물의 입고·생산·출고·벨트 이동/진입·분배·합류 운송을 앞단에서 중단한다. 실제 반환/환급/철거는 BuildingStateApply/EndBuilding에서 확정한다.
 
 ## 현장 생성과 점유
 
@@ -85,7 +85,7 @@ DroneWorker는 수행자 표시만 맡고 공통 적재량은 DroneCapacityState
 
 현재 인계 계획은 [DroneItemTransferDecisions](../../Assets/Scripts/Components/DroneLogistics/DroneItemTransferDecisions.cs)에 보관한다. 실물·재고 원본을 대신하는 데이터가 아니며 건물 종료 후 계획에 포함한 ID와 슬롯 예산 안에서만 최종 반영하고 EndSimulation에 제거한다.
 
-실물 반영과 행동 정산은 기존 소유자로 유지한다. 건물 일반 Ownership·완공과 EndBuilding → DroneLifecycle Actions 순서이며, 드론 인계는 공통 ItemOwnership API로 실제 버퍼·Owner·위치·벨트·렌더를 반영하고 새 Transfer 요청을 만들지 않는다. 접수 순서·실제 성공량 정산·외부 결과 소비는 유지하고 입력은 건물 종료 상태, 완공은 드론 처리 다음 틱으로 변경한다. 현재 시점의 근거는 [도메인 분리 검증](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDroneDomainSplit-Verification.md), [소유자 통합 검증](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneTransferOwnerConsolidation-Verification.md)은 이전 구조의 당시 구현 기록으로 구분한다.
+실물 반영과 행동 정산은 기존 소유자로 유지한다. 건물 일반 Ownership·완공과 EndBuilding → DroneLifecycle Actions 순서이며, 드론 인계는 공통 ItemOwnership API로 실제 버퍼·Owner·위치·벨트·렌더를 반영하고 새 Transfer 요청을 만들지 않는다. 접수 순서·실제 성공량 정산·외부 결과 소비는 유지하고 입력은 건물 종료 상태, 완공은 드론 처리 다음 틱으로 변경한다.
 
 ## 공급원과 보관 장소
 
@@ -196,10 +196,10 @@ EndCommand에서 현장 생성
 
 공급원 재고 예약과 보관 공간 예약을 삭제한 최신 합의가 이전 예약 합의를 대체한다. 기존 벨트와 신규 드론 예약 사이의 우선순위를 정하기 위해 벨트 입출고를 변경하는 안도 이번 계획에서 사용하지 않는다.
 
-최초 문서화 이후 기존 공사 운송·Progress 제거, 현장 취소의 Command 이동, 철거 승인 상태의 동작 중단을 구현했다. [1단계](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneContractsStep1-Verification.md)의 데이터 정의와 [2단계](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneSchedulingStep2-Verification.md)의 작업 생성·배정 검증을 구분한다. 2단계 테스트의 수행자·경로 결과는 명시적인 테스트 입력이며 실제 비행·자재 인계의 실행 증거가 아니다.
+최초 문서화 이후 기존 공사 운송·Progress 제거, 현장 취소의 Command 이동, 철거 승인 상태의 동작 중단을 구현했다. 1단계의 데이터 정의와 2단계의 작업 생성·배정 검증을 구분한다. 2단계 테스트의 수행자·경로 결과는 명시적인 테스트 입력이며 실제 비행·자재 인계의 실행 증거가 아니다.
 
-[3단계 검증](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneItemTransferStep3-Verification.md)은 명시적으로 준비한 수행자·배정·행동 신호에 따른 내부 실물 인계 범위를 기록한다. 실제 비행·도착·충전과 4단계 완공 차단·자동 재배정의 실행 증거로 확대하지 않는다.
+3단계 검증은 명시적으로 준비한 수행자·배정·행동 신호에 따른 내부 실물 인계 범위를 기록한다. 실제 비행·도착·충전과 4단계 완공 차단·자동 재배정의 실행 증거로 확대하지 않는다.
 
-[이전 구조의 인계 검증](../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DronePreviousTickTransfer-Verification.md)은 초기 자격·물류 쓰기 전 계획·최종 원본 재검사의 책임과 같은 틱 신규 입력을 배제하는 정책을 기록한다. 앞선 검증의 성공 범위를 현재 정책으로 소급 해석하지 않는다.
+이전 구조의 인계 검증은 초기 자격·물류 쓰기 전 계획·최종 원본 재검사의 책임과 같은 틱 신규 입력을 배제하는 정책을 기록한다. 앞선 검증의 성공 범위를 현재 정책으로 소급 해석하지 않는다.
 
 Construction은 BuildingStateApply 마지막에 현재 월드 Owner/GridPosition·활성 Destroy와 지난 틱 드론 결과를 조회한다. 예정 위치 기록은 없다. 공통 helper가 활성·비취소 현장의 회전 footprint 내부 World Spawn을 Decision/최종 Apply에서 거부한다. Drop 최종 신호는 배정 목표==요청 WorldPosition==관측 격자 셀과 현장 외부 조건을 충족해야 한다. 선택 후 새 현장이 목표를 막으면 실물을 유지하고 Retargeting으로 재탐색한다. 공간 인덱스 최종 갱신·드론 내 연쇄 제한·단일 시스템 파일은 유지한다.

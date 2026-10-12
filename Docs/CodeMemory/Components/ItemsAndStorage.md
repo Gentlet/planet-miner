@@ -4,17 +4,17 @@
 
 현재 `Assets/Scripts`의 선언, 생성 코드, Job 쿼리와 실제 읽기·쓰기 경로를 대조한 정적 분석이다. 이번 문서 작업에서는 Unity 컴파일, EditMode/Play Mode, 장면·프리팹 실행을 수행하지 않았다. 테스트 파일은 요청을 만드는 사례의 근거이며 실행 성공의 근거가 아니다. enum, `FixedBitSet` 같은 비 ECS 보조 값은 별도 컴포넌트로 세지 않는다.
 
-2026-10-04 기존 공사 운송·등록·수령·예약 처리와 Transfer 처리 표시를 제거했다. 2026-10-05 드론 인계의 보관 버퍼·위치·벨트 상태·소유권·렌더 전환은 기존 ItemOwnershipApplySystem.TryTransferItem 공통 API로 통합했다. DroneTaskLifecycleApplySystem은 실제 성공 수량으로 현장 수량·배정·결과를 정산하며 새 TransferOwnershipRequest를 발행하지 않는다. 실제 드론 이동·행동 신호 생성은 후속이다. 소유자 통합 당시 근거는 [소유자 통합 검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneTransferOwnerConsolidation-Verification.md), 과거 제거의 실행 근거는 [공사 운송 제거 기록](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/ConstructionTransportRemoval-Verification.md)에 보존한다.
+2026-10-04 기존 공사 운송·등록·수령·예약 처리와 Transfer 처리 표시를 제거했다. 2026-10-05 드론 인계의 보관 버퍼·위치·벨트 상태·소유권·렌더 전환은 기존 ItemOwnershipApplySystem.TryTransferItem 공통 API로 통합했다. DroneTaskLifecycleApplySystem은 실제 성공 수량으로 현장 수량·배정·결과를 정산하며 새 TransferOwnershipRequest를 발행하지 않는다. 실제 드론 이동·행동 신호 생성은 후속이다.
 
 일반 입고는 `BuildingItemInputDecisionSystem` → `BuildingStorageInputReservationSystem` → `BuildingItemStorageApplySystem` → `ItemOwnershipApplySystem`을 거친다. 일반 출고는 Storage/Product 두 Decision 중 해당 버퍼를 가진 경로 → `BeltDestinationReservationSystem` → Storage Apply → Ownership Apply다. Storage Apply 내부에서는 입고 Job 뒤 출고 Job을 연결한다. 보관 버퍼·이동 상태는 직접 바꾸고 렌더 태그 구조 변경은 EndBuilding에서 재생하므로, 버퍼·Owner·렌더 상태의 최종 일치는 그 이후에 본다.
 
 공사 취소와 건물 철거는 별도 수명주기 경로에서 Owner와 렌더 태그도 ECB로 변경한다. Storage/Routing Apply는 일반 Ownership과 Building Lifecycle보다 먼저 실행한다. Construction Lifecycle은 BuildingStateApply 마지막에서 완공을 검사한다. EndBuilding 뒤 별도 드론 그룹이 실행되며 공유 실물 API의 드론 렌더 기록은 EndSimulation에서 확정된다. Editor/Development의 `WorldInvariantValidationSystem`은 Synchronization 마지막에 소유권·버퍼·공간·미소비 요청 등을 진단한다. [일반 반영](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingItemStorageApplySystem.cs), [공사](../../../Assets/Scripts/Systems/Construction/StateApply/ConstructionLifecycleApplySystem.cs), [철거](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingLifecycleApplySystem.cs), [진단](../../../Assets/Scripts/Validation/WorldInvariantValidationSystem.cs).
 
-2026-10-04 철거 승인 상태와 앞단 동작 중단 계약을 반영했다. 아래 현재 설명의 컴파일·핵심 회귀 실행 근거는 [철거 상태·동작 중단 검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDemolitionStop-Verification.md)을 따른다. 이전 조사 당시의 정적 분석과 이번 실행 검증의 범위를 구분한다.
+2026-10-04 철거 승인 상태와 앞단 동작 중단 계약을 반영했다. 이전 조사 당시의 정적 분석과 이번 실행 검증의 범위를 구분한다.
 
 ## ItemIdentity
 
-드론 인계는 건물 종료 상태로 확정한 실물 ID 목록과 공간 계획을 사용한다. 같은 틱 건물의 새 입고·생산·철거 반환/환급과 출고 공간은 입력으로 보이나 기존 공급원·품목 제한은 유지한다. 드론 처리 중 새 수집품·새 공간을 기존 계획에 더하지 않는다. 현재 소유권·생존·Destroy·공간은 실제 반영 전에 다시 검사한다. 계획은 파생 데이터이고 ItemOwnership/StoredItemElement는 원본이다. [현재 경계](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/BuildingDroneDomainSplit-Verification.md)를 따른다.
+드론 인계는 건물 종료 상태로 확정한 실물 ID 목록과 공간 계획을 사용한다. 같은 틱 건물의 새 입고·생산·철거 반환/환급과 출고 공간은 입력으로 보이나 기존 공급원·품목 제한은 유지한다. 드론 처리 중 새 수집품·새 공간을 기존 계획에 더하지 않는다. 현재 소유권·생존·Destroy·공간은 실제 반영 전에 다시 검사한다. 계획은 파생 데이터이고 ItemOwnership/StoredItemElement는 원본이다.
 
 - **종류·부착 대상:** 일반 `IComponentData`. 아이템 프리팹과 그 인스턴스인 개별 실물 아이템 엔티티에 붙는다. `Type`은 `ItemTypeEnum` 품목이며 수량 필드는 없다. 실물 하나가 엔티티 하나다.
 - **생성:** `ItemAuthoringBaker`가 프리팹에 타입을 베이킹한다. 런타임 `ItemLifecycleUtility.SpawnPrefabItem`은 프리팹을 인스턴스화하고 요청/생산 결과의 타입으로 값을 설정한다. Item Lifecycle의 일반 스폰·생산 결과와 Building Lifecycle의 철거 비용 환급이 이 유틸리티를 사용한다.
@@ -60,7 +60,7 @@ ECB 재생으로 구조가 변경되는 경계 전후에 기존 DynamicBuffer �
 
 ## SpawnItemRequest
 
-현장 내부의 새 월드 아이템은 Decision과 StateApply에서 ConstructionSiteWorldItemUtility로 거부한다. 완공은 현재 월드 Owner/GridPosition과 활성 Destroy만 조회하며 예정 위치 기록 버퍼는 제거했다. 현재 근거는 [안전 방출·기록 제거 검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/DroneSafeDropAndJournalRemoval-Verification.md)을 따른다.
+현장 내부의 새 월드 아이템은 Decision과 StateApply에서 ConstructionSiteWorldItemUtility로 거부한다. 완공은 현재 월드 Owner/GridPosition과 활성 Destroy만 조회하며 예정 위치 기록 버퍼는 제거했다.
 
 - **종류·부착 대상:** IRequestComponent/IEnableableComponent. 새 실물과 별도의 일회성 요청 엔티티에 부착한다. ItemType/Position/Destination/TargetOwner/TargetSlotIndex가 생성을 지시한다. 기본 활성은 생성 후보이며 사전 거부는 비활성화한 뒤 삭제한다. 재사용하지 않는다.
 - **Producer·계약:** 현재 Assets/Scripts에는 실제 발행 호출자가 없고 Editor 테스트가 생성한다. Miner/Crafter는 ProductResult를 사용한다. Storage/Product 요청은 ItemSpawnAdmissionDecisionSystem 실행 전 실체화하며 이후 발행하는 향후 Producer는 철거 상태를 확인해 요청 생성을 막아야 한다. EndCommand에 생성된 요청도 같은 틱 Decision에서 검사한다.
@@ -127,7 +127,7 @@ ECB 재생으로 구조가 변경되는 경계 전후에 기존 DynamicBuffer �
 
 - **종류·부착 대상:** 아이템에 붙는 `IComponentData, IEnableableComponent`. `TargetBuilding`, `CanDeposit`, `TargetSlotIndex`로 이번 틱 입고 의도를 전달하며 독립 일회성 요청이 아니다. 공통 아이템 스폰은 비활성 상태로 미리 붙인다.
 - **Decision Writer:** `BuildingItemInputDecisionSystem`은 매 판단 시작에 대상 Null·CanDeposit=false·슬롯 -1·결정 비활성으로 초기화한다. 이동 활성, 월드 소유, 현재 벨트 존재, 종단 진행도, 철거 승인 부재, 다음 셀의 양수 Storage, Crafter 부산물 대기 여부, 필터를 검사한다. 성공하면 활성화하고 `CanDeposit=true`, `TargetSlotIndex=-1`을 기록한다.
-- **조회 조건:** 비활성 프레임 결정도 다음 틱에 다시 판단하기 위해 `IgnoreComponentEnabledState`를 유지한다. Execute의 `EnabledRefRO<BeltMovementState>`는 실제 이동 활성을 별도로 읽으며 비활성 원본의 잔여 Progress가 0 또는 1이어도 거절한다. 수납 실물은 이동 활성 값과 무관하게 거절한다. 정체로 이번 틱 전진량이 0인 활성 실물은 제외하지 않는다. 모든 거절 분기는 시작 시 초기화한 결정을 유지한다. [F-032 구현·검증](../../architecture%20v2%20plan/V2%20Quality%20Evaluation%20Plan/Results/F032-Verification.md).
+- **조회 조건:** 비활성 프레임 결정도 다음 틱에 다시 판단하기 위해 `IgnoreComponentEnabledState`를 유지한다. Execute의 `EnabledRefRO<BeltMovementState>`는 실제 이동 활성을 별도로 읽으며 비활성 원본의 잔여 Progress가 0 또는 1이어도 거절한다. 수납 실물은 이동 활성 값과 무관하게 거절한다. 정체로 이번 틱 전진량이 0인 활성 실물은 제외하지 않는다. 모든 거절 분기는 시작 시 초기화한 결정을 유지한다.
 - **Reservation Writer:** `BuildingStorageInputReservationSystem`은 활성 미배정 결정을 순차 처리하여 슬롯을 확정한다. 같은 틱 예약의 품목·개수와 현재 Stored 버퍼를 합산하며 배정 실패는 CanDeposit=false/slot=-1/비활성으로 처리한다.
 - **Apply·소비:** `BuildingItemStorageApplySystem`은 승인된 슬롯에 실물을 추가하고 벨트 상태를 끄며 Transfer를 켠 뒤 결정을 비활성화한다. 활성 Destroy 또는 대상 Stored 버퍼 누락도 결정을 초기화·비활성화한다. 컴포넌트는 남아 이후 틱에 재사용되며 성공 여부를 오래 보관하는 결과 데이터가 아니다.
 - **근거:** [선언](../../../Assets/Scripts/Components/Storage/BuildingItemDecisions.cs), [초기화](../../../Assets/Scripts/Common/ItemLifecycleUtility.cs), [Decision](../../../Assets/Scripts/Systems/Buildings/Decision/BuildingItemInputDecisionSystem.cs), [Reservation](../../../Assets/Scripts/Systems/Buildings/Reservation/BuildingStorageInputReservationSystem.cs), [Apply](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingItemStorageApplySystem.cs).
