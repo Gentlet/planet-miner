@@ -15,19 +15,21 @@
 | `BuildingTypeEnum` | 공통 데이터 외에 생성 시 붙는 주요 데이터 |
 | --- | --- |
 | Belt | `BeltComponent` |
-| Miner | `MinerState`, 비활성 `MinerDecision`, 생산품/생산 결과 버퍼, 비활성 출고 결정 |
-| Crafter | `CrafterState`, 비활성 제작/상태 결정, 0슬롯 `Storage`, 빈 Whitelist, 전용 입력 슬롯/보관품/생산품/생산 결과 버퍼, 비활성 출고 결정 |
-| Storage, DroneStation | `Storage`, `StoredItemElement`, `StorageFilter`, 비활성 출고 결정 |
-| MainFacility | 위 저장 구성과 `IndestructibleBuilding` |
+| Miner | `MinerState`, 비활성 `MinerDecision`, 생산품/생산 결과 버퍼, 비활성 출고 결정, 초기 미연결 `PowerGridConnection`·비활성 `PowerGridConnectionDecision` |
+| Crafter | `CrafterState`, 비활성 제작/상태 결정, 0슬롯 `Storage`, 빈 Whitelist, 전용 입력 슬롯/보관품/생산품/생산 결과 버퍼, 비활성 출고 결정, 초기 미연결 `PowerGridConnection`·비활성 `PowerGridConnectionDecision` |
+| Storage | `Storage`, `StoredItemElement`, `StorageFilter`, 비활성 출고 결정 |
+| DroneStation | 위 저장 구성과 초기 미연결 `PowerGridConnection`·비활성 `PowerGridConnectionDecision` |
+| MainFacility | 위 저장 구성과 `IndestructibleBuilding`, `PowerPole`·`PowerGridTopologyDecision`·자기 전신주/미연결 망의 `PowerGridConnection` |
 | Splitter, Merger | 해당 Routing 상태, 비활성 `RoutingTransferDecision` |
-| PowerPole, CoalGenerator, ResearchBuilding | 공통 생성 함수에 전력·연구 전용 런타임 컴포넌트 주입 없음 |
+| PowerPole | `PowerPole`·`PowerGridTopologyDecision`·자기 전신주/미연결 망의 `PowerGridConnection` |
+| CoalGenerator, ResearchBuilding | 초기 미연결 `PowerGridConnection`·비활성 `PowerGridConnectionDecision`; 연료/발전/연구 실행 상태는 후속 |
 | ConstructionSite | 완공 생성 함수의 대상에서 제외. 배치 Command가 현장 구성 생성 |
 
 근거: [BuildingLifecycleUtility](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs), [BuildingPlacementCommandSystem](../../../Assets/Scripts/Systems/Command/BuildingPlacementCommandSystem.cs), [ConstructionLifecycleApplySystem](../../../Assets/Scripts/Systems/Construction/StateApply/ConstructionLifecycleApplySystem.cs).
 
 ## BuildingType
 
-2026-10-12 Task 8.1은 BuildingConfigElement.Power를 게시하고 석탄 발전기의 설정 슬롯을 임시 1로 변경했다. JSON·공개 게시·사전 등록의 전력 검증과 정의/실행 경계는 [전력 계약](PowerGrid.md)을 따른다. 위 공통 생성 표의 전력 참가자 부착/실제 발전은 여전히 후속이며 설정 게시와 구분한다.
+2026-10-12 Task 8.1은 BuildingConfigElement.Power를 게시하고 석탄 발전기의 설정 슬롯을 임시 1로 변경했다. 2026-10-13 Task 8.2~8.4는 위 전신주/일반 참가자의 연결 부착과 망 수명주기·공급 전신주 선택을 구현했다. 발전/소비 역할·연료/수요 상태·실제 생산은 후속이다. JSON·공개 게시·사전 등록의 검증과 실행 경계는 [전력 계약](PowerGrid.md)을 따른다.
 
 - **종류·부착 대상·목적:** 일반 `IComponentData`. 완공 건물과 공사 현장 엔티티의 종류와 티어를 `Type: BuildingTypeEnum`, `Tier: int`로 식별한다. 완공 건물은 명시적 양수 티어이며 현장 분류는 Tier 0이다. 현장의 목표 티어는 ConstructionSite가 소유한다. 타입만으로 저장·채굴·전력 등의 구성이 자동으로 붙는 것은 아니다.
 - **생성:** 배치 Command는 현장에 `ConstructionSite` 값을 EndCommand ECB로 붙인다. `BuildingLifecycleUtility.SpawnBuilding`은 등록된 프리팹을 인스턴스화하고 대상 종류·티어를 EndBuilding ECB로 붙인다. 현재 Building DB Baker는 프리팹 참조 DB를 제공하며 이 런타임 구성은 공통 생성 함수가 담당한다.

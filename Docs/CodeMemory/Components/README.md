@@ -86,9 +86,9 @@ flowchart LR
 
 종류의 **상태**는 일반 IComponentData, **활성 상태**는 IEnableableComponent 구현, **버퍼**는 IBufferElementData를 뜻한다. 활성 상태에는 IEnableableRequest의 간접 구현도 포함했다.
 
-### 전력 계약 (Task 8.1~8.3)
+### 전력 계약 (Task 8.1~8.4)
 
-전신주 부착·망 생성/병합/분리·비활성 연결 해제·기존 참가자 참조/빈 망 정리·공개 인덱스 Writer를 연결하고 관련 선택 EditMode를 통과했다. 다른 공급 전신주 검색과 공급/연료/사용 Writer는 후속이다.
+전신주/일반 참가자 연결 부착·망 수명주기·회전 footprint 공급 선택/재선택·참조/빈 망 정리·공개 인덱스 Writer를 연결하고 관련 선택 EditMode를 통과했다. 실제 전력 배분/연료/사용 Writer는 후속이다.
 
 | 컴포넌트 상세 | 종류 | 정의 파일 |
 | --- | --- | --- |
@@ -103,6 +103,7 @@ flowchart LR
 | [PowerUsageResult](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
 | [PowerGeneratorSupplyPlan](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
 | [PowerGridTopologyDecision](PowerGrid.md#상태프레임-계약) | 상태 | [PowerGridTopologyDecision.cs](../../../Assets/Scripts/Components/Power/PowerGridTopologyDecision.cs) |
+| [PowerGridConnectionDecision](PowerGrid.md#상태프레임-계약) | 결정 | [PowerGridConnectionDecision.cs](../../../Assets/Scripts/Components/Power/PowerGridConnectionDecision.cs) |
 | [PowerGridConnectionIndex](PowerGrid.md#상태프레임-계약) | 상태 | [PowerGridConnectionIndex.cs](../../../Assets/Scripts/Components/Power/PowerGridConnectionIndex.cs) |
 | [PowerGridConnectionIndexFence](PowerGrid.md#상태프레임-계약) | 상태 | [PowerGridConnectionIndex.cs](../../../Assets/Scripts/Components/Power/PowerGridConnectionIndex.cs) |
 

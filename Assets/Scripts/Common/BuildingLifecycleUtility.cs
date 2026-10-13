@@ -135,6 +135,7 @@ public static class BuildingLifecycleUtility
                 break;
 
             case BuildingTypeEnum.Miner:
+                AttachPowerParticipantComponents(ref ecb, building);
                 ecb.AddComponent(building, new MinerState(speed > 0f ? speed : 1.0f));
                 ecb.AddComponent<MinerDecision>(building);
                 ecb.SetComponentEnabled<MinerDecision>(building, false);
@@ -146,6 +147,7 @@ public static class BuildingLifecycleUtility
 
             // 레시피가 정해지기 전에는 재료를 받지 않는다. Command의 레시피 변경이 품목별 슬롯을 구성한다.
             case BuildingTypeEnum.Crafter:
+                AttachPowerParticipantComponents(ref ecb, building);
                 ecb.AddComponent(building, new CrafterState(selectedRecipeId: 0, speed: speed > 0f ? speed : 1.0f));
                 ecb.AddComponent<CrafterDecision>(building);
                 ecb.SetComponentEnabled<CrafterDecision>(building, false);
@@ -162,8 +164,12 @@ public static class BuildingLifecycleUtility
                 break;
 
             case BuildingTypeEnum.Storage:
+                AttachStorageComponents(ref ecb, building, storageCapacity);
+                break;
+
             case BuildingTypeEnum.DroneStation:
                 AttachStorageComponents(ref ecb, building, storageCapacity);
+                AttachPowerParticipantComponents(ref ecb, building);
                 break;
 
             case BuildingTypeEnum.Splitter:
@@ -190,9 +196,16 @@ public static class BuildingLifecycleUtility
 
             case BuildingTypeEnum.CoalGenerator:
             case BuildingTypeEnum.ResearchBuilding:
-                // 전력/드론/연구 도메인 컴포넌트는 해당 Phase(Phase 8, 9, 10)에서 확장
+                AttachPowerParticipantComponents(ref ecb, building);
                 break;
         }
+    }
+
+    private static void AttachPowerParticipantComponents(ref EntityCommandBuffer ecb, Entity building)
+    {
+        ecb.AddComponent<PowerGridConnection>(building);
+        ecb.AddComponent<PowerGridConnectionDecision>(building);
+        ecb.SetComponentEnabled<PowerGridConnectionDecision>(building, false);
     }
 
     private static void AttachPowerPoleComponents(ref EntityCommandBuffer ecb, Entity building)

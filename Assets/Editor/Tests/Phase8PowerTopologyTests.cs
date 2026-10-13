@@ -9,13 +9,14 @@ using UnityEngine;
 using UnityEngine.TestTools;
 
 /// <summary>
-/// 기존 테스트에 없던 Spawn/완공 → 다음 틱 망 참가, 기존 망 유지·병합 공개, 무효 참조와 공유 맵 수명을 검증한다.
+/// Spawn/완공 → 다음 틱 망 참가, 토폴로지·회전 footprint 공급 선택·재연결과 공유 맵 수명을 검증한다.
 /// 제품의 공급/연료/생산/충전·실제 입력은 실행하지 않는다.
 /// </summary>
 public class Phase8PowerTopologyTests : EcsWorldTestFixture
 {
     private GameSimulationGroup _simulation;
     private SystemHandle _topology;
+    private SystemHandle _connectionSelection;
     private SystemHandle _topologyApply;
     private SystemHandle _sync;
     private EndBuildingEntityCommandBufferSystem _endBuilding;
@@ -26,8 +27,11 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         base.SetUp();
         CreateGameplayPrefabDatabases();
         Entities.PrepareSimulationConfiguration();
-        Entities.PrepareBuildingConfiguration(BuildingTypeEnum.PowerPole, BuildingTypeEnum.MainFacility);
+        Entities.PrepareBuildingConfiguration(BuildingTypeEnum.PowerPole, BuildingTypeEnum.MainFacility,
+            BuildingTypeEnum.Miner, BuildingTypeEnum.Crafter, BuildingTypeEnum.ResearchBuilding,
+            BuildingTypeEnum.CoalGenerator, BuildingTypeEnum.DroneStation);
         _topology = _world.GetOrCreateSystem<PowerGridTopologyReservationSystem>();
+        _connectionSelection = _world.GetOrCreateSystem<PowerGridConnectionDecisionSystem>();
         _topologyApply = _world.GetOrCreateSystem<PowerGridTopologyApplySystem>();
         _sync = _world.GetOrCreateSystem<PowerGridConnectionSyncSystem>();
         _endBuilding = _world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>();
@@ -53,12 +57,14 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         building.AddSystemToUpdateList(apply);
         building.AddSystemToUpdateList(_endBuilding);
         reservation.AddSystemToUpdateList(_topology);
+        decision.AddSystemToUpdateList(_connectionSelection);
         apply.AddSystemToUpdateList(_topologyApply);
         apply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingLifecycleApplySystem>());
         apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionLifecycleApplySystem>());
         commit.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>());
         sync.AddSystemToUpdateList(_sync);
         command.SortSystems();
+        decision.SortSystems();
         reservation.SortSystems();
         apply.SortSystems();
         building.SortSystems();
@@ -365,10 +371,12 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
     public void ReservationFailure_DoesNotDeleteExistingGridsOrClearClientReferences()
     {
         SubmitPole(new int2(0, 0), 1);
+        SubmitParticipant(BuildingTypeEnum.Miner, new int2(2, 0));
         _simulation.Update();
         _simulation.Update();
         Entity pole = PoleAt(new int2(0, 0));
         Entity originalGrid = Connection(pole).Grid;
+        Entity selectedClient = ParticipantAt(new int2(2, 0));
         Entity client = CreateConnectionParticipant(pole);
         Entity invalidGrid = _entityManager.CreateEntity();
         _entityManager.SetComponentData(pole, new PowerGridConnection { PowerPole = pole, Grid = invalidGrid });
@@ -380,6 +388,10 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         Assert.IsTrue(_entityManager.Exists(originalGrid));
         Assert.AreEqual(originalGrid, Connection(client).Grid);
         Assert.AreEqual(pole, Connection(client).PowerPole);
+        Assert.IsTrue(_entityManager.IsComponentEnabled<PowerGridConnectionDecision>(selectedClient),
+            "선택은 토폴로지 준비 전에 완료되지만 후속 토폴로지 실패 시 공개하지 않아야 한다.");
+        Assert.AreEqual(originalGrid, Connection(selectedClient).Grid);
+        Assert.AreEqual(pole, Connection(selectedClient).PowerPole);
         Assert.AreEqual(1, GridCount());
     }
 
@@ -447,6 +459,230 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         _entityManager.RemoveComponent<PowerGridConnection>(pole);
         Simulation.UpdateAndComplete(_sync);
         Assert.AreEqual(0, PublishedIndex().Map.Count());
+    }
+
+    [TestCase(BuildingTypeEnum.Miner, 1, 1, DirectionEnum.Up)]
+    [TestCase(BuildingTypeEnum.Crafter, 2, 2, DirectionEnum.Up)]
+    [TestCase(BuildingTypeEnum.CoalGenerator, 3, 3, DirectionEnum.Up)]
+    [TestCase(BuildingTypeEnum.ResearchBuilding, 2, 3, DirectionEnum.Right)]
+    [TestCase(BuildingTypeEnum.DroneStation, 3, 2, DirectionEnum.Left)]
+    public void ParticipantSpawnAndCompletion_SelectEntireRotatedFootprintAtBoundary_NextTick(
+        BuildingTypeEnum type, int width, int height, DirectionEnum direction)
+    {
+        int2 size = new int2(width, height);
+        SetFootprint(type, size);
+        int2 effectiveSize = BuildingFootprintUtility.GetEffectiveSize(size, direction);
+        int2 position = new int2(-5 - effectiveSize.x + 1, -3);
+        int2 completedPosition = new int2(position.x, 3);
+        int2 outsidePosition = new int2(position.x - 1, 0);
+        SubmitPole(int2.zero, 1);
+        SubmitParticipant(type, position, direction);
+        SubmitParticipant(type, outsidePosition, direction);
+        Entity site = CreateCompletionSite(type, completedPosition, size, direction);
+
+        _simulation.Update();
+        Entity pole = PoleAt(int2.zero);
+        Entity participant = ParticipantAt(position);
+        Entity completed = ParticipantAt(completedPosition);
+        Entity outside = ParticipantAt(outsidePosition);
+        Assert.IsFalse(_entityManager.Exists(site));
+        AssertDisconnected(participant);
+        AssertDisconnected(completed);
+        Assert.IsFalse(_entityManager.IsComponentEnabled<PowerGridConnectionDecision>(participant));
+
+        _simulation.Update();
+        Assert.AreEqual(pole, Connection(participant).PowerPole);
+        Assert.AreEqual(pole, Connection(completed).PowerPole);
+        Assert.AreEqual(Connection(pole).Grid, Connection(participant).Grid);
+        Assert.AreEqual(Connection(pole).Grid, Connection(completed).Grid);
+        Assert.AreEqual(Connection(pole).Grid, PublishedIndex().Map[participant].Grid);
+        AssertDisconnected(outside);
+        Assert.IsFalse(PublishedIndex().Map.ContainsKey(outside));
+        if (effectiveSize.x > 1)
+        {
+            Assert.IsFalse(PowerRangeUtility.Contains(int2.zero, 5, position),
+                "기준 좌표가 범위 밖이어도 마지막 점유 셀이 경계에 닿으면 연결되어야 한다.");
+        }
+    }
+
+    [Test]
+    public void OverlappingSupply_SelectsNearestFootprintCell_UsesStampTie_AndSwitchesValidConnection()
+    {
+        SetFootprint(BuildingTypeEnum.Crafter, new int2(5, 1));
+        SetFootprint(BuildingTypeEnum.ResearchBuilding, new int2(3, 1));
+        SubmitPole(int2.zero, 20);
+        SubmitPole(new int2(10, 0), 10);
+        SubmitParticipant(BuildingTypeEnum.Crafter, new int2(4, 0));
+        SubmitParticipant(BuildingTypeEnum.ResearchBuilding, new int2(4, 2));
+        _simulation.Update();
+        _simulation.Update();
+        Entity left = PoleAt(int2.zero);
+        Entity right = PoleAt(new int2(10, 0));
+        Entity crafter = ParticipantAt(new int2(4, 0));
+        Entity research = ParticipantAt(new int2(4, 2));
+        Assert.AreNotEqual(Connection(left).Grid, Connection(right).Grid);
+        Assert.AreEqual(right, Connection(crafter).PowerPole, "anchor가 아닌 전체 점유 셀의 최소 거리로 선택한다.");
+        Assert.AreEqual(right, Connection(research).PowerPole, "거리 동률은 Entity 생성 순서 대신 설치 기록으로 비교한다.");
+
+        SubmitPole(new int2(6, 0), 30);
+        _simulation.Update();
+        Entity closer = PoleAt(new int2(6, 0));
+        Assert.AreEqual(right, Connection(crafter).PowerPole, "EndBuilding에 생성된 전신주는 다음 틱부터 선택한다.");
+        Simulation.UpdateAndComplete(_connectionSelection);
+        Assert.AreEqual(Entity.Null, Decision(closer), "새 전신주의 토폴로지가 아직 준비되지 않은 상태다.");
+        Assert.AreEqual(closer, _entityManager.GetComponentData<PowerGridConnectionDecision>(crafter).PowerPole);
+        Assert.AreEqual(right, Connection(crafter).PowerPole);
+        Simulation.UpdateAndComplete(_topology);
+        Simulation.UpdateAndComplete(_topologyApply);
+        Assert.AreEqual(right, Connection(crafter).PowerPole, "Apply 기록과 실제 공개를 구분한다.");
+        Simulation.Playback(_endBuilding);
+        Assert.AreEqual(closer, Connection(crafter).PowerPole);
+        Assert.AreEqual(closer, Connection(research).PowerPole);
+        Assert.AreEqual(Connection(closer).Grid, Connection(crafter).Grid);
+        Assert.AreEqual(1, GridCount());
+    }
+
+    [Test]
+    public void ParticipantDisabled_DoesNotSelectCloserPole_ThenReactivationAndDemolitionReconnect()
+    {
+        SetFootprint(BuildingTypeEnum.Miner, new int2(1, 1));
+        SubmitPole(int2.zero, 1);
+        SubmitPole(new int2(10, 0), 2);
+        SubmitParticipant(BuildingTypeEnum.Miner, new int2(5, 0));
+        _simulation.Update();
+        _simulation.Update();
+        Entity left = PoleAt(int2.zero);
+        Entity right = PoleAt(new int2(10, 0));
+        Entity participant = ParticipantAt(new int2(5, 0));
+        Assert.AreEqual(left, Connection(participant).PowerPole);
+        _entityManager.AddComponent<Disabled>(participant);
+        SubmitPole(new int2(6, 0), 3);
+        _simulation.Update();
+        _simulation.Update();
+        Entity closer = PoleAt(new int2(6, 0));
+        Assert.AreEqual(left, Connection(participant).PowerPole);
+        Assert.IsFalse(_entityManager.IsComponentEnabled<PowerGridConnectionDecision>(participant));
+        RequestDemolition(left);
+        _simulation.Update();
+        AssertDisconnected(participant);
+        Assert.IsFalse(_entityManager.Exists(left));
+
+        _entityManager.RemoveComponent<Disabled>(participant);
+        _simulation.Update();
+        Assert.AreEqual(closer, Connection(participant).PowerPole);
+        RequestDemolition(closer);
+        _simulation.Update();
+        Assert.AreEqual(right, Connection(participant).PowerPole, "철거 승인 틱에 남은 범위 후보로 재연결한다.");
+        Assert.AreEqual(Connection(right).Grid, PublishedIndex().Map[participant].Grid);
+        RequestDemolition(right);
+        _simulation.Update();
+        AssertDisconnected(participant);
+        Assert.IsFalse(PublishedIndex().Map.ContainsKey(participant));
+        Assert.AreEqual(0, GridCount());
+    }
+
+    [Test]
+    public void InvalidPoleInput_DecisionClearsPreparationAndPreservesPublishedConnection()
+    {
+        SubmitPole(int2.zero, 1);
+        SubmitParticipant(BuildingTypeEnum.Miner, new int2(2, 0));
+        _simulation.Update();
+        _simulation.Update();
+        Entity pole = PoleAt(int2.zero);
+        Entity participant = ParticipantAt(new int2(2, 0));
+        Entity grid = Connection(pole).Grid;
+        _entityManager.RemoveComponent<GridPosition>(pole);
+
+        LogAssert.Expect(LogType.Error, new Regex("PowerGridConnectionDecisionSystem.*Invalid participant or pole"));
+        Simulation.UpdateAndComplete(_connectionSelection);
+        Assert.IsFalse(_entityManager.IsComponentEnabled<PowerGridConnectionDecision>(participant));
+        Simulation.Playback(_endBuilding);
+
+        Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
+        Assert.IsTrue(_entityManager.Exists(grid));
+        Assert.AreEqual(pole, Connection(participant).PowerPole);
+        Assert.AreEqual(grid, Connection(participant).Grid);
+        Assert.AreEqual(1, GridCount());
+    }
+
+    [Test]
+    public void ParticipantFootprintChangedAfterDecision_RejectsPublicationWithoutDeletingGrid()
+    {
+        SetFootprint(BuildingTypeEnum.Miner, new int2(1, 1));
+        SubmitPole(int2.zero, 1);
+        SubmitParticipant(BuildingTypeEnum.Miner, new int2(2, 0));
+        _simulation.Update();
+        _simulation.Update();
+        Entity pole = PoleAt(int2.zero);
+        Entity participant = ParticipantAt(new int2(2, 0));
+        Entity grid = Connection(pole).Grid;
+        Simulation.UpdateAndComplete(_connectionSelection);
+        Simulation.UpdateAndComplete(_topology);
+        _entityManager.SetComponentData(participant, new GridPosition(new int2(99, 0)));
+        LogAssert.Expect(LogType.Error, new Regex("PowerGridTopologyApplySystem.*supply selection changed"));
+        Simulation.UpdateAndComplete(_topologyApply);
+        Simulation.Playback(_endBuilding);
+        Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
+        Assert.IsTrue(_entityManager.Exists(grid));
+        Assert.AreEqual(grid, Connection(participant).Grid);
+        Assert.AreEqual(pole, Connection(participant).PowerPole);
+        Assert.AreEqual(1, GridCount());
+    }
+
+    private void SetFootprint(BuildingTypeEnum type, int2 size)
+    {
+        using var query = _entityManager.CreateEntityQuery(typeof(BuildingConfig));
+        var configs = _entityManager.GetBuffer<BuildingConfigElement>(query.GetSingletonEntity());
+        for (int i = 0; i < configs.Length; i++)
+        {
+            if (configs[i].BuildingType == type && configs[i].Tier == 1)
+            {
+                var config = configs[i];
+                config.Footprint = size;
+                configs[i] = config;
+                return;
+            }
+        }
+        Assert.Fail($"Missing config for {type}");
+    }
+
+    private void SubmitParticipant(BuildingTypeEnum type, int2 position, DirectionEnum direction = DirectionEnum.Up)
+    {
+        BuildingPlacementRequestUtility.SubmitSpawn(_entityManager,
+            new SpawnBuildingRequest(type, 1, position, direction));
+    }
+
+    private Entity CreateCompletionSite(BuildingTypeEnum type, int2 position, int2 size, DirectionEnum direction)
+    {
+        Entity site = _entityManager.CreateEntity(typeof(ConstructionSite), typeof(BuildingType),
+            typeof(GridPosition), typeof(Direction), typeof(BuildingFootprint), typeof(PlacementStamp),
+            typeof(ConstructionMaterialRequirementElement), typeof(StoredItemElement));
+        _entityManager.SetComponentData(site, new ConstructionSite(type, 1));
+        _entityManager.SetComponentData(site, new BuildingType(BuildingTypeEnum.ConstructionSite, 0));
+        _entityManager.SetComponentData(site, new GridPosition(position));
+        _entityManager.SetComponentData(site, new Direction(direction));
+        _entityManager.SetComponentData(site, new BuildingFootprint(size));
+        _entityManager.SetComponentData(site, new PlacementStamp(11, 0));
+        return site;
+    }
+
+    private Entity ParticipantAt(int2 position)
+    {
+        using var query = _entityManager.CreateEntityQuery(new EntityQueryDesc
+        {
+            All = new[] { ComponentType.ReadOnly<PowerGridConnectionDecision>(), ComponentType.ReadOnly<GridPosition>() },
+            Options = EntityQueryOptions.IgnoreComponentEnabledState
+        });
+        using var participants = query.ToEntityArray(Allocator.Temp);
+        foreach (Entity participant in participants)
+        {
+            if (math.all(_entityManager.GetComponentData<GridPosition>(participant).Value == position))
+            {
+                return participant;
+            }
+        }
+        Assert.Fail($"Missing participant at {position}");
+        return Entity.Null;
     }
 
     private void SubmitPole(int2 position, ulong tick, BuildingTypeEnum type = BuildingTypeEnum.PowerPole, int tier = 1)

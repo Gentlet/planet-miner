@@ -4,7 +4,7 @@ using Unity.Entities;
 using Unity.Jobs;
 
 /// <summary>
-/// Reservation의 연결 계획을 최종 검사하고 망 생성/연결 변경/병합된 망 삭제를 EndBuilding에 기록한다.
+/// Decision의 공급 선택과 Reservation의 토폴로지를 최종 검사하고 망/연결 변경을 EndBuilding에 기록한다.
 /// 연결 집합이나 대표를 다시 선택하지 않으며 예약 망 Entity는 이 시스템의 같은 ECB 안에서만 참조한다.
 /// 비활성/철거 전신주와 모든 런타임 참가자의 참조를 정리한 뒤 빈 망을 삭제한다.
 /// </summary>
@@ -57,6 +57,34 @@ public partial struct PowerGridTopologyApplySystem : ISystem
             return;
         }
 
+        var configs = default(DynamicBuffer<BuildingConfigElement>);
+        if (SystemAPI.TryGetSingletonEntity<BuildingConfig>(out var configEntity))
+        {
+            if (state.EntityManager.HasBuffer<BuildingConfigElement>(configEntity))
+            {
+                configs = state.EntityManager.GetBuffer<BuildingConfigElement>(configEntity, true);
+            }
+        }
+        foreach (var (decision, entity) in SystemAPI.Query<RefRO<PowerGridConnectionDecision>>()
+                     .WithNone<PowerPole, PendingBuildingDemolition>().WithEntityAccess()
+                     .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState))
+        {
+            if (!state.EntityManager.IsComponentEnabled<PowerGridConnectionDecision>(entity))
+            {
+                publications.Dispose();
+                return;
+            }
+            if (!IsConnectionDecisionValid(state.EntityManager, entity, decision.ValueRO.PowerPole, configs))
+            {
+                publications.Dispose();
+                var failureEcb = state.World.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>()
+                    .CreateCommandBuffer();
+                SimulationFailureUtility.Record(ref failureEcb,
+                    "[PowerGridTopologyApplySystem] Prepared supply selection changed before apply.");
+                return;
+            }
+        }
+
         var connectionEntities = _connectionQuery.ToEntityArray(Allocator.TempJob);
         var existingGrids = _gridQuery.ToEntityArray(Allocator.TempJob);
         if (publications.Length == 0 && connectionEntities.Length == 0 && existingGrids.Length == 0)
@@ -72,13 +100,62 @@ public partial struct PowerGridTopologyApplySystem : ISystem
             Publications = publications,
             ConnectionEntities = connectionEntities,
             ConnectionLookup = SystemAPI.GetComponentLookup<PowerGridConnection>(true),
+            ConnectionDecisionLookup = SystemAPI.GetComponentLookup<PowerGridConnectionDecision>(true),
             PowerPoleLookup = SystemAPI.GetComponentLookup<PowerPole>(true),
+            DisabledLookup = SystemAPI.GetComponentLookup<Disabled>(true),
+            DemolitionLookup = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true),
             ExistingGrids = existingGrids,
             ECB = ecbSystem.CreateCommandBuffer()
         }.Schedule(state.Dependency);
         state.Dependency = JobHandle.CombineDependencies(publications.Dispose(applyHandle),
             connectionEntities.Dispose(applyHandle), existingGrids.Dispose(applyHandle));
         ecbSystem.AddJobHandleForProducer(state.Dependency);
+    }
+
+    private static bool IsConnectionDecisionValid(EntityManager manager, Entity participant, Entity selectedPole,
+        DynamicBuffer<BuildingConfigElement> configs)
+    {
+        if (!PowerGridConnectionDecisionSystem.IsParticipantValid(manager, participant))
+        {
+            return false;
+        }
+        if (selectedPole == Entity.Null)
+        {
+            return true;
+        }
+        if (!manager.Exists(selectedPole))
+        {
+            return false;
+        }
+        if (!manager.HasComponent<PowerPole>(selectedPole) ||
+            !manager.HasComponent<PowerGridTopologyDecision>(selectedPole) ||
+            !manager.HasComponent<BuildingType>(selectedPole) || !manager.HasComponent<GridPosition>(selectedPole))
+        {
+            return false;
+        }
+        if (manager.HasComponent<Disabled>(selectedPole) || manager.HasComponent<Prefab>(selectedPole) ||
+            manager.HasComponent<PendingBuildingDemolition>(selectedPole))
+        {
+            return false;
+        }
+        if (manager.GetComponentData<PowerGridTopologyDecision>(selectedPole).RepresentativePole == Entity.Null)
+        {
+            return false;
+        }
+        if (!configs.IsCreated)
+        {
+            return false;
+        }
+        var type = manager.GetComponentData<BuildingType>(selectedPole);
+        if (!BuildingConfigLookupUtility.TryGetConfig(configs, type.Type, type.Tier, out var config))
+        {
+            return false;
+        }
+        var footprint = manager.GetComponentData<BuildingFootprint>(participant);
+        var direction = manager.GetComponentData<Direction>(participant);
+        return PowerRangeUtility.TryGetFootprintDistanceSquared(
+            manager.GetComponentData<GridPosition>(selectedPole).Value, config.Power.SupplyRange,
+            manager.GetComponentData<GridPosition>(participant).Value, footprint.GetEffectiveSize(direction.dir), out _);
     }
 
     private static bool IsPublicationValid(EntityManager manager, Entity pole,
@@ -157,7 +234,10 @@ internal struct ApplyPowerGridTopologyJob : IJob
     [ReadOnly] public NativeList<PowerGridTopologyPublication> Publications;
     [ReadOnly] public NativeArray<Entity> ConnectionEntities;
     [ReadOnly] public ComponentLookup<PowerGridConnection> ConnectionLookup;
+    [ReadOnly] public ComponentLookup<PowerGridConnectionDecision> ConnectionDecisionLookup;
     [ReadOnly] public ComponentLookup<PowerPole> PowerPoleLookup;
+    [ReadOnly] public ComponentLookup<Disabled> DisabledLookup;
+    [ReadOnly] public ComponentLookup<PendingBuildingDemolition> DemolitionLookup;
     [ReadOnly] public NativeArray<Entity> ExistingGrids;
     public EntityCommandBuffer ECB;
 
@@ -210,6 +290,10 @@ internal struct ApplyPowerGridTopologyJob : IJob
             var connection = ConnectionLookup[participant];
             bool isPole = PowerPoleLookup.HasComponent(participant);
             Entity selectedPole = isPole ? participant : connection.PowerPole;
+            if (!isPole)
+            {
+                selectedPole = GetParticipantSelectedPole(participant, connection.PowerPole);
+            }
             Entity grid = Entity.Null;
             if (!gridsByPole.TryGetValue(selectedPole, out grid))
             {
@@ -225,6 +309,27 @@ internal struct ApplyPowerGridTopologyJob : IJob
                 ECB.SetComponent(participant, new PowerGridConnection { PowerPole = selectedPole, Grid = grid });
             }
         }
+    }
+
+    private Entity GetParticipantSelectedPole(Entity participant, Entity previousPole)
+    {
+        if (DisabledLookup.HasComponent(participant))
+        {
+            return previousPole;
+        }
+        if (DemolitionLookup.HasComponent(participant))
+        {
+            return previousPole;
+        }
+        if (!ConnectionDecisionLookup.HasComponent(participant))
+        {
+            return previousPole;
+        }
+        if (!ConnectionDecisionLookup.IsComponentEnabled(participant))
+        {
+            return previousPole;
+        }
+        return ConnectionDecisionLookup[participant].PowerPole;
     }
 
     private void DeleteUnusedGrids(NativeParallelHashSet<Entity> retainedGrids)
