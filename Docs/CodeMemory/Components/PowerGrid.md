@@ -1,6 +1,6 @@
 # 전력 컴포넌트 계약
 
-2026-10-13 롤백 뒤 Task 8.1~8.2를 구현하고 준비와 적용 책임을 분리했다. Reservation은 연결/대표/유지 망 계획을, StateApply는 최종 검사와 망 생성/병합 ECB 기록을 소유한다. 설정 게시·공통 전신주 부착·공개 연결 인덱스도 유지한다. 공급/연료/생산/충전과 제거/분리는 후속이다. 규칙은 [전력 명세](../../Specifications/PowerGrid.md)를 따른다. 분리 후 Unity 컴파일·DLL 최신성과 선택 EditMode 25/25(전력 토폴로지 6·공통 생성 11·공사 완공 8)를 확인했다. 앞선 50사례는 분리 전 실행이며 이번 수치와 합산하지 않는다. Play Mode·베이킹·Player 빌드·성능은 미수행이다.
+2026-10-13 Task 8.1~8.3을 구현했다. Reservation은 연결/분리 유지권/대표 계획을, StateApply는 최종 검사·망 생성/병합/분리·비활성 연결 해제·기존 참조 정리·빈 망 삭제를 소유한다. 공급 전신주 검색과 공급/연료/생산/충전은 후속이다. 규칙은 [전력 명세](../../Specifications/PowerGrid.md)를 따른다. 이번 Unity 컴파일·DLL 최신성과 선택 EditMode 32/32(토폴로지 13·기존 철거 19)를 확인했으며 과거 25/50사례와 합산하지 않는다. Play Mode·베이킹·Player 빌드·성능은 미수행이다.
 
 ## 설정 원본
 
@@ -15,8 +15,8 @@
 | PowerPole / 전신주·주 시설 | 참가 태그 | 공통 BuildingLifecycleUtility가 직접 Spawn/현장 완공에서 부착한다. StableId/번호 발급 없이 Entity와 기존 PlacementStamp를 사용한다. |
 | PowerGenerator / 발전 건물 | 발전 참가자 태그 | 8.7 생성 연결이 부착. 준비/정산은 BuildingType 종류·Tier로 능력을 조회한다. |
 | PowerConsumer / 생산·연구·충전 건물 | 소비 참가자 태그 | 각 후속 도메인이 부착. 충전의 동적 수요와 정격 설정을 혼동하지 않는다. |
-| PowerGrid / 망 엔티티 | 망 태그 | PowerGridTopologyApplySystem의 Burst Job이 준비 계획에 따른 생성/병합을 EndBuilding에 기록한다. 전신주와 별도 Entity이며 번호 발급이 없다. 제거/분리는 8.3 후속이다. |
-| PowerGridConnection / 참가자 | 공개 PowerPole·Grid 참조 | 공통 생성은 자기 전신주/Null 망으로 초기화한다. Reservation이 입력을 검증하고 Apply가 계획과 현재 값을 대조한 뒤 변경을 EndBuilding에 기록한다. Sync/후속 진단이 공개 값을 읽는다. 생산은 공급 결과를 읽는다. |
+| PowerGrid / 망 엔티티 | 망 태그 | Apply의 Burst Job이 생성/병합/분리와 미사용/빈 망 삭제를 EndBuilding에 기록한다. 기존 망 전체를 조회하여 마지막 전신주 소실 뒤에도 회수한다. 전신주와 별도 Entity이며 번호 발급이 없다. |
+| PowerGridConnection / 참가자 | 공개 PowerPole·Grid 참조 | 공통 생성은 자기 전신주/Null 망으로 초기화한다. Apply는 선택한 활성 전신주의 새 망으로 기존 참조를 맞추거나 무효 선택을 해제한다. Disabled도 정리하고 Prefab은 제외한다. 전신주 자체의 자기 참조/설치 기록은 유지한다. 다른 공급 전신주 검색은 8.4다. |
 | FuelEnergyState / 연료를 에너지로 전환하는 소비처 | 영속 RemainingEnergy | 연료 종류·소비처에 독립적인 잔량이다. 현재 전력 계약에서는 공급 실행의 연료 전환이 증가시키고 틱 말 정산이 실제 발전분만 차감한다. 동일 연료 도메인의 서로 다른 단계이며 새 입고/정산으로 음수나 중복 가용량을 만들지 않는다. 다른 연료/소비처의 실제 Writer는 별도 후속이다. |
 | PowerDemand / 소비자 | 프레임 입력 RequestedEnergy | 소비 도메인이 준비에서 먼저 0으로 초기화하고 전력 외 작업 조건으로 작성한다. 전력 계획이 읽는다. 정전 자체로 수요를 0으로 만들지 않는다. |
 | PowerSupplyResult / 소비자 | 프레임 공급 예산 SupplyRatio·AllocatedEnergy | 전력 소유자가 준비에서 먼저 0으로 초기화한다. 연료로 뒷받침된 뒤 한 번 게시하고 생산/충전은 이 예산 안에서만 사용한다. 실제 사용량으로 오해하지 않는다. |
@@ -25,7 +25,7 @@
 
 망별 가용량·수요·배정량·사용량과 발전기별 실제 발전량은 전력 소유자의 일시 집계/정산 계산으로 처리한다. 독립 ECS 상태나 후속 계산의 별도 원본으로 중복 보관하지 않는다. 준비 초기화는 작업 불가·공급 없음·단절된 참가자도 포함하며 모든 초기화가 끝난 뒤 수요/계획을 작성한다. 앞선 틱의 값이 남아 예산으로 사용되지 않게 하는 계약이다.
 
-전신주/주 시설의 전신주 상태만 공통 생성과 EndBuilding에 연결했다. 발전기/소비자 부착·철거 정리는 8.7, 주 시설 자동 시작은 9.22가 수행한다.
+전신주/주 시설의 전신주 상태만 공통 생성과 EndBuilding에 연결했다. 기존 일반 전신주의 철거·참조 정리는 8.3에서 연결했으며 발전기/소비자 부착·실제 생산 전력 연결은 8.7, 주 시설 자동 시작은 9.22다.
 
 추가 계약 3개:
 
@@ -37,11 +37,13 @@
 
 ## 실행 경계
 
-전력 전용 그룹 정의는 삭제 상태를 유지한다. PowerGridTopologyReservationSystem은 BuildingReservationGroup의 OrderLast다. 생존 ECS·종류/Tier 설정·설치 기록·공개 망을 메인 스레드에서 검사하고 Burst IJob으로 연결 집합·대표·유지 망 계획만 작성한다. 계산/입력 해제 핸들을 state.Dependency에 등록한다. 정상 망 변경의 ECB Producer는 없으며 입력 오류 Fatal만 기존 EndBuilding 경계에 기록한다.
+전력 전용 그룹은 없다. Reservation은 BuildingReservationGroup의 OrderLast에서 생존 원본을 검증하고 Burst IJob으로 연결 집합과 기존 망별 유지권을 정한 뒤 집합별 병합 계획을 작성한다. 1A는 가장 이른 남은 활성 멤버의 집합만 기존 망을 유지하고, 2A는 유지권 확정 후 병합한다. 계산/입력 해제 핸들을 state.Dependency에 등록한다. 정상 망 변경의 ECB Producer는 없으며 입력 오류 Fatal만 EndBuilding에 기록한다.
 
-PowerGridTopologyApplySystem은 BuildingStateApplyGroup에서 BuildingLifecycleApplySystem보다 먼저 실행한다. 준비된 대표의 생존·활성·소속 계획과 참가자의 현재 공개 망을 최종 검사하며 연결 집합/대표를 재선택하지 않는다. 정상 입력을 모두 검사한 뒤 Burst IJob으로 망 생성·연결 변경·병합으로 불필요해진 망 삭제를 같은 EndBuilding ECB에 기록한다. 기록/입력 해제 핸들을 state.Dependency와 EndBuilding Producer에 등록한다. 검사 실패는 Fatal만 기록하며 정상 망 변경을 시작하지 않는다. 실제 공개는 EndBuilding이고 N틱 생성자는 N+1부터 참가한다.
+Apply는 BuildingStateApplyGroup에서 BuildingLifecycleApplySystem보다 먼저 실행한다. 활성 전신주의 준비 결과를 모두 최종 검사하며, 준비 누락/Reservation 실패를 빈 망으로 처리하지 않는다. 분리하여 새 망이 필요한 집합은 대표의 ExpectedGrid가 기존 망이고 RetainedGrid가 Null일 수 있다. 대표/집합은 재선택하지 않는다.
 
-공급 전 수요/가용량·공급 게시·실제 사용 정산 Writer는 후속이다. 연결 인덱스는 이번 틱 계획을 대체하지 않으며 이전 Synchronization 자료를 같은 틱 생성/철거 판단의 원본으로 쓰지 않는다. 분리·빈 망·철거/일반 참가자 참조 정리는 8.3~8.4/8.7에 남아 있다.
+정상 검사 뒤 Burst IJob은 대표별 망 Entity를 준비하고 모든 런타임 연결을 Disabled까지 갱신한 뒤 기존 망 중 유지되지 않는 망을 삭제한다. 참가자 Entity 목록만 전달하며 기존 PowerGridConnection과 전신주 여부는 읽기 전용 ComponentLookup으로 Job 안에서 조회한다. 별도 연결 스냅샷 구조체/값 복사 배열은 없다. 3A는 비활성 전신주를 자기 참조/Null 망으로 만들고 재활성화 시 다시 참가하게 한다. 일반 참가자의 선택 전신주가 무효하면 두 참조를 해제한다. 참가자·기존 망 Entity 목록과 적용 계획의 해제 핸들을 state.Dependency와 EndBuilding Producer에 등록하고 Lookup의 ECS 읽기 의존성도 연결한다. 예약 Entity는 같은 ECB 안에서만 참조하며 실제 공개는 EndBuilding이다.
+
+공급 전 수요/가용량·공급 게시·실제 사용 정산 Writer는 후속이다. 연결 인덱스는 이번 틱 계획을 대체하지 않으며 이전 Synchronization 자료를 같은 틱 생성/철거 판단의 원본으로 쓰지 않는다. 실제 철거는 기존 Command 승인/EndCommand와 BuildingLifecycleApply/EndBuilding 경로를 사용한다. 다른 공급 전신주 선택과 발전기/소비자 등록은 8.4/8.7 후속이다.
 
 ## 순수 범위 조회
 

@@ -45,6 +45,7 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         _simulation.AddSystemToUpdateList(building);
         _simulation.AddSystemToUpdateList(commit);
         _simulation.AddSystemToUpdateList(sync);
+        command.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingDemolitionCommandSystem>());
         command.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>());
         building.AddSystemToUpdateList(decision);
         building.AddSystemToUpdateList(reservation);
@@ -199,6 +200,221 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         Assert.IsTrue(_entityManager.Exists(changedGrid));
         Assert.AreEqual(changedGrid, Connection(pole).Grid);
         Assert.AreEqual(2, GridCount(), "무효화된 계획으로 망을 생성/삭제하거나 연결을 덮어쓰지 않아야 한다.");
+    }
+
+    [TestCase(0, false)]
+    [TestCase(1, false)]
+    [TestCase(1, true)]
+    public void Demolition_RebuildsSurvivingSets_AndUpdatesParticipantReferences(int removedIndex, bool bridgeWasEarliest)
+    {
+        CreatePoleChain(bridgeWasEarliest);
+        Entity left = PoleAt(new int2(0, 0));
+        Entity bridge = PoleAt(new int2(8, 0));
+        Entity right = PoleAt(new int2(16, 0));
+        Entity originalGrid = Connection(left).Grid;
+        Entity removed = removedIndex == 0 ? left : bridge;
+        Entity removedClient = CreateConnectionParticipant(removed);
+        Entity rightClient = CreateConnectionParticipant(right);
+        Entity disabledClient = CreateConnectionParticipant(right, disabled: true);
+
+        RequestDemolition(removed);
+        _simulation.Update();
+
+        Assert.IsFalse(_entityManager.Exists(removed));
+        AssertDisconnected(removedClient);
+        Assert.AreEqual(right, Connection(rightClient).PowerPole);
+        Assert.AreEqual(Connection(right).Grid, Connection(rightClient).Grid);
+        Assert.AreEqual(Connection(right).Grid, Connection(disabledClient).Grid);
+        if (removedIndex == 0)
+        {
+            Assert.AreEqual(originalGrid, Connection(bridge).Grid);
+            Assert.AreEqual(originalGrid, Connection(right).Grid);
+            Assert.AreEqual(1, GridCount());
+        }
+        else
+        {
+            Entity retainedPole = bridgeWasEarliest ? right : left;
+            Entity newGridPole = bridgeWasEarliest ? left : right;
+            Assert.AreEqual(originalGrid, Connection(retainedPole).Grid);
+            Assert.AreNotEqual(originalGrid, Connection(newGridPole).Grid);
+            Assert.IsTrue(_entityManager.Exists(Connection(newGridPole).Grid));
+            Assert.AreEqual(2, GridCount());
+        }
+        var index = PublishedIndex();
+        Assert.IsFalse(index.Map.ContainsKey(removed));
+        Assert.IsFalse(index.Map.ContainsKey(removedClient));
+        Assert.AreEqual(Connection(right).Grid, index.Map[rightClient].Grid);
+        Assert.IsFalse(SimulationFailureUtility.HasFatalError(_entityManager));
+    }
+
+    [Test]
+    public void LastPole_DuplicateRemovalAndReinstallation_CleansAllRuntimeReferencesAndOrphanGrids()
+    {
+        SubmitPole(new int2(0, 0), 1);
+        _simulation.Update();
+        _simulation.Update();
+        Entity pole = PoleAt(new int2(0, 0));
+        Entity oldGrid = Connection(pole).Grid;
+        Entity client = CreateConnectionParticipant(pole);
+        Entity disabledClient = CreateConnectionParticipant(pole, disabled: true);
+        Entity orphanGrid = _entityManager.CreateEntity(typeof(PowerGrid));
+
+        RequestDemolition(pole);
+        RequestDemolition(pole);
+        _simulation.Update();
+
+        Assert.IsFalse(_entityManager.Exists(pole));
+        Assert.IsFalse(_entityManager.Exists(oldGrid));
+        Assert.IsFalse(_entityManager.Exists(orphanGrid));
+        AssertDisconnected(client);
+        AssertDisconnected(disabledClient);
+        Assert.AreEqual(0, GridCount());
+        Assert.AreEqual(0, PublishedIndex().Map.Count());
+
+        RequestDemolition(pole);
+        _simulation.Update();
+        SubmitPole(new int2(0, 0), 2);
+        _simulation.Update();
+        Entity replacement = PoleAt(new int2(0, 0));
+        Assert.AreNotEqual(pole, replacement);
+        Assert.AreEqual(Entity.Null, Connection(replacement).Grid);
+        _simulation.Update();
+        Assert.AreNotEqual(oldGrid, Connection(replacement).Grid);
+        Assert.IsTrue(_entityManager.Exists(Connection(replacement).Grid));
+        AssertDisconnected(client);
+        Assert.AreEqual(1, GridCount());
+        Assert.IsFalse(SimulationFailureUtility.HasFatalError(_entityManager));
+    }
+
+    [Test]
+    public void DisabledBridge_ReleasesItsGridAndClients_ThenRejoinsWithoutRestoringOldMembership()
+    {
+        CreatePoleChain(false);
+        Entity left = PoleAt(new int2(0, 0));
+        Entity bridge = PoleAt(new int2(8, 0));
+        Entity right = PoleAt(new int2(16, 0));
+        Entity oldGrid = Connection(left).Grid;
+        var stamp = _entityManager.GetComponentData<PlacementStamp>(bridge);
+        Entity client = CreateConnectionParticipant(bridge);
+
+        _entityManager.AddComponent<Disabled>(bridge);
+        _simulation.Update();
+        Assert.AreEqual(bridge, Connection(bridge).PowerPole);
+        Assert.AreEqual(Entity.Null, Connection(bridge).Grid);
+        Assert.AreEqual(Entity.Null, Decision(bridge));
+        Assert.AreEqual(stamp, _entityManager.GetComponentData<PlacementStamp>(bridge));
+        AssertDisconnected(client);
+        Assert.AreEqual(oldGrid, Connection(left).Grid);
+        Entity splitGrid = Connection(right).Grid;
+        Assert.AreNotEqual(oldGrid, splitGrid);
+        Assert.AreEqual(2, GridCount());
+
+        _entityManager.RemoveComponent<Disabled>(bridge);
+        _simulation.Update();
+        Assert.AreEqual(oldGrid, Connection(bridge).Grid);
+        Assert.AreEqual(oldGrid, Connection(right).Grid);
+        Assert.IsFalse(_entityManager.Exists(splitGrid));
+        AssertDisconnected(client);
+        Assert.AreEqual(1, GridCount());
+        Assert.IsFalse(SimulationFailureUtility.HasFatalError(_entityManager));
+    }
+
+    [Test]
+    public void SimultaneousSplitAndMerge_AssignsOldGridOwnershipBeforeChoosingMergeSurvivors()
+    {
+        // 두 기존 망이 각각 분리되고 양쪽 조각끼리 새 전신주로 병합된다.
+        SubmitPole(new int2(0, 0), 1);
+        SubmitPole(new int2(8, 0), 50);
+        SubmitPole(new int2(16, 0), 3);
+        SubmitPole(new int2(0, 16), 2);
+        SubmitPole(new int2(8, 16), 60);
+        SubmitPole(new int2(16, 16), 4);
+        _simulation.Update();
+        _simulation.Update();
+        Entity lowerLeft = PoleAt(new int2(0, 0));
+        Entity upperLeft = PoleAt(new int2(0, 16));
+        Entity lowerRight = PoleAt(new int2(16, 0));
+        Entity upperRight = PoleAt(new int2(16, 16));
+        Entity lowerGrid = Connection(lowerLeft).Grid;
+        Entity upperGrid = Connection(upperLeft).Grid;
+        Assert.AreNotEqual(lowerGrid, upperGrid);
+        Entity upperClient = CreateConnectionParticipant(upperLeft);
+        Entity rightClient = CreateConnectionParticipant(upperRight);
+
+        SubmitPole(new int2(0, 8), 100);
+        SubmitPole(new int2(16, 8), 101);
+        _simulation.Update();
+        RequestDemolition(PoleAt(new int2(8, 0)));
+        RequestDemolition(PoleAt(new int2(8, 16)));
+        _simulation.Update();
+
+        Assert.AreEqual(lowerGrid, Connection(lowerLeft).Grid);
+        Assert.AreEqual(lowerGrid, Connection(upperLeft).Grid);
+        Entity newRightGrid = Connection(lowerRight).Grid;
+        Assert.AreNotEqual(lowerGrid, newRightGrid);
+        Assert.AreNotEqual(upperGrid, newRightGrid);
+        Assert.AreEqual(newRightGrid, Connection(upperRight).Grid);
+        Assert.IsFalse(_entityManager.Exists(upperGrid));
+        Assert.AreEqual(lowerGrid, Connection(upperClient).Grid);
+        Assert.AreEqual(newRightGrid, Connection(rightClient).Grid);
+        Assert.AreEqual(2, GridCount());
+        Assert.IsFalse(SimulationFailureUtility.HasFatalError(_entityManager));
+    }
+
+    [Test]
+    public void ReservationFailure_DoesNotDeleteExistingGridsOrClearClientReferences()
+    {
+        SubmitPole(new int2(0, 0), 1);
+        _simulation.Update();
+        _simulation.Update();
+        Entity pole = PoleAt(new int2(0, 0));
+        Entity originalGrid = Connection(pole).Grid;
+        Entity client = CreateConnectionParticipant(pole);
+        Entity invalidGrid = _entityManager.CreateEntity();
+        _entityManager.SetComponentData(pole, new PowerGridConnection { PowerPole = pole, Grid = invalidGrid });
+
+        LogAssert.Expect(LogType.Error, new Regex("PowerGridTopologyReservationSystem.*Invalid pole"));
+        _simulation.Update();
+
+        Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
+        Assert.IsTrue(_entityManager.Exists(originalGrid));
+        Assert.AreEqual(originalGrid, Connection(client).Grid);
+        Assert.AreEqual(pole, Connection(client).PowerPole);
+        Assert.AreEqual(1, GridCount());
+    }
+
+    private void CreatePoleChain(bool bridgeWasEarliest)
+    {
+        SubmitPole(new int2(0, 0), bridgeWasEarliest ? 20UL : 10UL);
+        SubmitPole(new int2(8, 0), bridgeWasEarliest ? 1UL : 20UL);
+        SubmitPole(new int2(16, 0), bridgeWasEarliest ? 10UL : 30UL);
+        _simulation.Update();
+        _simulation.Update();
+        Assert.AreEqual(1, GridCount());
+    }
+
+    private Entity CreateConnectionParticipant(Entity pole, bool disabled = false)
+    {
+        // 일반 참가자의 등록 Producer는 8.4/8.7 후속이다. 여기서는 참조 정리 계약의 입력만 주입한다.
+        Entity client = _entityManager.CreateEntity(typeof(PowerConsumer), typeof(PowerGridConnection));
+        _entityManager.SetComponentData(client, Connection(pole));
+        if (disabled)
+        {
+            _entityManager.AddComponent<Disabled>(client);
+        }
+        return client;
+    }
+
+    private void RequestDemolition(Entity pole)
+    {
+        Entity request = _entityManager.CreateEntity(typeof(DemolishBuildingRequest));
+        _entityManager.SetComponentData(request, new DemolishBuildingRequest(pole));
+    }
+
+    private void AssertDisconnected(Entity entity)
+    {
+        Assert.AreEqual(Entity.Null, Connection(entity).PowerPole);
+        Assert.AreEqual(Entity.Null, Connection(entity).Grid);
     }
 
     [Test]
