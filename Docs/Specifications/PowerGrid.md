@@ -1,6 +1,6 @@
 # 전력 설정과 실행 계약
 
-2026-10-12 Task 8.1 구현과 사용자 확정 규칙. 설정 검증·ECS 게시·컴포넌트 정의·순수 범위 조회와 실행 그룹 경계는 구현했다. 그룹은 아직 비어 있으며 망 구성/등록·수요 작성·공급 게시·연료 전환/정산·생산/충전 연결은 Task 8.2~8.7, 9.14, 10A.3의 후속이다. 아래 후속 Writer의 순서와 기대 결과를 실제 전력 가동 검증으로 해석하지 않는다.
+2026-10-13 롤백 후 Task 8.1의 StableId를 제거하고 Task 8.2 코드를 다시 구현했다. 설정 검증/게시·기본 ECS 정의 10개·순수 범위 조회에 공통 전신주 부착·망 생성/병합·공개 연결 인덱스 Writer와 전신주별 프레임 결정을 추가했다. 수요/공급·연료·생산/충전 및 제거/분리는 후속이다. 전력 전용 그룹은 삭제 상태를 유지한다. 아래 규칙의 구현 여부와 실행 검증 여부를 구분한다.
 
 ## 설정 원본과 검증
 
@@ -27,29 +27,43 @@ DroneStation/MainFacility의 충전은 후속 드론 도메인이 후보별로 �
 
 설정 원본은 BuildingConfig, 토폴로지 원본은 전신주 등록 상태와 연결 집합, 실물 원본은 기존 ItemOwnership/StoredItemElement, 연료 에너지 원본은 FuelEnergyState다. FuelEnergyState는 연료 종류·소비처에 독립적인 잔량이며 현재 석탄 설정을 다른 연료 정의로 자동 확장한 것은 아니다. 망 집계·연결·셀 공급 조회는 이 원본에서 계산하는 파생 데이터다. 기존 건물 점유 인덱스와 같은 원본을 소유하는 공간 캐시를 추가하지 않는다.
 
+사용자 확정(2026-10-12): 전신주와 망은 각각 PowerPole/PowerGrid 태그가 부착된 별도 Entity로 식별하며 StableId나 번호 발급 카운터를 두지 않는다. PowerGridConnection은 기존 Entity 참조를 유지한다. 토폴로지의 처리 순서·병합 대표 전신주 선택과 후속 공급 거리 동률 처리는 기존 PlacementStamp.Compare의 설치 기록 유무·기록 비교·격자 좌표 순서를 재사용한다. Entity의 숫자 순서는 설치 순서가 아니다. 현재 StableId 필드/발급 주석을 제거하고 망 생성/병합 Writer를 연결했다. 제거/분리 수명주기와 일반 건물 공급 선택은 Task 8.3~8.4에서 완성한다.
+
 이번 틱 수요는 생산·충전 도메인이, 배분과 공급 결과는 전력 도메인이, 실제 사용 결과는 소비 도메인이 기록한다. 생산·충전은 PowerSupplyResult와 공통 World 시간 정책을 사용하며 전력망 내부 연결/집계 API를 실행하지 않는다. [컴포넌트별 계약](../CodeMemory/Components/PowerGrid.md)을 따른다.
 
 maximumGeneration/maximumConsumption은 에너지/초, coalEnergyPerItem/RemainingEnergy 및 Requested/Allocated/UsedEnergy는 에너지 단위다. 모든 도메인은 같은 World 시간의 `DeltaTime = min(World DeltaTime, GameConstants.MaxSimulationDeltaTime)` 정책을 사용한다. 전력 전용 시계 singleton과 프레임 데이터의 Tick 필드는 두지 않는다.
 
 매 틱 준비에서 전력 소유자는 모든 공급 결과·발전기 계획을, 소비 도메인은 모든 수요·실제 사용 결과를 먼저 0으로 초기화한다. 작업 불가·수요 없음·공급 없음·단절된 참가자도 초기화에서 제외하지 않는다. 초기화가 모두 끝난 뒤 이번 틱 수요/계획을 작성하고 공급 실행에서 예산을 한 번 게시한다. 이전 결과나 필수 데이터 누락을 전력 충분 상태로 보충하지 않는다. 실제 초기화 Writer는 후속이며 컴포넌트 삭제만으로 이 처리가 실행된 것은 아니다.
 
-## 그룹과 같은 틱의 읽기/쓰기 순서
+## 전신주 생성·망 준비·공개 기획
 
-최상위 Command → Building → Drone → Commit → Synchronization 순서와 세 ECB 경계는 유지한다. 아래 세 그룹은 기존 도메인 안의 자식이며 각 도메인을 다시 실행하지 않는다.
+- 공통 직접 Spawn/현장 완공에서 일반 전신주와 주 시설에 전신주 태그·프레임 결정과 자기 전신주/미연결 망의 초기 연결을 부착한다. 발전기/소비자 연결은 Task 8.7, 주 시설 자동 생성은 9.22다.
+- 전신주 연결은 생존 ECS·BuildingConfig의 종류/Tier ConnectionRange·GridPosition.Value·기존 설치 기록을 사용한다. 승인 철거와 비활성/Prefab 참가자를 제외하고 이전 공간 인덱스만으로 이번 틱 생존을 판단하지 않는다.
+- 망은 전신주와 별도 Entity로 관리한다. 별도 StableId/번호 발급은 사용하지 않고 기존 PlacementStamp.Compare로 순서를 정한다.
+- 한쪽 정사각형 연결 범위에 상대 중심이 들어가면 연결한다(OR). 독립 집합은 별도 망이며 공급 범위 중첩만으로 병합하지 않는다. 병합 시 기존 유효 망 소속 전신주 중 가장 이른 설치 멤버의 망 Entity를 유지하고 나머지는 소속 갱신과 같은 ECB 경계에 제거한다. 새 전신주의 설치 기록이 더 빨라도 기존 망 중에서 유지 대상을 선택한다.
+- 이번 틱 연결 계산 결과는 같은 틱 공급 계획에 사용하고 실제 망 생성/소속 변경은 EndBuilding에 공개한다. N틱 EndBuilding에서 생성된 전신주는 N+1부터 공급 계산에 참여한다. 준비 결과에는 살아 있는 대표 전신주를 사용하고 ECB 예약 망 Entity는 생성/연결을 기록한 동일 ECB 안에서만 참조한다.
+- 망 준비는 기존 BuildingReservation 마지막에서 Burst Job으로 수행하며 전력 전용 페이즈를 추가하지 않는다. 메인 스레드의 입력 검증 실패는 이전 결정을 비운 뒤 EndBuilding에 Fatal을 게시하며 잘못된 망 참조를 새 망으로 보충하지 않는다. 제거/분리·빈 망/모든 참가자 참조 정리는 8.3 후속이다.
+- PowerGridTopologyReservationSystem은 연결/대표/유지 망 계획만 작성한다. 망 생성·연결 변경·병합 망 삭제 기록은 BuildingStateApply의 PowerGridTopologyApplySystem으로 분리했다. Apply는 현재 생존/활성과 ExpectedGrid 스냅샷·대표 계획을 최종 대조하며 연결 집합/대표를 재탐색하지 않는다. 실패 시 정상 망 변경 없이 Fatal만 기록한다. 정상 변경은 같은 EndBuilding ECB 안에서 생성/연결/삭제하며 예약 망 Entity를 다른 단계로 전달하지 않는다.
+- 관련 파생 자료의 수명·갱신은 BuildingSpatialSyncSystem의 기존 인덱스/Fence 관례에 맞춘다. Sync는 Query에서 받은 공개 자료를 수집하며 참조 망 Entity를 Lookup으로 재검증하지 않는다. 연결 유효성은 망 생성·병합·정리 소유자가 보장하고 미연결 자료는 등록하지 않는다. 기존 건물 위치/점유 원본을 복제하지 않는다.
+- 이번 틱 대표 전신주·유지할 망·최종 검사할 이전 공개 값은 PowerGridTopologyDecision으로 전달한다. RepresentativePole은 살아 있는 전신주, RetainedGrid/ExpectedGrid는 살아 있는 망 또는 Null이며 예약 Entity가 아니다. 공개 연결은 PowerGridConnectionIndex의 Entity→연결 맵으로 수집하고 PowerGridConnectionSyncSystem이 기존 Fence 관례로 생성/재구축/해제한다. 별도 준비 맵·Fence는 없으며 ECS 결정의 Job 의존성과 공개 Native 맵 Fence를 구분한다.
+
+## 같은 틱의 읽기/쓰기 기획 순서
+
+최상위 Command → Building → Drone → Commit → Synchronization 순서와 세 ECB 경계는 유지한다. 아래 준비·공급 실행·사용 정산은 보존한 기획 역할이며 별도 전력 그룹 정의는 제거했다. 실제 배치는 기존 시스템/그룹 관례에 맞춰 재구현하고 각 도메인을 다시 실행하지 않는다.
 
 | 경계 | 후속 Writer/Reader 계약 |
 | --- | --- |
 | Command/EndCommand | 승인 철거 대상은 이번 틱 토폴로지·수요·발전 후보에서 제외한다. 현장은 전력 참가자가 아니다. 레시피 변경은 뒤의 BuildingDecision에서 읽는다. |
 | BuildingDecision | 기존 CanMine/CanStartCraft/CanAdvance를 작성한다. 전력 공급 여부로 작업 자격을 먼저 0으로 만들지 않는다. |
-| BuildingReservation 마지막: **PowerPreparationGroup** | 각 소유 도메인이 프레임 수요/공급/사용/발전 계획을 먼저 0으로 초기화한다. 소비 도메인의 수요 준비 Writer가 전력 외 작업 자격 및 충전 후보/배터리로 PowerDemand를 준비한다. 전력 소유자는 생존 원본 ECS로 토폴로지·보관 연료를 읽어 연결/가용량·배분 계획을 작성한다. 망별 합계는 전력 소유자의 일시 집계다. 앞선 틱 공간 인덱스만으로 같은 틱 철거/생존을 판단하지 않는다. |
-| BuildingExecution 첫 자식: **PowerSupplyExecutionGroup** | 연료 준비 Writer가 기존 StoredItemElement를 다시 읽고 실물 생존/ItemIdentity/Owner/활성 Destroy를 검사하여 배정량을 뒷받침할 만큼의 기존 석탄만 잔여 에너지로 전환한다. 신규 입고는 이 단계보다 뒤이므로 별도 연료 엔티티 스냅샷 버퍼를 두지 않는다. 이후 전력 게시 Writer가 이번 틱 공급을 한 번 게시한다. 아직 공급되지 않은 계획 자체를 소비하지 않는다. |
+| BuildingReservation 마지막: **전력 준비 단계** | 각 소유 도메인이 프레임 수요/공급/사용/발전 계획을 먼저 0으로 초기화한다. 소비 도메인의 수요 준비 Writer가 전력 외 작업 자격 및 충전 후보/배터리로 PowerDemand를 준비한다. 전력 소유자는 생존 원본 ECS로 토폴로지·보관 연료를 읽어 연결/가용량·배분 계획을 작성한다. 망별 합계는 전력 소유자의 일시 집계다. 앞선 틱 공간 인덱스만으로 같은 틱 철거/생존을 판단하지 않는다. |
+| BuildingExecution 시작의 **공급 실행 역할** | 연료 준비 Writer가 기존 StoredItemElement를 다시 읽고 실물 생존/ItemIdentity/Owner/활성 Destroy를 검사하여 배정량을 뒷받침할 만큼의 기존 석탄만 잔여 에너지로 전환한다. 신규 입고는 이 단계보다 뒤이므로 별도 연료 엔티티 스냅샷 버퍼를 두지 않는다. 이후 전력 게시 Writer가 이번 틱 공급을 한 번 게시한다. 아직 공급되지 않은 계획 자체를 소비하지 않는다. |
 | 일반 BuildingExecution | 생산은 이번 틱 공급 비율·에너지 예산 안에서 진행하고 실제 사용량을 기록한다. 연료 전환/공급 게시와 생산 Job의 명시적 ECS 의존성을 연결한다. 그룹 순서만으로 Job 완료를 가정하지 않는다. |
-| BuildingStateApply/EndBuilding | 전환 석탄은 기존 버퍼 선행 제거 → DestroyItemRequest 활성화 → ItemLifecycle → EndBuilding 삭제로 소비한다. 일반 입고와 완공/직접 생성이 확정된다. 이번 틱 새 석탄·전력 참가자는 이미 준비한 공급 예산에 추가하지 않고 다음 틱부터 사용한다. |
+| BuildingStateApply/EndBuilding | 준비된 전신주 망 계획을 최종 검사하여 망 생성/연결 변경/병합 삭제를 기록하고 EndBuilding에 공개한다. 후속 전환 석탄은 기존 버퍼 선행 제거 → DestroyItemRequest 활성화 → ItemLifecycle → EndBuilding 삭제로 소비한다. 일반 입고와 완공/직접 생성이 확정된다. 이번 틱 새 석탄·전력 참가자는 다음 틱부터 공급에 참여한다. |
 | DroneSimulation | 준비한 충전 후보·예산과 같은 World DeltaTime 정책으로 실제 충전분을 기록한다. 새 귀환 드론은 다음 틱 충전 후보이며 후속 배차 등으로 실행하지 못한 충전의 사용량은 0이다. |
-| SimulationCommit 안: **PowerSettlementGroup** | 건물·드론의 이번 틱 실제 사용을 모아 기초 발전을 먼저 배정하고 부족분만 석탄 발전으로 정산한다. 발전기별 실제 발전량과 망별 합계는 정산 내 파생 계산이며 독립 ECS 결과/집계로 중복 보관하지 않는다. 연료 에너지를 갱신하고 이 시점에 새 석탄 Destroy 요청을 발행하지 않는다. 미사용 예산을 같은 틱에 재배분하지 않는다. |
+| SimulationCommit 안: **사용 정산 단계** | 건물·드론의 이번 틱 실제 사용을 모아 기초 발전을 먼저 배정하고 부족분만 석탄 발전으로 정산한다. 발전기별 실제 발전량과 망별 합계는 정산 내 파생 계산이며 독립 ECS 결과/집계로 중복 보관하지 않는다. 연료 에너지를 갱신하고 이 시점에 새 석탄 Destroy 요청을 발행하지 않는다. 미사용 예산을 같은 틱에 재배분하지 않는다. |
 | EndSimulation/Synchronization | 드론 구조 변경과 결과 공개 뒤 공간 인덱스를 갱신한다. 연료 실물 소비를 지연하여 활성 Destroy 요청을 남기거나 삭제 ECB를 추가 재생하지 않는다. |
 
-PowerPreparationGroup 안은 **소유 도메인별 프레임 초기화 → 도메인 수요 준비 → 토폴로지/가용량 계획 → 배분 계획** 순서다. PowerSupplyExecutionGroup 안은 **기존 보관 연료 최종 검사/전환 → 공급 게시** 순서다. PowerSettlementGroup 안은 **현재 틱 실제 사용 수집/검사 → 실제 발전량/연료 부담량 계산 → 연료 차감** 순서다. 후속 시스템은 UpdateBefore/After와 Job 의존성으로 이 순서를 구체화한다. 현재 비어 있는 그룹을 실제 Writer 구현으로 표시하지 않는다.
+전력 준비 역할은 **소유 도메인별 프레임 초기화 → 도메인 수요 준비 → 토폴로지/가용량 계획 → 배분 계획** 순서다. 현재 토폴로지 Writer는 연결했으며 수요/가용량/배분은 후속에서 기존 그룹 내부 순서와 Job 의존성으로 연결한다. 공급 실행 역할은 **기존 보관 연료 최종 검사/전환 → 공급 게시**, 사용 정산 역할은 **현재 틱 실제 사용 수집/검사 → 실제 발전량/연료 부담량 계산 → 연료 차감** 순서이며 해당 Writer는 아직 없다.
 
 준비에서 계산한 가용량/배정량은 PowerGeneratorSupplyPlan으로 전달하고 실제 연료는 공급 실행 시 기존 보관 버퍼를 재검사한다. 해당 구간의 연료 재고는 이 연료 도메인이 소비하며 새 입고는 뒤의 StateApply에 있다. ECB 구조 변경을 넘어 DynamicBuffer 핸들을 유지하지 않으며 필요하면 버퍼를 다시 얻는다. 연료로 뒷받침되지 않는 공급은 게시하지 않으며 예상 밖 계획/설정 손상은 기존 Fatal 정책으로 처리한다. 전체 틱 rollback·중단 월드 재개·자동 복구는 제공하지 않는다.
 
@@ -95,3 +109,27 @@ PowerRangeUtility는 단일 셀 반경의 경계를 포함하는 정사각형을
 이는 설정/게시/초기화 실패·Tier 분리·순수 범위와 기존 준비 관문의 검증이다. 위 실제 틱 실행·연료 전환·생산/충전·설치/철거 사례, Play Mode·베이킹·Player 빌드·성능은 실행하지 않았다. 각 후속 Task가 실제 GameSimulationGroup/ECB 경계에서 검증한다.
 
 2026-10-12 후속 사용자 지시로 독립 ECS 타입 4개와 전력 프레임 Tick 필드를 제거하여 현재 계약은 10개다. 기존 시간 정책·프레임 초기화·보관 버퍼 재검사·일시 집계/정산으로 역할을 정리했다. 이번 정의 정리는 Editor 컴파일만 확인했으며 위 70사례는 최초 구현 검증 기록으로 유지한다. 실제 초기화/정산 Writer는 여전히 후속이다.
+
+## 폐기한 Task 8.1~8.2 재구현의 과거 검증
+
+2026-10-13 재구현 당시 Editor 컴파일과 선택 EditMode Phase8PowerTopologyTests 5/5, Phase8PowerContractTests 26/26, Phase7BuildingLifecycleTests 11/11로 42/42를 확인했다. 이후 소유권 통합·Lookup 정리는 CLI의 STATUS_PIPELINE_LOAD_PENDING으로 새 컴파일/선택 테스트를 시작하지 못했다.
+
+사용자 요청으로 해당 재구현 코드·전용 테스트를 다시 롤백했다. 위 성공 결과는 폐기한 구현의 과거 기록이며 현재 기본 정의나 다음 재구현의 실행 증거로 사용하지 않는다. 실제 망 제거/분리·공급·연료/생산/충전, Play Mode·베이킹·Player 빌드·성능은 후속이다.
+
+롤백에서는 추가 파일 8개 제거와 수정 C# 5개의 136a44f74 대비 Git 정규화 해시 일치, 기존 전력 전용 그룹 삭제 유지, git diff --check 통과를 확인했다. 롤백 이후 재컴파일도 STATUS_PIPELINE_LOAD_PENDING으로 시작되지 못했다.
+
+## 2026-10-13 새 구현의 검증 상태
+
+현재 Unity 참조와 Entities 소스 생성기를 사용한 Temp/PowerGridValidation의 별도 런타임/Editor C# 빌드는 각각 오류 0·경고 0으로 통과했다. Unity Editor 컴파일/리로드·Burst 실행·테스트 실행 성공을 뜻하지 않는다. CLI 재컴파일은 Pipeline 연결 오류로 시작하지 못했으며 선택 EditMode도 미실행이다.
+
+새 Phase8PowerTopologyTests 5사례는 기존 GameSimulationGroup/건물 하위 그룹과 ECB 경계의 직접 Spawn·현장 완공→다음 틱 참여·중복 생성 방지, 기존 망 유지와 병합 공개, 다른 Tier의 OR/공급 범위 중첩 분리, 무효 참조 Fatal과 이전 결정 초기화, 공유 인덱스 Reader/재할당/빈 맵 수명을 다룬다. 기존 설정 테스트는 실제 망 생성/병합 경계를 다루지 않아 이 핵심 흐름 검증을 추가했다.
+
+같은 날 연결 복구 후 Unity 컴파일 상태 up_to_date/failed false/errors 없음/compilationFailed false와 Editor ready·비컴파일·비리로드·Play stopped, runtime/Editor DLL 최신성을 확인했다. 선택 EditMode는 Phase8PowerTopologyTests 5/5, Phase8PowerContractTests 26/26, Phase7BuildingLifecycleTests 11/11, Phase7ConstructionCompletionTests 8/8로 이번 실행 총 50/50, 실패·생략·불확정 0이다. 위 최초 연결 실패와 미실행 상태를 해소했으며 Task 8.2 완료를 기록한다. 폐기한 구현의 과거 수치와 합산하지 않는다. Play Mode·베이킹·Player 빌드·성능·실제 공급/연료/생산/충전과 망 제거/분리는 이 검증 범위에 포함하지 않는다.
+
+## 명명·페이즈 책임 분리 검증 (2026-10-13)
+
+시스템/파일을 PowerGridTopologyReservationSystem으로 바꾸고 기존 meta GUID를 유지했다. 준비에서 정상 망 변경의 ECB 기록을 제거하여 BuildingStateApply의 PowerGridTopologyApplySystem으로 옮겼다. Reservation Job과 Apply Job은 각 단계의 ECS 의존성을 따르고 Apply 기록 핸들만 EndBuilding Producer에 등록한다. 기존 같은 틱 계획·EndBuilding 공개·다음 틱 신규 참여 계약은 유지한다.
+
+분리 후 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false, Editor ready·비컴파일·비리로드·Play stopped와 runtime/Editor DLL 최신성을 확인했다. 이번 선택 EditMode는 전력 토폴로지 6/6·공통 건물 생성 11/11·공사 완공 8/8로 25/25, 실패·생략·불확정 0이다. 전력 설정 26사례는 이번 변경의 대상이 아니어서 재실행하지 않았다. 앞선 50사례와 합산하지 않는다.
+
+기존 병합 사례에 Reservation만 실행하고 ECB를 재생해도 망 변경이 없는지, Apply 기록도 Playback 전에는 공개되지 않는지 검사를 추가했다. 준비 후 공개 연결이 바뀌는 단계 사이의 실패는 기존 사례가 다루지 않아 망 생성/삭제/덮어쓰기 없이 Fatal로 중단하는 회귀 1사례를 추가했다. Play Mode·베이킹·Player 빌드·성능·실제 공급/연료/생산/충전과 제거/분리는 미수행이다.

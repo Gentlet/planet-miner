@@ -15,14 +15,14 @@
 | `Assets/Scripts/Common/GameConstants.cs` | 청크 크기, 아이템 최소 간격 `0.25f`, 간격·델타타임에서 파생한 벨트 속도 상한, 슬롯/타일 홉/델타타임 상한을 정의한다. |
 | `Assets/Scripts/Common/BuildingInputSlotUtility.cs` | 재료 목록의 요구량/최대 스택으로 건물 공통 품목 전용 입력 슬롯을 계산하고 실패 사유를 반환한다. Crafter 레시피 변경에서 사용한다. |
 | `Assets/Scripts/Common/BuildingConfigLookupUtility.cs` | 건물 통합/호환 런타임 설정 조회, footprint·해금·건설 자재 조회를 제공한다. |
-| `Assets/Scripts/Common/PowerRangeUtility.cs` | Task 8.1의 단일 셀 반경 정사각형/OR 연결 순수 판정. 실제 토폴로지는 후속이다. |
+| `Assets/Scripts/Common/PowerRangeUtility.cs` | 단일 셀 반경 정사각형/OR 연결 순수 판정. Task 8.2의 토폴로지 Job이 연결 검사에 사용한다. |
 | `Assets/Scripts/Config/BuildingPowerConfigParser.cs` | BuildingConfig의 역할별 power JSON와 공개/사전 등록 능력을 공통 검증한다. |
 | `Assets/Scripts/Components/Power/BuildingPowerConfig.cs` | BuildingConfigElement 안의 종류·Tier별 능력 설정 값. 독립 ECS 원본은 아니다. |
 | `Assets/Scripts/Components/Power/PowerComponents.cs` | 전력 참가자·연료 원본과 수요/공급/사용/발전 계획의 10개 ECS 계약을 정의한다. 전용 시계·연료 참조 버퍼·발전 결과·망 집계 컴포넌트는 제거했고 Writer는 후속이다. |
-| `Assets/Scripts/Phases/Power/PowerPreparationGroup.cs` | BuildingReservation 마지막의 프레임 초기화·수요·토폴로지/연료 가용량·배분 준비 경계. 현재 빈 그룹이다. |
-| `Assets/Scripts/Phases/Power/PowerSupplyExecutionGroup.cs` | BuildingExecution 처음의 연료 전환과 공급 게시 경계. 현재 빈 그룹이다. |
-| `Assets/Scripts/Phases/Power/PowerSettlementGroup.cs` | SimulationCommit의 EndSimulation ECB 앞에서 실제 사용 에너지를 정산할 경계. 현재 빈 그룹이다. |
 | `Assets/Editor/Tests/Phase8PowerContractTests.cs` | 통합 설정/원자적 게시/사전 등록 실패·Tier 분리·순수 범위 계약의 EditMode 검증. 실제 전력 가동 검증은 아니다. |
+| `Assets/Scripts/Components/Power/PowerGridTopologyDecision.cs` | 전신주별 대표·유지할 망·최종 검사할 이전 공개 망의 계획. Reservation이 작성하고 후속 공급/StateApply가 읽는다. 예약 Entity를 담지 않는다. |
+| `Assets/Scripts/Components/Power/PowerGridConnectionIndex.cs` | 공개 Entity→연결 맵과 IFenceComponent 의존성 계약. 위치/점유 원본을 복제하지 않는다. |
+| `Assets/Editor/Tests/Phase8PowerTopologyTests.cs` | 직접 Spawn/완공·기존 그룹/ECB·Reservation/Apply 책임 경계·준비 후 연결 변경 실패·공유 맵 수명 6사례. 2026-10-13 책임 분리 후 6/6 통과했다. |
 | `Assets/Scripts/Common/BuildingFootprintUtility.cs` | 점유 크기의 최소 1칸 정규화와 방향 회전을 계산하며 BuildingFootprint 확장 메서드도 제공한다. |
 | `Assets/Scripts/Common/BuildingPlacementRequestUtility.cs` | 플레이어 배치 묶음의 World 접수번호를 발급하고 요청/후보를 함께 준비한다. 최종 승인과 임시 셀 중재는 기존 Command가 담당한다. |
 | `Assets/Scripts/Common/BuildingTypeExtensions.cs` | 건물 종류의 Burst 호환 FixedString 변환을 제공한다. |
@@ -41,6 +41,7 @@
 | `Assets/Scripts/Components/Buildings/BuildingSpatialIndex.cs` | `BuildingInfo`, `BuildingSpatialIndex`, `BuildingSpatialIndexFence` 정의. |
 | `Assets/Scripts/Components/Buildings/PlacementStamp.cs` | `PlacementStamp` 정의. |
 | `Assets/Scripts/Components/Common/GridComponents.cs` | `DirectionEnum`, `GridPosition`, `Direction` 정의. |
+| `Assets/Scripts/Components/Common/IFenceComponent.cs` | Fence 컴포넌트 분류용 빈 마커 인터페이스 `IFenceComponent` 정의. |
 | `Assets/Scripts/Components/Common/IRequestComponent.cs` | `IRequestComponent`, `IEnableableRequest` 정의. |
 | `Assets/Scripts/Components/Construction/BuildingPlacementRequests.cs` | `BuildingPlacementRequest`, `PlacementRequestCandidateElement`, World 접수번호 원본 `BuildingPlacementReceiptSequence` 정의. |
 | `Assets/Scripts/Components/Construction/ConstructionComponents.cs` | 현장/자재 요구 데이터. Reservation/Publish/Lifecycle이 예약·실제 도착량을 정산하고 Construction이 현재 월드 Owner/GridPosition·활성 Destroy로 차단을 갱신한다. |
@@ -147,6 +148,8 @@
 | `Assets/Scripts/Systems/Buildings/Decision/StorageItemOutputDecisionSystem.cs` | Product 버퍼가 없는 일반 저장 건물의 첫 Stored 아이템 출고를 결정한다. |
 | `Assets/Scripts/Systems/Buildings/Reservation/BeltDestinationReservationSystem.cs` | 건물 출고·라우팅 후보의 공통 공간 검사 후 목표별 한 개를 승인한다. 일반 벨트 이동은 중재하지 않는다. |
 | `Assets/Scripts/Systems/Buildings/Reservation/BuildingStorageInputReservationSystem.cs` | 현재 버퍼와 프레임 내 예약 수를 합산하여 품목별 저장 슬롯을 하나씩 확정한다. |
+| `Assets/Scripts/Systems/Buildings/Reservation/PowerGridTopologyReservationSystem.cs` | 생존/설정/공개 망 입력 검증과 Reservation 마지막의 Burst 연결/대표/유지 망 계획. 정상 망 변경의 ECB 기록은 없다. |
+| `Assets/Scripts/Systems/Buildings/StateApply/PowerGridTopologyApplySystem.cs` | 준비 계획의 최종 검사와 망 생성/연결 변경/병합 삭제의 EndBuilding 기록. 연결 집합이나 대표를 재선택하지 않는다. 제거/분리는 후속이다. |
 | `Assets/Scripts/Systems/Buildings/Execution/BeltMovementExecutionSystem.cs` | 계획된 타일 내 진행도, 경계 횡단, 격자 위치와 시각 위치를 반영하고 계획을 소비한다. |
 | `Assets/Scripts/Systems/Buildings/Execution/CrafterExecutionSystem.cs` | 재료 선소비 및 삭제 요청, 진행도 누적, 주생산품/부산물 `ProductResult` 기록을 수행한다. |
 | `Assets/Scripts/Systems/Buildings/Execution/MinerExecutionSystem.cs` | 채굴 진행, 자원 차감/고갈 삭제 요청과 `ProductResult` 기록을 수행한다. |
@@ -157,6 +160,7 @@
 | `Assets/Scripts/Systems/Items/StateApply/ItemOwnershipApplySystem.cs` | 한 본체 파일에서 일반 Transfer 요청 적용과 EffectiveOwner/CanTransferItem/TryTransferItem 공통 API를 소유한다. API는 성공 실물의 버퍼·Owner·위치·벨트·렌더를 함께 반영하고 새 Transfer 요청을 만들지 않는다. |
 | `Assets/Scripts/Systems/Synchronization/BeltSpatialSyncSystem.cs` | 벨트 셀 인덱스를 비우고 현재 벨트 엔티티에서 재구축한다. |
 | `Assets/Scripts/Systems/Synchronization/BuildingSpatialSyncSystem.cs` | footprint의 모든 점유 셀을 건물 인덱스로 재구축한다. |
+| `Assets/Scripts/Systems/Synchronization/PowerGridConnectionSyncSystem.cs` | 공개 연결 맵/Fence의 수명 소유자. Query의 공개 연결을 Clear/재등록하며 망 유효성 Lookup을 추가하지 않는다. |
 | `Assets/Scripts/Systems/Synchronization/ItemSpatialSyncSystem.cs` | `Owner == Entity.Null`인 아이템만 공간 인덱스로 재구축한다. |
 | `Assets/Scripts/Systems/Synchronization/ResourceSpatialSyncSystem.cs` | 자원 노드 셀 인덱스를 재구축한다. |
 | `Assets/Scripts/Validation/WorldInvariantValidationSystem.cs` | Editor/개발 빌드에서 프레임 말 정합성을 검사하고 위반 보고서를 기본 `Logs/InvariantErrors`에 기록한다. World별 `SetLogDirectory`로 테스트 출력을 격리한다. |

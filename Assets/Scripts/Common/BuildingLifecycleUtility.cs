@@ -181,14 +181,25 @@ public static class BuildingLifecycleUtility
             case BuildingTypeEnum.MainFacility:
                 ecb.AddComponent<IndestructibleBuilding>(building);
                 AttachStorageComponents(ref ecb, building, storageCapacity);
+                AttachPowerPoleComponents(ref ecb, building);
                 break;
 
             case BuildingTypeEnum.PowerPole:
+                AttachPowerPoleComponents(ref ecb, building);
+                break;
+
             case BuildingTypeEnum.CoalGenerator:
             case BuildingTypeEnum.ResearchBuilding:
                 // 전력/드론/연구 도메인 컴포넌트는 해당 Phase(Phase 8, 9, 10)에서 확장
                 break;
         }
+    }
+
+    private static void AttachPowerPoleComponents(ref EntityCommandBuffer ecb, Entity building)
+    {
+        ecb.AddComponent<PowerPole>(building);
+        ecb.AddComponent<PowerGridTopologyDecision>(building);
+        ecb.AddComponent(building, new PowerGridConnection { PowerPole = building, Grid = Entity.Null });
     }
 
     private static void AttachStorageComponents(ref EntityCommandBuffer ecb, Entity building, int storageCapacity)

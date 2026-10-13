@@ -51,21 +51,41 @@ Command → EndCommand
 | Initialization / Systems/Initialization | 설정 게시·초기 청크 요청과 프리팹 DB 준비를 처리한다. |
 | Command / Systems/Command | 청크·자원 요청, 레시피 변경, 배치·철거 승인·공사 취소를 처리한다. EndCommandEntityCommandBufferSystem이 마지막에 현장·자원 생성과 반환·요청 삭제를 확정한다. |
 | BuildingDecision / Systems/Buildings/Decision, Items/Decision | 벨트 이동·건물 입출고·채굴·제작·분배/합류 후보와 아이템 생성 허용 여부를 판단한다. |
-| BuildingReservation / Systems/Buildings/Reservation | BuildingStorageInputReservationSystem은 저장 슬롯을, BeltDestinationReservationSystem은 건물 출고·라우팅 목적지 경합을 중재한다. |
+| BuildingReservation / Systems/Buildings/Reservation | BuildingStorageInputReservationSystem은 저장 슬롯을, BeltDestinationReservationSystem은 건물 출고·라우팅 목적지 경합을 중재한다. PowerGridTopologyReservationSystem은 OrderLast로 연결 집합·대표·유지 망 계획만 작성한다. |
 | BuildingExecution / Systems/Buildings/Execution | 벨트 위치·진행도, 채굴/제작 진행·결과·재료 선소비를 반영한다. |
-| BuildingStateApply / Systems/Buildings/StateApply, Items/StateApply, Construction/StateApply | Storage/Routing 뒤 일반 Ownership을 적용한다. 아이템·건물 수명주기를 처리하며 ConstructionLifecycleApplySystem은 OrderLast로 현재 월드 Owner/GridPosition·활성 Destroy와 도착 자재를 검사한다. EndBuildingEntityCommandBufferSystem은 BuildingSimulationGroup의 마지막 직접 자식이다. |
+| BuildingStateApply / Systems/Buildings/StateApply, Items/StateApply, Construction/StateApply | Storage/Routing 뒤 일반 Ownership을 적용한다. 아이템·건물 수명주기를 처리하며 ConstructionLifecycleApplySystem은 OrderLast로 현재 월드 Owner/GridPosition·활성 Destroy와 도착 자재를 검사한다. PowerGridTopologyApplySystem은 준비된 망 계획을 최종 검사하고 망 생성/연결 변경/병합 삭제를 기록한다. EndBuildingEntityCommandBufferSystem은 BuildingSimulationGroup의 마지막 직접 자식이다. |
 | DroneDecision / Systems/Drones/Decision | DroneTaskDecisionSystem은 생성·무효화·경로 의도와 배정 후보를, DroneItemTransferDecisionSystem은 행동 자격을 작성한다. |
 | DroneReservation / Systems/Drones/Reservation | ConstructionSupplyReservationSystem은 미공개·무효 예약을 정산한 뒤 후보를 선택하고 현장 공급량을 예약한다. |
 | DroneExecution / Systems/Drones/Execution | DroneItemTransferExecutionSystem은 OrderFirst로 건물 종료 상태 기준 실물·수량·공간 계획을 준비한다. DroneTaskExecutionSystem은 생성·경로 명령과 순번 발급·최종 ECB 기록을 소유한다. |
 | DroneStateApply / Systems/Drones/StateApply | DroneTaskLifecycleApplySystem은 의도 최종 재검사·종료·연결·삭제 보류와 신호 인계·실제 성공량 정산을 담당한다. DroneTaskAssignmentPublishSystem은 OrderLast로 배정을 최종 검사하고 롤백하거나 공개를 기록한다. |
 | SimulationCommit / Systems/Commit | EndSimulationEntityCommandBufferSystem이 드론 작업·경로·배정·결과 및 종료 삭제를 확정한다. |
-| Synchronization / Systems/Synchronization | 최상위 OrderLast로 최종 Commit 뒤에 실행한다. Belt/Building/Item/ResourceSpatialSyncSystem이 원본 ECS로 맵을 재구축하며 WorldInvariantValidationSystem은 내부 OrderLast다. |
+| Synchronization / Systems/Synchronization | 최상위 OrderLast로 최종 Commit 뒤에 실행한다. Belt/Building/Item/ResourceSpatialSyncSystem과 PowerGridConnectionSyncSystem이 원본 ECS로 맵을 재구축하며 WorldInvariantValidationSystem은 내부 OrderLast다. |
 
-같은 그룹 내부 순서는 UpdateBefore/UpdateAfter/OrderLast와 Job 의존성으로 확인한다. 그룹을 가로지르는 순서는 같은 부모의 도메인 그룹 사이에 선언하며, 그룹 순서만으로 Job 완료나 NativeContainer 안전성이 확보됐다고 가정하지 않는다.
+### 페이즈 배치와 시스템 명명
+
+- 새 시스템은 처리 대상과 데이터 변경 책임을 먼저 정하고 기존 실행 그룹에 배치한다. Initialization은 Unity의 별도 상위 그룹이며, Command 이후의 사용자 정의 체인은 GameSimulationGroup 안에 있다. 기능별 그룹 추가나 재배치는 기존 실행·공개 경계에 영향을 주는 구조 변경으로 다룬다.
+- 시스템 이름은 `대상·책임 + 처리 역할 + System`으로 작성한다. 그룹은 `*Group`, Job은 `*Job`으로 구분한다. 아래 표는 이름 선택 기준과 현재 예외이며, 접미사와 단계 소속을 일대일 대응으로 해석하지 않는다. 실제 처리 책임은 위 시스템 지도와 현재 소스를 따른다. 기존 이름의 차이를 일괄 rename 지시로 해석하지 않는다.
+
+| 소속 / 역할 | 이름 기준과 현재 예외 |
+| --- | --- |
+| Initialization | 현재 `*InitializationSystem`, `*InitSystem`, `*LoadSystem`, `*BootstrapSystem`을 사용한다. 로드·게시 책임과 BuildingConfigLoadSystem.cs의 예외는 아래 초기화 절을 따른다. |
+| Command | `*CommandSystem`. 외부 입력과 시스템 내부에서 전달한 요청을 처리한다. |
+| Decision | `*DecisionSystem` |
+| Reservation | `*ReservationSystem` |
+| Execution | `*ExecutionSystem`. 진행도·재료 선소비 등 원본 값도 소유 계약에 따라 변경한다. |
+| StateApply | 주된 책임에 맞춰 `*ApplySystem`, `*StateApplySystem`, `*LifecycleApplySystem`을 사용한다. 이 역할들은 상호 배타적이지 않다. |
+| 공개 기록 | `*PublishSystem`. 현재 DroneTaskAssignmentPublishSystem은 DroneStateApply 마지막이며 별도 Publish 페이즈는 없다. ECB 기록과 실제 Playback 공개를 구분한다. |
+| ECB 종료 경계 | `End*EntityCommandBufferSystem` |
+| Synchronization / 인덱스 재구축 | `*SpatialSyncSystem` |
+| Synchronization / 정합성 검사 | `*ValidationSystem`. 현재 WorldInvariantValidationSystem이 그룹 마지막에 있다. |
+
+- 실제 소속은 `UpdateInGroup`, 같은 그룹 내부 순서는 `UpdateBefore`/`UpdateAfter`/`OrderFirst`/`OrderLast`와 Job 의존성으로 확인한다. 그룹을 가로지르는 순서는 같은 부모의 도메인 그룹 사이에 선언한다. 폴더와 이름만으로 순서를 단정하거나, 그룹 순서만으로 Job 완료와 NativeContainer 안전성을 가정하지 않는다.
+
+### 도메인별 실행 계약
 
 DroneTaskCandidateDecisionElement는 Decision이 매 틱 Clear하고 다시 만드는 순수 후보다. DroneTaskPendingPublicationElement는 Reservation이 선택한 후보 스냅샷·Quantity·CommittedQuantity와 Publish의 PublicationQueued를 소유한다. PublicationQueued는 ECB 기록 완료이며 실제 공개 완료와 다르다. 미공개 CommittedQuantity는 다음 Reservation의 해제까지 보존하고 공개 기록은 다음 Reservation에서 제거한다. 현장 ReservedQuantity는 활성 개별 예약과 아직 공개되지 않은 CommittedQuantity를 포함한다. 후보 Clear가 예약 해제 근거를 제거하지 않는다.
 
-Decision은 생성·무효화·경로 의도와 후보만 작성한다. Execution은 명령 생존·타입·중복·경로 스냅샷만 검사하고 작업 필요 여부를 다시 탐색하지 않는다. Lifecycle은 전달된 무효화 의도와 이미 Closed인 작업 참조 정리만 반영한다. 적재품 재배정은 신규보다 먼저 최초 OriginalTaskCreationSequence 순서로 선택하며, 신규 공급 대표 PlacementStamp→CreationSequence·회수 대표 CreationSequence와 두 대표 비교 규칙을 유지한다. 공통 적재량은 DroneCapacityState가 소유하고 초기화·연구 Writer는 후속이다.
+드론 작업 관리에서 DroneTaskDecisionSystem은 생성·무효화·경로 의도와 배정 후보를 작성한다. DroneTaskExecutionSystem은 전달된 의도의 대상 생존·타입·중복·경로 스냅샷을 검사하며 작업 필요 여부를 새로 탐색하지 않는다. DroneTaskLifecycleApplySystem의 무효화·종료 정리는 전달된 의도와 이미 Closed인 작업 참조를 반영한다. 행동 신호 인계와 성공량 정산은 아래 행동 계약을 따른다. 적재품 재배정은 신규보다 먼저 최초 OriginalTaskCreationSequence 순서로 선택하며, 신규 공급 대표 PlacementStamp→CreationSequence·회수 대표 CreationSequence와 두 대표 비교 규칙을 유지한다. 공통 적재량은 DroneCapacityState가 소유하고 초기화·연구 Writer는 후속이다.
 
 드론 행동은 DroneActionRequestUtility.Submit의 World 접수 순서로 적용한다. Lifecycle은 준비된 실물만 현재 생존·Owner·Destroy·대상/버전으로 검사하고 ItemOwnershipApplySystem.TryTransferItem으로 옮긴 실제 성공분을 배정·적재 출처·DeliveredQuantity·예약·행동 번호·결과에 반영한다. 새 TransferOwnershipRequest는 발행하지 않는다. 요청/계획 제거와 결과 추가는 EndSimulation이며 외부 TryConsumeResult가 결과를 소비한다. 공급원 재고·보관 공간의 영속 예약은 없고 목적지 슬롯 예산은 성공분만 소비한다.
 
@@ -78,16 +98,39 @@ Decision은 생성·무효화·경로 의도와 후보만 작성한다. Executio
 다음 추천인 [공통 적재량 초기화 검토안](Docs/Specifications/DroneCapacityInitializationPlan.md)은 설정 출처·오류 정책·기존 singleton 처리 결정 전의 제안으로 구현 승인이 아니다. 개발 마일스톤 Phase7 등의 숫자는 런타임 그룹 개수를 뜻하지 않는다.
 ## 핵심 데이터와 변경 규칙
 
-2026-10-12 Task 8.1은 BuildingConfig의 종류·Tier별 전력 능력 검증/게시, 전력 ECS 컴포넌트 계약과 빈 실행 그룹을 추가했다. PowerPreparationGroup은 BuildingReservation 마지막, PowerSupplyExecutionGroup은 BuildingExecution 처음, PowerSettlementGroup은 SimulationCommit의 EndSimulation ECB 앞이다. 실제 토폴로지·수요/공급·연료·생산/충전 Writer와 참가자 부착은 후속이며 현재 전력 가동으로 표시하지 않는다. 필드·소유자·석탄 전환/실제 사용 정산과 검증 범위는 [전력 명세](Docs/Specifications/PowerGrid.md), [전력 컴포넌트 계약](Docs/CodeMemory/Components/PowerGrid.md)을 따른다.
+2026-10-13 롤백 후 Task 8.1~8.2를 구현하고 준비와 적용 책임을 분리했다. 기존 설정 검증/게시·기본 전력 ECS 10개·순수 범위 조회와 공통 전신주 부착을 유지한다. PowerGridTopologyReservationSystem은 BuildingReservation 마지막에서 입력 검증과 연결 집합·대표·유지 망 계획만 작성한다. PowerGridTopologyApplySystem은 BuildingStateApply에서 준비된 대표/현재 공개 망을 최종 검사하고 망 생성/연결 변경/병합 삭제를 EndBuilding에 기록한다. 정상 변경의 Producer 핸들은 Apply가 등록한다. PowerGridTopologyDecision은 대표·유지할 망·이전 공개 값 스냅샷이며 예약 망 Entity를 전달하지 않는다. 설치 비교는 PlacementStamp를 사용하며 공개 연결 맵/Fence는 PowerGridConnectionSyncSystem이 소유한다. 전력 전용 그룹은 없고 공급·연료·생산/충전·제거/분리·철거 참조 정리는 후속이다. 앞선 50/50과 별도로 이번 책임 분리 후 Unity 컴파일 completed/failed false/errors 없음, ready·비컴파일·비리로드 Editor와 최신 runtime/Editor DLL, 선택 EditMode 25/25(토폴로지 6·공통 생성 11·완공 8)를 확인했다. 두 성공 건수는 합산하지 않는다. Play Mode·베이킹·Player 빌드·성능은 미수행이다. [전력 명세](Docs/Specifications/PowerGrid.md)의 기획·현재 코드·검증 상태를 구분한다.
 
 ### 공간과 작업 의존성
 
 - ECS 컴포넌트가 원본 상태다. `GridPosition.Value`가 격자 좌표이며 건물·공사 현장은 좌하단 기준점으로 사용한다. `LocalTransform`만 바꾸어 공간 이동을 전달하는 기존 방식은 현재 구조에 없다.
-- `BeltSpatialIndex`는 셀→`BeltInfo`, `BuildingSpatialIndex`는 점유 셀→`BuildingInfo`, `ResourceSpatialIndex`는 셀→자원 엔티티, `ItemSpatialIndex`는 셀→복수 월드 아이템을 저장한다. 소유자는 각 `*SpatialSyncSystem`이며 매 동기화 단계에서 Clear 후 재등록한다. `ChunkMapSystem`은 현재 소스에 없다.
-- 각 맵의 `*SpatialIndexFence`는 NativeContainer 읽기·쓰기 Job 의존성을 관리한다. Reader는 마지막 Writer에 의존하고 자신의 핸들을 등록하며, Writer는 이전 Writer와 모든 Reader를 기다린다. 메인 스레드 직접 접근·용량 변경·Dispose 때도 해당 Fence를 확인한다. ECS 컴포넌트 의존성만으로 맵 접근이 동기화된다고 가정하지 않는다.
+- `BeltSpatialIndex`는 셀→`BeltInfo`, `BuildingSpatialIndex`는 점유 셀→`BuildingInfo`, `ResourceSpatialIndex`는 셀→자원 엔티티, `ItemSpatialIndex`는 셀→복수 월드 아이템을 저장한다. 원본 ECS에서 파생한 검색용 데이터이며 생성·갱신·해제 위치는 다음 수명 관리 절을 따른다. `ChunkMapSystem`은 현재 소스에 없다.
 - 인덱스는 Synchronization 이전의 구조 변경을 즉시 반영하지 않는다. 동일 프레임 배치·입출고·스폰 경합은 해당 요청/예약 경계에서 처리하며, 인덱스만 조회하고 이미 반영됐다고 간주하지 않는다.
 - 청크 변환은 `Chunks/ChunkUtility`의 floor division, 방향 오프셋은 `DirectionExtensions`, 라우팅 회전·포트 계산은 `RoutingDirectionUtility`를 사용한다. Footprint 정규화·회전 계산은 `Common/BuildingFootprintUtility.GetEffectiveSize`를 사용한다. `BuildingFootprint.Size`는 현장과 완공 건물 모두 방향 적용 전 기본 크기다. 크기 원본은 `BuildingConfigElement.Footprint`이며 건물 종류·티어 조합별로 고정한다. 배치 후보는 Config 크기의 스냅샷이고 다른 크기를 거절한다. 직접 생성의 `(0,0)`은 생략이며 Config를 사용하고 그 외 입력은 Config와 일치해야 한다. DB/타입 기본 크기 fallback은 없다. 동명 확장 메서드도 같은 계산을 호출하며 각 Reader가 한 번 회전한다. 크기 변경은 요청→생성→인덱스의 회전 적용 횟수까지 추적한다.
 - 구조 변경은 세 경계에서 확정한다. Command 요청은 EndCommandEntityCommandBufferSystem, 건물·아이템·공사 완공은 EndBuildingEntityCommandBufferSystem, 드론 작업·경로·배정·행동 결과는 EndSimulationEntityCommandBufferSystem에 기록한다. 실제 생성·삭제·렌더 태그 변경은 해당 Playback에서 확정되고 공간 인덱스는 마지막 Synchronization에서 갱신된다. 구조 변경 전후에 DynamicBuffer를 보관하지 말고 필요하면 ToNativeArray로 복사한 뒤 다시 얻는다. 기존 DynamicBufferCopyUtility는 현재 소스에 없다.
+
+### 공유 인덱스와 Fence의 수명·등록 관리
+
+현재 네 공간 인덱스의 수명 소유자는 `Assets/Scripts/Systems/Synchronization/`에 있고 SynchronizationGroup에 속한다. 타입·접근 API의 파일 배치는 아래 소스 배치 절을 따른다.
+
+| 공유 인덱스 / Fence | 생성·갱신·해제 소유자 |
+| --- | --- |
+| BeltSpatialIndex / BeltSpatialIndexFence | BeltSpatialSyncSystem |
+| BuildingSpatialIndex / BuildingSpatialIndexFence | BuildingSpatialSyncSystem |
+| ItemSpatialIndex / ItemSpatialIndexFence | ItemSpatialSyncSystem |
+| ResourceSpatialIndex / ResourceSpatialIndexFence | ResourceSpatialSyncSystem |
+
+네 Fence 구조체는 `IComponentData`를 상속한 빈 마커 인터페이스 `IFenceComponent`로 분류한다. 인터페이스는 메서드나 공통 상태를 제공하지 않으며 각 구조체가 핸들과 의존성 관리 구현을 유지한다.
+
+- **생성·공개:** 소유 시스템의 `OnCreate`가 `Allocator.Persistent` 맵을 생성하고, 새 singleton 엔티티 하나에 인덱스와 초기 Fence를 함께 게시한다. 소비 시스템은 공유 맵을 빌려 사용하며 별도 맵·Fence를 중복 생성하거나 Dispose하지 않는다.
+- **내용 갱신:** 소유 시스템의 `OnUpdate`가 Synchronization에서 Clear → Populate를 예약하고 최종 Writer를 등록한다. 원본 엔티티가 0개여도 Clear한다. 맵의 수명과 매 틱 내용 갱신은 서로 다른 책임이다.
+- **Reader Job 등록:** 공유 맵을 읽는 Job을 예약하는 시스템이 `state.Dependency`와 `GetReaderDependency()`를 결합하고, 반환 핸들을 해당 Fence의 `AddReader(handle)`와 자신의 `state.Dependency`에 등록한다. 예를 들어 Resource Reader Job은 MinerDecisionSystem이, Belt Reader Job은 벨트·입출고·라우팅·예약 시스템이 예약한다.
+- **Writer Job 등록:** 공유 맵을 쓰는 Job을 예약하는 시스템이 `GetWriterDependency()`로 이전 Writer와 누적 Reader를 의존성에 포함하고, 최종 쓰기 핸들을 `SetWriter(handle)`와 자신의 `state.Dependency`에 등록한다.
+- **메인 스레드 동기 접근:** 직접 조회 전에 마지막 Writer 완료를 확보한다. BuildingPlacementCommandSystem은 필요한 세 Writer 핸들을 결합하여 완료하고, WorldInvariantValidationSystem은 해당 Fence를 Complete한 뒤 검사한다. 동기 조회에는 Reader Job 등록을 적용하지 않는다. Clear·Capacity 변경·Dispose 같은 직접 쓰기 전에는 `Fence.Complete()`로 Writer와 모든 Reader를 기다린다. ECS 컴포넌트 의존성만으로 공유 맵 접근이 동기화된다고 가정하지 않는다.
+- **핸들 추적 정리:** `SetWriter`는 새 Writer를 저장하고 Reader 추적 핸들을 비운다. 선행 Reader가 새 Writer의 의존성에 포함되어야 하며, `SetWriter` 자체가 완료를 기다리지는 않는다. `Complete`는 Writer와 Reader를 기다린 뒤 양쪽 핸들을 초기화한다. Reader별 `RemoveReader`나 소비자 `OnDestroy`의 등록 해제 API는 없다.
+- **최종 해제:** 소유 시스템의 `OnDestroy`가 조회 가능한 Fence를 먼저 완료하고, 조회 가능한 인덱스의 `IsCreated`인 맵을 Dispose한다. Fence 자체는 JobHandle 값만 보관하므로 별도 Dispose 대상이 아니다. 현재 네 시스템은 singleton 엔티티·컴포넌트의 명시적 Destroy/Remove를 수행하지 않으며, World의 ECS 정리와 NativeContainer 메모리 해제를 구분한다.
+- **ECB Producer 등록:** 현재 managed ECB 시스템의 `CreateCommandBuffer` 경로에서 Job이 ECB에 기록하면 해당 종료 시스템의 `AddJobHandleForProducer(handle)`에도 기록 핸들을 등록한다. 이는 공유 맵의 Reader/Writer 등록과 별도이며 하나로 다른 쪽을 대신하지 않는다. 메인 스레드에서만 ECB를 기록하고 Job을 예약하지 않는 경로에는 Producer JobHandle이 없다.
+- **다른 공유 자료의 소유자:** GeneratedChunkTracker는 ChunkLoadCommandSystem의 `OnCreate`에서 singleton이 없을 때 생성하고 기존 singleton은 재사용한다. Map/Pending은 같은 시스템의 Command `OnUpdate`가 메인 스레드에서 갱신하며, `OnDestroy`는 직접 생성했는지와 무관하게 조회한 singleton의 생성된 집합을 Dispose한다. 공간 Fence는 사용하지 않는다. 새 공유 자료도 수명 소유자·게시 엔티티·접근 방식·갱신 페이즈를 먼저 정하고, Job 접근이 있으면 그에 맞는 의존성 계약을 명시한다.
+- **전력 공개 연결 자료:** PowerGridConnectionIndex/PowerGridConnectionIndexFence는 PowerGridConnectionSyncSystem이 같은 singleton에 생성하고 Synchronization에서 Query의 공개 연결을 Clear/재등록하며 종료 시 Fence 완료 후 맵을 Dispose한다. 위 Reader/Writer·재할당·해제 계약을 따른다. 위치/점유를 복제하지 않는 Entity→연결 맵이며 실제 제품 Reader는 후속이다. 같은 틱 준비는 이 맵 대신 PowerGridTopologyDecision을 사용한다.
 
 ### 아이템·결정·요청
 
@@ -105,16 +148,27 @@ Decision은 생성·무효화·경로 의도와 후보만 작성한다. Executio
 - 일회성 요청은 처리 후 엔티티 삭제, enableable 요청은 비활성화, 임시 결과 버퍼는 Clear로 소비한다. 준비 대기 중인 청크 요청처럼 재시도가 필요한 데이터는 소비 조건이 충족될 때까지 유지한다. 프레임 결정과 `IRequestComponent`를 혼동하지 않는다.
 - `GameConstants`가 아이템 간격, 간격에서 파생한 타일 수용량과 벨트 속도 상한, 저장 슬롯 상한, 시뮬레이션 delta time 상한과 월드 광맥 반경/초기 청크 크기의 지원 상한을 제공한다. 벨트 수용량과 속도 상한을 별도 고정 숫자로 정하지 않으며 각 시스템에 숫자 규칙을 복제하지 않는다.
 
-### 베이킹·프리팹·코드 관례
+### 베이킹·프리팹
 
 - Baker는 프리팹 참조와 정적 식별 데이터를 제공하고, 생성 시스템이 위치·소유권·진행도·요청의 런타임 상태를 초기화한다. `ItemAuthoring`은 `ItemIdentity`를 베이킹한다. 건물·아이템·자원 DB는 각각 별도 엔티티와 버퍼를 사용한다.
 - 프리팹 DB 부재 fallback은 건물·아이템 생성과 철거 자재 환급에서 제거했다. 테스트도 명시적인 ECS 프리팹 DB를 구성한다. 설정값 기본값 fallback과는 별개다.
 - `PrefabDatabaseInitializationSystem`은 Initialization 마지막에 요청된 SubScene 로딩을 기다린 뒤 건물·아이템·자원 DB의 유일성, 등록 타입·중복·필수 항목, 엔티티 생존·Prefab·LocalTransform, 아이템 ItemIdentity 일치를 검증한다. 건물은 None/Count/ConstructionSite를 제외한 모든 종류의 1티어와 Config에 작성한 모든 종류·티어 조합이며 설정 없는 등록도 거절한다. 아이템은 None을 제외한 종류, 자원은 활성 생성 설정의 품목이 필수다. 실패하면 오류를 기록하고 시작을 차단하며 자동 재시도하지 않는다.
 - `GameSimulationGroup`은 프리팹 DB와 필수 설정의 게시 데이터가 준비되고 `SimulationFatalError`가 없을 때만 실행한다. `PrefabDatabaseReady` 자체는 설정 준비를 뜻하지 않는다. DB는 검증 후 월드 수명 동안 불변이다. Spawn 중 DB/항목 누락은 ECB로 중단 오류를 게시하여 다음 틱을 차단한다. 현재 틱 전체 rollback은 보장하지 않는다. 공사 완료는 공통 Spawn의 non-Null 결과 이후에만 자재·현장 삭제를 기록한다. Null이면 현장과 보관 자재를 보존한다. 직접 생성 요청 소비·생산 결과 Clear·환급 실패 정책의 별도 보상은 이번 변경 범위가 아니다.
+
+### 코드 작성 스타일
+
+- 아래는 새로 작성하거나 수정하는 구간의 작성 기준이다. 현재 코드에는 축약명·한 줄 또는 복합 guard 같은 예외가 남아 있다. 스타일 통일을 이유로 요청 범위 밖의 코드를 일괄 변경하지 않는다.
+- Allman 중괄호와 4칸 들여쓰기를 사용한다. 타입·메서드·프로퍼티·public ECS 필드와 상수는 `PascalCase`, private 인스턴스 필드는 `_camelCase`, 지역 변수·매개변수는 `camelCase`로 작성한다. static readonly 필드는 해당 타입의 기존 관례를 따른다. JSON DTO와 기존 직렬화 필드의 이름·형식 계약은 유지한다.
+- 이름은 대상·행동·역할이 드러나게 작성한다. 상태·판단·요청·결과·설정을 구분하고, 단위나 수명·실행 단계가 의미를 바꾸면 이름에 드러낸다. 루프 인덱스처럼 짧은 범위의 관례적인 이름을 제외하고 의미를 숨기는 축약을 피한다. `Try`·`Can`·`Is` 접두사는 해당 메서드의 작업 성공 여부·실행 가능 여부·상태 판정과 맞춘다. 반환값과 부수 효과·실패 계약을 호출자가 오해하지 않게 작성한다.
 - `DirectionEnum`의 `Up, Right, Down, Left, Count` 순서는 회전과 직렬화 의미를 가진다. 기존 enum의 값·순서·`None`·정의된 terminal `Count`를 보존하고, 모든 enum에 `Count`가 있다고 가정하지 않는다. 새 도메인 enum은 기존 `Enum` 접미사 관례를 우선한다.
+- 메서드는 한 행동이나 판단에 집중하고, 상위 메서드가 처리 순서를 보여주게 구성한다. 검증·준비·실행·반영 경계가 읽히도록 의미 있는 작업 단위로 나누며, 줄 수를 줄이기 위한 분해로 흐름이나 소유권을 숨기지 않는다.
+- 처리 불가능한 입력·상태는 조기 `return` 또는 `continue`로 제거한다. null guard는 각각의 조기 반환으로 분리하고, null·생존·유효성 검사와 행동 조건을 한 조건문에 섞지 않는다.
+- 핵심 시뮬레이션의 자료 접근과 변경은 직접적인 `for`·`switch`·지역 변수를 우선한다. 표현 선택은 가독성과 실행 환경의 제약에 맞추며, 기존 QueryBuilder 같은 API 구성 관례는 유지한다.
+- 각 변경에 필요한 유효성·불변식 검사를 먼저 수행한다. 최신 상태 재검사·소유 버퍼 변경·예약 정산·성공분 반영·롤백·요청 소비와 ECB 기록/Playback 순서는 기존 도메인 계약을 유지하며 명시한다.
+- 공통 계산·판정의 중복은 기존 Utility·확장 메서드로 모은다. 공통화할 때 호출자가 소유한 실행 단계·실패 정책·반영 책임을 유지한다.
+- 주석은 설계 이유와 읽는 데 필요한 소유자·생산자/소비자·수명·반영 시점을 기본적으로 한국어로 설명한다. API 이름·기술 용어와 기존 표기는 유지하고, 계약이 바뀌면 관련 주석을 함께 갱신한다. 상세 계약 문서의 전문은 반복하지 않는다.
 - MonoBehaviour는 Authoring·표시·입력/요청 생성에 집중하고, 게임플레이 상태와 작업 진행은 ECS가 소유한다. 같은 역할의 새 공간 캐시나 병렬 구현을 중복 생성하지 않는다.
 - 사용자의 명시적 요청이 없으면 하나의 시스템을 여러 partial 소스 파일로 분리하지 않는다. Unity Entities 소스 생성에 필요한 partial 선언은 유지한다.
-- 읽기 쉬운 작은 메서드와 설명적인 이름을 사용한다. null guard는 각각의 조기 반환으로 분리하고, null 검사와 행동 조건을 한 조건문에 섞지 않는다. 롤백과 소유권 경계를 축약으로 숨기지 않는다.
 - UI Toolkit을 추가할 때 콜백은 `OnEnable`에서 연결하고 `OnDisable`에서 해제하며, 월드 입력 차단 요소는 `blocking-ui` USS 클래스를 사용한다. 이는 현재 UI 구현이 존재한다는 뜻은 아니다.
 
 ## 주요 실행 흐름과 구현 경계
@@ -202,7 +256,7 @@ Decision은 생성·무효화·경로 의도와 후보만 작성한다. Executio
 
 각 도메인에서는 상태·버퍼를 `*Components.cs`, 일회성/enableable 요청을 `*Requests.cs`, 프레임 결정을 `*Decisions.cs`, 실행 후 소비되는 임시 결과를 `*Results.cs`, 설정을 `*ConfigComponents.cs`로 구분한다. 공통 인터페이스·독립 계약 파일은 타입 이름을 유지하며, 공간 인덱스와 Fence는 해당 도메인의 `*SpatialIndex.cs`에 함께 둔다. 입출고 결정은 `Storage/BuildingItemDecisions.cs`, 월드 공통 시드·초기 청크 설정은 `World/WorldGenerationConfigComponents.cs`, 임시 생산 결과는 `Production/ProductResults.cs`에 둔다. 파일 분류는 실행 순서나 상태 소유권을 바꾸지 않는다. 현재 파일별 타입은 [C# 파일 색인](<Docs/architecture v2 plan/CodeMemory/CSharpFileIndex.md>)에서 찾는다.
 
-독립적인 정적 Utility와 확장 클래스는 `Assets/Scripts/Common/`에 둔다. 건물 통합 설정과 호환용 런타임 설정의 조회는 `BuildingConfigLookupUtility`의 버퍼 타입별 오버로드로 제공하며, 프리팹 조회와 자원 생성 설정 조회는 각각 `PrefabLookupUtility`, `ResourceGenerationConfigLookupUtility`가 담당한다. 컴포넌트 자체의 생성자·변환 연산자, Blob 접근, NativeContainer/Fence 수명주기 메서드는 데이터 계약과 함께 유지한다.
+공통 정적 Utility와 확장 클래스의 기본 위치는 `Assets/Scripts/Common/`이다. 청크·바닥 전용인 ChunkUtility와 FloorBiomeSampler는 `Chunks/`의 기존 관례를 유지한다. 건물 통합 설정과 호환용 런타임 설정의 조회는 `BuildingConfigLookupUtility`의 버퍼 타입별 오버로드로 제공하며, 프리팹 조회와 자원 생성 설정 조회는 각각 `PrefabLookupUtility`, `ResourceGenerationConfigLookupUtility`가 담당한다. 컴포넌트 생성자·변환 연산자와 인덱스 조회·Fence 의존성 추적 API는 데이터 정의와 함께 둔다. 공유 맵의 생성·내용 갱신·Dispose 및 JobHandle 등록 호출의 책임은 앞의 수명 관리 절을 따른다.
 
 관련 테스트는 `Assets/Editor/Tests/`에서 다음 범위로 먼저 좁힌다. 이름은 존재하는 검증 코드의 위치이며 최신 통과 결과를 뜻하지 않는다.
 

@@ -67,7 +67,7 @@ public struct BuildingSpatialIndex : IComponentData
 /// Complete는 메인 스레드 직접 접근·용량 재할당·Dispose 전에 전체 등록 작업을 완료한다.
 /// 제거: Complete/SetWriter가 이미 반영한 Reader 핸들을 초기화한다. 컴포넌트 자체는 인덱스 엔티티/World 수명을 따른다.
 /// </summary>
-public struct BuildingSpatialIndexFence : IComponentData
+public struct BuildingSpatialIndexFence : IFenceComponent
 {
     private JobHandle _lastWriter;
     private JobHandle _readers;
