@@ -6,7 +6,7 @@ using Unity.Mathematics;
 
 /// <summary>
 /// 생존 전신주의 연결 집합·대표·유지할 망을 계획한다. 망 생성/연결 변경/삭제 기록은 StateApply가 담당한다.
-/// 제거/분리 및 일반 건물 연결은 후속 Task가 담당한다.
+/// 분리 시 기존 망의 유지권을 먼저 정하고 병합한다. 일반 건물의 공급 전신주 선택은 후속 Task가 담당한다.
 /// </summary>
 [UpdateInGroup(typeof(BuildingReservationGroup), OrderLast = true)]
 public partial struct PowerGridTopologyReservationSystem : ISystem
@@ -145,14 +145,25 @@ internal struct BuildPowerGridTopologyJob : IJob
         Poles.Sort();
         int count = Poles.Length;
         var parents = new NativeArray<int>(count, Allocator.Temp);
+        var retainedGridOwners = new NativeParallelHashMap<Entity, int>(count, Allocator.Temp);
         for (int i = 0; i < count; i++)
         {
             parents[i] = i;
         }
 
-        for (int i = 0; i < count; i++)
+        ConnectPoles(parents);
+        AssignRetainedGridOwners(parents, retainedGridOwners);
+        PlanConnectedSets(parents, retainedGridOwners);
+
+        retainedGridOwners.Dispose();
+        parents.Dispose();
+    }
+
+    private void ConnectPoles(NativeArray<int> parents)
+    {
+        for (int i = 0; i < Poles.Length; i++)
         {
-            for (int j = i + 1; j < count; j++)
+            for (int j = i + 1; j < Poles.Length; j++)
             {
                 if (!PowerRangeUtility.AreCentersConnected(
                         Poles[i].Position, Poles[i].ConnectionRange, Poles[j].Position, Poles[j].ConnectionRange))
@@ -164,24 +175,60 @@ internal struct BuildPowerGridTopologyJob : IJob
                 parents[math.max(leftRoot, rightRoot)] = math.min(leftRoot, rightRoot);
             }
         }
+    }
 
-        for (int root = 0; root < count; root++)
+    private void AssignRetainedGridOwners(NativeArray<int> parents,
+        NativeParallelHashMap<Entity, int> retainedGridOwners)
+    {
+        // 1A·2A: 망별 가장 이른 생존 멤버의 집합에만 유지권을 부여한 뒤 병합을 판단한다.
+        for (int i = 0; i < Poles.Length; i++)
         {
-            if (FindRoot(parents, root) != root) continue;
+            Entity existingGrid = Poles[i].ExistingGrid;
+            if (existingGrid == Entity.Null)
+            {
+                continue;
+            }
+            retainedGridOwners.TryAdd(existingGrid, FindRoot(parents, i));
+        }
+    }
 
-            // 설치 순서로 정렬된 기존 소속에서 선택한다. 새 멤버의 기록이 더 빨라도 기존 망을 유지한다.
+    private void PlanConnectedSets(NativeArray<int> parents,
+        NativeParallelHashMap<Entity, int> retainedGridOwners)
+    {
+        for (int root = 0; root < Poles.Length; root++)
+        {
+            if (FindRoot(parents, root) != root)
+            {
+                continue;
+            }
             int representative = root;
             Entity grid = Entity.Null;
-            for (int i = root; i < count; i++)
+            for (int i = root; i < Poles.Length; i++)
             {
-                if (FindRoot(parents, i) != root || Poles[i].ExistingGrid == Entity.Null) continue;
+                if (FindRoot(parents, i) != root)
+                {
+                    continue;
+                }
+                Entity existingGrid = Poles[i].ExistingGrid;
+                if (existingGrid == Entity.Null)
+                {
+                    continue;
+                }
+                if (retainedGridOwners[existingGrid] != root)
+                {
+                    continue;
+                }
+                // 유지권을 가진 기존 망 중 가장 이른 멤버의 망을 유지한다. 신규 멤버는 선택에 끼지 않는다.
                 representative = i;
-                grid = Poles[i].ExistingGrid;
+                grid = existingGrid;
                 break;
             }
-            for (int i = root; i < count; i++)
+            for (int i = root; i < Poles.Length; i++)
             {
-                if (FindRoot(parents, i) != root) continue;
+                if (FindRoot(parents, i) != root)
+                {
+                    continue;
+                }
                 var pole = Poles[i];
                 Decisions[pole.Entity] = new PowerGridTopologyDecision
                 {
@@ -191,8 +238,6 @@ internal struct BuildPowerGridTopologyJob : IJob
                 };
             }
         }
-
-        parents.Dispose();
     }
 
     private static int FindRoot(NativeArray<int> parents, int index)

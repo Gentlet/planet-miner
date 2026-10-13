@@ -18,11 +18,11 @@
 | `Assets/Scripts/Common/PowerRangeUtility.cs` | 단일 셀 반경 정사각형/OR 연결 순수 판정. Task 8.2의 토폴로지 Job이 연결 검사에 사용한다. |
 | `Assets/Scripts/Config/BuildingPowerConfigParser.cs` | BuildingConfig의 역할별 power JSON와 공개/사전 등록 능력을 공통 검증한다. |
 | `Assets/Scripts/Components/Power/BuildingPowerConfig.cs` | BuildingConfigElement 안의 종류·Tier별 능력 설정 값. 독립 ECS 원본은 아니다. |
-| `Assets/Scripts/Components/Power/PowerComponents.cs` | 전력 참가자·연료 원본과 수요/공급/사용/발전 계획의 10개 ECS 계약을 정의한다. 전용 시계·연료 참조 버퍼·발전 결과·망 집계 컴포넌트는 제거했고 Writer는 후속이다. |
+| `Assets/Scripts/Components/Power/PowerComponents.cs` | 전력 참가자·연료 원본과 수요/공급/사용/발전 계획의 10개 ECS 계약. 전신주/망 Writer는 Topology가 소유하고 공급/연료/사용 Writer는 후속이다. |
 | `Assets/Editor/Tests/Phase8PowerContractTests.cs` | 통합 설정/원자적 게시/사전 등록 실패·Tier 분리·순수 범위 계약의 EditMode 검증. 실제 전력 가동 검증은 아니다. |
 | `Assets/Scripts/Components/Power/PowerGridTopologyDecision.cs` | 전신주별 대표·유지할 망·최종 검사할 이전 공개 망의 계획. Reservation이 작성하고 후속 공급/StateApply가 읽는다. 예약 Entity를 담지 않는다. |
 | `Assets/Scripts/Components/Power/PowerGridConnectionIndex.cs` | 공개 Entity→연결 맵과 IFenceComponent 의존성 계약. 위치/점유 원본을 복제하지 않는다. |
-| `Assets/Editor/Tests/Phase8PowerTopologyTests.cs` | 직접 Spawn/완공·기존 그룹/ECB·Reservation/Apply 책임 경계·준비 후 연결 변경 실패·공유 맵 수명 6사례. 2026-10-13 책임 분리 후 6/6 통과했다. |
+| `Assets/Editor/Tests/Phase8PowerTopologyTests.cs` | 직접 Spawn/완공·실제 철거·분리/병합 유지권·Disabled/참조 정리·입력 실패 보존·공유 맵 수명 13사례. 2026-10-13 Task 8.3 구현 후 13/13 통과했다. |
 | `Assets/Scripts/Common/BuildingFootprintUtility.cs` | 점유 크기의 최소 1칸 정규화와 방향 회전을 계산하며 BuildingFootprint 확장 메서드도 제공한다. |
 | `Assets/Scripts/Common/BuildingPlacementRequestUtility.cs` | 플레이어 배치 묶음의 World 접수번호를 발급하고 요청/후보를 함께 준비한다. 최종 승인과 임시 셀 중재는 기존 Command가 담당한다. |
 | `Assets/Scripts/Common/BuildingTypeExtensions.cs` | 건물 종류의 Burst 호환 FixedString 변환을 제공한다. |
@@ -148,8 +148,8 @@
 | `Assets/Scripts/Systems/Buildings/Decision/StorageItemOutputDecisionSystem.cs` | Product 버퍼가 없는 일반 저장 건물의 첫 Stored 아이템 출고를 결정한다. |
 | `Assets/Scripts/Systems/Buildings/Reservation/BeltDestinationReservationSystem.cs` | 건물 출고·라우팅 후보의 공통 공간 검사 후 목표별 한 개를 승인한다. 일반 벨트 이동은 중재하지 않는다. |
 | `Assets/Scripts/Systems/Buildings/Reservation/BuildingStorageInputReservationSystem.cs` | 현재 버퍼와 프레임 내 예약 수를 합산하여 품목별 저장 슬롯을 하나씩 확정한다. |
-| `Assets/Scripts/Systems/Buildings/Reservation/PowerGridTopologyReservationSystem.cs` | 생존/설정/공개 망 입력 검증과 Reservation 마지막의 Burst 연결/대표/유지 망 계획. 정상 망 변경의 ECB 기록은 없다. |
-| `Assets/Scripts/Systems/Buildings/StateApply/PowerGridTopologyApplySystem.cs` | 준비 계획의 최종 검사와 망 생성/연결 변경/병합 삭제의 EndBuilding 기록. 연결 집합이나 대표를 재선택하지 않는다. 제거/분리는 후속이다. |
+| `Assets/Scripts/Systems/Buildings/Reservation/PowerGridTopologyReservationSystem.cs` | 생존/설정/공개 망 검증과 Reservation 마지막의 연결 집합·분리 유지권 우선·병합 대표 계획. 정상 망 변경의 ECB 기록은 없다. |
+| `Assets/Scripts/Systems/Buildings/StateApply/PowerGridTopologyApplySystem.cs` | 준비 결과 최종 검사와 생성/병합/분리·기존 참조/빈 망 정리의 EndBuilding 기록. 연결 값 스냅샷 없이 Entity 목록·읽기 전용 ComponentLookup을 사용하며 공급 전신주를 재선택하지 않는다. |
 | `Assets/Scripts/Systems/Buildings/Execution/BeltMovementExecutionSystem.cs` | 계획된 타일 내 진행도, 경계 횡단, 격자 위치와 시각 위치를 반영하고 계획을 소비한다. |
 | `Assets/Scripts/Systems/Buildings/Execution/CrafterExecutionSystem.cs` | 재료 선소비 및 삭제 요청, 진행도 누적, 주생산품/부산물 `ProductResult` 기록을 수행한다. |
 | `Assets/Scripts/Systems/Buildings/Execution/MinerExecutionSystem.cs` | 채굴 진행, 자원 차감/고갈 삭제 요청과 `ProductResult` 기록을 수행한다. |
