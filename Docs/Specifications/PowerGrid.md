@@ -1,6 +1,6 @@
 # 전력 설정과 실행 계약
 
-2026-10-13 Task 8.1~8.3을 구현했다. 설정 검증/게시·기본 ECS 정의 10개·순수 범위 조회, 공통 전신주 부착·망 생성/병합·분리·빈 망 삭제·참가자 참조 정리·공개 연결 인덱스 Writer가 있다. 준비는 Reservation, 정상 망 변경 기록은 StateApply, 실제 공개는 EndBuilding이다. 공급 전신주 검색과 수요/공급·연료·생산/충전은 후속이며 전력 전용 그룹은 추가하지 않는다.
+2026-10-13 Task 8.1~8.4를 구현하고 2026-10-14 공급 전신주 선택을 Decision으로 이관했다. 설정/기본 ECS와 망 수명주기에 더해 일반 참가자의 공통 연결 부착·전체 회전 footprint 공급 전신주 선택/재선택·공개 연결 인덱스 Writer가 있다. 선택은 Decision, 토폴로지 준비는 Reservation, 정상 망/연결 기록은 StateApply, 실제 공개는 EndBuilding이다. 실제 수요/전력 배분·연료·생산/충전은 후속이며 전력 전용 그룹은 추가하지 않는다.
 
 ## 설정 원본과 검증
 
@@ -27,7 +27,7 @@ DroneStation/MainFacility의 충전은 후속 드론 도메인이 후보별로 �
 
 설정 원본은 BuildingConfig, 토폴로지 원본은 전신주 등록 상태와 연결 집합, 실물 원본은 기존 ItemOwnership/StoredItemElement, 연료 에너지 원본은 FuelEnergyState다. FuelEnergyState는 연료 종류·소비처에 독립적인 잔량이며 현재 석탄 설정을 다른 연료 정의로 자동 확장한 것은 아니다. 망 집계·연결·셀 공급 조회는 이 원본에서 계산하는 파생 데이터다. 기존 건물 점유 인덱스와 같은 원본을 소유하는 공간 캐시를 추가하지 않는다.
 
-사용자 확정(2026-10-12): 전신주와 망은 각각 PowerPole/PowerGrid 태그가 부착된 별도 Entity로 식별하며 StableId나 번호 발급 카운터를 두지 않는다. PowerGridConnection은 기존 Entity 참조를 유지한다. 토폴로지의 처리 순서·병합 대표 전신주 선택과 후속 공급 거리 동률 처리는 기존 PlacementStamp.Compare의 설치 기록 유무·기록 비교·격자 좌표 순서를 재사용한다. Entity의 숫자 순서는 설치 순서가 아니다. 현재 생성/병합·제거/분리 수명주기를 연결했으며 일반 건물의 공급 전신주 선택은 Task 8.4 후속이다.
+사용자 확정(2026-10-12): 전신주와 망은 각각 PowerPole/PowerGrid 태그가 부착된 별도 Entity로 식별하며 StableId나 번호 발급 카운터를 두지 않는다. PowerGridConnection은 기존 Entity 참조를 유지한다. 토폴로지의 처리 순서·병합 대표 전신주 선택과 공급 거리 동률 처리는 기존 PlacementStamp.Compare의 설치 기록 유무·기록 비교·격자 좌표 순서를 재사용한다. Entity의 숫자 순서는 설치 순서가 아니다. 현재 생성/병합·제거/분리 수명주기와 Task 8.4의 일반 건물 공급 전신주 선택을 구현했다.
 
 이번 틱 수요는 생산·충전 도메인이, 배분과 공급 결과는 전력 도메인이, 실제 사용 결과는 소비 도메인이 기록한다. 생산·충전은 PowerSupplyResult와 공통 World 시간 정책을 사용하며 전력망 내부 연결/집계 API를 실행하지 않는다. [컴포넌트별 계약](../CodeMemory/Components/PowerGrid.md)을 따른다.
 
@@ -37,7 +37,7 @@ maximumGeneration/maximumConsumption은 에너지/초, coalEnergyPerItem/Remaini
 
 ## 전신주 생성·망 준비·공개 기획
 
-- 공통 직접 Spawn/현장 완공에서 일반 전신주와 주 시설에 전신주 태그·프레임 결정과 자기 전신주/미연결 망의 초기 연결을 부착한다. 발전기/소비자 연결은 Task 8.7, 주 시설 자동 생성은 9.22다.
+- 공통 직접 Spawn/현장 완공에서 일반 전신주와 주 시설에 전신주 태그·프레임 결정과 자기 전신주/미연결 망의 초기 연결을 부착한다. Task 8.4는 Miner·Crafter·ResearchBuilding·CoalGenerator·DroneStation에 초기 미연결 PowerGridConnection과 비활성 PowerGridConnectionDecision을 부착한다. 발전/소비 역할·수요/공급/연료 상태와 생산 연결은 해당 후속 Task, 주 시설 자동 생성은 9.22다.
 - 전신주 연결은 생존 ECS·BuildingConfig의 종류/Tier ConnectionRange·GridPosition.Value·기존 설치 기록을 사용한다. 승인 철거와 비활성/Prefab 참가자를 제외하고 이전 공간 인덱스만으로 이번 틱 생존을 판단하지 않는다.
 - 망은 전신주와 별도 Entity로 관리한다. 별도 StableId/번호 발급은 사용하지 않고 기존 PlacementStamp.Compare로 순서를 정한다.
 - 한쪽 정사각형 연결 범위에 상대 중심이 들어가면 연결한다(OR). 독립 집합은 별도 망이며 공급 범위 중첩만으로 병합하지 않는다. 병합 시 기존 유효 망 소속 전신주 중 가장 이른 설치 멤버의 망 Entity를 유지하고 나머지는 소속 갱신과 같은 ECB 경계에 제거한다. 새 전신주의 설치 기록이 더 빨라도 기존 망 중에서 유지 대상을 선택한다.
@@ -55,16 +55,27 @@ Task 8.3 사용자 확정 정책(2026-10-13):
 - **2A — 분리 후 병합:** 각 기존 망의 유지권을 먼저 한 집합에 부여한다. 집합은 자신이 유지권을 가진 망 중 가장 이른 기존 멤버의 망을 유지한다. 같은 집합이 다른 망을 병합하여 남는 Entity는 다른 집합에 재배정하지 않고 삭제한다. 유지권이 없는 집합은 새 망을 생성한다.
 - **3A — 비활성:** Disabled 전신주는 이번 틱 계산에서 제외하고 Grid를 Null로 해제한다. 자기 PowerPole 참조·건물 엔티티·PlacementStamp는 보존한다. 재활성화 시 미연결 참가자로 다시 연결하며, 과거 소속을 복원하거나 기존 망을 위해 비활성 상태의 빈 망을 유지하지 않는다.
 
-Apply는 활성 전신주의 적용 계획을 모두 최종 검사한 뒤 런타임 PowerGridConnection을 Disabled 참가자까지 수집한다. 유효한 선택 전신주가 이번 계획에 있으면 그 전신주의 새 망으로 Grid 참조를 맞추고, 사라지거나 비활성/철거된 전신주를 선택한 일반 참가자는 PowerPole/Grid를 함께 Null로 해제한다. 다른 전신주 검색은 8.4 후속이다. 전신주 자체는 자기 참조를 유지한다. Prefab은 변경하지 않는다.
+Apply는 활성 전신주의 토폴로지와 활성 일반 참가자의 공급 선택을 모두 최종 검사한 뒤 런타임 PowerGridConnection을 Disabled 참가자까지 수집한다. 일반 참가자는 이번 틱 선택 전신주의 새 망으로 두 참조를 맞추며 활성 Null 선택이면 둘 다 해제한다. 비활성 참가자는 새 선택 없이 기존 전신주의 새 망으로 참조를 맞추거나 사라진/비활성/철거된 선택을 해제한다. 전신주 자체는 자기 참조를 유지한다. Prefab은 변경하지 않는다.
 
 기존 PowerGrid 엔티티 전체를 별도 조회하므로 마지막 전신주 제거나 외부 제거 뒤에도 빈 망을 회수한다. 모든 정상 참조 변경 뒤 사용하지 않는 기존 망을 같은 EndBuilding ECB에 삭제하며 생성 예약 Entity는 그 ECB 안에서만 사용한다. 철거 자체는 기존 DemolishBuildingRequest → Command 승인/EndCommand → BuildingLifecycleApply/EndBuilding 경로를 재사용한다. 주 시설의 파괴 불가 규칙은 유지한다.
+
+Task 8.4 사용자 확정 정책과 구현(2026-10-13):
+
+- **1A — 전체 footprint:** 회전 후 점유 셀 중 하나라도 경계 포함 정사각형 공급 범위에 들어오면 후보다. 전신주 중심에서 직사각형 전체의 가장 가까운 점유 셀을 구해 최소 제곱거리로 비교한다. 동률은 PlacementStamp.Compare를 사용한다. 공급 범위 중첩은 망 병합 조건이 아니다.
+- **2A — 매 틱 재선택:** 기존 선택이 유효해도 더 가까운 전신주로 변경한다. 발전 가능량이나 공급률로 전신주를 선택하지 않는다.
+- **3A — 생성 연결:** 위 다섯 일반 건물 종류의 직접 생성과 완공에 연결/선택 데이터를 부착한다. PowerPole/MainFacility의 자기 전신주 참조는 보존한다. 발전/소비/연료/충전 역할과 실제 Writer의 초기화는 후속이다.
+- **4A — 활성 선택:** Disabled·Prefab·승인 철거 참가자는 새 선택에서 제외한다. 비활성 참가자는 기존 참조 정리만 받고 활성화된 다음 준비에서 다시 선택한다. 현장은 참가자가 아니다.
+
+PowerGridConnectionDecisionSystem은 BuildingDecisionGroup에서 실행한다. 모든 런타임 결정의 값/활성을 먼저 비우고 활성 일반 참가자의 위치/회전/크기와 활성 전신주의 종류/Tier·위치·설정을 검증한 뒤 Burst IJobEntity를 병렬 예약한다. 입력은 전신주 Entity 목록과 읽기 전용 설정/위치/종류/설치 Lookup이며 연결/점유 스냅샷이나 별도 준비 맵을 만들지 않는다. 토폴로지 준비 결과를 읽지 않는다. PowerGridConnectionDecision의 활성은 선택 준비 완료, PowerPole Null은 공급 범위 밖이며 토폴로지 준비 성공을 뜻하지 않는다.
+
+Apply는 선택 전신주의 생존·활성·준비 상태와 현재 footprint의 공급 경계를 최종 검사하고 전신주를 재선택하지 않는다. 준비 누락이면 정상 변경을 시작하지 않으며 유효하지 않은 준비는 Fatal만 기록한다. 선택 전신주와 새/유지 망의 매핑은 기존 Apply의 같은 ECB에서 해결한다. N EndBuilding의 생성/완공은 N+1 선택부터 참여하고 N Command의 철거 승인은 N 선택에서 제외한다. 공유 공개 인덱스는 Synchronization에서만 갱신한다.
 
 최상위 Command → Building → Drone → Commit → Synchronization 순서와 세 ECB 경계는 유지한다. 아래 준비·공급 실행·사용 정산은 보존한 기획 역할이며 별도 전력 그룹 정의는 제거했다. 실제 배치는 기존 시스템/그룹 관례에 맞춰 재구현하고 각 도메인을 다시 실행하지 않는다.
 
 | 경계 | 후속 Writer/Reader 계약 |
 | --- | --- |
 | Command/EndCommand | 승인 철거 대상은 이번 틱 토폴로지·수요·발전 후보에서 제외한다. 현장은 전력 참가자가 아니다. 레시피 변경은 뒤의 BuildingDecision에서 읽는다. |
-| BuildingDecision | 기존 CanMine/CanStartCraft/CanAdvance를 작성한다. 전력 공급 여부로 작업 자격을 먼저 0으로 만들지 않는다. |
+| BuildingDecision | 기존 CanMine/CanStartCraft/CanAdvance와 일반 참가자의 공급 전신주 선택을 작성한다. 선택은 원본 위치/설정만 읽고 토폴로지 준비와 독립적이다. 전력 공급 여부로 작업 자격을 먼저 0으로 만들지 않는다. |
 | BuildingReservation 마지막: **전력 준비 단계** | 각 소유 도메인이 프레임 수요/공급/사용/발전 계획을 먼저 0으로 초기화한다. 소비 도메인의 수요 준비 Writer가 전력 외 작업 자격 및 충전 후보/배터리로 PowerDemand를 준비한다. 전력 소유자는 생존 원본 ECS로 토폴로지·보관 연료를 읽어 연결/가용량·배분 계획을 작성한다. 망별 합계는 전력 소유자의 일시 집계다. 앞선 틱 공간 인덱스만으로 같은 틱 철거/생존을 판단하지 않는다. |
 | BuildingExecution 시작의 **공급 실행 역할** | 연료 준비 Writer가 기존 StoredItemElement를 다시 읽고 실물 생존/ItemIdentity/Owner/활성 Destroy를 검사하여 배정량을 뒷받침할 만큼의 기존 석탄만 잔여 에너지로 전환한다. 신규 입고는 이 단계보다 뒤이므로 별도 연료 엔티티 스냅샷 버퍼를 두지 않는다. 이후 전력 게시 Writer가 이번 틱 공급을 한 번 게시한다. 아직 공급되지 않은 계획 자체를 소비하지 않는다. |
 | 일반 BuildingExecution | 생산은 이번 틱 공급 비율·에너지 예산 안에서 진행하고 실제 사용량을 기록한다. 연료 전환/공급 게시와 생산 Job의 명시적 ECS 의존성을 연결한다. 그룹 순서만으로 Job 완료를 가정하지 않는다. |
@@ -73,7 +84,7 @@ Apply는 활성 전신주의 적용 계획을 모두 최종 검사한 뒤 런타
 | SimulationCommit 안: **사용 정산 단계** | 건물·드론의 이번 틱 실제 사용을 모아 기초 발전을 먼저 배정하고 부족분만 석탄 발전으로 정산한다. 발전기별 실제 발전량과 망별 합계는 정산 내 파생 계산이며 독립 ECS 결과/집계로 중복 보관하지 않는다. 연료 에너지를 갱신하고 이 시점에 새 석탄 Destroy 요청을 발행하지 않는다. 미사용 예산을 같은 틱에 재배분하지 않는다. |
 | EndSimulation/Synchronization | 드론 구조 변경과 결과 공개 뒤 공간 인덱스를 갱신한다. 연료 실물 소비를 지연하여 활성 Destroy 요청을 남기거나 삭제 ECB를 추가 재생하지 않는다. |
 
-전력 준비 역할은 **소유 도메인별 프레임 초기화 → 도메인 수요 준비 → 토폴로지/가용량 계획 → 배분 계획** 순서다. 현재 토폴로지 Writer는 연결했으며 수요/가용량/배분은 후속에서 기존 그룹 내부 순서와 Job 의존성으로 연결한다. 공급 실행 역할은 **기존 보관 연료 최종 검사/전환 → 공급 게시**, 사용 정산 역할은 **현재 틱 실제 사용 수집/검사 → 실제 발전량/연료 부담량 계산 → 연료 차감** 순서이며 해당 Writer는 아직 없다.
+공급 전신주 선택은 앞선 BuildingDecision에서 원본으로 준비한다. Reservation의 전력 준비 역할은 **소유 도메인별 프레임 초기화 → 도메인 수요 준비 → 토폴로지/가용량 계획 → 배분 계획** 순서다. 현재 선택/토폴로지 Writer는 연결했으며 수요/가용량/배분은 후속에서 기존 그룹 내부 순서와 Job 의존성으로 연결한다. 후속 배분 계획은 선택 전신주를 이번 틱 토폴로지와 함께 읽는다. 공급 실행 역할은 **기존 보관 연료 최종 검사/전환 → 공급 게시**, 사용 정산 역할은 **현재 틱 실제 사용 수집/검사 → 실제 발전량/연료 부담량 계산 → 연료 차감** 순서이며 해당 Writer는 아직 없다.
 
 준비에서 계산한 가용량/배정량은 PowerGeneratorSupplyPlan으로 전달하고 실제 연료는 공급 실행 시 기존 보관 버퍼를 재검사한다. 해당 구간의 연료 재고는 이 연료 도메인이 소비하며 새 입고는 뒤의 StateApply에 있다. ECB 구조 변경을 넘어 DynamicBuffer 핸들을 유지하지 않으며 필요하면 버퍼를 다시 얻는다. 연료로 뒷받침되지 않는 공급은 게시하지 않으며 예상 밖 계획/설정 손상은 기존 Fatal 정책으로 처리한다. 전체 틱 rollback·중단 월드 재개·자동 복구는 제공하지 않는다.
 
@@ -99,13 +110,13 @@ Apply는 활성 전신주의 적용 계획을 모두 최종 검사한 뒤 런타
 
 ## 범위와 경계 사례의 기대 결과
 
-PowerRangeUtility는 단일 셀 반경의 경계를 포함하는 정사각형을 판정한다. range 5는 11×11셀, 주 시설 가상 공급 range 0은 자기 셀이다. 전신주는 한쪽 연결 범위에 상대 중심이 들어가면 연결한다(OR). 공급 영역 중첩만으로 망을 병합하지 않는다. 공급 선택은 회전 footprint 전체를 검사하는 Task 8.4의 계약으로 연결한다.
+PowerRangeUtility는 단일 셀 반경의 경계를 포함하는 정사각형을 판정한다. range 5는 11×11셀, 주 시설 가상 공급 range 0은 자기 셀이다. 전신주는 한쪽 연결 범위에 상대 중심이 들어가면 연결한다(OR). 공급 영역 중첩만으로 망을 병합하지 않는다. TryGetFootprintDistanceSquared는 회전된 직사각형 전체의 가장 가까운 점유 셀을 사용해 공급 가능 여부와 최소 제곱거리를 반환하며 Task 8.4의 선택/최종 검사가 공유한다.
 
 | 사례 | 확정 기대 결과 | 실행 검증 담당 |
 | --- | --- | --- |
 | 연료 없음 → 틱 N 신규 석탄 입고 | N 공급은 기존 연료만 사용; 새 석탄은 N+1부터 발전 가능 | 8.6/8.7 |
 | 마지막 연료가 한 틱 최대 출력보다 부족 | 같은 틱에 연료로 가능한 부분 공급·진행; 잔량 음수/미지원 공급 없음 | 8.5~8.7 |
-| N에 전신주/발전기/소비자 완공·직접 생성 | EndBuilding에 실체화하고 N+1부터 공급 계산에 참가 | 8.7 |
+| N에 전신주/발전기/소비자 완공·직접 생성 | EndBuilding에 실체화하고 N+1부터 공급 계산에 참가 | 연결 8.2~8.4; 실제 공급 8.7 |
 | N Command에서 공급 중 참가자 철거 승인 | N 계획부터 제외; EndBuilding 삭제 후 고아 연결 없음 | 8.3/8.7 |
 | 재료 없음/진행 완료 대기 ↔ 작업 가능 | 해당 틱의 공개 도메인 결정으로 수요 0 ↔ 정격 수요; 전력이 없다는 이유로 수요를 지우지 않음 | 8.7/10A.3 |
 | 계획 뒤 실행 실패·틱 중 작업 완료 | 실제 사용분만 정산; 미사용분 재배분 없음; 전환 연료의 미사용 에너지 보존 | 8.6/8.7 |
@@ -151,3 +162,17 @@ PowerRangeUtility는 단일 셀 반경의 경계를 포함하는 정사각형을
 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·Editor ready/비컴파일/비리로드/Play stopped와 runtime/Editor DLL 최신성을 확인했다. 관련 선택 EditMode는 Phase8PowerTopologyTests 13/13, Phase7BuildingDemolishTests 19/19로 이번 실행 32/32, 실패·생략·불확정 0이다. 과거 25/50사례와 합산하지 않는다. Play Mode·베이킹·Player 빌드·성능과 공급/연료/생산/충전은 미검증이다. 현재 매 틱 전체 쌍 비교의 IJob 구조를 유지하며 병렬화/변경 감지 최적화는 별도 개선이다.
 
 후속 사용자 지시로 PowerGridConnectionSnapshot과 CollectConnections를 제거했다. Apply Job에는 참가자 Entity 목록과 읽기 전용 PowerGridConnection/PowerPole ComponentLookup을 전달하여 현재 값을 조회한다. Disabled 포함/Prefab 제외, 변경분만 기록, 자기 참조 보존·무효 선택 해제, 같은 ECB와 의존성 등록 계약은 유지한다. 연결 값/분류 배열의 매 틱 복사를 제거했으며 성능 향상을 측정한 것은 아니다. 변경 후 Unity 컴파일 완료와 동일한 선택 EditMode 13/13·19/19(32/32, 실패·생략·불확정 0)를 확인했다. 이전 실행과 합산하지 않는다.
+
+## Task 8.4 구현·검증 (2026-10-13)
+
+확정한 1A·2A·3A·4A를 적용했다. 기존 토폴로지 테스트의 GameSimulationGroup·Reservation·Apply·EndBuilding·Synchronization fixture에 공급 선택 Writer를 연결하고, 기존 13사례가 다루지 않는 일반 참가자의 공급 선택 통합 흐름 8사례를 추가했다. 다섯 실제 생성/완공 경로의 1×1·2×2·3×3·회전 비정사각형/경계/범위 밖, 중첩 범위의 전체 셀 최소 거리/설치 동률, 새 전신주의 다음 틱 참여와 기존 유효 선택 변경, 비활성 상태의 선택 제외/재활성화, 실제 철거의 같은 틱 재연결/최종 단절과 준비 후 범위 변경 실패의 보존을 확인했다.
+
+Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·Editor ready/비컴파일/비리로드/Play stopped와 runtime/Editor DLL 최신성을 확인했다. 선택 EditMode는 Phase8PowerTopologyTests 21/21, Phase7BuildingLifecycleTests 11/11, Phase7ConstructionCompletionTests 8/8, Phase7BuildingDemolishTests 19/19로 이번 59/59, 실패·생략·불확정 0이다. 과거 실행 수치를 합산하지 않는다. Play Mode·베이킹·Player 빌드·성능과 실제 전력 배분/발전/연료/생산/충전은 미검증이다.
+
+## 공급 선택 Decision 이관·검증 (2026-10-14)
+
+공급 선택은 수량/슬롯 선점이나 경합 중재 없이 전신주 대상을 판단하므로 PowerGridConnectionDecisionSystem으로 이름/파일을 변경하고 BuildingDecisionGroup으로 이관했다. meta GUID를 보존하고 테스트/Apply/문서 참조를 갱신했다. 토폴로지 Lookup과 준비 완료 검사를 제거하고 선택에 필요한 전신주의 필수 구성/설정만 독립 검증한다. 망 준비·유지권과 공개 망 유효성은 기존 Reservation/Apply가 계속 소유한다.
+
+기존 중첩/재선택 테스트를 실제 Decision → Reservation 순서로 실행하고 새 전신주의 토폴로지가 Null인 상태에서도 선택이 완료되는지 확인했다. 기존 토폴로지 실패 보존 사례에는 실제 선택 참가자를 추가하여 선택 준비가 완료되어도 Apply가 후속 토폴로지 실패 시 기존 연결을 보존하는지 검사했다. 토폴로지 선행 검증을 제거하면서 전신주 GridPosition 누락이 Job Lookup 예외로 이어질 수 있어, Decision 자체가 입력을 거부하고 기존 연결을 보존하는 회귀 1사례를 추가했다.
+
+변경 후 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false, Editor ready·비컴파일·비리로드·Play stopped와 runtime/Editor DLL 최신성을 확인했다. 이번 선택 EditMode는 Phase8PowerTopologyTests 22/22·Phase7BuildingDemolishTests 19/19로 41/41, 실패·생략·불확정 0이다. 이전 59사례 실행과 합산하지 않는다. Play Mode·베이킹·Player 빌드·성능은 미수행이다.
