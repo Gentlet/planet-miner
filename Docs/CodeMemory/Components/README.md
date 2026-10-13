@@ -23,7 +23,7 @@
 | --- | ---: | --- |
 | [공통 좌표와 공간 인덱스](CommonAndSpatial.md) | 10 | GridPosition/Direction, 공간 조회 맵과 Job 의존성 |
 | [건물과 건물 설정](Buildings.md) | 12 | 건물 식별·크기·배치 순번, 설정, 직접 생성과 철거 요청 |
-| [전력 설정과 상태 계약](PowerGrid.md) | 10 | 통합 능력 설정, 토폴로지·연료 원본과 프레임 수요/공급/사용, 준비·공급 실행·정산 경계; 실제 Writer는 후속 |
+| [전력 설정과 상태 계약](PowerGrid.md) | 13 | 통합 능력 설정, 전신주·망 생성/병합·공개 연결 인덱스와 Fence·프레임 결정; 공급/연료/사용 Writer는 후속 |
 | [배치와 공사](Construction.md) | 5 | 배치 묶음, 현장, 자재 요구 데이터, 현장 취소·완공 |
 | [드론 작업 관리 계약](DroneLogistics.md) | 23 | 작업·배정·예약·공통 적재량, 인계 계획·정산·적재품 Direct 재배정·외부 결과 소비 |
 | [아이템과 저장](ItemsAndStorage.md) | 13 | 아이템·소유권·요청, 보관·입출고·입력 슬롯, 현장 내부 World Spawn 거부 |
@@ -80,15 +80,15 @@ flowchart LR
 - **요청:** 별도 요청 엔티티를 삭제하는 경로와 기존 엔티티에서 요청 컴포넌트를 비활성화하는 경로가 있다. 준비 대기로 유지하는 조건도 별도다.
 - **정의만 존재 또는 생성 경로 없음:** 현재 `Assets/Scripts`에서 확인한 연결 상태다. 테스트의 직접 구성은 제품 런타임 Producer가 구현되어 있다는 증거로 사용하지 않았다.
 
-`IRequestComponent`/`IEnableableRequest` 인터페이스 자체와 enum·일반 struct는 총 103개에 세지 않았다. 해당 인터페이스를 구현한 실제 요청 struct는 `IComponentData`의 간접 구현이므로 포함한다. Unity 제공 `LocalTransform`/`Prefab`/`DisableRendering` 등은 연결 설명에 포함하고 독립 조사 타입에서는 제외했다. MonoBehaviour/Authoring은 ECS 생성 출처나 Reader일 때만 설명한다.
+`IRequestComponent`/`IEnableableRequest`/`IFenceComponent` 인터페이스 자체와 enum·일반 struct는 총 103개에 세지 않았다. 해당 인터페이스를 구현한 실제 요청·Fence struct는 `IComponentData`의 간접 구현이므로 포함한다. Unity 제공 `LocalTransform`/`Prefab`/`DisableRendering` 등은 연결 설명에 포함하고 독립 조사 타입에서는 제외했다. MonoBehaviour/Authoring은 ECS 생성 출처나 Reader일 때만 설명한다.
 
 ## 전체 컴포넌트 색인
 
 종류의 **상태**는 일반 IComponentData, **활성 상태**는 IEnableableComponent 구현, **버퍼**는 IBufferElementData를 뜻한다. 활성 상태에는 IEnableableRequest의 간접 구현도 포함했다.
 
-### 전력 계약 (Task 8.1)
+### 전력 계약 (Task 8.1~8.2)
 
-아래 타입의 실제 Writer와 참가자 부착은 후속이며 현재는 정의와 실행 경계가 준비됐다.
+전신주 부착·망 생성/병합·프레임 결정·공개 연결 인덱스 Writer를 연결하고 관련 선택 EditMode를 통과했다. 공급/연료/사용·제거/분리의 구현·실행 검증은 후속이다.
 
 | 컴포넌트 상세 | 종류 | 정의 파일 |
 | --- | --- | --- |
@@ -102,6 +102,9 @@ flowchart LR
 | [PowerSupplyResult](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
 | [PowerUsageResult](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
 | [PowerGeneratorSupplyPlan](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
+| [PowerGridTopologyDecision](PowerGrid.md#상태프레임-계약) | 상태 | [PowerGridTopologyDecision.cs](../../../Assets/Scripts/Components/Power/PowerGridTopologyDecision.cs) |
+| [PowerGridConnectionIndex](PowerGrid.md#상태프레임-계약) | 상태 | [PowerGridConnectionIndex.cs](../../../Assets/Scripts/Components/Power/PowerGridConnectionIndex.cs) |
+| [PowerGridConnectionIndexFence](PowerGrid.md#상태프레임-계약) | 상태 | [PowerGridConnectionIndex.cs](../../../Assets/Scripts/Components/Power/PowerGridConnectionIndex.cs) |
 
 ### 공통 좌표와 공간 인덱스
 

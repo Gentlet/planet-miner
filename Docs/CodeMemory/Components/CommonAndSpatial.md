@@ -24,6 +24,8 @@
 
 ## 공간 인덱스의 공통 처리
 
+네 Fence 구조체는 `IFenceComponent : IComponentData`를 구현한다. 메서드가 없는 분류용 마커이며 핸들 상태와 의존성 관리 구현은 각 Fence가 소유한다. 인터페이스 자체를 엔티티에 부착하지 않는다. [정의](../../../Assets/Scripts/Components/Common/IFenceComponent.cs)
+
 각 SpatialSync 시스템의 OnCreate가 별도 싱글톤 엔티티 하나에 Index와 Fence를 함께 붙이고, Persistent 맵을 할당한다. OnUpdate는 이전 Writer와 Reader를 기다린 뒤 Clear Job → Populate Job을 연결한다. 대상이 0개여도 Clear Job을 실행한다. 용량 부족 시 Fence를 완료하고 확장하며, 시스템 OnDestroy에서 Fence 완료 후 맵을 Dispose한다. 컴포넌트 값 복사본이 맵 메모리를 따로 소유하는 것은 아니다.
 
 Reader는 Fence의 마지막 Writer를 자신의 Job 의존성에 결합하고 새 Reader 핸들을 등록한다. Writer는 마지막 Writer와 누적 Reader를 모두 기다린다. `SetWriter`가 새 Writer를 보관하고 Reader 누적값을 초기화한다. 이 의존성은 ECS 컴포넌트 접근 의존성과 함께 사용한다.

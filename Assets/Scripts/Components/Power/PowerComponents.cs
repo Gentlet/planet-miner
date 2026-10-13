@@ -1,10 +1,7 @@
 using Unity.Entities;
 
-/// <summary>전신주·주 시설 가상 전신주의 등록 상태. StableId는 토폴로지 소유자가 발급하며 0은 미등록이다.</summary>
-public struct PowerPole : IComponentData
-{
-    public ulong StableId;
-}
+/// <summary>전신주·주 시설 가상 전신주의 참가 태그. 식별자는 Entity, 설치 순서는 PlacementStamp다.</summary>
+public struct PowerPole : IComponentData { }
 
 /// <summary>발전 참가자 태그. 능력은 자신의 BuildingType 종류·Tier로 BuildingConfig에서 조회한다.</summary>
 public struct PowerGenerator : IComponentData { }
@@ -12,11 +9,8 @@ public struct PowerGenerator : IComponentData { }
 /// <summary>소비 참가자 태그. 정격 설정과 이번 틱 PowerDemand를 구분한다. 동적 충전 수요도 이 계약을 쓴다.</summary>
 public struct PowerConsumer : IComponentData { }
 
-/// <summary>토폴로지 소유자가 관리하는 망 식별자. ID 규칙과 실제 망 생성은 Task 8.2~8.3에서 구현한다.</summary>
-public struct PowerGrid : IComponentData
-{
-    public ulong StableId;
-}
+/// <summary>전신주와 별도 Entity인 전력망 태그. 토폴로지가 생성/병합하며 제거/분리는 Task 8.3이다.</summary>
+public struct PowerGrid : IComponentData { }
 
 /// <summary>토폴로지 소유자가 게시하는 파생 연결. 생산·충전은 이 내부 연결 대신 공급 결과를 읽는다.</summary>
 public struct PowerGridConnection : IComponentData
