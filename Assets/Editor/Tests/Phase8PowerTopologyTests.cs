@@ -10,7 +10,7 @@ using UnityEngine.TestTools;
 
 /// <summary>
 /// Spawn/완공 → 다음 틱 망 참가, 토폴로지·회전 footprint 공급 선택·재연결과 공유 맵 수명을 검증한다.
-/// 제품의 공급/연료/생산/충전·실제 입력은 실행하지 않는다.
+/// 공급 예산 게시까지 검증한다. 실제 연료 전환/연소·생산 진행·충전·게임 입력은 후속 범위다.
 /// </summary>
 public class Phase8PowerTopologyTests : EcsWorldTestFixture
 {
@@ -20,6 +20,12 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
     private SystemHandle _topologyApply;
     private SystemHandle _sync;
     private EndBuildingEntityCommandBufferSystem _endBuilding;
+    private SystemHandle _demand;
+    private SystemHandle _availability;
+    private SystemHandle _budget;
+    private SystemHandle _supplyExecution;
+    private SystemHandle _minerDecision;
+    private SystemHandle _crafterDecision;
 
     [SetUp]
     public override void SetUp()
@@ -627,6 +633,432 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         Assert.AreEqual(grid, Connection(participant).Grid);
         Assert.AreEqual(pole, Connection(participant).PowerPole);
         Assert.AreEqual(1, GridCount());
+    }
+
+    [Test]
+    public void PowerBudget_RealWorkDemand_BirthAndClampedTime_PublishesOnlyAtExecution()
+    {
+        EnablePowerSystems();
+        Simulation.SetDeltaTime(10f);
+        Entities.CreateResourceNode(new int2(3, 2), ItemTypeEnum.Iron_Ore, 50);
+        SubmitPole(int2.zero, 1, BuildingTypeEnum.MainFacility);
+        SubmitPole(new int2(4, 0), 2);
+        SubmitParticipant(BuildingTypeEnum.Miner, new int2(3, 2));
+        SubmitParticipant(BuildingTypeEnum.Crafter, new int2(4, 2));
+        _simulation.Update();
+        Entity main = PoleAt(int2.zero);
+        Entity miner = ParticipantAt(new int2(3, 2));
+        Entity crafter = ParticipantAt(new int2(4, 2));
+        Assert.AreEqual(0f, Supply(miner).AllocatedEnergy);
+        Assert.IsFalse(_entityManager.IsComponentEnabled<PowerDemand>(miner));
+        var craftState = new CrafterState(1) { IsCraftingActive = true, Progress = 0.5f, Status = CrafterStatusEnum.Crafting };
+        _entityManager.SetComponentData(crafter, craftState);
+
+        PreparePowerInputs();
+        Assert.IsTrue(_entityManager.GetComponentData<MinerDecision>(miner).CanMine);
+        Assert.IsTrue(_entityManager.GetComponentData<CrafterDecision>(crafter).CanAdvance);
+        Assert.AreEqual(1f, Demand(miner));
+        Assert.AreEqual(2f, Demand(crafter));
+        ReservePower();
+        Assert.AreEqual(Entity.Null, Connection(main).Grid, "새 망의 공개 Entity 없이 이번 틱 대표로 배분한다.");
+        Assert.AreEqual(4f, Generation(main).AvailableEnergy);
+        Assert.AreEqual(3f, Generation(main).AllocatedEnergy);
+        Assert.AreEqual(0f, Supply(miner).AllocatedEnergy);
+        Assert.AreEqual(1f, Reservation(miner).AllocatedEnergy);
+        Simulation.UpdateAndComplete(_supplyExecution);
+        Assert.AreEqual(1f, Supply(miner).AllocatedEnergy);
+        Assert.AreEqual(2f, Supply(crafter).AllocatedEnergy);
+        Assert.AreEqual(1f, Supply(miner).SupplyRatio);
+        Assert.AreEqual(0f, _entityManager.GetComponentData<MinerState>(miner).Progress);
+        Assert.AreEqual(0.5f, _entityManager.GetComponentData<CrafterState>(crafter).Progress);
+        Assert.AreEqual(0f, _entityManager.GetComponentData<PowerUsageResult>(miner).UsedEnergy);
+
+        // 진행 완료/출력 확정 대기는 수요 0이다. 출력 자격 때문에 정격 수요를 만들지 않는다.
+        craftState.Progress = 1f;
+        _entityManager.SetComponentData(crafter, craftState);
+        PreparePowerInputs();
+        ReservePower();
+        Simulation.UpdateAndComplete(_supplyExecution);
+        Assert.IsTrue(_entityManager.GetComponentData<CrafterDecision>(crafter).CanProduceOutput);
+        Assert.AreEqual(0f, Demand(crafter));
+        Assert.AreEqual(0f, Supply(crafter).AllocatedEnergy);
+        Assert.AreEqual(1f, Generation(main).AllocatedEnergy);
+    }
+
+    [TestCase(0f, 1f, 2f, 0f)]
+    [TestCase(1.5f, 1f, 2f, 0.5f)]
+    [TestCase(10f, 1f, 2f, 1f)]
+    [TestCase(0f, 0f, 0f, 1f)]
+    public void PowerBudget_SharedRatio_UsesRequestedEnergy_AndLeavesFuelUnchanged(
+        float fuel, float firstRequest, float secondRequest, float ratio)
+    {
+        EnablePowerSystems();
+        SubmitPole(int2.zero, 1);
+        SubmitParticipant(BuildingTypeEnum.CoalGenerator, new int2(1, 0));
+        SubmitParticipant(BuildingTypeEnum.DroneStation, new int2(2, 0));
+        SubmitParticipant(BuildingTypeEnum.ResearchBuilding, new int2(3, 0));
+        _simulation.Update();
+        Entity generator = ParticipantAt(new int2(1, 0));
+        Entity first = ParticipantAt(new int2(2, 0));
+        Entity second = ParticipantAt(new int2(3, 0));
+        _entityManager.SetComponentData(generator, new FuelEnergyState { RemainingEnergy = fuel });
+        PreparePowerInputs();
+        SetDemand(first, firstRequest);
+        SetDemand(second, secondRequest);
+        ReservePower();
+        Simulation.UpdateAndComplete(_supplyExecution);
+        Assert.AreEqual(ratio, Supply(first).SupplyRatio, 0.000001f);
+        Assert.AreEqual(ratio, Supply(second).SupplyRatio, 0.000001f);
+        Assert.AreEqual(firstRequest * ratio, Supply(first).AllocatedEnergy, 0.000001f);
+        Assert.AreEqual(secondRequest * ratio, Supply(second).AllocatedEnergy, 0.000001f);
+        Assert.AreEqual((firstRequest + secondRequest) * ratio, Generation(generator).AllocatedEnergy, 0.000001f);
+        Assert.AreEqual(fuel, _entityManager.GetComponentData<FuelEnergyState>(generator).RemainingEnergy,
+            "배정은 실제 발전/연료 차감이 아니다. 해당 Writer는 8.6이다.");
+        Assert.AreEqual(0f, _entityManager.GetComponentData<PowerUsageResult>(first).UsedEnergy);
+    }
+
+    [TestCase(1f, 10f, 1, 5.5f, 1f, 4.5f)]
+    [TestCase(10f, 10f, 1, 5f, 2.5f, 2.5f)]
+    [TestCase(10f, 20f, 2, 6f, 2f, 4f)]
+    public void PowerBudget_GeneratorsShareRatedUtilization_AndRedistributeFuelLimitedCapacity(
+        float firstFuel, float secondFuel, int secondTier, float request, float firstAllocation, float secondAllocation)
+    {
+        EnablePowerSystems();
+        if (secondTier == 2)
+        {
+            AddCoalTierTwo();
+        }
+        SubmitPole(int2.zero, 1);
+        SubmitParticipant(BuildingTypeEnum.CoalGenerator, new int2(1, 0));
+        BuildingPlacementRequestUtility.SubmitSpawn(_entityManager,
+            new SpawnBuildingRequest(BuildingTypeEnum.CoalGenerator, secondTier, new int2(3, 0)));
+        SubmitParticipant(BuildingTypeEnum.DroneStation, new int2(2, 0));
+        _simulation.Update();
+        Entity first = ParticipantAt(new int2(1, 0));
+        Entity second = ParticipantAt(new int2(3, 0));
+        Entity consumer = ParticipantAt(new int2(2, 0));
+        _entityManager.SetComponentData(first, new FuelEnergyState { RemainingEnergy = firstFuel });
+        _entityManager.SetComponentData(second, new FuelEnergyState { RemainingEnergy = secondFuel });
+        PreparePowerInputs();
+        SetDemand(consumer, request);
+        ReservePower();
+        Simulation.UpdateAndComplete(_supplyExecution);
+        Assert.AreEqual(firstAllocation, Generation(first).AllocatedEnergy, 0.000001f);
+        Assert.AreEqual(secondAllocation, Generation(second).AllocatedEnergy, 0.000001f);
+        Assert.AreEqual(request, Supply(consumer).AllocatedEnergy, 0.000001f);
+        Assert.AreEqual(1f, Supply(consumer).SupplyRatio);
+    }
+
+    [Test]
+    public void PowerBudget_BasePriority_UsesCurrentPreparedGroups_AcrossBirthMergeAndSplit()
+    {
+        EnablePowerSystems();
+        SubmitPole(int2.zero, 1, BuildingTypeEnum.MainFacility);
+        SubmitPole(new int2(8, 0), 2);
+        SubmitPole(new int2(24, 0), 3);
+        SubmitParticipant(BuildingTypeEnum.CoalGenerator, new int2(9, 1));
+        SubmitParticipant(BuildingTypeEnum.CoalGenerator, new int2(25, 1));
+        SubmitParticipant(BuildingTypeEnum.DroneStation, new int2(10, 1));
+        SubmitParticipant(BuildingTypeEnum.DroneStation, new int2(24, 1));
+        _simulation.Update();
+        Entity main = PoleAt(int2.zero);
+        Entity remotePole = PoleAt(new int2(24, 0));
+        Entity localGenerator = ParticipantAt(new int2(9, 1));
+        Entity remoteGenerator = ParticipantAt(new int2(25, 1));
+        Entity local = ParticipantAt(new int2(10, 1));
+        Entity remote = ParticipantAt(new int2(24, 1));
+        _entityManager.SetComponentData(localGenerator, new FuelEnergyState { RemainingEnergy = 10f });
+        _entityManager.SetComponentData(remoteGenerator, new FuelEnergyState { RemainingEnergy = 10f });
+
+        PreparePowerInputs();
+        SetDemand(local, 5.5f);
+        SetDemand(remote, 2f);
+        ReservePower();
+        Assert.AreEqual(Entity.Null, Connection(main).Grid);
+        Assert.AreEqual(4f, Generation(main).AllocatedEnergy);
+        Assert.AreEqual(1.5f, Generation(localGenerator).AllocatedEnergy);
+        Assert.AreEqual(2f, Generation(remoteGenerator).AllocatedEnergy);
+        Assert.AreNotEqual(Reservation(local).RepresentativePole, Reservation(remote).RepresentativePole);
+        Simulation.UpdateAndComplete(_supplyExecution);
+        PublishTopology();
+        Assert.AreNotEqual(Connection(local).Grid, Connection(remote).Grid);
+
+        SubmitPole(new int2(16, 0), 4);
+        _simulation.Update();
+        Entity bridge = PoleAt(new int2(16, 0));
+        PreparePowerInputs();
+        SetDemand(local, 5.5f);
+        SetDemand(remote, 2f);
+        ReservePower();
+        Assert.AreNotEqual(Connection(local).Grid, Connection(remote).Grid,
+            "준비된 병합은 아직 공개 연결에 반영되지 않았다.");
+        Assert.AreEqual(main, Reservation(remote).RepresentativePole);
+        Assert.AreEqual(4f, Generation(main).AllocatedEnergy);
+        Assert.AreEqual(1.75f, Generation(localGenerator).AllocatedEnergy);
+        Assert.AreEqual(1.75f, Generation(remoteGenerator).AllocatedEnergy);
+        Simulation.UpdateAndComplete(_supplyExecution);
+        Assert.AreEqual(5.5f, Supply(local).AllocatedEnergy);
+        Assert.AreEqual(2f, Supply(remote).AllocatedEnergy);
+        PublishTopology();
+        Assert.AreEqual(Connection(local).Grid, Connection(remote).Grid);
+
+        RequestDemolition(bridge);
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<BuildingDemolitionCommandSystem>());
+        Simulation.Playback(_world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>());
+        PreparePowerInputs();
+        SetDemand(local, 5.5f);
+        SetDemand(remote, 2f);
+        ReservePower();
+        Assert.AreEqual(Connection(local).Grid, Connection(remote).Grid,
+            "공개 망이 아직 같아도 이번 틱 분리 계획으로 예산을 나눈다.");
+        Assert.AreEqual(remotePole, Reservation(remote).RepresentativePole);
+        Assert.AreEqual(1.5f, Generation(localGenerator).AllocatedEnergy);
+        Assert.AreEqual(2f, Generation(remoteGenerator).AllocatedEnergy);
+        Simulation.UpdateAndComplete(_supplyExecution);
+        Assert.AreEqual(2f, Supply(remote).AllocatedEnergy);
+        PublishTopology();
+        Assert.AreNotEqual(Connection(local).Grid, Connection(remote).Grid);
+    }
+
+    [Test]
+    public void PowerBudget_UnconvertedCoalDoesNotFundSupply_AndFloatReservationsStayWithinFunding()
+    {
+        EnablePowerSystems();
+        SubmitPole(int2.zero, 1);
+        SubmitParticipant(BuildingTypeEnum.CoalGenerator, new int2(1, 0));
+        SubmitParticipant(BuildingTypeEnum.DroneStation, new int2(2, 0));
+        SubmitParticipant(BuildingTypeEnum.DroneStation, new int2(3, 0));
+        _simulation.Update();
+        Entity generator = ParticipantAt(new int2(1, 0));
+        Entity first = ParticipantAt(new int2(2, 0));
+        Entity second = ParticipantAt(new int2(3, 0));
+        Entity coal = _entityManager.CreateEntity(typeof(ItemIdentity), typeof(ItemOwnership), typeof(GridPosition));
+        _entityManager.SetComponentData(coal, new ItemIdentity(ItemTypeEnum.Coal));
+        _entityManager.SetComponentData(coal, new ItemOwnership(generator));
+        _entityManager.AddBuffer<StoredItemElement>(generator).Add(new StoredItemElement(coal, ItemTypeEnum.Coal, 0));
+        PreparePowerInputs();
+        SetDemand(first, 0.3f);
+        SetDemand(second, 0.7f);
+        ReservePower();
+        Simulation.UpdateAndComplete(_supplyExecution);
+        Assert.AreEqual(0f, Generation(generator).AvailableEnergy);
+        Assert.AreEqual(0f, Supply(first).AllocatedEnergy);
+        Assert.IsTrue(_entityManager.Exists(coal));
+        Assert.AreEqual(1, _entityManager.GetBuffer<StoredItemElement>(generator).Length);
+
+        _entityManager.SetComponentData(generator, new FuelEnergyState { RemainingEnergy = 0.1f });
+        PreparePowerInputs();
+        SetDemand(first, 0.3f);
+        SetDemand(second, 0.7f);
+        ReservePower();
+        Simulation.UpdateAndComplete(_supplyExecution);
+        Assert.AreEqual(0.1f, Supply(first).SupplyRatio, 0.000001f);
+        Assert.AreEqual(Supply(first).SupplyRatio, Supply(second).SupplyRatio);
+        double total = (double)Supply(first).AllocatedEnergy + Supply(second).AllocatedEnergy;
+        Assert.LessOrEqual(total, (double)Generation(generator).AllocatedEnergy);
+        Assert.LessOrEqual(Generation(generator).AllocatedEnergy, 0.1f);
+        Assert.IsFalse(SimulationFailureUtility.HasFatalError(_entityManager));
+    }
+
+    [TestCase(0)]
+    [TestCase(1)]
+    [TestCase(2)]
+    public void PowerBudget_ChangedFuelGroupOrDemandBeforePublication_RejectsAllResults(int changeKind)
+    {
+        EnablePowerSystems();
+        SubmitPole(int2.zero, 1);
+        SubmitPole(new int2(30, 0), 2);
+        SubmitParticipant(BuildingTypeEnum.CoalGenerator, new int2(1, 0));
+        SubmitParticipant(BuildingTypeEnum.DroneStation, new int2(2, 0));
+        SubmitParticipant(BuildingTypeEnum.DroneStation, new int2(3, 0));
+        _simulation.Update();
+        Entity generator = ParticipantAt(new int2(1, 0));
+        Entity first = ParticipantAt(new int2(2, 0));
+        Entity second = ParticipantAt(new int2(3, 0));
+        _entityManager.SetComponentData(generator, new FuelEnergyState { RemainingEnergy = 10f });
+        PreparePowerInputs();
+        SetDemand(first, 1f);
+        SetDemand(second, 2f);
+        ReservePower();
+        if (changeKind == 0)
+        {
+            _entityManager.SetComponentData(generator, new FuelEnergyState { RemainingEnergy = 1f });
+        }
+        else if (changeKind == 1)
+        {
+            _entityManager.SetComponentData(second,
+                new PowerGridConnectionDecision { PowerPole = PoleAt(new int2(30, 0)) });
+        }
+        else
+        {
+            SetDemand(second, 3f);
+        }
+        LogAssert.Expect(LogType.Error, new Regex("PowerSupplyExecutionSystem.*changed before publication"));
+        Simulation.UpdateAndComplete(_supplyExecution);
+        Assert.AreEqual(0f, Supply(first).AllocatedEnergy);
+        Assert.AreEqual(0f, Supply(second).AllocatedEnergy);
+        Simulation.Playback(_endBuilding);
+        Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
+    }
+
+    [Test]
+    public void PowerBudget_TopologyPreparationFailure_DoesNotPublishOrDiscardExistingConnections()
+    {
+        EnablePowerSystems();
+        Entities.CreateResourceNode(new int2(2, 0), ItemTypeEnum.Iron_Ore, 50);
+        SubmitPole(int2.zero, 1, BuildingTypeEnum.MainFacility);
+        SubmitPole(new int2(1, 0), 2);
+        SubmitParticipant(BuildingTypeEnum.Miner, new int2(2, 0));
+        _simulation.Update();
+        _simulation.Update();
+        Entity main = PoleAt(int2.zero);
+        Entity consumer = ParticipantAt(new int2(2, 0));
+        Entity grid = Connection(consumer).Grid;
+        Assert.AreEqual(1f, Supply(consumer).AllocatedEnergy);
+        Entity invalidGrid = _entityManager.CreateEntity();
+        _entityManager.SetComponentData(main, new PowerGridConnection { PowerPole = main, Grid = invalidGrid });
+        LogAssert.Expect(LogType.Error, new Regex("PowerGridTopologyReservationSystem.*Invalid pole"));
+        _simulation.Update();
+        Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
+        Assert.IsFalse(_entityManager.IsComponentEnabled<PowerSupplyReservation>(consumer));
+        Assert.AreEqual(0f, Supply(consumer).AllocatedEnergy);
+        Assert.AreEqual(grid, Connection(consumer).Grid);
+        Assert.IsTrue(_entityManager.Exists(grid));
+    }
+
+    [Test]
+    public void PowerBudget_MissingReservation_ClearsOldSupplyDemandAndUsageBeforeFatal()
+    {
+        EnablePowerSystems();
+        SubmitPole(int2.zero, 1);
+        SubmitParticipant(BuildingTypeEnum.CoalGenerator, new int2(1, 0));
+        SubmitParticipant(BuildingTypeEnum.DroneStation, new int2(2, 0));
+        _simulation.Update();
+        Entity generator = ParticipantAt(new int2(1, 0));
+        Entity consumer = ParticipantAt(new int2(2, 0));
+        _entityManager.SetComponentData(generator, new FuelEnergyState { RemainingEnergy = 10f });
+        PreparePowerInputs();
+        SetDemand(consumer, 2f);
+        ReservePower();
+        Simulation.UpdateAndComplete(_supplyExecution);
+        Assert.AreEqual(2f, Supply(consumer).AllocatedEnergy);
+        _entityManager.SetComponentData(consumer, new PowerUsageResult { UsedEnergy = 1f });
+        _entityManager.RemoveComponent<PowerSupplyReservation>(consumer);
+        Simulation.UpdateAndComplete(_availability);
+        LogAssert.Expect(LogType.Error, new Regex("BuildingPowerDemandDecisionSystem.*Invalid consumer"));
+        Simulation.UpdateAndComplete(_demand);
+        Assert.AreEqual(0f, Supply(consumer).AllocatedEnergy);
+        Assert.AreEqual(0f, Demand(consumer));
+        Assert.AreEqual(0f, _entityManager.GetComponentData<PowerUsageResult>(consumer).UsedEnergy);
+        Assert.IsFalse(_entityManager.IsComponentEnabled<PowerDemand>(consumer));
+        Simulation.Playback(_endBuilding);
+        Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
+    }
+
+    [Test]
+    public void PowerBudget_DisabledAndApprovedDemolition_StopSupplyWithoutSuppressingWorkDemand()
+    {
+        EnablePowerSystems();
+        Entities.CreateResourceNode(new int2(2, 0), ItemTypeEnum.Iron_Ore, 50);
+        SubmitPole(int2.zero, 1);
+        SubmitParticipant(BuildingTypeEnum.CoalGenerator, new int2(1, 0));
+        SubmitParticipant(BuildingTypeEnum.Miner, new int2(2, 0));
+        _simulation.Update();
+        Entity generator = ParticipantAt(new int2(1, 0));
+        Entity consumer = ParticipantAt(new int2(2, 0));
+        _entityManager.SetComponentData(generator, new FuelEnergyState { RemainingEnergy = 10f });
+        _simulation.Update();
+        Assert.AreEqual(1f, Demand(consumer));
+        Assert.AreEqual(1f, Supply(consumer).AllocatedEnergy);
+        _entityManager.AddComponent<Disabled>(consumer);
+        _entityManager.AddComponent<Disabled>(generator);
+        _simulation.Update();
+        Assert.AreEqual(0f, Demand(consumer));
+        Assert.AreEqual(0f, Supply(consumer).AllocatedEnergy);
+        Assert.IsFalse(_entityManager.IsComponentEnabled<PowerSupplyReservation>(consumer));
+        Assert.IsFalse(_entityManager.IsComponentEnabled<PowerGeneratorSupplyPlan>(generator));
+        Assert.AreEqual(10f, _entityManager.GetComponentData<FuelEnergyState>(generator).RemainingEnergy);
+        _entityManager.RemoveComponent<Disabled>(consumer);
+        _entityManager.RemoveComponent<Disabled>(generator);
+        _simulation.Update();
+        Assert.AreEqual(1f, Supply(consumer).AllocatedEnergy);
+        RequestDemolition(generator);
+        _simulation.Update();
+        Assert.IsFalse(_entityManager.Exists(generator));
+        Assert.IsTrue(_entityManager.GetComponentData<MinerDecision>(consumer).CanMine);
+        Assert.AreEqual(1f, Demand(consumer));
+        Assert.AreEqual(0f, Supply(consumer).AllocatedEnergy);
+    }
+
+    private void EnablePowerSystems()
+    {
+        _demand = _world.GetOrCreateSystem<BuildingPowerDemandDecisionSystem>();
+        _availability = _world.GetOrCreateSystem<PowerSupplyDecisionSystem>();
+        _budget = _world.GetOrCreateSystem<PowerBudgetReservationSystem>();
+        _supplyExecution = _world.GetOrCreateSystem<PowerSupplyExecutionSystem>();
+        _minerDecision = _world.GetOrCreateSystem<MinerDecisionSystem>();
+        _crafterDecision = _world.GetOrCreateSystem<CrafterDecisionSystem>();
+        var decision = _world.GetOrCreateSystemManaged<BuildingDecisionGroup>();
+        var reservation = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
+        var execution = _world.GetOrCreateSystemManaged<BuildingExecutionGroup>();
+        var sync = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
+        decision.AddSystemToUpdateList(_minerDecision);
+        decision.AddSystemToUpdateList(_crafterDecision);
+        decision.AddSystemToUpdateList(_demand);
+        decision.AddSystemToUpdateList(_availability);
+        reservation.AddSystemToUpdateList(_budget);
+        execution.AddSystemToUpdateList(_supplyExecution);
+        sync.AddSystemToUpdateList(_world.GetOrCreateSystem<ResourceSpatialSyncSystem>());
+        decision.SortSystems();
+        reservation.SortSystems();
+        execution.SortSystems();
+        sync.SortSystems();
+    }
+
+    private void PreparePowerInputs()
+    {
+        Simulation.UpdateAndComplete(_minerDecision);
+        Simulation.UpdateAndComplete(_crafterDecision);
+        Simulation.UpdateAndComplete(_connectionSelection);
+        Simulation.UpdateAndComplete(_demand);
+        Simulation.UpdateAndComplete(_availability);
+    }
+
+    private void ReservePower()
+    {
+        Simulation.UpdateAndComplete(_topology);
+        Simulation.UpdateAndComplete(_budget);
+    }
+
+    private void PublishTopology()
+    {
+        Simulation.UpdateAndComplete(_topologyApply);
+        Simulation.Playback(_endBuilding);
+        Simulation.UpdateAndComplete(_sync);
+    }
+
+    private void SetDemand(Entity consumer, float energy)
+    {
+        // 실제 연구/충전 Producer는 후속이다. 배분 입력만 명시적으로 제공한다.
+        _entityManager.SetComponentData(consumer, new PowerDemand { RequestedEnergy = energy });
+        _entityManager.SetComponentEnabled<PowerDemand>(consumer, true);
+    }
+
+    private float Demand(Entity entity) => _entityManager.GetComponentData<PowerDemand>(entity).RequestedEnergy;
+    private PowerSupplyResult Supply(Entity entity) => _entityManager.GetComponentData<PowerSupplyResult>(entity);
+    private PowerSupplyReservation Reservation(Entity entity) => _entityManager.GetComponentData<PowerSupplyReservation>(entity);
+    private PowerGeneratorSupplyPlan Generation(Entity entity) => _entityManager.GetComponentData<PowerGeneratorSupplyPlan>(entity);
+
+    private void AddCoalTierTwo()
+    {
+        using var configQuery = _entityManager.CreateEntityQuery(typeof(BuildingConfig));
+        _entityManager.GetBuffer<BuildingConfigElement>(configQuery.GetSingletonEntity()).Add(
+            new BuildingConfigElement(BuildingTypeEnum.CoalGenerator, 2, "CoalTier2", 1f, 1, true,
+                footprint: new int2(1, 1), power: new BuildingPowerConfig(maximumGeneration: 200f, coalEnergyPerItem: 600f)));
+        using var prefabQuery = _entityManager.CreateEntityQuery(typeof(BuildingPrefabElement));
+        var prefabs = _entityManager.GetBuffer<BuildingPrefabElement>(prefabQuery.GetSingletonEntity());
+        Assert.IsTrue(PrefabLookupUtility.TryGetBuildingPrefab(prefabs, BuildingTypeEnum.CoalGenerator, 1, out var prefab));
+        prefabs.Add(new BuildingPrefabElement(BuildingTypeEnum.CoalGenerator, 2, prefab));
     }
 
     private void SetFootprint(BuildingTypeEnum type, int2 size)

@@ -1,6 +1,6 @@
 # 전력 컴포넌트 계약
 
-2026-10-13 Task 8.1~8.4를 구현하고 2026-10-14 공급 전신주 선택을 Decision으로 이관했다. Decision은 일반 참가자의 공급 전신주를 선택하고 Reservation은 토폴로지를 준비한다. StateApply는 최종 검사·망 수명주기·연결 공개·참조/빈 망 정리를 소유한다. 실제 전력 배분/연료/생산/충전은 후속이다. 규칙은 [전력 명세](../../Specifications/PowerGrid.md)를 따른다. 이번 Unity 컴파일·DLL 최신성과 선택 EditMode 41/41(토폴로지/연결 22·기존 철거 19)를 확인했으며 이전 59사례 실행과 합산하지 않는다. Play Mode·베이킹·Player 빌드·성능은 미수행이다.
+2026-10-14 Task 8.1~8.5를 구현했다. Decision은 선택/실제 Miner·Crafter 수요/가용량, Reservation은 토폴로지/예산, Execution은 공급 결과, StateApply/EndBuilding은 망 수명주기·공개 연결을 소유한다. 실제 연료 전환/연소·생산 사용·연구/충전은 후속이다. 규칙은 [전력 명세](../../Specifications/PowerGrid.md)를 따른다. 이번 Unity 컴파일·DLL 최신성과 선택 EditMode 76/76(전력 38·공통 생성 11·완공 8·철거 19)을 확인했으며 과거 실행과 합산하지 않는다. Play Mode·베이킹·Player 빌드·성능은 미수행이다.
 
 ## 설정 원본
 
@@ -8,24 +8,25 @@
 
 ## 상태·프레임 계약
 
-아래 10개 ECS 타입의 [정의](../../../Assets/Scripts/Components/Power/PowerComponents.cs)를 사용한다. 프레임 데이터는 일반 컴포넌트이며 enableable 요청이나 IRequestComponent가 아니다. 전력 전용 시계/틱 필드를 두지 않고 매 틱 준비에서 먼저 초기화한다. 영속 상태와 틱 내 계획을 구분한다. 실제 초기화 Writer는 아직 후속이며, 타입 삭제만으로 초기화 동작이 구현된 것은 아니다.
+아래 11개 ECS 타입의 [정의](../../../Assets/Scripts/Components/Power/PowerComponents.cs)를 사용한다. 8.5에서 PowerSupplyReservation을 추가하고 PowerDemand/PowerGeneratorSupplyPlan을 enableable 준비 상태로 변경했다. 활성은 준비 완료이며 수요/가용량 0도 정상 준비 완료다. 세 enableable 계획은 IRequestComponent가 아니며 매 틱 Decision이 초기화한다. 영속 FuelEnergyState와 틱 내 계획/게시 결과를 구분하고 별도 시계/Tick 필드를 두지 않는다.
 
 | 타입·부착 엔티티 | 원본/파생 및 필드 | 생성·Writer·Reader·소비 경계 |
 | --- | --- | --- |
 | PowerPole / 전신주·주 시설 | 참가 태그 | 공통 BuildingLifecycleUtility가 직접 Spawn/현장 완공에서 부착한다. StableId/번호 발급 없이 Entity와 기존 PlacementStamp를 사용한다. |
-| PowerGenerator / 발전 건물 | 발전 참가자 태그 | 8.7 생성 연결이 부착. 준비/정산은 BuildingType 종류·Tier로 능력을 조회한다. |
-| PowerConsumer / 생산·연구·충전 건물 | 소비 참가자 태그 | 각 후속 도메인이 부착. 충전의 동적 수요와 정격 설정을 혼동하지 않는다. |
+| PowerGenerator / MainFacility·CoalGenerator | 발전 참가자 태그 | 8.5 공통 직접 생성/완공이 부착한다. 능력은 자신의 BuildingType 종류·Tier로 조회하며 전신주/주 시설 설정을 대신 조회하지 않는다. |
+| PowerConsumer / MainFacility·Miner·Crafter·ResearchBuilding·DroneStation | 소비 참가자 태그 | 8.5 공통 생성/완공이 부착한다. 실제 Miner/Crafter 수요만 연결했고 연구/충전은 후속까지 0이다. 동적 충전 수요를 임의 정격량으로 대체하지 않는다. |
 | PowerGrid / 망 엔티티 | 망 태그 | Apply의 Burst Job이 생성/병합/분리와 미사용/빈 망 삭제를 EndBuilding에 기록한다. 기존 망 전체를 조회하여 마지막 전신주 소실 뒤에도 회수한다. 전신주와 별도 Entity이며 번호 발급이 없다. |
 | PowerGridConnection / 참가자 | 공개 PowerPole·Grid 참조 | 공통 생성은 전신주/주 시설을 자기 전신주·Null 망으로, 일반 참가자는 두 참조 Null로 초기화한다. Apply는 이번 틱 선택한 전신주의 새 망으로 연결하거나 범위 밖이면 해제한다. Disabled는 기존 참조만 정리하고 Prefab은 제외한다. 전신주 자체의 자기 참조/설치 기록은 유지한다. |
-| FuelEnergyState / 연료를 에너지로 전환하는 소비처 | 영속 RemainingEnergy | 연료 종류·소비처에 독립적인 잔량이다. 현재 전력 계약에서는 공급 실행의 연료 전환이 증가시키고 틱 말 정산이 실제 발전분만 차감한다. 동일 연료 도메인의 서로 다른 단계이며 새 입고/정산으로 음수나 중복 가용량을 만들지 않는다. 다른 연료/소비처의 실제 Writer는 별도 후속이다. |
-| PowerDemand / 소비자 | 프레임 입력 RequestedEnergy | 소비 도메인이 준비에서 먼저 0으로 초기화하고 전력 외 작업 조건으로 작성한다. 전력 계획이 읽는다. 정전 자체로 수요를 0으로 만들지 않는다. |
-| PowerSupplyResult / 소비자 | 프레임 공급 예산 SupplyRatio·AllocatedEnergy | 전력 소유자가 준비에서 먼저 0으로 초기화한다. 연료로 뒷받침된 뒤 한 번 게시하고 생산/충전은 이 예산 안에서만 사용한다. 실제 사용량으로 오해하지 않는다. |
-| PowerUsageResult / 소비자 | 프레임 결과 UsedEnergy | 소비 도메인이 준비에서 먼저 0으로 초기화하고 Execution에서 성공분을 작성한다. 정산이 읽는다. 전력이 생산 진행을 대신 변경하지 않는다. |
-| PowerGeneratorSupplyPlan / 발전기 | 파생 계획 AvailableEnergy·AllocatedEnergy | 전력 소유자가 준비에서 먼저 0으로 초기화하고 기존 잔량·보관 연료의 가용 에너지로 작성한다. 공급 실행은 StoredItemElement를 재검사하여 필요한 연료를 전환하고 정산은 배정 상한을 읽는다. 새 입고를 추가하지 않는다. |
+| FuelEnergyState / 연료를 에너지로 전환하는 소비처 | 영속 RemainingEnergy | 공통 생성은 CoalGenerator에 0으로 부착한다. 8.5 가용량/게시가 이미 전환된 잔량만 읽고 변경하지 않는다. 실물 전환과 실제 사용 에너지 차감은 8.6 후속이며 같은 틱 입고는 그 틱 공급에 포함하지 않는다. |
+| PowerDemand / 소비자 | enableable 프레임 입력 RequestedEnergy | BuildingPowerDemandDecisionSystem이 Disabled/철거까지 값/활성을 초기화한다. 활성 소비자의 MinerDecision.CanMine, CrafterDecision.CanStartCraft/CanAdvance와 현재 정격 × 공통 DeltaTime으로 요청하고 준비 완료를 활성화한다. 연구/충전은 0이다. Budget/게시가 읽으며 공급 부족 자체로 수요를 지우지 않는다. |
+| PowerSupplyResult / 소비자 | 공개 프레임 예산 SupplyRatio·AllocatedEnergy | PowerSupplyDecisionSystem이 모두 0으로 초기화하고 PowerSupplyExecutionSystem이 연결/수요/연료·총량 최종 검사 후 한 번 게시한다. 실패 시 이전 공급을 재사용하지 않는다. 실제 사용량과 미게시 예약을 구분한다. 생산/충전 Reader는 8.7/9.14/10A.3이다. |
+| PowerUsageResult / 소비자 | 프레임 결과 UsedEnergy | BuildingPowerDemandDecisionSystem이 0으로 초기화한다. 실제 성공량 기록은 후속 각 소비 도메인이 소유한다. 배정량을 실제 사용량으로 복사하지 않으며 연료 정산 Writer는 8.6이다. |
+| PowerGeneratorSupplyPlan / 발전기 | enableable AvailableEnergy·AllocatedEnergy·RepresentativePole | PowerSupplyDecisionSystem이 값/활성을 초기화하고 기초 정격/이미 전환된 잔량의 가용량을 활성화한다. Budget가 정격 기준 동일 가동률로 예산과 기준 대표를 작성하고 게시가 생존/연료 한도를 대조한다. 실제 발전량이나 공개 Grid Entity를 담지 않는다. 미전환 석탄·연료 차감은 8.6이다. |
+| PowerSupplyReservation / 소비자 | enableable 미게시 RequestedEnergy·SupplyRatio·AllocatedEnergy·RepresentativePole | PowerSupplyDecisionSystem이 초기화하고 Budget가 기준 수요/대표와 배정량을 작성한 뒤 활성화한다. 게시가 기준 변화와 총량을 대조해 Result로 옮긴다. 연결/점유 스냅샷이나 영속 망 집계가 아니며 준비 실패를 정상 0으로 게시하지 않는다. |
 
 망별 가용량·수요·배정량·사용량과 발전기별 실제 발전량은 전력 소유자의 일시 집계/정산 계산으로 처리한다. 독립 ECS 상태나 후속 계산의 별도 원본으로 중복 보관하지 않는다. 준비 초기화는 작업 불가·공급 없음·단절된 참가자도 포함하며 모든 초기화가 끝난 뒤 수요/계획을 작성한다. 앞선 틱의 값이 남아 예산으로 사용되지 않게 하는 계약이다.
 
-전신주/주 시설과 Miner·Crafter·ResearchBuilding·CoalGenerator·DroneStation의 연결/선택 데이터를 공통 생성과 EndBuilding에 연결했다. 기존 철거 경로의 참조 정리와 다른 공급 전신주 재선택도 구현했다. 발전/소비 역할·연료·수요/공급 상태와 실제 생산 연결은 해당 후속 Task, 주 시설 자동 시작은 9.22다.
+공통 생성/완공은 위 역할과 필수 상태를 부착하며 준비 계획은 비활성·수량은 0으로 시작한다. 새 참가자는 EndBuilding 이후 다음 틱부터 공급에 참여한다. 기존 실제 철거/재선택 경로를 사용하고 승인 철거는 이번 틱부터 수요/발전/배정에서 제외한다. 실제 연료/생산/연구/충전과 주 시설 자동 시작은 각각 후속이다.
 
 추가 계약 4개:
 
@@ -46,7 +47,9 @@ Apply는 BuildingStateApplyGroup에서 BuildingLifecycleApplySystem보다 먼저
 
 정상 검사 뒤 Burst IJob은 대표별 망 Entity를 준비하고 모든 런타임 연결을 Disabled까지 갱신한 뒤 기존 망 중 유지되지 않는 망을 삭제한다. 참가자 Entity 목록과 기존 연결/전신주/선택/비활성/철거의 읽기 전용 ComponentLookup을 사용하며 별도 연결 스냅샷 구조체/값 복사 배열은 없다. 비활성 전신주는 자기 참조/Null 망으로 정리한다. 활성 일반 참가자는 이번 틱 선택을 적용하며, 비활성 참가자 또는 선택 결정이 없는 기존 참조는 유효 전신주의 새 망으로 맞추거나 무효하면 둘 다 해제한다. 참가자·기존 망 Entity 목록과 적용 계획의 해제 핸들을 state.Dependency와 EndBuilding Producer에 등록하고 Lookup의 ECS 읽기 의존성도 연결한다. 예약 Entity는 같은 ECB 안에서만 참조하며 실제 공개는 EndBuilding이다.
 
-공급 전 수요/가용량·공급 게시·실제 사용 정산 Writer는 후속이다. 연결 인덱스는 이번 틱 계획을 대체하지 않으며 이전 Synchronization 자료를 같은 틱 생성/철거 판단의 원본으로 쓰지 않는다. 실제 철거는 기존 Command 승인/EndCommand와 BuildingLifecycleApply/EndBuilding 경로를 사용한다. N EndBuilding 생성/완공은 N+1부터 선택하고 N Command 철거 승인은 N 선택에서 제외한다.
+수요/가용량과 초기화는 BuildingDecision, 배정은 TopologyReservation 뒤 OrderLast, 게시는 BuildingExecution OrderFirst이며 생산 앞이다. Budget/게시의 동기 검사는 해당 계획/결정 Writer를 CompleteDependencyBeforeRO로 기다린다. Job은 Entity 목록·읽기 전용 Lookup과 state.Dependency를 사용하고 입력 해제 핸들을 등록한다. 망별 합계는 Budget Job 내부의 임시 double Native 맵이며 float 에너지를 아래로 반올림해 소비자 합계가 발전기 배정을 넘지 않게 한다. 미세한 미배정량도 같은 틱에 재배분하지 않는다. Role별 원본 검증과 준비 성공 여부는 별개이며 최종 손상은 Fatal/공급 0으로 처리한다.
+
+8.5는 기초 발전과 이미 전환된 FuelEnergyState만 게시 근거로 사용한다. 미전환 Coal을 세지 않으며 연료 전환/차감이나 생산 진행·성공량을 변경하지 않는다. 연구/충전 검증의 요청 입력은 fixture가 직접 제공하므로 실제 Producer 구현 증거가 아니다. 연결 인덱스는 이번 틱 계획을 대체하지 않고 예산은 기존 선택/Topology의 대표를 사용해 EndBuilding 전 새 망·병합·분리를 반영한다. 다른 ECB의 예약 Entity나 영속 집계/위치·연결 캐시는 없다.
 
 ## 순수 범위 조회
 

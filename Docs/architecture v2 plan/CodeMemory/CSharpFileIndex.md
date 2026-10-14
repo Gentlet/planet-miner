@@ -18,12 +18,13 @@
 | `Assets/Scripts/Common/PowerRangeUtility.cs` | 단일 셀 반경 정사각형/OR 연결과 회전 직사각형 전체의 공급 경계/최소 제곱거리 순수 판정. 토폴로지·공급 선택/최종 검사가 공유한다. |
 | `Assets/Scripts/Config/BuildingPowerConfigParser.cs` | BuildingConfig의 역할별 power JSON와 공개/사전 등록 능력을 공통 검증한다. |
 | `Assets/Scripts/Components/Power/BuildingPowerConfig.cs` | BuildingConfigElement 안의 종류·Tier별 능력 설정 값. 독립 ECS 원본은 아니다. |
-| `Assets/Scripts/Components/Power/PowerComponents.cs` | 전력 참가자·연료 원본과 수요/공급/사용/발전 계획의 10개 ECS 계약. 전신주/망 Writer는 Topology가 소유하고 공급/연료/사용 Writer는 후속이다. |
+| `Assets/Scripts/Components/Power/PowerComponents.cs` | 역할·연료 원본과 수요/미게시 예약/공급/사용/발전 계획의 11개 ECS 계약. Demand/GenPlan/Reservation 활성은 준비 완료다. 수요/배정/게시 Writer는 연결했고 실제 연료/생산 사용은 후속이다. |
+| `Assets/Scripts/Common/PowerFrameUtility.cs` | 역할/설정·이번 틱 대표/선택 검사, Fatal 기록과 예산 이하 float 변환을 공유한다. 망 집계·상태·게시의 소유자가 아니다. |
 | `Assets/Editor/Tests/Phase8PowerContractTests.cs` | 통합 설정/원자적 게시/사전 등록 실패·Tier 분리·순수 범위 계약의 EditMode 검증. 실제 전력 가동 검증은 아니다. |
 | `Assets/Scripts/Components/Power/PowerGridTopologyDecision.cs` | 전신주별 대표·유지할 망·최종 검사할 이전 공개 망의 계획. Reservation이 작성하고 후속 공급/StateApply가 읽는다. 예약 Entity를 담지 않는다. |
 | `Assets/Scripts/Components/Power/PowerGridConnectionDecision.cs` | Decision이 작성하는 일반 참가자의 enableable 공급 전신주 선택. enable은 선택 준비 완료, 활성 Null 선택은 정상 단절이며 예약 망 Entity를 담지 않는다. |
 | `Assets/Scripts/Components/Power/PowerGridConnectionIndex.cs` | 공개 Entity→연결 맵과 IFenceComponent 의존성 계약. 위치/점유 원본을 복제하지 않는다. |
-| `Assets/Editor/Tests/Phase8PowerTopologyTests.cs` | Spawn/완공·실제 철거·토폴로지/공급 선택·재선택·비활성·입력 실패 보존·공유 맵 수명 22사례. 2026-10-14 Decision 이관 후 22/22 통과했다. |
+| `Assets/Editor/Tests/Phase8PowerTopologyTests.cs` | 기존 토폴로지/연결 22사례와 실제 수요/공급·동일 가동률·망 변경/예산/게시 실패 16사례. 2026-10-14 Task 8.5 구현 후 38/38 통과했다. 실제 연료·생산 사용·연구/충전 Producer의 검증은 아니다. |
 | `Assets/Scripts/Common/BuildingFootprintUtility.cs` | 점유 크기의 최소 1칸 정규화와 방향 회전을 계산하며 BuildingFootprint 확장 메서드도 제공한다. |
 | `Assets/Scripts/Common/BuildingPlacementRequestUtility.cs` | 플레이어 배치 묶음의 World 접수번호를 발급하고 요청/후보를 함께 준비한다. 최종 승인과 임시 셀 중재는 기존 Command가 담당한다. |
 | `Assets/Scripts/Common/BuildingTypeExtensions.cs` | 건물 종류의 Burst 호환 FixedString 변환을 제공한다. |
@@ -151,6 +152,10 @@
 | `Assets/Scripts/Systems/Buildings/Reservation/BuildingStorageInputReservationSystem.cs` | 현재 버퍼와 프레임 내 예약 수를 합산하여 품목별 저장 슬롯을 하나씩 확정한다. |
 | `Assets/Scripts/Systems/Buildings/Reservation/PowerGridTopologyReservationSystem.cs` | 생존/설정/공개 망 검증과 Reservation 마지막의 연결 집합·분리 유지권 우선·병합 대표 계획. 정상 망 변경의 ECB 기록은 없다. |
 | `Assets/Scripts/Systems/Buildings/Decision/PowerGridConnectionDecisionSystem.cs` | BuildingDecision에서 선택용 원본을 독립 검증하고 전체 회전 footprint의 최소 거리/설치 순서로 전신주를 매 틱 선택한다. Entity 목록·RO Lookup의 병렬 Job이며 토폴로지 준비 결과에 의존하지 않고 공개 연결은 쓰지 않는다. |
+| `Assets/Scripts/Systems/Buildings/Decision/BuildingPowerDemandDecisionSystem.cs` | 소비 도메인의 수요/사용 초기화와 기존 Miner/Crafter 결정에 따른 요청을 준비한다. 연구/충전 수요는 후속까지 0이다. |
+| `Assets/Scripts/Systems/Buildings/Decision/PowerSupplyDecisionSystem.cs` | 전력 소유의 공급/예약/발전 계획을 독립 초기화하고 정격·이미 전환된 잔량으로 가용량을 준비한다. |
+| `Assets/Scripts/Systems/Buildings/Reservation/PowerBudgetReservationSystem.cs` | Topology 뒤 현재 대표·준비된 수요/가용량으로 예산을 배정한다. 기초 우선·정격 기준 동일 가동률/연료 한도와 임시 집계·예산 이하 float를 적용한다. |
+| `Assets/Scripts/Systems/Buildings/Execution/PowerSupplyExecutionSystem.cs` | 준비/기준 대표·수요·현재 선택/연료와 망별 총량을 검증하고 생산 전에 SupplyResult를 한 번 게시한다. 연료/진행량/실제 사용은 변경하지 않는다. |
 | `Assets/Scripts/Systems/Buildings/StateApply/PowerGridTopologyApplySystem.cs` | 토폴로지/공급 선택 최종 검사와 망 수명주기·연결/참조 정리의 같은 EndBuilding 기록. 연결 값 스냅샷 없이 Entity 목록·RO Lookup을 사용하며 공급 전신주를 재선택하지 않는다. |
 | `Assets/Scripts/Systems/Buildings/Execution/BeltMovementExecutionSystem.cs` | 계획된 타일 내 진행도, 경계 횡단, 격자 위치와 시각 위치를 반영하고 계획을 소비한다. |
 | `Assets/Scripts/Systems/Buildings/Execution/CrafterExecutionSystem.cs` | 재료 선소비 및 삭제 요청, 진행도 누적, 주생산품/부산물 `ProductResult` 기록을 수행한다. |
