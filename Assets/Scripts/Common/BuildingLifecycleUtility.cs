@@ -136,6 +136,7 @@ public static class BuildingLifecycleUtility
 
             case BuildingTypeEnum.Miner:
                 AttachPowerParticipantComponents(ref ecb, building);
+                AttachPowerConsumerComponents(ref ecb, building);
                 ecb.AddComponent(building, new MinerState(speed > 0f ? speed : 1.0f));
                 ecb.AddComponent<MinerDecision>(building);
                 ecb.SetComponentEnabled<MinerDecision>(building, false);
@@ -148,6 +149,7 @@ public static class BuildingLifecycleUtility
             // 레시피가 정해지기 전에는 재료를 받지 않는다. Command의 레시피 변경이 품목별 슬롯을 구성한다.
             case BuildingTypeEnum.Crafter:
                 AttachPowerParticipantComponents(ref ecb, building);
+                AttachPowerConsumerComponents(ref ecb, building);
                 ecb.AddComponent(building, new CrafterState(selectedRecipeId: 0, speed: speed > 0f ? speed : 1.0f));
                 ecb.AddComponent<CrafterDecision>(building);
                 ecb.SetComponentEnabled<CrafterDecision>(building, false);
@@ -170,6 +172,7 @@ public static class BuildingLifecycleUtility
             case BuildingTypeEnum.DroneStation:
                 AttachStorageComponents(ref ecb, building, storageCapacity);
                 AttachPowerParticipantComponents(ref ecb, building);
+                AttachPowerConsumerComponents(ref ecb, building);
                 break;
 
             case BuildingTypeEnum.Splitter:
@@ -188,6 +191,8 @@ public static class BuildingLifecycleUtility
                 ecb.AddComponent<IndestructibleBuilding>(building);
                 AttachStorageComponents(ref ecb, building, storageCapacity);
                 AttachPowerPoleComponents(ref ecb, building);
+                AttachPowerGeneratorComponents(ref ecb, building, false);
+                AttachPowerConsumerComponents(ref ecb, building);
                 break;
 
             case BuildingTypeEnum.PowerPole:
@@ -195,8 +200,13 @@ public static class BuildingLifecycleUtility
                 break;
 
             case BuildingTypeEnum.CoalGenerator:
+                AttachPowerParticipantComponents(ref ecb, building);
+                AttachPowerGeneratorComponents(ref ecb, building, true);
+                break;
+
             case BuildingTypeEnum.ResearchBuilding:
                 AttachPowerParticipantComponents(ref ecb, building);
+                AttachPowerConsumerComponents(ref ecb, building);
                 break;
         }
     }
@@ -206,6 +216,28 @@ public static class BuildingLifecycleUtility
         ecb.AddComponent<PowerGridConnection>(building);
         ecb.AddComponent<PowerGridConnectionDecision>(building);
         ecb.SetComponentEnabled<PowerGridConnectionDecision>(building, false);
+    }
+
+    private static void AttachPowerConsumerComponents(ref EntityCommandBuffer ecb, Entity building)
+    {
+        ecb.AddComponent<PowerConsumer>(building);
+        ecb.AddComponent<PowerDemand>(building);
+        ecb.SetComponentEnabled<PowerDemand>(building, false);
+        ecb.AddComponent<PowerSupplyResult>(building);
+        ecb.AddComponent<PowerSupplyReservation>(building);
+        ecb.SetComponentEnabled<PowerSupplyReservation>(building, false);
+        ecb.AddComponent<PowerUsageResult>(building);
+    }
+
+    private static void AttachPowerGeneratorComponents(ref EntityCommandBuffer ecb, Entity building, bool usesFuel)
+    {
+        ecb.AddComponent<PowerGenerator>(building);
+        ecb.AddComponent<PowerGeneratorSupplyPlan>(building);
+        ecb.SetComponentEnabled<PowerGeneratorSupplyPlan>(building, false);
+        if (usesFuel)
+        {
+            ecb.AddComponent<FuelEnergyState>(building);
+        }
     }
 
     private static void AttachPowerPoleComponents(ref EntityCommandBuffer ecb, Entity building)

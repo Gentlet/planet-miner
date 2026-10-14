@@ -25,8 +25,8 @@ public struct FuelEnergyState : IComponentData
     public float RemainingEnergy;
 }
 
-/// <summary>소비 도메인이 매 틱 초기화하고 전력 외 작업 조건으로 작성하는 수요. 같은 틱에 다시 배분하지 않는다.</summary>
-public struct PowerDemand : IComponentData
+/// <summary>소비 도메인이 Decision에서 초기화/작성한다. 활성은 수요 준비 완료이며 수요 0도 준비 완료다.</summary>
+public struct PowerDemand : IComponentData, IEnableableComponent
 {
     public float RequestedEnergy;
 }
@@ -44,10 +44,25 @@ public struct PowerUsageResult : IComponentData
     public float UsedEnergy;
 }
 
-/// <summary>전력 소유자가 매 틱 초기화하고 작성하는 발전 가능량·배정 계획. 실제 연료 실물은 Execution에서 보관 버퍼를 재검사한다.</summary>
-public struct PowerGeneratorSupplyPlan : IComponentData
+/// <summary>Decision의 발전 가능량과 Reservation의 배정 계획. 활성은 가용량 준비 완료이며 실제 발전량은 아니다.</summary>
+public struct PowerGeneratorSupplyPlan : IComponentData, IEnableableComponent
 {
     public float AvailableEnergy;
     public float AllocatedEnergy;
+    /// <summary>Reservation에서 예산을 배정한 이번 틱 대표. 게시 전에 연결 기준이 바뀌지 않았는지 확인한다.</summary>
+    public Entity RepresentativePole;
+}
+
+/// <summary>
+/// Reservation이 작성하는 소비자별 미게시 공급 예산. 활성은 배정 준비 완료다.
+/// Execution이 최종 검사한 뒤 PowerSupplyResult에 게시한다. 망 집계/연결 원본을 복제하지 않는다.
+/// </summary>
+public struct PowerSupplyReservation : IComponentData, IEnableableComponent
+{
+    /// <summary>배정 기준 수요. 게시 전에 입력 수요가 바뀌지 않았는지 확인한다.</summary>
+    public float RequestedEnergy;
+    public float SupplyRatio;
+    public float AllocatedEnergy;
+    public Entity RepresentativePole;
 }
 
