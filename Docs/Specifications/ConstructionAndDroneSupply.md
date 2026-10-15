@@ -4,6 +4,8 @@
 
 이 문서는 사용자가 확정한 공사·드론 공급/회수 규칙과 2026-10-06 건물·드론 도메인 분리 규칙을 기록한다. [현재 컴포넌트 색인](../CodeMemory/Components/README.md), [공사 계약](../CodeMemory/Components/Construction.md), [드론 계약](../CodeMemory/Components/DroneLogistics.md)은 소스의 데이터 소유자와 수명을 설명한다. 실제 드론 생성·이동·경로 계산·관측·행동 신호·공통 적재량 초기화/연구 Writer는 후속이며 아래 규칙 전체의 실행 완료를 뜻하지 않는다.
 
+2026-10-15 Task 9.1에서 확정한 수납·충전/연속 배차·정상/비상 귀환·실제 중단의 1A~6A 정책과 전이표는 [드론 Lifecycle 명세](DroneLifecycle.md)를 따른다. 본문의 기존 작업·배정·예약·실물 인계 소유자는 유지하며 새로운 수행자 상태·배터리·정거장 구현은 후속 Task에 남긴다.
+
 Play Mode는 실제 V2 장면/Default World에서 수행자·관측·경로 결과·행동 신호를 검증 입력으로 제공한 관리/인계 검증이다. 실제 자동 비행·도착·게임 입력 또는 수행부 구현의 증거가 아니다. 기존 142사례와 기존 통합 4사례는 이전 공통 여섯 phase의 별도 실행 기록이다. 변경된 입력·완공 시점의 실행 증거로 소급 해석하거나 합산하지 않는다. 현재 드론 ECS 타입은 23개다.
 
 ## 사용자 확정 실행 경계
@@ -16,10 +18,10 @@ Play Mode는 실제 V2 장면/Default World에서 수행자·관측·경로 결�
 | 2A 도메인 내 연쇄 제한 | 건물은 이번 틱 입고 자재로 다시 생산 판단하지 않는다. 드론은 모든 실물·공간 계획을 먼저 준비하고 적용 도중 새 수집품·새 공간을 기존 계획에 추가하지 않는다. |
 | 3A 드론 공개 시점 | 작업·경로·배정·개별 예약·행동 결과는 최종 EndSimulation에서 공개한다. 새 작업·배정·경로는 다음 틱부터 이용한다. |
 | 4B 완공 | Construction은 BuildingStateApply 마지막에서 지난 틱 드론 납품·회수 결과를 읽는다. 이번 틱 마지막 납품·방해물 회수는 다음 틱에 완공된다. 완공 건물은 드론에 보이지만 자체 생산·출고는 다음 틱부터 한다. |
-| 5A 오류 | GameSimulationGroup의 Ready/Fatal 검사는 틱 시작에만 한다. EndBuilding에서 Fatal이 공개되어도 현재 틱은 끝까지 수행하며 다음 틱부터 차단한다. 전체 rollback은 보장하지 않는다. |
+| 5A 오류 | GameSimulationGroup은 틱 시작에 Ready/Fatal을 검사한다. EndBuilding의 NextTick Fatal은 현재 틱을 마치고 다음 틱부터 차단한다. 이후 추가된 Power의 RemainingDomains Fatal은 EndPower에서 같은 틱 Building/Drone을 차단한다. 전체 rollback은 보장하지 않는다. |
 | 6A 개선 범위 | 도메인별 그룹·파일 배치와 순수 후보/공개 대기 예약 데이터 수명 분리·이름 정리·관련 현재 문서/테스트를 함께 갱신한다. |
 
-실행 순서는 Command → EndCommand → BuildingSimulation(Decision/Reservation/Execution/StateApply·마지막 완공) → EndBuilding → DroneSimulation(Decision/Reservation/Execution/StateApply) → SimulationCommit/EndSimulation → Synchronization이다. 그룹 순서와 Job 의존성을 구분하며 NativeContainer 접근은 기존 Fence 계약을 따른다. 공간 인덱스는 중간에 재구축하지 않고 마지막 Synchronization에서 갱신한다.
+현재 실행 순서는 Command → EndCommand → Preparation → Power(Decision/Reservation/Execution/StateApply) → EndPower → BuildingSimulation(Decision/Reservation/Execution/StateApply·마지막 완공) → EndBuilding → DroneSimulation(Decision/Reservation/Execution/StateApply) → SimulationCommit/EndSimulation → Synchronization이다. 그룹 순서와 Job 의존성을 구분하며 NativeContainer 접근은 기존 Fence 계약을 따른다. 공간 인덱스는 중간에 재구축하지 않고 마지막 Synchronization에서 갱신한다.
 
 ## 배치 요청의 접수와 승인
 
@@ -192,7 +194,7 @@ EndCommand에서 현장 생성
 
 현재 소유자·데이터·처리 순서는 [드론 컴포넌트 계약](../CodeMemory/Components/DroneLogistics.md)을 따른다. 현재 1~4단계는 작업/인계/예약 정산과 적재품 재배정·완공 차단을 구현했다. Supply는 현장→보관처, Recovery는 보관처만 Direct 경로로 찾는다. 관련 목적지 결과 None은 대기하며 모두 도달 불가일 때 현장 외부 방출 목표를 선택한다. 방출 외부 셀 검색이 필요하면 그 결과도 기다리며 None/Unreachable에서는 적재품을 보존한다. 적재 그룹은 최초 작업 순서로 신규보다 우선하며 같은 배정의 revision을 증가시켜 실물·출처·결과 참조를 보존한다. 실물 행동과 이동은 외부 수행부의 신호를 기다린다.
 
-후속 실제 드론 수행부는 위치·작업 가능 상태, 도달 가능성·충전 경유를 포함한 실제 거리, 도착·행동 완료 정보를 제공해야 한다. 실제 드론의 생성과 실행, 이동·배터리·충전 수치 및 실제 경로 계산은 이번 범위에서 임의로 정하지 않는다.
+후속 실제 드론 수행부는 위치·작업 가능 상태, 도달 가능성·충전 경유를 포함한 실제 거리, 도착·행동 완료 정보를 제공해야 한다. 실제 생성·실행·경로 계산과 이동/충전 수치 연결은 후속이다. 귀환·수납·배차·배터리 0·실제 중단의 정책은 Task 9.1에서 확정했으며 미확정으로 다시 취급하지 않는다. 정책의 문서 확정은 수행부 구현·실행 완료를 뜻하지 않는다.
 
 공급원 재고 예약과 보관 공간 예약을 삭제한 최신 합의가 이전 예약 합의를 대체한다. 기존 벨트와 신규 드론 예약 사이의 우선순위를 정하기 위해 벨트 입출고를 변경하는 안도 이번 계획에서 사용하지 않는다.
 

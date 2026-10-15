@@ -4,6 +4,8 @@
 
 2026-10-06 건물·드론 도메인 분리 이후 드론 ECS 타입 23개를 설명한다. 관리 계층의 작업·예약·인계·재배정·안전 방출 계약과 순수 후보/공개 대기 예약 분리를 포함한다.
 
+2026-10-15 Task 9.1은 [상태 전이·Lifecycle Owner 계약](../../Specifications/DroneLifecycle.md)을 확정했다. 1A~6A의 수납·완충 전/연속 배차·귀환·비상 이동·중단 정산은 후속 수행부가 따라야 할 정책이다. 현재 23개 타입과 관리 계층은 유지하며 실제 정거장·이동·배터리·충전·수납 Writer나 새 상태 enum을 구현한 것은 아니다. 작업/배정의 기존 상태와 수행자 자체의 후속 개념 상태를 구분한다.
+
 기존 142사례와 기존 통합 4사례는 이전 공통 여섯 phase의 별도 실행 기록이다. 새 입력·완공 시점의 검증으로 소급 해석하거나 합산하지 않는다. 실제 수행자 생성·이동·경로 계산·관측·행동 신호와 공통 능력/연구 Writer는 후속이다. DropPosition은 선택 목표이며 실제 위치 원본이 아니다. [공통 적재량 초기화 검토안](../../Specifications/DroneCapacityInitializationPlan.md)은 미확정 정책의 제안이다.
 
 ```text
@@ -23,7 +25,7 @@ Synchronization: 원본 ECS로 공간 인덱스 갱신
 
 BuildingSimulationGroup과 DroneSimulationGroup은 각각 한 번 실행한다. 드론은 같은 틱 건물 종료의 새 입고품·생산품·철거 반환/환급과 새 보관 공간을 읽는다. 기존 공급원 종류와 품목 제한은 유지한다. 드론 실행 전 모든 계획을 준비하며 드론 적용 중 새 수집품이나 비워진 공간을 기존 계획에 추가하지 않는다. 건물도 이번 틱 입고 재료로 다시 생산 판단하지 않는다.
 
-외부 입력은 시뮬레이션 전 DroneActionRequestUtility.Submit으로 게시한다. 결과는 EndSimulation 이후 외부 또는 다음 틱 외부 경계에서 TryConsumeResult로 읽고 삭제한다. GameSimulationGroup은 틱 시작에만 Ready/Fatal을 검사하므로 EndBuilding에서 Fatal이 공개되어도 현재 틱은 끝까지 수행하고 다음 틱부터 차단한다.
+외부 입력은 시뮬레이션 전 DroneActionRequestUtility.Submit으로 게시한다. 결과는 EndSimulation 이후 외부 또는 다음 틱 외부 경계에서 TryConsumeResult로 읽고 삭제한다. GameSimulationGroup은 틱 시작에 Ready/Fatal을 검사한다. EndBuilding의 NextTick Fatal은 현재 틱을 마치고 다음 틱부터 차단한다. Power의 RemainingDomains Fatal은 EndPower에서 공개하여 같은 틱 Building/Drone을 건너뛴다.
 
 Placement는 현장·자재 요구만 생성한다. Decision은 생성·무효화·경로 의도와 후보만 쓰며 원본 예약·배정·연결을 바꾸지 않는다. ProjectedRemaining은 Reservation이 해제할 미공개·무효 예약을 읽기 계산한다. Execution은 대상 생존·타입·중복·경로 스냅샷만 적용 검사하며 필요 작업을 다시 탐색하지 않는다. 이후 드론 Apply로 낡은 작업·경로는 다음 Decision이 후보에서 제외하고 정리 의도를 작성한다.
 
