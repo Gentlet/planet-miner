@@ -71,6 +71,8 @@ public partial struct CrafterExecutionSystem : ISystem
         var job = new CrafterExecutionJob
         {
             DeltaTime = dt,
+            DemandLookup = SystemAPI.GetComponentLookup<PowerDemand>(true),
+            SupplyLookup = SystemAPI.GetComponentLookup<PowerSupplyResult>(true),
             RecipeRegistryEntity = recipeRegistryEntity,
             RecipeConfigLookup = _recipeConfigLookup,
             RecipeIngredientLookup = _recipeIngredientLookup,
@@ -89,6 +91,8 @@ public partial struct CrafterExecutionSystem : ISystem
 public partial struct CrafterExecutionJob : IJobEntity
 {
     public float DeltaTime;
+    [ReadOnly] public ComponentLookup<PowerDemand> DemandLookup;
+    [ReadOnly] public ComponentLookup<PowerSupplyResult> SupplyLookup;
 
     public Entity RecipeRegistryEntity;
 
@@ -104,6 +108,7 @@ public partial struct CrafterExecutionJob : IJobEntity
     public ComponentLookup<DestroyItemRequest> DestroyItemRequestLookup;
 
     public void Execute(
+        Entity building,
         ref CrafterState state,
         ref DynamicBuffer<StoredItemElement> storedItems,
         ref DynamicBuffer<ProductResult> productResults,
@@ -125,8 +130,13 @@ public partial struct CrafterExecutionJob : IJobEntity
         // =========================================================================
         // 2. 신규 제작 착수 및 재료 선소비
         // =========================================================================
+        float poweredDeltaTime = PowerFrameUtility.GetPoweredDeltaTime(building, DeltaTime, DemandLookup, SupplyLookup);
         if (decision.CanStartCraft && !state.IsCraftingActive)
         {
+            if (poweredDeltaTime <= 0f)
+            {
+                return;
+            }
             // 모든 재료를 먼저 확인한다. 실패하면 부분 소비·삭제 요청·진행도를 기록하지 않는다.
             if (!RecipeConfigLookupUtility.HasRequiredIngredients(recipe, ingredients, storedItems, DestroyItemRequestLookup))
             {
@@ -170,7 +180,7 @@ public partial struct CrafterExecutionJob : IJobEntity
         if (state.IsCraftingActive && decision.CanAdvance)
         {
             float craftTime = math.max(0.01f, recipe.CraftTime);
-            float deltaProgress = (DeltaTime * state.Speed) / craftTime;
+            float deltaProgress = (poweredDeltaTime * state.Speed) / craftTime;
             state.Progress = math.min(1.0f, state.Progress + deltaProgress);
         }
 

@@ -22,17 +22,17 @@
 | MainFacility | 위 저장 구성과 `IndestructibleBuilding`, `PowerPole`·`PowerGridTopologyDecision`·자기 전신주/미연결 망의 `PowerGridConnection` |
 | Splitter, Merger | 해당 Routing 상태, 비활성 `RoutingTransferDecision` |
 | PowerPole | `PowerPole`·`PowerGridTopologyDecision`·자기 전신주/미연결 망의 `PowerGridConnection` |
-| CoalGenerator | 초기 미연결 `PowerGridConnection`·비활성 `PowerGridConnectionDecision`, 아래 발전 구성과 초기 0 `FuelEnergyState`; 실제 실물 전환/연소는 후속 |
+| CoalGenerator | 초기 미연결 `PowerGridConnection`·비활성 `PowerGridConnectionDecision`, 아래 발전 구성과 초기 0 `FuelEnergyState`, 설정 용량의 `Storage`·`StoredItemElement`·Coal Whitelist. Power에서 필요한 석탄을 전환하고 배정 에너지를 소비 |
 | ResearchBuilding | 초기 미연결 `PowerGridConnection`·비활성 `PowerGridConnectionDecision`과 아래 소비 구성; 연구 수요/진행은 후속 |
 | ConstructionSite | 완공 생성 함수의 대상에서 제외. 배치 Command가 현장 구성 생성 |
 
 근거: [BuildingLifecycleUtility](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs), [BuildingPlacementCommandSystem](../../../Assets/Scripts/Systems/Command/BuildingPlacementCommandSystem.cs), [ConstructionLifecycleApplySystem](../../../Assets/Scripts/Systems/Construction/StateApply/ConstructionLifecycleApplySystem.cs).
 
-2026-10-14 Task 8.5의 2A로 역할·프레임 상태 부착을 앞당겼다. MainFacility/CoalGenerator의 발전 구성은 PowerGenerator와 비활성 PowerGeneratorSupplyPlan이다. MainFacility/Miner/Crafter/ResearchBuilding/DroneStation의 소비 구성은 PowerConsumer·비활성 PowerDemand/PowerSupplyReservation·초기 0 PowerSupplyResult/PowerUsageResult다. Miner/Crafter의 실제 수요 준비와 공급 결과 게시는 연결했고, 생산 진행량/실제 사용 기록·연구/충전 Producer는 후속이다. 모든 타입의 직접 생성/완공은 같은 공통 함수를 사용한다.
+2026-10-15 Power/Preparation 분리 계약: 공통 생성/완공은 비활성 발전/소비 역할과 준비 계획·초기 공급을 부착한다. CoalGenerator는 설정 슬롯의 저장 버퍼와 Coal Whitelist, 연료 잔량 0을 가진다. Preparation의 작업 의도와 Power의 공급/확정 소비를 Miner/Crafter가 읽어 진행/선소비를 제한한다. PowerUsageResult는 제거했고 연구/충전 Producer는 후속이다. 모든 직접 생성/완공은 같은 공통 함수를 사용한다.
 
 ## BuildingType
 
-2026-10-12 Task 8.1은 설정을 게시했고 2026-10-13~14 Task 8.2~8.5가 연결/망 수명주기·역할/프레임 상태·실제 수요/배정/공급 게시를 구현했다. 실제 연료 전환/정산·생산 사용·연구/충전은 후속이다. JSON·공개 게시·사전 등록의 검증과 실행 경계는 [전력 계약](PowerGrid.md)을 따른다.
+2026-10-12 Task 8.1은 설정을 게시했고 2026-10-13~14 Task 8.2~8.5가 연결/망 수명주기·역할/프레임 상태·실제 수요/배정/공급 게시를 구현했다. 2026-10-15 Preparation/Power 분리로 석탄 실물 전환·배정량 확정 소비와 Miner/Crafter의 공급 반영을 구현했다. 연구·충전의 실제 Producer는 후속이다. JSON·공개 게시·사전 등록의 검증과 실행 경계는 [전력 계약](PowerGrid.md)을 따른다.
 
 - **종류·부착 대상·목적:** 일반 `IComponentData`. 완공 건물과 공사 현장 엔티티의 종류와 티어를 `Type: BuildingTypeEnum`, `Tier: int`로 식별한다. 완공 건물은 명시적 양수 티어이며 현장 분류는 Tier 0이다. 현장의 목표 티어는 ConstructionSite가 소유한다. 타입만으로 저장·채굴·전력 등의 구성이 자동으로 붙는 것은 아니다.
 - **생성:** 배치 Command는 현장에 `ConstructionSite` 값을 EndCommand ECB로 붙인다. `BuildingLifecycleUtility.SpawnBuilding`은 등록된 프리팹을 인스턴스화하고 대상 종류·티어를 EndBuilding ECB로 붙인다. 현재 Building DB Baker는 프리팹 참조 DB를 제공하며 이 런타임 구성은 공통 생성 함수가 담당한다.
@@ -48,7 +48,7 @@
 - **읽기·계산:** `BuildingFootprintUtility.GetEffectiveSize`가 각 축 최소 1 및 Left/Right에서 폭·높이 교환을 처리한다. Decision의 채굴기는 이 영역의 자원을 찾고, Storage/Product 출고 Decision은 회전된 크기로 출구를 계산한다. Synchronization의 건물 공간 등록도 같은 계산으로 점유 셀을 등록한다.
 - **단계 경계:** 현장 생성은 EndCommand, 완공 건물 생성은 EndBuilding에 반영된다. 이후 매 Synchronization에서 점유 크기를 다시 읽는다. 저장된 크기에 미리 방향 회전을 적용하지 않는다.
 - **수명·결합:** 생성 이후 크기를 갱신하는 런타임 시스템은 현재 없다. 엔티티 삭제 시 함께 제거된다. 배치 후보의 크기 검증, 현장의 기본 크기, 완공으로 전달되는 크기, 각 Reader의 한 번 회전이 연결되어 있다.
-- **근거:** [정의](../../../Assets/Scripts/Components/Buildings/BuildingComponents.cs), [크기 계산](../../../Assets/Scripts/Common/BuildingFootprintUtility.cs), [공통 생성](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs), [채굴](../../../Assets/Scripts/Systems/Buildings/Decision/MinerDecisionSystem.cs), [보관품 출고](../../../Assets/Scripts/Systems/Buildings/Decision/StorageItemOutputDecisionSystem.cs), [생산품 출고](../../../Assets/Scripts/Systems/Buildings/Decision/ProductItemOutputDecisionSystem.cs), [공간 등록](../../../Assets/Scripts/Systems/Synchronization/BuildingSpatialSyncSystem.cs).
+- **근거:** [정의](../../../Assets/Scripts/Components/Buildings/BuildingComponents.cs), [크기 계산](../../../Assets/Scripts/Common/BuildingFootprintUtility.cs), [공통 생성](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs), [채굴](../../../Assets/Scripts/Systems/Buildings/Preparation/MinerWorkPreparationSystem.cs), [보관품 출고](../../../Assets/Scripts/Systems/Buildings/Decision/StorageItemOutputDecisionSystem.cs), [생산품 출고](../../../Assets/Scripts/Systems/Buildings/Decision/ProductItemOutputDecisionSystem.cs), [공간 등록](../../../Assets/Scripts/Systems/Synchronization/BuildingSpatialSyncSystem.cs).
 
 ## IndestructibleBuilding
 

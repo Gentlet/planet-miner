@@ -37,13 +37,20 @@ public class Phase5CrafterExecutionTests : EcsWorldTestFixture
     }
 
     private Entity CreateCrafter(int recipeId = 1, float speed = 1.0f)
-        => Entities.CreateCrafter(int2.zero, recipeId, speed);
+    {
+        Entity crafter = Entities.CreateCrafter(int2.zero, recipeId, speed);
+        Entities.PrepareIsolatedPowerSupply(crafter);
+        return crafter;
+    }
 
     private Entity CreateStoredItem(Entity owner, ItemTypeEnum itemType, int slotIndex = 0)
         => Entities.CreateStoredItem(owner, itemType, slotIndex);
 
     private void RunDecisionPhase()
-        => Simulation.Update(_crafterDecisionHandle);
+    {
+        Simulation.Update(_world.GetOrCreateSystem<CrafterWorkPreparationSystem>());
+        Simulation.Update(_crafterDecisionHandle);
+    }
 
     private void RunExecutionPhase(float deltaTime)
     {

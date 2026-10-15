@@ -11,6 +11,12 @@ using Unity.Transforms;
 /// </summary>
 public static class ItemLifecycleUtility
 {
+    /// <summary>실물 삭제 기록의 공통 진입점. 호출자는 소유 버퍼를 먼저 정리하고 Playback 경계를 선택한다.</summary>
+    public static void RecordDestroy(ref EntityCommandBuffer ecb, Entity item)
+    {
+        ecb.DestroyEntity(item);
+    }
+
     public static Entity SpawnPrefabItem(
         ref EntityCommandBuffer ecb,
         Entity prefab,

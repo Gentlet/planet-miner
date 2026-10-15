@@ -6,18 +6,30 @@
 
 2026-10-04 공사 운송 제거에 따라 Product 버퍼의 공사 수령 Reader 설명을 갱신했다. 일반 생산·출고·철거 경로는 유지한다.
 
-생산의 공통 흐름은 `BuildingDecision → BuildingExecution의 ProductResult 기록 → BuildingStateApply의 아이템 생성 예약 → EndBuilding의 실제 아이템/출력 버퍼 반영 → 이후 틱의 출고 Decision`이다. 제작은 여기에 `Command의 레시피·입력 슬롯 설정`과 `Execution의 재료 선소비`가 추가된다. 생산 건물의 런타임 컴포넌트는 직접 스폰과 공사 완료가 공유하는 `BuildingLifecycleUtility.SpawnBuilding → AttachTypeSpecificComponents`에서 EndBuilding ECB에 기록한다. 새 생산 실물은 같은 틱 드론 그룹에 존재하지만 현재 드론 공급원은 Storage/MainFacility/DroneStation의 Stored 버퍼이며 Miner/Crafter의 Product 버퍼를 직접 수집하지 않는다. [공급원 제한](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs), [현재 공개 경계](README.md#실행-단계와-데이터가-확정되는-시점).
+생산의 공통 흐름은 `Preparation의 작업 준비/수요 → Power의 배정 소비/공급 게시·EndPower → BuildingDecision의 실행/출력 결정 → BuildingExecution의 ProductResult 기록 → BuildingStateApply의 아이템 생성 예약 → EndBuilding의 실제 아이템/출력 버퍼 반영 → 이후 틱의 출고 Decision`이다. 제작은 여기에 `Command의 레시피·입력 슬롯 설정`과 `Execution의 재료 선소비`가 추가된다. 생산 건물의 런타임 컴포넌트는 직접 스폰과 공사 완료가 공유하는 `BuildingLifecycleUtility.SpawnBuilding → AttachTypeSpecificComponents`에서 EndBuilding ECB에 기록한다. 새 생산 실물은 같은 틱 드론 그룹에 존재하지만 현재 드론 공급원은 Storage/MainFacility/DroneStation의 Stored 버퍼이며 Miner/Crafter의 Product 버퍼를 직접 수집하지 않는다. [공급원 제한](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs), [현재 공개 경계](README.md#실행-단계와-데이터가-확정되는-시점).
 
 2026-10-07 F-014에서 중복 재료 거부·초기화 중단·전체 재료 확인 후 소비를 갱신했다. 해당 변경은 Unity 컴파일 확인과 관련 EditMode 32/32로 검증했으며 문서 전체/Play Mode/baked prefab 검증으로 확대 해석하지 않는다.
 
 2026-10-04 철거 승인 상태와 앞단 동작 중단 계약을 반영했다. 이전 조사 당시의 정적 분석과 이번 실행 검증의 범위를 구분한다.
 
+2026-10-15 Power 분리/Task 8.6~8.7에서는 Preparation의 작업 판단·수요와 Power의 공급을 연결했다. 배정량은 이번 틱 소비로 확정하고 Miner/Crafter 진행은 공급으로 제한한다. 무전력 신규 제작은 재료를 보존하고 진행 중 상태를 유지하며 완료 출력은 기존 공간 검사 뒤 허용한다. 이번 준비/결정 분리·공통 Fatal·Job 의존성 변경은 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·Editor ready/비컴파일/비리로드·최신 runtime/Editor DLL과 관련 선택 EditMode 170/170(실패·생략·불확정 0)으로 확인했다. Play Mode·베이킹·Player 빌드·성능은 미수행이다. 이전 157/157은 준비/결정 분리 전의 별도 실행이다. 연구/충전·Play Mode·Player 빌드·성능은 이번 검증 범위에 포함하지 않는다. [전력 계약](PowerGrid.md)을 따른다.
+
+## MinerWorkPreparation
+
+- 공통 생성/완공이 비활성으로 부착한다. MinerWorkPreparationSystem만 자원 인덱스/Fence와 생산품 조건을 읽어 CanMine/TargetResource를 작성한다. Resource Reader 등록도 이 시스템이 소유한다.
+- enable은 이번 틱 준비 완료이며 CanMine=false도 정상 준비 결과다. 수요 Writer와 BuildingDecision이 읽고 다음 Preparation이 갱신한다. 철거/Disabled의 준비는 초기화하며 실물·자원량은 변경하지 않는다.
+
+## CrafterWorkPreparation
+
+- 공통 생성/완공이 비활성으로 부착한다. CrafterWorkPreparationSystem만 기존 재료 자격과 진행 상태로 CanStartCraft/CanAdvance를 작성한다. 완료 상태는 진행 수요 0이며 완료 출력/표시 상태는 작성하지 않는다.
+- enable은 준비 완료다. 수요 Writer는 이 결과를 읽고 Building의 CrafterDecisionSystem은 공급을 함께 읽어 실행·완료 출력·상태 후보를 작성한다. Execution만 재료·진행·실물을 변경한다.
+
 ## MinerState
 
 - **종류·부착 대상·목적:** 일반 `IComponentData`; 완공된 Miner 엔티티의 `MiningSpeed`와 미처리 작업량 `Progress`를 보관한다. [정의](../../../Assets/Scripts/Components/Production/Mining/MinerComponents.cs).
-- **생성·초기화:** 공통 건물 생성 경로가 `MiningSpeed = speed > 0 ? speed : 1`, `Progress = 0`으로 추가한다. 같은 엔티티에 `MinerDecision`, `ProductResult`, `ProductItemElement`, `BuildingItemOutputDecision`도 구성한다. 실제 부착은 EndBuilding 재생 시점이다. [초기화](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs).
-- **읽기·쓰기와 단계:** `MinerDecisionSystem`(Decision)의 쿼리·Job 입력에 포함되며, `MinerExecutionSystem`(Execution)이 활성 `MinerDecision`을 가진 채굴기의 `Progress`를 직접 갱신한다. Decision Job은 이 상태 값을 변경하지 않는다. [판정](../../../Assets/Scripts/Systems/Buildings/Decision/MinerDecisionSystem.cs), [실행](../../../Assets/Scripts/Systems/Buildings/Execution/MinerExecutionSystem.cs).
-- **처리:** 대상 자원과 미소비 결과를 재확인한 뒤 `MiningSpeed × min(DeltaTime, MaxSimulationDeltaTime)`를 더한다. `Progress >= 1`이면 **한 틱에 최대 한 번** 1을 차감하고 슬롯 0의 `ProductResult` 한 개를 기록한다. 반복문으로 누적 작업량 전체를 처리하지 않으므로 차감 뒤에도 `Progress >= 1`이 남을 수 있다.
+- **생성·초기화:** 공통 건물 생성 경로가 `MiningSpeed = speed > 0 ? speed : 1`, `Progress = 0`으로 추가한다. 같은 엔티티에 `MinerWorkPreparation`, `MinerDecision`, `ProductResult`, `ProductItemElement`, `BuildingItemOutputDecision`도 구성한다. 실제 부착은 EndBuilding 재생 시점이다. [초기화](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs).
+- **읽기·쓰기와 단계:** `MinerDecisionSystem`(BuildingDecision)의 쿼리·Job 입력에 포함되며, `MinerExecutionSystem`(Execution)이 활성 `MinerDecision`을 가진 채굴기의 `Progress`를 직접 갱신한다. 준비/결정 Job은 이 상태 값을 변경하지 않는다. [판정](../../../Assets/Scripts/Systems/Buildings/Preparation/MinerWorkPreparationSystem.cs), [실행](../../../Assets/Scripts/Systems/Buildings/Execution/MinerExecutionSystem.cs).
+- **처리:** 대상 자원과 미소비 결과를 재확인한 뒤 `MiningSpeed × PowerFrameUtility.GetPoweredDeltaTime`을 더한다. 이 시간은 공통 DeltaTime 상한에 공급률과 배정/요청 에너지 비율 중 작은 값을 곱하며 준비되지 않은 수요/공급은 0이다. `Progress >= 1`이면 **한 틱에 최대 한 번** 1을 차감하고 슬롯 0의 `ProductResult` 한 개를 기록한다. 반복문으로 누적 작업량 전체를 처리하지 않으므로 차감 뒤에도 `Progress >= 1`이 남을 수 있다.
 - **결합 계약·대기:** 출력이 다른 품목이거나 1스택 한도에 도달했거나 자원이 없으면 Decision이 비활성화되어 기존 진행도를 보존한다. 유한 자원은 완료 한 번에 `ResourceNode.Amount`를 1 줄이고 고갈 자원 삭제만 EndBuilding ECB에 기록한다. 무한 자원 설정이어도 판정·실행의 `Amount > 0` 조건은 유지한다.
 - **종료:** 개별 사이클에서는 컴포넌트를 제거하지 않는다. 채굴기 철거로 건물 엔티티가 EndBuilding에서 삭제되거나 World가 종료되면 함께 사라진다. 철거와 겹친 완료 결과의 폐기 정책은 [ProductResult](#productresult)를 따른다.
 
@@ -25,25 +37,25 @@
 
 - **종류·부착 대상·목적:** `IComponentData, IEnableableComponent`; Miner 엔티티의 이번 판정 결과 `CanMine`, `TargetResource`를 전달한다. 요청 엔티티가 아니다. [정의](../../../Assets/Scripts/Components/Production/Mining/MinerDecisions.cs).
 - **생성·초기화:** 공통 건물 생성 경로에서 기본값으로 추가하고 비활성화한다. EndBuilding 이후 다음 Decision부터 판정 대상이 된다. [생성](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs).
-- **Producer·단계:** `MinerDecisionSystem`(Decision)은 `IgnoreComponentEnabledState` 쿼리로 비활성 Miner도 다시 검사한다. `ResourceSpatialIndexFence`의 Writer 의존성을 받고 Reader 핸들을 등록하며, 회전 적용 Footprint의 좌하단부터 y/x 순으로 처음 발견한 `Amount > 0` 자원을 선택한다. [판정 시스템](../../../Assets/Scripts/Systems/Buildings/Decision/MinerDecisionSystem.cs).
-- **활성 조건:** 유효 자원이 있고 `ProductResult`가 비어 있으며, 모든 출력 실물이 선택 자원과 같은 품목이고 출력 개수가 품목별 MaxStack보다 적어야 한다. Item 설정 버퍼를 사용할 수 없으면 판정의 기본 한도는 50이다. 실패 시 `CanMine = false`와 비활성 상태를 기록하며, 자원을 찾았다면 `TargetResource` 값은 남긴다.
+- **Producer·단계:** MinerDecisionSystem(BuildingDecision)은 MinerWorkPreparation의 준비 여부/자격/대상과 PowerSupplyResult를 읽어 실행 결정을 작성한다. 완료된 기존 진행은 전력 없이 확정할 수 있고 새 진행은 배정이 필요하다. 자원 탐색은 반복하지 않는다. [판정](../../../Assets/Scripts/Systems/Buildings/Decision/MinerDecisionSystem.cs).
+- **작업 자격:** MinerWorkPreparationSystem은 유효 자원, 빈 ProductResult, 같은 품목의 출력 실물과 MaxStack 여유로 자격을 준비한다. 이 자격으로 수요를 준비하며 BuildingDecision이 공급을 반영한다.
 - **Consumer·반영:** `MinerExecutionSystem`(Execution)은 활성 결정만 조회하고 `CanMine`, 대상 존재, 잔량, 미소비 결과를 다시 확인한다. 자원이 같은 틱에 다른 채굴기로 고갈된 경우도 여기서 진행을 중단한다. 실행은 단일 워커 Job이며 `MinerState`·`ResourceNode`·`ProductResult`를 직접 변경한다. [실행 시스템](../../../Assets/Scripts/Systems/Buildings/Execution/MinerExecutionSystem.cs).
-- **반복·종료:** Execution은 이 결정을 비활성화하지 않는다. 다음 Decision이 값과 enable 상태를 다시 기록한다. 공간 인덱스/그 Fence가 없으면 Decision 시스템 자체가 반환하므로 그 업데이트에서는 새 판정이 나오지 않는다. 부착 건물 삭제 또는 World 종료 시 함께 소멸한다.
+- **반복·종료:** Execution은 이 결정을 비활성화하지 않는다. 다음 Decision이 값과 enable 상태를 다시 기록한다. 공간 인덱스/Fence가 없으면 Preparation이 미준비로 남고 BuildingDecision은 실행을 승인하지 않는다. 부착 건물 삭제 또는 World 종료 시 함께 소멸한다.
 
 ## CrafterState
 
 - **종류·부착 대상·목적:** 일반 `IComponentData`; Crafter 엔티티의 선택/활성 레시피 ID, `Progress`, `Speed`, `Status`, 재료 선소비 여부인 `IsCraftingActive`를 보관한다. `Status`는 enum 값이고 enable 상태가 아니다. [정의](../../../Assets/Scripts/Components/Production/Crafting/CrafterComponents.cs).
 - **생성·초기화:** 공통 생성 시 두 ID는 0, 진행도 0, `Speed = speed > 0 ? speed : 1`, `Status = NoRecipe`, `IsCraftingActive = false`다. 입력은 `Storage(0)`·빈 Whitelist·빈 `BuildingInputSlotElement`/`StoredItemElement`로 시작한다. [초기화](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs).
 - **Command 쓰기:** `CrafterRecipeCommandSystem`은 새 레시피의 입력 슬롯 계산이 성공한 뒤 진행도/활성 제작을 초기화하고 두 ID를 같은 값으로 쓴다. 남은 입력 실물은 출력 버퍼로 옮기며, 출력 실물이 있으면 `WaitingForByproductOutput`, 없으면 선택 여부에 따라 `Idle`/`NoRecipe`를 기록한다. 현재 런타임은 `ActiveRecipeId` 비교로 레시피 변경을 자동 감지하지 않는다. [변경 처리](../../../Assets/Scripts/Systems/Command/CrafterRecipeCommandSystem.cs).
-- **Decision 읽기·Execution 쓰기:** `CrafterDecisionSystem`은 상태를 읽어 실행/상태 전이 결정을 분리한다. `CrafterExecutionSystem`은 모든 재료의 소비 가능 여부를 먼저 확인하고 성공한 경우에만 Stored 버퍼의 참조를 제거하고 실물의 `DestroyItemRequest`를 활성화한 뒤 제작을 시작한다. 부족하면 버퍼·삭제 요청·진행도를 쓰지 않는다. 진행은 `min(DeltaTime, MaxSimulationDeltaTime) × Speed / max(0.01, CraftTime)`만큼 누적하고 1로 제한한다. [판정](../../../Assets/Scripts/Systems/Buildings/Decision/CrafterDecisionSystem.cs), [실행](../../../Assets/Scripts/Systems/Buildings/Execution/CrafterExecutionSystem.cs).
+- **BuildingDecision 읽기·Execution 쓰기:** `CrafterDecisionSystem`은 준비 자격·공급·상태를 읽어 실행/상태 전이 결정을 분리한다. `CrafterExecutionSystem`은 공급에 따른 진행 가능 시간이 양수이고 모든 재료의 소비 가능 여부를 확인한 경우에만 Stored 버퍼의 참조를 제거하고 실물의 `DestroyItemRequest`를 활성화한 뒤 제작을 시작한다. 무전력이나 재료 부족이면 버퍼·삭제 요청·진행도를 쓰지 않는다. 진행은 `PowerFrameUtility.GetPoweredDeltaTime × Speed / max(0.01, CraftTime)`만큼 누적하고 1로 제한한다. [판정](../../../Assets/Scripts/Systems/Buildings/Decision/CrafterDecisionSystem.cs), [실행](../../../Assets/Scripts/Systems/Buildings/Execution/CrafterExecutionSystem.cs).
 - **StateApply·타이밍:** `CrafterStateApplySystem`은 앞선 Decision의 `NextStatus`를 복사한다. Execution이 처음 진행도 1에 도달한 틱에는 그 Decision의 `CanProduceOutput`이 false이므로 이후 Decision에서 출력 가능 판정을 받는다. 실제 결과를 기록한 Execution은 `IsCraftingActive = false`, `Progress = 0`으로 초기화하며 Status 자체는 쓰지 않는다. 따라서 Status는 같은 틱 Execution 이후 상태를 새로 계산한 값이 아니다. [상태 반영](../../../Assets/Scripts/Systems/Buildings/StateApply/CrafterStateApplySystem.cs).
 - **다른 Reader·종료:** `BuildingItemInputDecisionSystem`은 `WaitingForByproductOutput` 동안 입고를 막는다. 출력이 비어도 Status 해제는 StateApply이므로 해당 틱 입고 판정은 기존 상태를 볼 수 있다. 개발용 `WorldInvariantValidationSystem`은 선택 레시피로 0입력 슬롯의 유효성을 확인한다. 레시피 변경은 선소비 재료를 복원하지 않고, 건물 삭제/World 종료로 상태가 소멸한다. [입고](../../../Assets/Scripts/Systems/Buildings/Decision/BuildingItemInputDecisionSystem.cs), [검증](../../../Assets/Scripts/Validation/WorldInvariantValidationSystem.cs).
 
 ## CrafterDecision
 
 - **종류·부착 대상·목적:** `IComponentData, IEnableableComponent`; Crafter 엔티티에 `CanCraft`, `CanStartCraft`, `CanAdvance`, `CanProduceOutput`, `RecipeId`, `RecipeIndex`를 보관하여 Execution에 전달한다. [정의](../../../Assets/Scripts/Components/Production/Crafting/CrafterDecisions.cs).
-- **생성·Producer:** 공통 건물 생성 시 비활성화한다. `CrafterDecisionSystem`(Decision)은 비활성 상태를 무시하는 쿼리로 매번 다시 계산한다. Recipe Registry 및 세 설정 버퍼가 없으면 시스템은 반환한다. [생성](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs), [판정](../../../Assets/Scripts/Systems/Buildings/Decision/CrafterDecisionSystem.cs).
-- **판정 분기:** 잔여물 배출 대기·무효/미선택 레시피·미소비 `ProductResult`는 제작을 막는다. 미착수 시 각 레시피 재료 항목별로 Stored 실물 수를 세어 필요한 수량이 있는지 검사한다. 진행 중이고 Progress가 1 미만이면 진행을 승인한다. 이미 1 이상이면 레시피의 모든 유효 출력 슬롯이 `현재 개수 + 출력량 <= 품목 MaxStack`인지 확인하여 전체 결과의 출력을 함께 승인한다. 신규 착수와 진행은 출력 공간 부족만으로 차단하지 않는다.
+- **생성·Producer:** 공통 건물 생성 시 비활성화한다. `CrafterDecisionSystem`(BuildingDecision)은 비활성 상태를 무시하는 쿼리로 매번 다시 계산한다. Recipe Registry 및 세 설정 버퍼가 없으면 시스템은 반환한다. [생성](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs), [판정](../../../Assets/Scripts/Systems/Buildings/Decision/CrafterDecisionSystem.cs).
+- **판정 분기:** 잔여물 배출 대기·무효/미선택 레시피·미소비 `ProductResult`는 제작을 막는다. 미착수 시 준비된 재료 자격과 배정을 사용하며 재료 자격 검사를 반복하지 않는다. 진행 중이고 Progress가 1 미만이면 진행을 승인한다. 이미 1 이상이면 레시피의 모든 유효 출력 슬롯이 `현재 개수 + 출력량 <= 품목 MaxStack`인지 확인하여 전체 결과의 출력을 함께 승인한다. 신규 착수와 진행은 출력 공간 부족만으로 차단하지 않는다.
 - **Consumer·실제 사용 필드:** `CrafterExecutionSystem`(Execution)은 활성 결정만 조회하고 `CanStartCraft`, `CanAdvance`, `CanProduceOutput`으로 분기한다. 레시피는 `CrafterState.SelectedRecipeId`로 다시 검색한다. 현재 실행 코드는 `CanCraft`나 저장된 `RecipeId/RecipeIndex`를 직접 참조하지 않는다. [실행](../../../Assets/Scripts/Systems/Buildings/Execution/CrafterExecutionSystem.cs).
 - **enable 의미·소비:** 완료 후 출력 공간이 없을 때는 `CanCraft = false`여도 결정의 enable 상태를 true로 남긴다. 이때 세 실행 동작 플래그는 false다. Execution에서 결정을 비활성화하지 않으며 다음 Decision이 덮어쓴다. 결정을 프레임 끝에 반드시 비활성화하는 일회성 요청으로 해석하지 않는다.
 - **결합·종료:** 상태 표시는 별도 [CrafterStateDecision](#crafterstatedecision)이 담당하고, 실물 생성은 [ProductResult](#productresult)를 거친다. 이 결정만으로 재료 삭제나 아이템 생성이 확정되지 않는다. 부착 건물 삭제 또는 World 종료 시 소멸한다.
@@ -52,7 +64,7 @@
 
 - **종류·부착 대상·목적:** `IComponentData, IEnableableComponent`; Crafter 엔티티의 표시/행동 상태 전이 후보 `NextStatus`를 보관한다. [정의](../../../Assets/Scripts/Components/Production/Crafting/CrafterDecisions.cs).
 - **생성·초기화:** 공통 생성 경로가 `NextStatus = NoRecipe`로 추가하고 비활성화한다. `CrafterDecision`과 함께 EndBuilding 이후부터 존재한다. [초기화](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs).
-- **Producer·단계:** `CrafterDecisionSystem`(Decision)이 선택 레시피, 재료, 진행, 잔여물 및 출력 공간에 따라 `NoRecipe`, `Idle`, `Crafting`, `WaitingForInput`, `WaitingForOutput`, `WaitingForByproductOutput`을 기록하고 활성화한다. 실행 불가 분기도 상태 전이 결정은 활성화한다. [판정](../../../Assets/Scripts/Systems/Buildings/Decision/CrafterDecisionSystem.cs).
+- **Producer·단계:** `CrafterDecisionSystem`(BuildingDecision)이 선택 레시피, 재료, 진행, 잔여물 및 출력 공간에 따라 `NoRecipe`, `Idle`, `Crafting`, `WaitingForInput`, `WaitingForOutput`, `WaitingForByproductOutput`을 기록하고 활성화한다. 실행 불가 분기도 상태 전이 결정은 활성화한다. [판정](../../../Assets/Scripts/Systems/Buildings/Decision/CrafterDecisionSystem.cs).
 - **Consumer·반영:** `CrafterStateApplySystem`(StateApply)의 병렬 Job이 활성 결정의 `NextStatus`를 `CrafterState.Status`에 직접 복사하고 즉시 비활성화한다. 이 비구조 변경은 EndBuilding ECB까지 기다리지 않는다. [반영](../../../Assets/Scripts/Systems/Buildings/StateApply/CrafterStateApplySystem.cs).
 - **결합 계약:** Command의 레시피 변경은 `CrafterState.Status`를 직접 설정한다. 이 컴포넌트는 Decision 이후의 전이를 전달하며, 실행 동작 승인이나 완료 결과 생성은 `CrafterDecision`/`ProductResult`가 맡는다. `CrafterStateApplySystem`은 Execution 결과를 재평가하지 않는다.
 - **반복·종료:** 적용 뒤 비활성 상태로 엔티티에 남아 다음 Decision에서 재사용된다. 부착 건물 삭제 또는 World 종료 시 함께 사라진다.
@@ -74,7 +86,7 @@
 - **F-014 입력 실패:** 파싱과 공개 게시에서 레시피 내부 중복 품목을 거부하며 JSON 재료 수량의 `int` 범위 초과도 거부한다. 공개 Loader는 검증 예외를 전달한다. `InitializeRecipeRegistry`는 입력 검증 예외를 로그와 즉시 `SimulationFatalError`로 바꾸고 `Entity.Null`을 반환하며 설정을 게시하지 않는다. 자동 Init은 실패/중단 오류 뒤 비활성화하여 기본 레시피로 재시도하지 않는다. 앱 종료 대신 기존 `GameSimulationGroup`의 전체 실행 차단을 사용한다.
 - **F-013 품목 계약:** JSON은 정식 품목명만 허용하며 대소문자와 앞뒤 공백을 무시한다. 빈/오타/숫자 문자열·None·미정의 값은 재료·주생산품·작성된 부산물 모두 거부한다. 파싱·공개 게시·사전 등록은 같은 enum 품목 검사와 출력 계약을 사용하며 참조 범위 밖의 원본 재료/출력 행도 품목 검사에서 제외하지 않는다. 후반 오류도 Registry 생성 전에 거부하며 제품 Init은 기존 오류 전달을 사용한다.
 - **F-015 번호 계약:** 정의 ID는 명시적 양수이고 전체 입력 안에서 유일하다. JSON의 번호 누락(0)·0·음수·중복은 공통 `ValidateRecipeId`로 파싱/공개 게시/사전 등록에서 거부하며 번호 자동 부여나 우선 정의 선택은 하지 않는다. 제품 Init의 기존 예외→로그/Fatal 경로를 사용하고 잘못된 사전 등록 원본은 보존한다. 필수 1~5의 존재는 제품 전체 초기화의 별도 검사이며 격리 최소 게시에 추가하지 않는다. 서로 다른 ID의 동일 생산품은 허용한다.
-- **Reader·단계:** `CrafterRecipeCommandSystem`(Command), `CrafterDecisionSystem`(Decision), `CrafterExecutionSystem`(Execution)이 Registry에서 설정 엔티티를 찾고 필요한 버퍼를 읽는다. 개발용 `WorldInvariantValidationSystem`(Synchronization OrderLast)도 0입력 슬롯의 유효성을 확인할 때 조회한다. Reader Job은 읽기 전용 BufferLookup과 `state.Dependency`를 사용한다.
+- **Reader·단계:** `CrafterRecipeCommandSystem`(Command), `CrafterWorkPreparationSystem`(Preparation), `CrafterDecisionSystem`(BuildingDecision), `CrafterExecutionSystem`(Execution)이 Registry에서 설정 엔티티를 찾고 필요한 버퍼를 읽는다. 개발용 `WorldInvariantValidationSystem`(Synchronization OrderLast)도 0입력 슬롯의 유효성을 확인할 때 조회한다. Reader Job은 읽기 전용 BufferLookup과 `state.Dependency`를 사용한다.
 - **수명·소유:** 설정 엔티티와 버퍼는 ECS World가 소유한다. 게시 후 World 종료까지 읽기 전용이며 런타임 교체·삭제·재등록은 지원하지 않는다. Init 시스템이 비활성화되거나 제거되어도 설정 엔티티를 따로 삭제하지 않는다. 별도 Persistent NativeContainer를 호출자가 Dispose하는 구조가 아니다.
 - **탐색 연결:** [RecipeConfigLookupUtility](../../../Assets/Scripts/Common/RecipeConfigLookupUtility.cs)는 같은 버퍼의 첫 ID 일치 또는 입력 순서상 첫 주생산품 일치를 찾는 함수다. 게시 시 ID가 유일하므로 ID 선택 결과는 행 순서와 무관하며 버퍼 인덱스/열거 순서는 보존된 입력 순서를 따른다. 주생산품 검색의 우선순위는 F-015에서 변경하지 않으며 현재 소스/테스트의 호출자는 확인되지 않았다. 별도 레지스트리 캐시나 갱신 시스템을 만들지 않는다.
 
@@ -92,7 +104,7 @@
 - **종류·부착 대상·목적:** `IBufferElementData`, 내부 버퍼 용량 0; Recipe Registry 엔티티에서 모든 레시피의 재료 항목을 연속 보관한다. `ItemType`, `Amount`는 실물 엔티티 참조가 아닌 설정값이다. 각 레시피의 `IngredientStart/IngredientCount`로 범위를 구분한다. [정의](../../../Assets/Scripts/Components/Production/Crafting/RecipeConfigComponents.cs).
 - **생성·초기화:** `RecipeConfigLoader`는 JSON 수량을 `long`으로 읽고 `int` 범위 밖이면 거부한다. 범위 안의 양수가 아닌 수량은 기존처럼 1로 바꾸며 정식 품목명만 enum으로 변환한다. None·미정의 품목은 공개 게시/사전 등록도 거부한다. 같은 레시피의 중복 재료는 파싱/게시/사전 등록에서 거부하고 유효 행의 입력 순서를 유지한다. 게시 후 버퍼는 읽기 전용이다. [로드·게시](../../../Assets/Scripts/Config/RecipeConfigLoader.cs).
 - **Command Reader:** `CrafterRecipeCommandSystem → BuildingInputSlotUtility.TryCalculate`가 같은 품목 요구량을 합산한다. 등록 품목·양수 수량·유효 MaxStack·전체 슬롯 상한을 확인하고, 품목 최초 등장 순서로 필요한 수의 전용 입력 슬롯을 계산한다. 계산 실패 시 레시피 변경 전 상태를 유지한다. [슬롯 계산](../../../Assets/Scripts/Common/BuildingInputSlotUtility.cs).
-- **Decision Reader:** `CrafterDecisionSystem`은 기존 `RecipeConfigLookupUtility.HasRequiredIngredients`로 품목이 유일한 모든 요구량과 소비 가능한 보관 실물을 검사한다. 실물은 비활성 `DestroyItemRequest`를 가져야 하며 삭제 대기/삭제 요청 부재 항목은 세지 않는다. 중복 입력을 첫 행의 비용으로 승인하지 않는다. [판정](../../../Assets/Scripts/Systems/Buildings/Decision/CrafterDecisionSystem.cs).
+- **Preparation Reader:** `CrafterWorkPreparationSystem`은 기존 `RecipeConfigLookupUtility.HasRequiredIngredients`로 품목이 유일한 모든 요구량과 소비 가능한 보관 실물을 검사한다. 실물은 비활성 `DestroyItemRequest`를 가져야 하며 삭제 대기/삭제 요청 부재 항목은 세지 않는다. 중복 입력을 첫 행의 비용으로 승인하지 않는다. [판정](../../../Assets/Scripts/Systems/Buildings/Preparation/CrafterWorkPreparationSystem.cs).
 - **Execution Reader·실물 소비:** `CrafterExecutionSystem`은 같은 읽기 helper로 모든 재료를 최종 확인하고 실패하면 소비·삭제 요청·진행도를 변경하지 않는다. 성공하면 각 수량만큼 Stored 버퍼를 뒤에서 순회하여 같은 조건의 실물 참조를 먼저 제거하고 `DestroyItemRequest`를 활성화한다. `ItemLifecycleApplySystem`이 EndBuilding 삭제를 기록하며 설정의 `Amount` 자체를 줄이지 않는다. 유효한 소유 버퍼의 실물 참조 유일성 계약을 전제로 하며 손상된 버퍼 전체를 복구하는 처리는 아니다. [선소비](../../../Assets/Scripts/Systems/Buildings/Execution/CrafterExecutionSystem.cs), [실물 삭제](../../../Assets/Scripts/Systems/Items/StateApply/ItemLifecycleApplySystem.cs).
 - **수명·결합:** 레시피 변경은 이 전역 버퍼를 수정하지 않고 Crafter의 입력 구성을 바꾼다. Init 제거 후에도 살아 있으며 World 종료 시 ECS가 해제한다. 소유 실물의 수명은 [StoredItemElement](ItemsAndStorage.md#storeditemelement)와 아이템 삭제 요청의 수명으로 따로 추적한다.
 

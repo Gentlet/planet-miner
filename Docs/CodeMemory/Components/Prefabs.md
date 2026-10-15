@@ -89,9 +89,11 @@
 
 ## SimulationFatalError
 
+Message와 SimulationFailureStopScope(NextTick/RemainingDomains)를 공유한다. 초기화 실패는 기존 즉시 게시, 일반 실행 실패는 기존 ECB 게시를 유지한다. Power는 내부 Job 검증 결과를 EndPower에서 완료한 후 같은 공통 오류로 게시하며 별도 PowerFrameState는 없다.
+
 - **목적·필드:** 복구 없이 게임 시뮬레이션 실행을 막는 `IComponentData` 진단 기록이다. `Message`는 `FixedString128Bytes`이며 오류마다 별도 엔티티에 기록될 수 있다.
 - **생성 경로 1:** 건물·아이템·레시피·월드 설정 Init과 프리팹 초기화는 `SimulationFailureUtility.RecordInitializationFailure`로 상세 로그와 짧은 진단 메시지의 오류 엔티티를 즉시 게시한다. 실패 뒤 자동 초기화는 비활성화하며 재시도하지 않는다.
 - **생성 경로 2:** 배치의 설정 부재는 EndCommand, 직접 생성/완공의 설정 또는 프리팹 누락과 환급 실패는 EndBuilding에 `SimulationFailureUtility.Record`로 오류 생성을 기록한다. 초기화의 즉시 공개와 실행 중 ECB 공개를 구분한다.
-- **Reader·반영 시점:** `GameSimulationGroup`은 매 그룹 진입 때 Fatal 쿼리가 비었는지 확인한다. 틱 시작에만 검사하므로 EndBuilding에서 오류가 확정되어도 현재 틱 드론·Commit·Synchronization은 수행하고 다음 틱 GameSimulationGroup 진입부터 차단한다. 현재 틱 전체의 롤백이나 이미 기록한 구조 변경 취소는 제공하지 않는다.
+- **Reader·반영 시점:** `GameSimulationGroup`은 매 그룹 진입 때 Fatal 쿼리가 비었는지 확인한다. 기본 StopScope=NextTick 오류는 EndBuilding에서 확정되어도 현재 틱 드론·Commit·Synchronization을 수행하고 다음 틱부터 차단한다. Power는 EndPower에서 RemainingDomains로 게시하며 Building/Drone은 공통 중단 범위를 확인해 같은 틱 실행을 건너뛴다. 현재 틱 전체의 롤백이나 이미 기록한 구조 변경 취소는 제공하지 않는다.
 - **생명주기·현재 범위:** 오류를 소비·Clear·삭제해 자동 복구시키는 제품 경로는 없다. Ready가 남아 있어도 Fatal이 실행을 막는다. 새 World에서는 초기 검증부터 다시 수행하며, 원인이 남으면 다시 실패한다. 일반 ECS 데이터이므로 자체 Dispose는 없다.
 - **소스:** [정의](../../../Assets/Scripts/Components/Prefabs/PrefabDatabaseReadiness.cs), [초기 실패](../../../Assets/Scripts/Systems/Initialization/PrefabDatabaseInitializationSystem.cs), [ECB 오류 기록](../../../Assets/Scripts/Common/SimulationFailureUtility.cs), [실행 게이트](../../../Assets/Scripts/Phases/GameSimulationGroup.cs), [건물 스폰](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs), [아이템 스폰](../../../Assets/Scripts/Systems/Items/StateApply/ItemLifecycleApplySystem.cs), [환급](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingLifecycleApplySystem.cs).

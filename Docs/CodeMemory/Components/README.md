@@ -17,18 +17,18 @@
 
 ## 문서 구성
 
-2026-10-12 Task 8.1 후속 정리의 전력 ECS 계약 10개를 별도 문서로 연결했다. 위 103개/9개 문서는 이전 조사 기록이며 현재 전체 소스 수를 새로 집계한 수치가 아니다. 전력 Writer와 참가자 생성 연결은 아직 후속이다.
+2026-10-12 Task 8.1의 전력 ECS 계약을 별도 문서로 연결했고, 2026-10-15 Task 8.6~8.7과 Power 페이즈 분리에 맞춰 갱신했다. 위 103개/9개 문서는 이전 조사 기록이며 현재 전체 소스 수를 새로 집계한 수치가 아니다.
 
 | 하위 문서 | 타입 수 | 설명 범위 |
 | --- | ---: | --- |
 | [공통 좌표와 공간 인덱스](CommonAndSpatial.md) | 10 | GridPosition/Direction, 공간 조회 맵과 Job 의존성 |
 | [건물과 건물 설정](Buildings.md) | 12 | 건물 식별·크기·배치 순번, 설정, 직접 생성과 철거 요청 |
-| [전력 설정과 상태 계약](PowerGrid.md) | 13 | 통합 능력 설정, 망 생성/병합/분리·빈 망/기존 참조 정리·공개 인덱스/Fence·프레임 결정; 공급/연료/사용 Writer는 후속 |
+| [전력 설정과 상태 계약](PowerGrid.md) | 14 | 통합 능력 설정, 망 생성/병합/분리·빈 망/기존 참조 정리·공개 인덱스/Fence·프레임 결정; 공급·석탄 전환/배정 소비·생산 반영; 연구/충전은 후속 |
 | [배치와 공사](Construction.md) | 5 | 배치 묶음, 현장, 자재 요구 데이터, 현장 취소·완공 |
 | [드론 작업 관리 계약](DroneLogistics.md) | 23 | 작업·배정·예약·공통 적재량, 인계 계획·정산·적재품 Direct 재배정·외부 결과 소비 |
 | [아이템과 저장](ItemsAndStorage.md) | 13 | 아이템·소유권·요청, 보관·입출고·입력 슬롯, 현장 내부 World Spawn 거부 |
 | [벨트와 분배 및 합류](BeltsAndRouting.md) | 6 | 벨트 속도·실제 이동·프레임 계획, 라우팅 상태·전달 결정 |
-| [채굴과 제작](Production.md) | 12 | 작업 상태·결정, 레시피 설정, 결과와 출력 대기 실물 |
+| [채굴과 제작](Production.md) | 14 | 작업 상태·결정, 레시피 설정, 결과와 출력 대기 실물 |
 | [월드와 청크 및 자원](WorldAndResources.md) | 12 | 월드·바닥 설정, 청크 요청·생성 기록, 자원 노드 |
 | [프리팹과 시뮬레이션 시작 상태](Prefabs.md) | 10 | 프리팹 DB, 준비 태그, 중단 오류, 드론 프리팹 정의 |
 
@@ -49,11 +49,13 @@
 
 ## 실행 단계와 데이터가 확정되는 시점
 
-Initialization은 설정을 게시하고 프리팹 DB를 검증한다. [GameSimulationGroup](../../../Assets/Scripts/Phases/GameSimulationGroup.cs)은 틱 시작에 PrefabDatabaseReady와 SimulationFatalError를 검사한다. 중간 EndBuilding에서 Fatal이 확정되어도 현재 틱을 완주하고 다음 틱부터 차단한다.
+Initialization은 설정을 게시하고 프리팹 DB를 검증한다. [GameSimulationGroup](../../../Assets/Scripts/Phases/GameSimulationGroup.cs)은 틱 시작에 PrefabDatabaseReady와 SimulationFatalError를 검사한다. Power 실패는 EndPower에서 공통 Fatal의 StopScope=RemainingDomains로 같은 틱 Building/Drone을 차단한다. 중간 EndBuilding에서 Fatal이 확정되면 기존대로 현재 틱을 완주하고 다음 틱부터 차단한다.
 
 ```mermaid
 flowchart LR
-    C["Command · EndCommand"] --> B["BuildingSimulation<br/>Decision → Reservation → Execution → StateApply · 완공"]
+    C["Command · EndCommand"] --> P["Preparation · 작업 의도/수요"]
+    P --> PW["PowerSimulation<br/>Decision → Reservation → Execution → StateApply · EndPower"]
+    PW --> B["BuildingSimulation<br/>Decision → Reservation → Execution → StateApply · 완공"]
     B --> EB["EndBuilding"]
     EB --> D["DroneSimulation<br/>Decision → Reservation → Execution → StateApply"]
     D --> ES["SimulationCommit · EndSimulation"]
@@ -63,6 +65,8 @@ flowchart LR
 | 경계 | 컴포넌트를 읽을 때 구분할 현재 동작 |
 | --- | --- |
 | Command 종료 | EndCommand는 자원·현장 생성·취소 반환·요청 소비 등을 확정한다. 공간 인덱스 등록 시점과 다르다. |
+| Preparation | 이번 틱 전력과 독립적으로 채굴/제작 가능 여부와 요청 수요를 준비한다. 실패 신호·공급 결과를 초기화한다. |
+| Power 종료 | 선택/망/가용량·예산·최종 검사·석탄 전환/배정 소비·공급 게시를 끝내고 EndPower에서 망/연료 실물을 확정한다. 전환 공간은 이번 틱 입고에 쓰며 새 입고는 다음 틱 연료다. |
 | 건물 내부 | Decision 후보 뒤 저장 슬롯/벨트 목적지를 중재한다. Execution은 벨트 진행·채굴/제작 진행·재료 선소비·결과를 반영하고 StateApply는 일반 입출고·Ownership·생성과 삭제를 처리한다. 같은 틱 입고 재료로 재차 생산 판단하지 않는다. |
 | 완공 | Construction은 BuildingStateApply OrderLast로 현재 Owner/GridPosition·활성 Destroy와 지난 틱 도착량을 검사한다. 이번 틱 드론 납품·회수는 다음 틱에 판정한다. |
 | 건물 종료 | EndBuilding은 건물·아이템 생성/삭제·반환/환급·렌더 변경을 확정한다. 모든 결과는 같은 틱 드론 입력으로 보이되 기존 공급원·품목 제한을 지킨다. 새 건물의 자체 동작은 다음 틱부터다. |
@@ -86,22 +90,21 @@ flowchart LR
 
 종류의 **상태**는 일반 IComponentData, **활성 상태**는 IEnableableComponent 구현, **버퍼**는 IBufferElementData를 뜻한다. 활성 상태에는 IEnableableRequest의 간접 구현도 포함했다.
 
-### 전력 계약 (Task 8.1~8.5)
+### 전력 계약 (Task 8.1~8.7)
 
-전신주/일반 참가자 연결과 발전/소비 상태 부착·망 수명주기·실제 Miner/Crafter 수요·가용량/예산 배정/공급 결과 게시를 연결하고 관련 선택 EditMode를 통과했다. 실제 연료 전환/연소·생산 사용·연구/충전은 후속이다.
+Preparation/Power 분리와 전신주/참가자 연결·망 수명주기·석탄 전환/배정 소비·Miner/Crafter 공급 반영을 연결했다. Unity 컴파일과 이번 준비/결정 분리·공통 Fatal·Job 의존성 변경은 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·Editor ready/비컴파일/비리로드·최신 runtime/Editor DLL과 관련 선택 EditMode 170/170(실패·생략·불확정 0)으로 확인했다. Play Mode·베이킹·Player 빌드·성능은 미수행이다. 연구/충전의 실제 Producer와 Play Mode·Player 빌드·성능은 이번 검증 범위에 포함하지 않는다.
 
 | 컴포넌트 상세 | 종류 | 정의 파일 |
 | --- | --- | --- |
 | [PowerPole](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
-| [PowerGenerator](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
-| [PowerConsumer](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
+| [PowerGenerator](PowerGrid.md#상태프레임-계약) | 활성 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
+| [PowerConsumer](PowerGrid.md#상태프레임-계약) | 활성 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
 | [PowerGrid](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
 | [PowerGridConnection](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
 | [FuelEnergyState](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
-| [PowerDemand](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
+| [PowerDemand](PowerGrid.md#상태프레임-계약) | 활성 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
 | [PowerSupplyResult](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
-| [PowerUsageResult](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
-| [PowerGeneratorSupplyPlan](PowerGrid.md#상태프레임-계약) | 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
+| [PowerGeneratorSupplyPlan](PowerGrid.md#상태프레임-계약) | 활성 상태 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
 | [PowerSupplyReservation](PowerGrid.md#상태프레임-계약) | 예약 계획 | [PowerComponents.cs](../../../Assets/Scripts/Components/Power/PowerComponents.cs) |
 | [PowerGridTopologyDecision](PowerGrid.md#상태프레임-계약) | 상태 | [PowerGridTopologyDecision.cs](../../../Assets/Scripts/Components/Power/PowerGridTopologyDecision.cs) |
 | [PowerGridConnectionDecision](PowerGrid.md#상태프레임-계약) | 결정 | [PowerGridConnectionDecision.cs](../../../Assets/Scripts/Components/Power/PowerGridConnectionDecision.cs) |
@@ -215,6 +218,8 @@ flowchart LR
 | 컴포넌트 상세 | 종류 | 정의 파일 |
 | --- | --- | --- |
 | [ChangeCrafterRecipeRequest](Production.md#changecrafterreciperequest) | 상태 | [CrafterRequests.cs](../../../Assets/Scripts/Components/Production/Crafting/CrafterRequests.cs) |
+| [MinerWorkPreparation](Production.md#minerworkpreparation) | 활성 상태 | [MinerWorkPreparation.cs](../../../Assets/Scripts/Components/Production/Mining/MinerWorkPreparation.cs) |
+| [CrafterWorkPreparation](Production.md#crafterworkpreparation) | 활성 상태 | [CrafterWorkPreparation.cs](../../../Assets/Scripts/Components/Production/Crafting/CrafterWorkPreparation.cs) |
 | [CrafterDecision](Production.md#crafterdecision) | 활성 상태 | [CrafterDecisions.cs](../../../Assets/Scripts/Components/Production/Crafting/CrafterDecisions.cs) |
 | [CrafterState](Production.md#crafterstate) | 상태 | [CrafterComponents.cs](../../../Assets/Scripts/Components/Production/Crafting/CrafterComponents.cs) |
 | [CrafterStateDecision](Production.md#crafterstatedecision) | 활성 상태 | [CrafterDecisions.cs](../../../Assets/Scripts/Components/Production/Crafting/CrafterDecisions.cs) |

@@ -1,156 +1,68 @@
-using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 
-/// <summary>전력 프레임의 구성/설정 검사와 이번 틱 대표 조회. 상태·집계의 생성/갱신은 각 소유 시스템이 담당한다.</summary>
+/// <summary>전력 준비 결과의 대표 조회와 공급에 따른 작업 시간 계산. 상태·집계의 생성/갱신은 각 소유 시스템이 담당한다.</summary>
 public static class PowerFrameUtility
 {
-    public static bool TryGetConfig(EntityManager manager, Entity entity,
-        DynamicBuffer<BuildingConfigElement> configs, out BuildingConfigElement config)
-    {
-        config = default;
-        if (!manager.HasComponent<BuildingType>(entity))
-        {
-            return false;
-        }
-        var type = manager.GetComponentData<BuildingType>(entity);
-        if (!BuildingConfigLookupUtility.TryGetConfig(configs, type.Type, type.Tier, out config))
-        {
-            return false;
-        }
-        return PlanetMiner.Config.BuildingPowerConfigParser.Validate(config);
-    }
-
-    public static bool IsConsumerValid(EntityManager manager, Entity entity,
-        DynamicBuffer<BuildingConfigElement> configs)
-    {
-        if (!manager.HasComponent<PowerDemand>(entity) || !manager.HasComponent<PowerUsageResult>(entity) ||
-            !manager.HasComponent<PowerSupplyResult>(entity) ||
-            !manager.HasComponent<PowerSupplyReservation>(entity) || !manager.HasComponent<PowerGridConnection>(entity))
-        {
-            return false;
-        }
-        if (!TryGetConfig(manager, entity, configs, out var config))
-        {
-            return false;
-        }
-        if (!HasFrameConnectionData(manager, entity, config.BuildingType))
-        {
-            return false;
-        }
-        switch (config.BuildingType)
-        {
-            case BuildingTypeEnum.Miner:
-                return manager.HasComponent<MinerDecision>(entity);
-            case BuildingTypeEnum.Crafter:
-                return manager.HasComponent<CrafterDecision>(entity);
-            case BuildingTypeEnum.MainFacility:
-            case BuildingTypeEnum.ResearchBuilding:
-            case BuildingTypeEnum.DroneStation:
-                return true;
-            default:
-                return false;
-        }
-    }
-
-    public static bool IsGeneratorValid(EntityManager manager, Entity entity,
-        DynamicBuffer<BuildingConfigElement> configs)
-    {
-        if (!manager.HasComponent<PowerGeneratorSupplyPlan>(entity) ||
-            !manager.HasComponent<PowerGridConnection>(entity))
-        {
-            return false;
-        }
-        if (!TryGetConfig(manager, entity, configs, out var config))
-        {
-            return false;
-        }
-        if (!HasFrameConnectionData(manager, entity, config.BuildingType))
-        {
-            return false;
-        }
-        if (config.BuildingType == BuildingTypeEnum.MainFacility)
-        {
-            return true;
-        }
-        if (config.BuildingType != BuildingTypeEnum.CoalGenerator)
-        {
-            return false;
-        }
-        if (!manager.HasComponent<FuelEnergyState>(entity))
-        {
-            return false;
-        }
-        float energy = manager.GetComponentData<FuelEnergyState>(entity).RemainingEnergy;
-        return math.isfinite(energy) && energy >= 0f;
-    }
-
-    private static bool HasFrameConnectionData(EntityManager manager, Entity entity, BuildingTypeEnum type)
-    {
-        if (type == BuildingTypeEnum.MainFacility)
-        {
-            return manager.HasComponent<PowerPole>(entity) && manager.HasComponent<PowerGridTopologyDecision>(entity);
-        }
-        if (manager.HasComponent<PowerPole>(entity))
-        {
-            return false;
-        }
-        return manager.HasComponent<PowerGridConnectionDecision>(entity);
-    }
-
-    public static bool TryGetRepresentative(EntityManager manager, Entity entity, out Entity representative)
+    internal static bool TryGetRepresentative(ComponentLookup<Disabled> disabledLookup,
+        EntityStorageInfoLookup entityStorageLookup,
+        ComponentLookup<PendingBuildingDemolition> pendingBuildingDemolitionLookup,
+        ComponentLookup<PowerGridConnectionDecision> powerGridConnectionDecisionLookup,
+        ComponentLookup<PowerGridTopologyDecision> powerGridTopologyDecisionLookup,
+        ComponentLookup<PowerPole> powerPoleLookup,
+        ComponentLookup<Prefab> prefabLookup, Entity entity, out Entity representative)
     {
         representative = Entity.Null;
         Entity pole = entity;
-        if (!manager.HasComponent<PowerPole>(entity))
+        if (!powerPoleLookup.HasComponent(entity))
         {
-            if (!manager.HasComponent<PowerGridConnectionDecision>(entity))
+            if (!powerGridConnectionDecisionLookup.HasComponent(entity))
             {
                 return false;
             }
-            if (!manager.IsComponentEnabled<PowerGridConnectionDecision>(entity))
+            if (!powerGridConnectionDecisionLookup.IsComponentEnabled(entity))
             {
                 return false;
             }
-            pole = manager.GetComponentData<PowerGridConnectionDecision>(entity).PowerPole;
+            pole = powerGridConnectionDecisionLookup[entity].PowerPole;
             if (pole == Entity.Null)
             {
                 return true;
             }
         }
-        if (!manager.Exists(pole))
+        if (!entityStorageLookup.Exists(pole))
         {
             return false;
         }
-        if (!manager.HasComponent<PowerPole>(pole) || !manager.HasComponent<PowerGridTopologyDecision>(pole))
+        if (!powerPoleLookup.HasComponent(pole) || !powerGridTopologyDecisionLookup.HasComponent(pole))
         {
             return false;
         }
-        if (manager.HasComponent<Disabled>(pole) || manager.HasComponent<Prefab>(pole) ||
-            manager.HasComponent<PendingBuildingDemolition>(pole))
+        if (disabledLookup.HasComponent(pole) || prefabLookup.HasComponent(pole) ||
+            pendingBuildingDemolitionLookup.HasComponent(pole))
         {
             return false;
         }
-        representative = manager.GetComponentData<PowerGridTopologyDecision>(pole).RepresentativePole;
+        representative = powerGridTopologyDecisionLookup[pole].RepresentativePole;
         if (representative == Entity.Null)
         {
             return false;
         }
-        if (!manager.Exists(representative))
+        if (!entityStorageLookup.Exists(representative))
         {
             return false;
         }
-        if (!manager.HasComponent<PowerPole>(representative) ||
-            !manager.HasComponent<PowerGridTopologyDecision>(representative))
+        if (!powerPoleLookup.HasComponent(representative) ||
+            !powerGridTopologyDecisionLookup.HasComponent(representative))
         {
             return false;
         }
-        if (manager.HasComponent<Disabled>(representative) || manager.HasComponent<Prefab>(representative) ||
-            manager.HasComponent<PendingBuildingDemolition>(representative))
+        if (disabledLookup.HasComponent(representative) || prefabLookup.HasComponent(representative) ||
+            pendingBuildingDemolitionLookup.HasComponent(representative))
         {
             return false;
         }
-        return manager.GetComponentData<PowerGridTopologyDecision>(representative).RepresentativePole == representative;
+        return powerGridTopologyDecisionLookup[representative].RepresentativePole == representative;
     }
 
     public static Entity GetRepresentative(Entity entity, ComponentLookup<PowerPole> poles,
@@ -164,50 +76,44 @@ public static class PowerFrameUtility
         return topology[pole].RepresentativePole;
     }
 
-    public static bool IsSelectionValid(EntityManager manager, Entity entity,
-        DynamicBuffer<BuildingConfigElement> configs)
+    /// <summary>작업 결정은 배정 자격을 확인하고 실제 시간 누적은 Execution이 담당한다.</summary>
+    public static bool HasAllocatedPower(Entity entity,
+        ComponentLookup<PowerDemand> demands, ComponentLookup<PowerSupplyResult> supplies)
     {
-        if (manager.HasComponent<PowerPole>(entity))
-        {
-            return true;
-        }
-        if (!PowerGridConnectionDecisionSystem.IsParticipantValid(manager, entity))
+        if (!demands.HasComponent(entity) || !supplies.HasComponent(entity))
         {
             return false;
         }
-        Entity pole = manager.GetComponentData<PowerGridConnectionDecision>(entity).PowerPole;
-        if (pole == Entity.Null)
-        {
-            return true;
-        }
-        if (!manager.Exists(pole))
+        if (!demands.IsComponentEnabled(entity))
         {
             return false;
         }
-        if (!manager.HasComponent<GridPosition>(pole))
-        {
-            return false;
-        }
-        if (!TryGetConfig(manager, pole, configs, out var config))
-        {
-            return false;
-        }
-        var footprint = manager.GetComponentData<BuildingFootprint>(entity);
-        var direction = manager.GetComponentData<Direction>(entity);
-        return PowerRangeUtility.TryGetFootprintDistanceSquared(manager.GetComponentData<GridPosition>(pole).Value,
-            config.Power.SupplyRange, manager.GetComponentData<GridPosition>(entity).Value,
-            footprint.GetEffectiveSize(direction.dir), out _);
+        var supply = supplies[entity];
+        return demands[entity].RequestedEnergy > 0f && supply.AllocatedEnergy > 0f && supply.SupplyRatio > 0f;
     }
 
-    /// <summary>입력을 검사한 시스템이 EndBuilding에 Fatal을 기록하고 정상 예산을 공개하지 않는다.</summary>
-    public static void RecordFailure(ref SystemState state, FixedString128Bytes message)
+    /// <summary>공통 시간에 확정 공급률과 배정/요청 비율을 반영한 진행 가능 시간.</summary>
+    public static float GetPoweredDeltaTime(Entity entity, float deltaTime,
+        ComponentLookup<PowerDemand> demands, ComponentLookup<PowerSupplyResult> supplies)
     {
-        var failureEcb = state.World.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>()
-            .CreateCommandBuffer();
-        SimulationFailureUtility.Record(ref failureEcb, message);
+        if (!demands.HasComponent(entity) || !supplies.HasComponent(entity))
+        {
+            return 0f;
+        }
+        if (!demands.IsComponentEnabled(entity))
+        {
+            return 0f;
+        }
+        float requested = demands[entity].RequestedEnergy;
+        var supply = supplies[entity];
+        if (requested <= 0f || supply.AllocatedEnergy <= 0f || supply.SupplyRatio <= 0f)
+        {
+            return 0f;
+        }
+        return deltaTime * math.min(supply.SupplyRatio, supply.AllocatedEnergy / requested);
     }
 
-    /// <summary>float 변환이 원래 double 예산을 초과하지 않게 한다. 미세한 미배정량도 같은 틱에 재배분하지 않는다.</summary>
+    /// <summary>float 변환이 double 예산을 초과하지 않게 한다. 미세한 잔여분도 재배분하지 않는다.</summary>
     public static float RoundEnergyDown(double energy, float limit)
     {
         if (energy <= 0d)

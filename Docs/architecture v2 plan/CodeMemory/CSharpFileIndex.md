@@ -18,7 +18,7 @@
 | `Assets/Scripts/Common/PowerRangeUtility.cs` | 단일 셀 반경 정사각형/OR 연결과 회전 직사각형 전체의 공급 경계/최소 제곱거리 순수 판정. 토폴로지·공급 선택/최종 검사가 공유한다. |
 | `Assets/Scripts/Config/BuildingPowerConfigParser.cs` | BuildingConfig의 역할별 power JSON와 공개/사전 등록 능력을 공통 검증한다. |
 | `Assets/Scripts/Components/Power/BuildingPowerConfig.cs` | BuildingConfigElement 안의 종류·Tier별 능력 설정 값. 독립 ECS 원본은 아니다. |
-| `Assets/Scripts/Components/Power/PowerComponents.cs` | 역할·연료 원본과 수요/미게시 예약/공급/사용/발전 계획의 11개 ECS 계약. Demand/GenPlan/Reservation 활성은 준비 완료다. 수요/배정/게시 Writer는 연결했고 실제 연료/생산 사용은 후속이다. |
+| `Assets/Scripts/Components/Power/PowerComponents.cs` | 역할·연료 원본과 수요/미게시 예약/확정 공급·발전 계획의 10개 ECS 계약. 역할 활성은 양수 요청/가용량, Demand/GenPlan/Reservation 활성은 준비 완료다. Power에서 연료를 소비하고 생산은 공급 한도를 읽는다. |
 | `Assets/Scripts/Common/PowerFrameUtility.cs` | 역할/설정·이번 틱 대표/선택 검사, Fatal 기록과 예산 이하 float 변환을 공유한다. 망 집계·상태·게시의 소유자가 아니다. |
 | `Assets/Editor/Tests/Phase8PowerContractTests.cs` | 통합 설정/원자적 게시/사전 등록 실패·Tier 분리·순수 범위 계약의 EditMode 검증. 실제 전력 가동 검증은 아니다. |
 | `Assets/Scripts/Components/Power/PowerGridTopologyDecision.cs` | 전신주별 대표·유지할 망·최종 검사할 이전 공개 망의 계획. Reservation이 작성하고 후속 공급/StateApply가 읽는다. 예약 Entity를 담지 않는다. |
@@ -105,7 +105,7 @@
 | `Assets/Scripts/Common/RecipeConfigLookupUtility.cs` | 읽기 전용 레시피 버퍼의 ID/주생산품 첫 일치 조회와 Decision/Execution의 전체 재료 소비 가능 여부 검사. |
 | `Assets/Scripts/Config/RecipeConfigLoader.cs` | JSON/Resources 레시피를 파싱하고 World 소유 버퍼로 1회 게시한다. 중복 재료와 JSON 수량의 int 범위 초과를 거부하며 기본 5개 레시피를 제공한다. |
 | `Assets/Scripts/Phases/CommandGroup.cs` | 명령 처리 그룹을 선언한다. |
-| `Assets/Scripts/Phases/Buildings/BuildingDecisionGroup.cs` | 건물 단계 시작에 확정 상태를 읽어 벨트·입출고·채굴·제작·라우팅 후보를 계산한다. |
+| `Assets/Scripts/Phases/Buildings/BuildingDecisionGroup.cs` | Power 이후 확정 상태를 읽어 벨트·입출고·라우팅 후보를 계산한다. 채굴/제작 의도는 Preparation에서 준비한다. |
 | `Assets/Scripts/Phases/Buildings/BuildingExecutionGroup.cs` | 건물 Reservation 뒤에 승인된 벨트 이동·채굴·제작을 한 번 실행한다. |
 | `Assets/Scripts/Phases/GameSimulationGroup.cs` | Unity SimulationSystemGroup 안에서 Command→Building→Drone→Commit→Synchronization을 실행한다. |
 | `Assets/Scripts/Phases/Buildings/BuildingReservationGroup.cs` | 건물 Decision 뒤에 입고 슬롯·벨트 진입 목적지의 경합을 중재한다. |
@@ -145,18 +145,18 @@
 | `Assets/Scripts/Systems/Buildings/Decision/BeltMovementDecisionSystem.cs` | 벨트 속도, 프레임 시간, 같은/다음 타일의 아이템 간격을 이용해 `PlannedProgress`를 계산한다. |
 | `Assets/Scripts/Systems/Buildings/Decision/BuildingItemInputDecisionSystem.cs` | 벨트 끝에서 다음 셀의 건물, Storage, 필터, 제작기 부산물 대기 상태를 검사한다. |
 | `Assets/Scripts/Systems/Buildings/Decision/CrafterDecisionSystem.cs` | 레시피·재료·출력 슬롯을 검사해 제작 실행 결정과 다음 상태를 분리해 기록한다. |
-| `Assets/Scripts/Systems/Buildings/Decision/MinerDecisionSystem.cs` | footprint 아래 유효 자원, 품목 일치, 출력 스택 공간을 검사한다. |
+| `Assets/Scripts/Systems/Buildings/Preparation/MinerWorkPreparationSystem.cs` | 전력 외 채굴 자격/대상 준비와 자원 인덱스 Reader/Fence 등록. 실행 결정은 BuildingDecision이 작성한다. |
 | `Assets/Scripts/Systems/Buildings/Decision/ProductItemOutputDecisionSystem.cs` | 생산 건물의 Product 버퍼에서 Slot 0을 우선해 외향 벨트 출고를 결정한다. |
 | `Assets/Scripts/Systems/Buildings/Decision/StorageItemOutputDecisionSystem.cs` | Product 버퍼가 없는 일반 저장 건물의 첫 Stored 아이템 출고를 결정한다. |
 | `Assets/Scripts/Systems/Buildings/Reservation/BeltDestinationReservationSystem.cs` | 건물 출고·라우팅 후보의 공통 공간 검사 후 목표별 한 개를 승인한다. 일반 벨트 이동은 중재하지 않는다. |
 | `Assets/Scripts/Systems/Buildings/Reservation/BuildingStorageInputReservationSystem.cs` | 현재 버퍼와 프레임 내 예약 수를 합산하여 품목별 저장 슬롯을 하나씩 확정한다. |
-| `Assets/Scripts/Systems/Buildings/Reservation/PowerGridTopologyReservationSystem.cs` | 생존/설정/공개 망 검증과 Reservation 마지막의 연결 집합·분리 유지권 우선·병합 대표 계획. 정상 망 변경의 ECB 기록은 없다. |
-| `Assets/Scripts/Systems/Buildings/Decision/PowerGridConnectionDecisionSystem.cs` | BuildingDecision에서 선택용 원본을 독립 검증하고 전체 회전 footprint의 최소 거리/설치 순서로 전신주를 매 틱 선택한다. Entity 목록·RO Lookup의 병렬 Job이며 토폴로지 준비 결과에 의존하지 않고 공개 연결은 쓰지 않는다. |
-| `Assets/Scripts/Systems/Buildings/Decision/BuildingPowerDemandDecisionSystem.cs` | 소비 도메인의 수요/사용 초기화와 기존 Miner/Crafter 결정에 따른 요청을 준비한다. 연구/충전 수요는 후속까지 0이다. |
-| `Assets/Scripts/Systems/Buildings/Decision/PowerSupplyDecisionSystem.cs` | 전력 소유의 공급/예약/발전 계획을 독립 초기화하고 정격·이미 전환된 잔량으로 가용량을 준비한다. |
-| `Assets/Scripts/Systems/Buildings/Reservation/PowerBudgetReservationSystem.cs` | Topology 뒤 현재 대표·준비된 수요/가용량으로 예산을 배정한다. 기초 우선·정격 기준 동일 가동률/연료 한도와 임시 집계·예산 이하 float를 적용한다. |
-| `Assets/Scripts/Systems/Buildings/Execution/PowerSupplyExecutionSystem.cs` | 준비/기준 대표·수요·현재 선택/연료와 망별 총량을 검증하고 생산 전에 SupplyResult를 한 번 게시한다. 연료/진행량/실제 사용은 변경하지 않는다. |
-| `Assets/Scripts/Systems/Buildings/StateApply/PowerGridTopologyApplySystem.cs` | 토폴로지/공급 선택 최종 검사와 망 수명주기·연결/참조 정리의 같은 EndBuilding 기록. 연결 값 스냅샷 없이 Entity 목록·RO Lookup을 사용하며 공급 전신주를 재선택하지 않는다. |
+| `Assets/Scripts/Systems/Power/Reservation/PowerGridTopologyReservationSystem.cs` | 생존/설정/공개 망 검증과 Reservation 마지막의 연결 집합·분리 유지권 우선·병합 대표 계획. 정상 망 변경의 ECB 기록은 없다. |
+| `Assets/Scripts/Systems/Power/Decision/PowerGridConnectionDecisionSystem.cs` | PowerDecision에서 선택용 원본을 독립 검증하고 전체 회전 footprint의 최소 거리/설치 순서로 전신주를 매 틱 선택한다. Entity 목록·RO Lookup의 병렬 Job이며 토폴로지 준비 결과에 의존하지 않고 공개 연결은 쓰지 않는다. |
+| `Assets/Scripts/Systems/Buildings/Preparation/BuildingPowerDemandPreparationSystem.cs` | Preparation에서 소비 역할/수요 초기화와 기존 Miner/Crafter 결정에 따른 요청을 준비한다. 연구/충전 수요는 후속까지 0이다. |
+| `Assets/Scripts/Systems/Power/Decision/PowerSupplyDecisionSystem.cs` | 전력 소유의 공급/예약/발전 계획을 독립 초기화하고 정격·잔량/보관 Coal 실물로 가용량을 준비한다. |
+| `Assets/Scripts/Systems/Power/Reservation/PowerBudgetReservationSystem.cs` | Topology 뒤 현재 대표·준비된 수요/가용량으로 예산을 배정한다. 기초 우선·정격 기준 동일 가동률/연료 한도와 임시 집계·예산 이하 float를 적용한다. |
+| `Assets/Scripts/Systems/Power/Execution/PowerSupplyExecutionSystem.cs` | 계획/예약의 준비와 실제 소비할 연료를 확인한 뒤 생산 전에 SupplyResult를 한 번 게시한다. 전체 연료 조건 확인 후 석탄을 전환/차감하며 배정량은 이번 틱 소비다. |
+| `Assets/Scripts/Systems/Power/StateApply/PowerGridTopologyApplySystem.cs` | 준비된 토폴로지/공급 선택으로 망 수명주기·연결/참조 정리를 같은 EndPower에 기록한다. 위치/범위/구성의 반복 검증은 없다. 연결 값 스냅샷 없이 Entity 목록·RO Lookup을 사용하며 공급 전신주를 재선택하지 않는다. |
 | `Assets/Scripts/Systems/Buildings/Execution/BeltMovementExecutionSystem.cs` | 계획된 타일 내 진행도, 경계 횡단, 격자 위치와 시각 위치를 반영하고 계획을 소비한다. |
 | `Assets/Scripts/Systems/Buildings/Execution/CrafterExecutionSystem.cs` | 재료 선소비 및 삭제 요청, 진행도 누적, 주생산품/부산물 `ProductResult` 기록을 수행한다. |
 | `Assets/Scripts/Systems/Buildings/Execution/MinerExecutionSystem.cs` | 채굴 진행, 자원 차감/고갈 삭제 요청과 `ProductResult` 기록을 수행한다. |
@@ -189,9 +189,37 @@
 | `Assets/Editor/Tests/Phase5CrafterExecutionTests.cs` | 비활성 결정의 실행 제외, 다중 부산물 생성과 전체 용량 판정, 재료 부족 시 무소비·정확/초과 재고의 소비와 삭제. |
 | `Assets/Editor/Tests/Phase5RecipeConfigTests.cs` | 실제 레시피 설정 로드와 부산물 1개/2개의 JSON 출력 구성, 중복 재료/수량 범위 초과의 게시 거부와 초기화 중단. |
 | `Assets/Editor/Tests/Phase5CrafterInputSlotTests.cs` | F-037 1단계: 슬롯 계산의 올림, 중복 합산, 품목 구분, 상한/실패 및 Burst Job 호출. |
-| `Assets/Editor/Tests/Phase5CrafterInputPipelineTests.cs` | F-037: 개별 회귀 15개와 실제 정렬 Command→Building→Synchronization 통합 4개. 직접 Spawn/공사 완료 × 기본/사용자 지정 ECS 테스트 프리팹, 미선택 차단·입고·선소비·생산·후속 출고·레시피 변경/해제 및 불변식. |
+| `Assets/Editor/Tests/Phase5CrafterInputPipelineTests.cs` | F-037: 개별 회귀 15개와 실제 정렬 Command→Preparation→Power→Building→Synchronization 통합 4개. 직접 Spawn/공사 완료 × 기본/사용자 지정 ECS 테스트 프리팹, 미선택 차단·입고·선소비·생산·후속 출고·레시피 변경/해제 및 불변식. |
 | `Assets/Editor/Tests/Phase5RecipeChangePipelineTests.cs` | 레시피 변경 잔여물 배출, 입고 차단과 재개. |
 | `Assets/Editor/Tests/Phase6BeltDestinationReservationTests.cs` | 외부 후보 한 개 승인/패자 보존과 출고·Routing Decision→예약→반영의 점유·간격·소유권·결정 소비를 검증한다. |
 | `Assets/Editor/Tests/TestSupport/EcsWorldTestFixture.cs` | 독립 ECS World/EntityManager 생성과 정리. |
 | `Assets/Editor/Tests/TestSupport/TestEntityFactory.cs` | 자원, 벨트/아이템, 저장, 채굴기, 제작기, 일반 건물 테스트 엔티티 생성. |
-| `Assets/Editor/Tests/TestSupport/TestSimulationDriver.cs` | 시간·개별 시스템·ECB 경계 지원. 자원 생성/채굴 및 제작기 생성·물류의 실제 정렬 Command→Building→Synchronization 테스트 그룹을 구성한다. |
+| `Assets/Editor/Tests/TestSupport/TestSimulationDriver.cs` | 시간·개별 시스템·ECB 경계 지원. 자원 생성/채굴 및 제작기 생성·물류의 실제 정렬 Command→Preparation→Power→Building→Synchronization 테스트 그룹을 구성한다. |
+
+
+## 2026-10-15 Power 페이즈 변경
+
+- Phases/SimulationPreparationGroup.cs와 Phases/Power/*Group.cs: 작업 의도 준비와 전력 도메인 순서.
+- Systems/Buildings/Preparation/PowerSupplyResetPreparationSystem.cs: 공급 초기화와 비공개 검증 Reset Job 예약.
+- Systems/Power/StateApply/EndPowerEntityCommandBufferSystem.cs: 공급 Writer 완료와 전력 ECB 공개.
+- Common/PowerFuelUtility.cs: 정수 전환 계획과 실제 소비할 Coal의 소유/중복·에너지 한도 검사. Common/ItemLifecycleUtility.RecordDestroy를 공유한다.
+- Miner/Crafter Execution은 확정 공급을 읽는다. 연구/충전은 후속이며 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·Editor ready/비컴파일/비리로드와 최신 runtime/Editor DLL을 확인했다. 관련 선택 EditMode 157/157, 실패·생략·불확정 0이다. Play Mode·베이킹·Player 빌드·성능은 미수행이다.
+
+## 2026-10-15 준비/실행 분리와 공통 실패
+
+| 소스 | 현재 책임 |
+| --- | --- |
+| Assets/Scripts/Components/Production/Mining/MinerWorkPreparation.cs | 전력 외 채굴 자격/대상. 준비 완료 enable. |
+| Assets/Scripts/Components/Production/Crafting/CrafterWorkPreparation.cs | 전력 외 착수/진행 자격. 완료 출력/표시 상태 없음. |
+| Assets/Scripts/Systems/Buildings/Preparation/MinerWorkPreparationSystem.cs | 공간 Reader/Fence와 채굴 자격의 단독 Writer. |
+| Assets/Scripts/Systems/Buildings/Preparation/CrafterWorkPreparationSystem.cs | 재료/진행 자격의 단독 Writer. |
+| Assets/Scripts/Systems/Buildings/Preparation/BuildingPowerDemandPreparationSystem.cs | 준비 자격을 소비하는 요청 Writer. 기존 실행 Decision을 읽지 않음. |
+| Assets/Scripts/Systems/Buildings/Decision/MinerDecisionSystem.cs | 준비/공급으로 실행 결정. 기존 GUID로 Building에 복귀. |
+| Assets/Scripts/Systems/Buildings/Decision/CrafterDecisionSystem.cs | 준비/공급으로 실행·완료 출력·상태 후보. 기존 GUID로 Building에 복귀. |
+| Assets/Scripts/Systems/Buildings/Preparation/PowerSupplyResetPreparationSystem.cs | 틱 시작 공급 초기화와 내부 검증 Reset Job 예약. |
+| Assets/Scripts/Common/PowerValidationUtility.cs | 설정 버퍼 존재 판정과 첫 오류 기록. Lookup 생성/묶음 없음. |
+| Assets/Scripts/Phases/Power/PowerSimulationGroup.cs | 전력 단계 구성만 담당. |
+| Assets/Scripts/Systems/Initialization/PowerValidationInitializationSystem.cs | 비공개 검증 자료/접근 핸들의 수명과 첫 오류 인계 관리. Fatal 게시자는 EndPower다. |
+| Assets/Scripts/Common/SimulationFailureUtility.cs | 공통 Fatal 게시와 중단 범위 검사. 기본 NextTick, Power RemainingDomains. |
+
+이번 준비/결정 분리·공통 Fatal·Job 의존성 변경은 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·Editor ready/비컴파일/비리로드·최신 runtime/Editor DLL과 관련 선택 EditMode 170/170(실패·생략·불확정 0)으로 확인했다. Play Mode·베이킹·Player 빌드·성능은 미수행이다.

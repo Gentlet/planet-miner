@@ -288,6 +288,6 @@ public partial struct DestroyItemApplyJob : IJobEntity
 
     public void Execute(Entity entity, in DestroyItemRequest request)
     {
-        ECB.DestroyEntity(entity);
+        ItemLifecycleUtility.RecordDestroy(ref ECB, entity);
     }
 }

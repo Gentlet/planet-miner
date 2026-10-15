@@ -27,12 +27,14 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
         // 1. 최상위 시뮬레이션 그룹 및 Phase 그룹 구성
         _simulationGroup = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
         var buildingGroup = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();
+        var preparationGroup = _world.GetOrCreateSystemManaged<SimulationPreparationGroup>();
         var decisionGroup = _world.GetOrCreateSystemManaged<BuildingDecisionGroup>();
         var reservationGroup = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
         var executionGroup = _world.GetOrCreateSystemManaged<BuildingExecutionGroup>();
         var stateApplyGroup = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
         var synchronizationGroup = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
 
+        _simulationGroup.AddSystemToUpdateList(preparationGroup);
         _simulationGroup.AddSystemToUpdateList(buildingGroup);
         _simulationGroup.AddSystemToUpdateList(synchronizationGroup);
         buildingGroup.AddSystemToUpdateList(decisionGroup);
@@ -41,6 +43,7 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
         buildingGroup.AddSystemToUpdateList(stateApplyGroup);
 
         // 2. Phase 2: BuildingDecisionGroup 시스템 등록
+        preparationGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerWorkPreparationSystem>());
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerDecisionSystem>());
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<StorageItemOutputDecisionSystem>());
         decisionGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<ProductItemOutputDecisionSystem>());
@@ -71,6 +74,7 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
 
         // 7. 의존성 순서 정렬
         _simulationGroup.SortSystems();
+        preparationGroup.SortSystems();
         decisionGroup.SortSystems();
         reservationGroup.SortSystems();
         executionGroup.SortSystems();
@@ -83,7 +87,11 @@ public class Phase4EndToEndPipelineTests : EcsWorldTestFixture
         => Entities.CreateResourceNode(position, resourceType, amount);
 
     private Entity CreateMiner(int2 position, int2 size, DirectionEnum direction, float miningSpeed = 1.0f)
-        => Entities.CreateMiner(position, size, direction, miningSpeed);
+    {
+        Entity miner = Entities.CreateMiner(position, size, direction, miningSpeed);
+        Entities.PrepareIsolatedPowerSupply(miner);
+        return miner;
+    }
 
     private Entity CreateBelt(int2 position, DirectionEnum direction, float speed = 2.0f)
         => Entities.CreateBelt(position, direction, speed);

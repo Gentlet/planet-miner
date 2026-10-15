@@ -15,6 +15,29 @@ public static class SimulationFailureUtility
         return !query.IsEmptyIgnoreFilter;
     }
 
+    /// <summary>이미 시작한 틱에서 남은 도메인도 중단해야 하는 공통 Fatal을 확인한다.</summary>
+    public static bool ShouldAbortCurrentTick(EntityQuery errors)
+    {
+        using var failures = errors.ToComponentDataArray<SimulationFatalError>(Allocator.Temp);
+        foreach (var failure in failures)
+        {
+            if (failure.StopScope == SimulationFailureStopScope.RemainingDomains)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /// <summary>완료 경계에서 오류를 즉시 게시한다. 이미 반영된 원본을 되돌리지 않는다.</summary>
+    public static void RecordImmediateFailure(EntityManager manager, in FixedString128Bytes message,
+        SimulationFailureStopScope stopScope)
+    {
+        UnityEngine.Debug.LogError(message);
+        Entity error = manager.CreateEntity(typeof(SimulationFatalError));
+        manager.SetComponentData(error, new SimulationFatalError { Message = message, StopScope = stopScope });
+    }
+
     /// <summary>초기화 실패를 즉시 공개한다. 상세 로그와 길이가 제한된 ECS 진단 메시지를 분리한다.</summary>
     public static void RecordInitializationFailure(
         EntityManager entityManager, string details, in FixedString128Bytes message)

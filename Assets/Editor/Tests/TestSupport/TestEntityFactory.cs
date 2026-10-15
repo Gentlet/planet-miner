@@ -277,6 +277,22 @@ namespace PlanetMiner.Tests
             return entity;
         }
 
+        /// <summary>전력 도메인을 실행하지 않는 생산 전용 fixture에만 명시적으로 공급한다.</summary>
+        public void PrepareIsolatedPowerSupply(Entity building)
+        {
+            if (!_entityManager.HasComponent<PowerDemand>(building))
+            {
+                _entityManager.AddComponent<PowerDemand>(building);
+            }
+            if (!_entityManager.HasComponent<PowerSupplyResult>(building))
+            {
+                _entityManager.AddComponent<PowerSupplyResult>(building);
+            }
+            _entityManager.SetComponentData(building, new PowerDemand { RequestedEnergy = 1f });
+            _entityManager.SetComponentEnabled<PowerDemand>(building, true);
+            _entityManager.SetComponentData(building, new PowerSupplyResult { SupplyRatio = 1f, AllocatedEnergy = 1f });
+        }
+
         public Entity CreateMiner(
             int2 position,
             int2 size,
@@ -291,6 +307,7 @@ namespace PlanetMiner.Tests
                 typeof(Direction),
                 typeof(BuildingItemOutputDecision),
                 typeof(MinerState),
+                typeof(MinerWorkPreparation),
                 typeof(MinerDecision));
 
             _entityManager.SetComponentData(entity, new BuildingType(BuildingTypeEnum.Miner, 1));
@@ -303,6 +320,7 @@ namespace PlanetMiner.Tests
             _entityManager.SetComponentEnabled<BuildingItemOutputDecision>(entity, false);
             _entityManager.SetComponentData(entity, new MinerState(miningSpeed, progress));
             _entityManager.SetComponentData(entity, new MinerDecision(false, Entity.Null));
+            _entityManager.SetComponentEnabled<MinerWorkPreparation>(entity, false);
             _entityManager.SetComponentEnabled<MinerDecision>(entity, false);
 
             _entityManager.AddBuffer<ProductItemElement>(entity);
@@ -325,6 +343,7 @@ namespace PlanetMiner.Tests
                 typeof(GridPosition),
                 typeof(Direction),
                 typeof(CrafterState),
+                typeof(CrafterWorkPreparation),
                 typeof(CrafterDecision),
                 typeof(CrafterStateDecision),
                 typeof(BuildingItemOutputDecision),
@@ -337,6 +356,7 @@ namespace PlanetMiner.Tests
             _entityManager.SetComponentData(entity, new Direction(DirectionEnum.Up));
             _entityManager.SetComponentData(entity, new CrafterState(recipeId, speed));
             _entityManager.SetComponentData(entity, new CrafterDecision(false, recipeId));
+            _entityManager.SetComponentEnabled<CrafterWorkPreparation>(entity, false);
             _entityManager.SetComponentEnabled<CrafterDecision>(entity, false);
             _entityManager.SetComponentData(
                 entity,
