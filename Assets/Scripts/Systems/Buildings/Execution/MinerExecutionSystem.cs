@@ -51,6 +51,8 @@ public partial struct MinerExecutionSystem : ISystem
         var job = new MinerExecutionJob
         {
             DeltaTime = dt,
+            DemandLookup = SystemAPI.GetComponentLookup<PowerDemand>(true),
+            SupplyLookup = SystemAPI.GetComponentLookup<PowerSupplyResult>(true),
             IsResourceInfinite = isResourceInfinite,
             ResourceNodeLookup = _resourceNodeLookup,
             ECB = ecb
@@ -70,18 +72,25 @@ public partial struct MinerExecutionSystem : ISystem
 public partial struct MinerExecutionJob : IJobEntity
 {
     public float DeltaTime;
+    [ReadOnly] public ComponentLookup<PowerDemand> DemandLookup;
+    [ReadOnly] public ComponentLookup<PowerSupplyResult> SupplyLookup;
     public bool IsResourceInfinite;
 
     public ComponentLookup<ResourceNode> ResourceNodeLookup;
     public EntityCommandBuffer ECB;
 
     public void Execute(
+        Entity building,
         ref MinerState state,
         ref DynamicBuffer<ProductResult> productResults,
         in MinerDecision decision)
     {
         // 1. 유효 채굴 대상 및 미소비 생산 결과 확인
-        if (!decision.CanMine || decision.TargetResource == Entity.Null || productResults.Length > 0)
+        if (decision.TargetResource == Entity.Null)
+        {
+            return;
+        }
+        if (!decision.CanMine || productResults.Length > 0)
         {
             return;
         }
@@ -98,7 +107,8 @@ public partial struct MinerExecutionJob : IJobEntity
         }
 
         // 2. 채굴 진행도 누적
-        state.Progress += state.MiningSpeed * DeltaTime;
+        float poweredDeltaTime = PowerFrameUtility.GetPoweredDeltaTime(building, DeltaTime, DemandLookup, SupplyLookup);
+        state.Progress += state.MiningSpeed * poweredDeltaTime;
 
         // 3. 채굴 완료(Progress >= 1.0f) 시 같은 프레임 StateApply에서 소비할 생산 결과 기록
         if (state.Progress >= 1.0f)

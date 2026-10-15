@@ -40,6 +40,11 @@ namespace PlanetMiner.Tests
             state.Dependency.Complete();
         }
 
+        public void Playback(EndPowerEntityCommandBufferSystem ecbSystem)
+        {
+            ecbSystem.Update();
+        }
+
         public void Playback(EndBuildingEntityCommandBufferSystem ecbSystem)
         {
             ecbSystem.Update();
@@ -61,6 +66,9 @@ namespace PlanetMiner.Tests
             // 등록 순서만으로 phase/선후 관계를 추정하지 않는다. 각 그룹과 루트의 SortSystems로 실제 정렬을 적용한다.
             var simulation = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
             var command = _world.GetOrCreateSystemManaged<CommandGroup>();
+            var preparation = _world.GetOrCreateSystemManaged<SimulationPreparationGroup>();
+            var power = _world.GetOrCreateSystemManaged<PowerSimulationGroup>();
+            var powerExecution = _world.GetOrCreateSystemManaged<PowerExecutionGroup>();
             var building = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();
             var decision = _world.GetOrCreateSystemManaged<BuildingDecisionGroup>();
             var reservation = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
@@ -68,6 +76,12 @@ namespace PlanetMiner.Tests
             var apply = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
             var sync = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
             simulation.AddSystemToUpdateList(command);
+            simulation.AddSystemToUpdateList(preparation);
+            simulation.AddSystemToUpdateList(power);
+            power.AddSystemToUpdateList(powerExecution);
+            power.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndPowerEntityCommandBufferSystem>());
+            // 운송/레시피 fixture의 전력 입력만 대체한다. 실제 Power 통합은 Phase8이 검증한다.
+            powerExecution.AddSystemToUpdateList(_world.GetOrCreateSystem<IsolatedCrafterPowerSupplySystem>());
             simulation.AddSystemToUpdateList(building);
             simulation.AddSystemToUpdateList(sync);
             building.AddSystemToUpdateList(decision);
@@ -84,6 +98,7 @@ namespace PlanetMiner.Tests
             decision.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemSpawnAdmissionDecisionSystem>());
             decision.AddSystemToUpdateList(_world.GetOrCreateSystem<StorageItemOutputDecisionSystem>());
             decision.AddSystemToUpdateList(_world.GetOrCreateSystem<ProductItemOutputDecisionSystem>());
+            preparation.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterWorkPreparationSystem>());
             decision.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterDecisionSystem>());
             reservation.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingStorageInputReservationSystem>());
             reservation.AddSystemToUpdateList(_world.GetOrCreateSystem<BeltDestinationReservationSystem>());
@@ -102,6 +117,9 @@ namespace PlanetMiner.Tests
             sync.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<WorldInvariantValidationSystem>());
 
             command.SortSystems();
+            preparation.SortSystems();
+            powerExecution.SortSystems();
+            power.SortSystems();
             decision.SortSystems();
             reservation.SortSystems();
             execution.SortSystems();
@@ -118,6 +136,8 @@ namespace PlanetMiner.Tests
             new TestEntityFactory(_world.EntityManager).PrepareSimulationConfiguration();
             var simulation = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
             var command = _world.GetOrCreateSystemManaged<CommandGroup>();
+            var preparation = _world.GetOrCreateSystemManaged<SimulationPreparationGroup>();
+            var power = _world.GetOrCreateSystemManaged<PowerSimulationGroup>();
             var building = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();
             var decision = _world.GetOrCreateSystemManaged<BuildingDecisionGroup>();
             var reservation = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
@@ -125,6 +145,9 @@ namespace PlanetMiner.Tests
             var apply = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
             var sync = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
             simulation.AddSystemToUpdateList(command);
+            simulation.AddSystemToUpdateList(preparation);
+            simulation.AddSystemToUpdateList(power);
+            power.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndPowerEntityCommandBufferSystem>());
             simulation.AddSystemToUpdateList(building);
             simulation.AddSystemToUpdateList(sync);
             building.AddSystemToUpdateList(decision);
@@ -138,11 +161,14 @@ namespace PlanetMiner.Tests
             sync.AddSystemToUpdateList(_world.GetOrCreateSystem<ResourceSpatialSyncSystem>());
             if (includeMining)
             {
+                preparation.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerWorkPreparationSystem>());
                 decision.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerDecisionSystem>());
                 execution.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerExecutionSystem>());
                 apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemLifecycleApplySystem>());
             }
             command.SortSystems();
+            preparation.SortSystems();
+            power.SortSystems();
             decision.SortSystems();
             reservation.SortSystems();
             execution.SortSystems();
@@ -151,6 +177,32 @@ namespace PlanetMiner.Tests
             sync.SortSystems();
             simulation.SortSystems();
             return simulation;
+        }
+    }
+}
+
+namespace PlanetMiner.Tests
+{
+    [DisableAutoCreation]
+    internal partial struct IsolatedCrafterPowerSupplySystem : ISystem
+    {
+        public void OnUpdate(ref SystemState state)
+        {
+            foreach (var (demand, supply, decision, entity) in
+                     SystemAPI.Query<RefRW<PowerDemand>, RefRW<PowerSupplyResult>, RefRO<CrafterWorkPreparation>>()
+                         .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState).WithEntityAccess())
+            {
+                bool canWork = state.EntityManager.IsComponentEnabled<CrafterWorkPreparation>(entity) &&
+                    (decision.ValueRO.CanStartCraft || decision.ValueRO.CanAdvance);
+                float requested = canWork ? 1f : 0f;
+                demand.ValueRW = new PowerDemand { RequestedEnergy = requested };
+                state.EntityManager.SetComponentEnabled<PowerDemand>(entity, true);
+                if (state.EntityManager.HasComponent<PowerConsumer>(entity))
+                {
+                    state.EntityManager.SetComponentEnabled<PowerConsumer>(entity, canWork);
+                }
+                supply.ValueRW = new PowerSupplyResult { SupplyRatio = 1f, AllocatedEnergy = requested };
+            }
         }
     }
 }

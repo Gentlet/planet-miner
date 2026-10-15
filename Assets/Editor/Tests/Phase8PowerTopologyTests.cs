@@ -10,7 +10,7 @@ using UnityEngine.TestTools;
 
 /// <summary>
 /// Spawn/완공 → 다음 틱 망 참가, 토폴로지·회전 footprint 공급 선택·재연결과 공유 맵 수명을 검증한다.
-/// 공급 예산 게시까지 검증한다. 실제 연료 전환/연소·생산 진행·충전·게임 입력은 후속 범위다.
+/// 공급 예산·석탄 전환·생산 진행과 실패 시 도메인 중단을 검증한다. 충전·게임 입력은 후속 범위다.
 /// </summary>
 public class Phase8PowerTopologyTests : EcsWorldTestFixture
 {
@@ -20,6 +20,8 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
     private SystemHandle _topologyApply;
     private SystemHandle _sync;
     private EndBuildingEntityCommandBufferSystem _endBuilding;
+    private EndPowerEntityCommandBufferSystem _endPower;
+    private SystemHandle _frameReset;
     private SystemHandle _demand;
     private SystemHandle _availability;
     private SystemHandle _budget;
@@ -41,9 +43,17 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         _topologyApply = _world.GetOrCreateSystem<PowerGridTopologyApplySystem>();
         _sync = _world.GetOrCreateSystem<PowerGridConnectionSyncSystem>();
         _endBuilding = _world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>();
+        _endPower = _world.GetOrCreateSystemManaged<EndPowerEntityCommandBufferSystem>();
+        _frameReset = _world.GetOrCreateSystem<PowerSupplyResetPreparationSystem>();
 
         _simulation = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
         var command = _world.GetOrCreateSystemManaged<CommandGroup>();
+        var preparation = _world.GetOrCreateSystemManaged<SimulationPreparationGroup>();
+        var power = _world.GetOrCreateSystemManaged<PowerSimulationGroup>();
+        var powerDecision = _world.GetOrCreateSystemManaged<PowerDecisionGroup>();
+        var powerReservation = _world.GetOrCreateSystemManaged<PowerReservationGroup>();
+        var powerExecution = _world.GetOrCreateSystemManaged<PowerExecutionGroup>();
+        var powerApply = _world.GetOrCreateSystemManaged<PowerStateApplyGroup>();
         var building = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();
         var decision = _world.GetOrCreateSystemManaged<BuildingDecisionGroup>();
         var reservation = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
@@ -52,7 +62,15 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         var commit = _world.GetOrCreateSystemManaged<SimulationCommitGroup>();
         var sync = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
         _simulation.AddSystemToUpdateList(command);
+        _simulation.AddSystemToUpdateList(preparation);
+        _simulation.AddSystemToUpdateList(power);
         _simulation.AddSystemToUpdateList(building);
+        preparation.AddSystemToUpdateList(_frameReset);
+        power.AddSystemToUpdateList(powerDecision);
+        power.AddSystemToUpdateList(powerReservation);
+        power.AddSystemToUpdateList(powerExecution);
+        power.AddSystemToUpdateList(powerApply);
+        power.AddSystemToUpdateList(_endPower);
         _simulation.AddSystemToUpdateList(commit);
         _simulation.AddSystemToUpdateList(sync);
         command.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingDemolitionCommandSystem>());
@@ -62,13 +80,19 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         building.AddSystemToUpdateList(execution);
         building.AddSystemToUpdateList(apply);
         building.AddSystemToUpdateList(_endBuilding);
-        reservation.AddSystemToUpdateList(_topology);
-        decision.AddSystemToUpdateList(_connectionSelection);
-        apply.AddSystemToUpdateList(_topologyApply);
+        powerReservation.AddSystemToUpdateList(_topology);
+        powerDecision.AddSystemToUpdateList(_connectionSelection);
+        powerApply.AddSystemToUpdateList(_topologyApply);
         apply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingLifecycleApplySystem>());
         apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionLifecycleApplySystem>());
         commit.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>());
         sync.AddSystemToUpdateList(_sync);
+        preparation.SortSystems();
+        powerDecision.SortSystems();
+        powerReservation.SortSystems();
+        powerExecution.SortSystems();
+        powerApply.SortSystems();
+        power.SortSystems();
         command.SortSystems();
         decision.SortSystems();
         reservation.SortSystems();
@@ -139,12 +163,12 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         Assert.IsTrue(_entityManager.Exists(removedGrid));
 
         // Reservation은 결정만 작성한다. EndBuilding을 실행해도 망 변경 명령이 없어야 한다.
-        Simulation.Playback(_endBuilding);
+        Simulation.Playback(_endPower);
         Assert.IsTrue(_entityManager.Exists(removedGrid));
         Assert.AreEqual(Entity.Null, Connection(bridge).Grid);
         Simulation.UpdateAndComplete(_topologyApply);
         Assert.AreEqual(removedGrid, Connection(left).Grid, "Apply의 ECB 기록도 Playback 전에는 공개되지 않는다.");
-        Simulation.Playback(_endBuilding);
+        Simulation.Playback(_endPower);
         Assert.IsFalse(_entityManager.Exists(removedGrid));
         Assert.AreEqual(retainedGrid, Connection(left).Grid);
         Assert.AreEqual(retainedGrid, Connection(bridge).Grid);
@@ -186,32 +210,9 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         Simulation.UpdateAndComplete(_topology);
         Assert.AreEqual(Entity.Null, Decision(pole));
         Assert.IsFalse(SimulationFailureUtility.HasFatalError(_entityManager));
-        Simulation.Playback(_endBuilding);
+        Simulation.Playback(_endPower);
         Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
         Assert.AreEqual(1, GridCount(), "무효 입력을 새 망 생성으로 보충하지 않아야 한다.");
-    }
-
-    [Test]
-    public void PublishedConnectionChangedAfterReservation_RejectsApplyWithoutCreatingOrDeletingGrids()
-    {
-        SubmitPole(new int2(0, 0), 1);
-        _simulation.Update();
-        _simulation.Update();
-        Entity pole = PoleAt(new int2(0, 0));
-        Entity expectedGrid = Connection(pole).Grid;
-        Simulation.UpdateAndComplete(_topology);
-
-        Entity changedGrid = _entityManager.CreateEntity(typeof(PowerGrid));
-        _entityManager.SetComponentData(pole, new PowerGridConnection { PowerPole = pole, Grid = changedGrid });
-        LogAssert.Expect(LogType.Error, new Regex("PowerGridTopologyApplySystem.*changed before apply"));
-        Simulation.UpdateAndComplete(_topologyApply);
-        Simulation.Playback(_endBuilding);
-
-        Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
-        Assert.IsTrue(_entityManager.Exists(expectedGrid));
-        Assert.IsTrue(_entityManager.Exists(changedGrid));
-        Assert.AreEqual(changedGrid, Connection(pole).Grid);
-        Assert.AreEqual(2, GridCount(), "무효화된 계획으로 망을 생성/삭제하거나 연결을 덮어쓰지 않아야 한다.");
     }
 
     [TestCase(0, false)]
@@ -541,7 +542,7 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         Simulation.UpdateAndComplete(_topology);
         Simulation.UpdateAndComplete(_topologyApply);
         Assert.AreEqual(right, Connection(crafter).PowerPole, "Apply 기록과 실제 공개를 구분한다.");
-        Simulation.Playback(_endBuilding);
+        Simulation.Playback(_endPower);
         Assert.AreEqual(closer, Connection(crafter).PowerPole);
         Assert.AreEqual(closer, Connection(research).PowerPole);
         Assert.AreEqual(Connection(closer).Grid, Connection(crafter).Grid);
@@ -588,7 +589,7 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void InvalidPoleInput_DecisionClearsPreparationAndPreservesPublishedConnection()
+    public void InvalidPoleInput_TopologyStopsPublicationAndPreservesPublishedConnection()
     {
         SubmitPole(int2.zero, 1);
         SubmitParticipant(BuildingTypeEnum.Miner, new int2(2, 0));
@@ -599,39 +600,14 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         Entity grid = Connection(pole).Grid;
         _entityManager.RemoveComponent<GridPosition>(pole);
 
-        LogAssert.Expect(LogType.Error, new Regex("PowerGridConnectionDecisionSystem.*Invalid participant or pole"));
-        Simulation.UpdateAndComplete(_connectionSelection);
-        Assert.IsFalse(_entityManager.IsComponentEnabled<PowerGridConnectionDecision>(participant));
-        Simulation.Playback(_endBuilding);
+        LogAssert.Expect(LogType.Error, new Regex("PowerGridTopologyReservationSystem.*Invalid pole"));
+        _simulation.Update();
+        Simulation.Playback(_endPower);
 
         Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
         Assert.IsTrue(_entityManager.Exists(grid));
         Assert.AreEqual(pole, Connection(participant).PowerPole);
         Assert.AreEqual(grid, Connection(participant).Grid);
-        Assert.AreEqual(1, GridCount());
-    }
-
-    [Test]
-    public void ParticipantFootprintChangedAfterDecision_RejectsPublicationWithoutDeletingGrid()
-    {
-        SetFootprint(BuildingTypeEnum.Miner, new int2(1, 1));
-        SubmitPole(int2.zero, 1);
-        SubmitParticipant(BuildingTypeEnum.Miner, new int2(2, 0));
-        _simulation.Update();
-        _simulation.Update();
-        Entity pole = PoleAt(int2.zero);
-        Entity participant = ParticipantAt(new int2(2, 0));
-        Entity grid = Connection(pole).Grid;
-        Simulation.UpdateAndComplete(_connectionSelection);
-        Simulation.UpdateAndComplete(_topology);
-        _entityManager.SetComponentData(participant, new GridPosition(new int2(99, 0)));
-        LogAssert.Expect(LogType.Error, new Regex("PowerGridTopologyApplySystem.*supply selection changed"));
-        Simulation.UpdateAndComplete(_topologyApply);
-        Simulation.Playback(_endBuilding);
-        Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
-        Assert.IsTrue(_entityManager.Exists(grid));
-        Assert.AreEqual(grid, Connection(participant).Grid);
-        Assert.AreEqual(pole, Connection(participant).PowerPole);
         Assert.AreEqual(1, GridCount());
     }
 
@@ -655,8 +631,8 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         _entityManager.SetComponentData(crafter, craftState);
 
         PreparePowerInputs();
-        Assert.IsTrue(_entityManager.GetComponentData<MinerDecision>(miner).CanMine);
-        Assert.IsTrue(_entityManager.GetComponentData<CrafterDecision>(crafter).CanAdvance);
+        Assert.IsTrue(_entityManager.GetComponentData<MinerWorkPreparation>(miner).CanMine);
+        Assert.IsTrue(_entityManager.GetComponentData<CrafterWorkPreparation>(crafter).CanAdvance);
         Assert.AreEqual(1f, Demand(miner));
         Assert.AreEqual(2f, Demand(crafter));
         ReservePower();
@@ -671,14 +647,18 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         Assert.AreEqual(1f, Supply(miner).SupplyRatio);
         Assert.AreEqual(0f, _entityManager.GetComponentData<MinerState>(miner).Progress);
         Assert.AreEqual(0.5f, _entityManager.GetComponentData<CrafterState>(crafter).Progress);
-        Assert.AreEqual(0f, _entityManager.GetComponentData<PowerUsageResult>(miner).UsedEnergy);
 
         // 진행 완료/출력 확정 대기는 수요 0이다. 출력 자격 때문에 정격 수요를 만들지 않는다.
         craftState.Progress = 1f;
         _entityManager.SetComponentData(crafter, craftState);
+        _entityManager.SetComponentData(crafter, new CrafterDecision(false, 1));
+        _entityManager.SetComponentEnabled<CrafterDecision>(crafter, false);
         PreparePowerInputs();
+        Assert.IsFalse(_entityManager.GetComponentData<CrafterDecision>(crafter).CanProduceOutput,
+            "Preparation은 실행/출력 결정을 작성하지 않는다.");
         ReservePower();
         Simulation.UpdateAndComplete(_supplyExecution);
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<CrafterDecisionSystem>());
         Assert.IsTrue(_entityManager.GetComponentData<CrafterDecision>(crafter).CanProduceOutput);
         Assert.AreEqual(0f, Demand(crafter));
         Assert.AreEqual(0f, Supply(crafter).AllocatedEnergy);
@@ -689,7 +669,7 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
     [TestCase(1.5f, 1f, 2f, 0.5f)]
     [TestCase(10f, 1f, 2f, 1f)]
     [TestCase(0f, 0f, 0f, 1f)]
-    public void PowerBudget_SharedRatio_UsesRequestedEnergy_AndLeavesFuelUnchanged(
+    public void PowerBudget_SharedRatio_UsesRequestedEnergy_AndConsumesAllocatedFuel(
         float fuel, float firstRequest, float secondRequest, float ratio)
     {
         EnablePowerSystems();
@@ -712,9 +692,8 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         Assert.AreEqual(firstRequest * ratio, Supply(first).AllocatedEnergy, 0.000001f);
         Assert.AreEqual(secondRequest * ratio, Supply(second).AllocatedEnergy, 0.000001f);
         Assert.AreEqual((firstRequest + secondRequest) * ratio, Generation(generator).AllocatedEnergy, 0.000001f);
-        Assert.AreEqual(fuel, _entityManager.GetComponentData<FuelEnergyState>(generator).RemainingEnergy,
-            "배정은 실제 발전/연료 차감이 아니다. 해당 Writer는 8.6이다.");
-        Assert.AreEqual(0f, _entityManager.GetComponentData<PowerUsageResult>(first).UsedEnergy);
+        Assert.AreEqual(fuel - Generation(generator).AllocatedEnergy,
+            _entityManager.GetComponentData<FuelEnergyState>(generator).RemainingEnergy, 0.000001f);
     }
 
     [TestCase(1f, 10f, 1, 5.5f, 1f, 4.5f)]
@@ -778,7 +757,6 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         Assert.AreEqual(4f, Generation(main).AllocatedEnergy);
         Assert.AreEqual(1.5f, Generation(localGenerator).AllocatedEnergy);
         Assert.AreEqual(2f, Generation(remoteGenerator).AllocatedEnergy);
-        Assert.AreNotEqual(Reservation(local).RepresentativePole, Reservation(remote).RepresentativePole);
         Simulation.UpdateAndComplete(_supplyExecution);
         PublishTopology();
         Assert.AreNotEqual(Connection(local).Grid, Connection(remote).Grid);
@@ -792,7 +770,6 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         ReservePower();
         Assert.AreNotEqual(Connection(local).Grid, Connection(remote).Grid,
             "준비된 병합은 아직 공개 연결에 반영되지 않았다.");
-        Assert.AreEqual(main, Reservation(remote).RepresentativePole);
         Assert.AreEqual(4f, Generation(main).AllocatedEnergy);
         Assert.AreEqual(1.75f, Generation(localGenerator).AllocatedEnergy);
         Assert.AreEqual(1.75f, Generation(remoteGenerator).AllocatedEnergy);
@@ -811,7 +788,6 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         ReservePower();
         Assert.AreEqual(Connection(local).Grid, Connection(remote).Grid,
             "공개 망이 아직 같아도 이번 틱 분리 계획으로 예산을 나눈다.");
-        Assert.AreEqual(remotePole, Reservation(remote).RepresentativePole);
         Assert.AreEqual(1.5f, Generation(localGenerator).AllocatedEnergy);
         Assert.AreEqual(2f, Generation(remoteGenerator).AllocatedEnergy);
         Simulation.UpdateAndComplete(_supplyExecution);
@@ -821,7 +797,7 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void PowerBudget_UnconvertedCoalDoesNotFundSupply_AndFloatReservationsStayWithinFunding()
+    public void PowerBudget_StoredCoalFundsSupply_AndFloatReservationsStayWithinFunding()
     {
         EnablePowerSystems();
         SubmitPole(int2.zero, 1);
@@ -835,16 +811,19 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         Entity coal = _entityManager.CreateEntity(typeof(ItemIdentity), typeof(ItemOwnership), typeof(GridPosition));
         _entityManager.SetComponentData(coal, new ItemIdentity(ItemTypeEnum.Coal));
         _entityManager.SetComponentData(coal, new ItemOwnership(generator));
-        _entityManager.AddBuffer<StoredItemElement>(generator).Add(new StoredItemElement(coal, ItemTypeEnum.Coal, 0));
+        _entityManager.GetBuffer<StoredItemElement>(generator).Add(new StoredItemElement(coal, ItemTypeEnum.Coal, 0));
         PreparePowerInputs();
         SetDemand(first, 0.3f);
         SetDemand(second, 0.7f);
         ReservePower();
         Simulation.UpdateAndComplete(_supplyExecution);
-        Assert.AreEqual(0f, Generation(generator).AvailableEnergy);
-        Assert.AreEqual(0f, Supply(first).AllocatedEnergy);
+        Assert.AreEqual(10f, Generation(generator).AvailableEnergy);
+        Assert.AreEqual(0.3f, Supply(first).AllocatedEnergy, 0.000001f);
         Assert.IsTrue(_entityManager.Exists(coal));
-        Assert.AreEqual(1, _entityManager.GetBuffer<StoredItemElement>(generator).Length);
+        Assert.AreEqual(0, _entityManager.GetBuffer<StoredItemElement>(generator).Length);
+        Assert.AreEqual(599f, _entityManager.GetComponentData<FuelEnergyState>(generator).RemainingEnergy, 0.00001f);
+        Simulation.Playback(_endPower);
+        Assert.IsFalse(_entityManager.Exists(coal));
 
         _entityManager.SetComponentData(generator, new FuelEnergyState { RemainingEnergy = 0.1f });
         PreparePowerInputs();
@@ -860,10 +839,8 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         Assert.IsFalse(SimulationFailureUtility.HasFatalError(_entityManager));
     }
 
-    [TestCase(0)]
-    [TestCase(1)]
-    [TestCase(2)]
-    public void PowerBudget_ChangedFuelGroupOrDemandBeforePublication_RejectsAllResults(int changeKind)
+    [Test]
+    public void PowerBudget_InsufficientFuelBeforeConsumption_RejectsAllResults()
     {
         EnablePowerSystems();
         SubmitPole(int2.zero, 1);
@@ -880,24 +857,12 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         SetDemand(first, 1f);
         SetDemand(second, 2f);
         ReservePower();
-        if (changeKind == 0)
-        {
-            _entityManager.SetComponentData(generator, new FuelEnergyState { RemainingEnergy = 1f });
-        }
-        else if (changeKind == 1)
-        {
-            _entityManager.SetComponentData(second,
-                new PowerGridConnectionDecision { PowerPole = PoleAt(new int2(30, 0)) });
-        }
-        else
-        {
-            SetDemand(second, 3f);
-        }
-        LogAssert.Expect(LogType.Error, new Regex("PowerSupplyExecutionSystem.*changed before publication"));
+        _entityManager.SetComponentData(generator, new FuelEnergyState { RemainingEnergy = 1f });
+        LogAssert.Expect(LogType.Error, new Regex("PowerSupplyExecutionSystem.*Invalid fuel consumption"));
         Simulation.UpdateAndComplete(_supplyExecution);
         Assert.AreEqual(0f, Supply(first).AllocatedEnergy);
         Assert.AreEqual(0f, Supply(second).AllocatedEnergy);
-        Simulation.Playback(_endBuilding);
+        Simulation.Playback(_endPower);
         Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
     }
 
@@ -926,8 +891,132 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         Assert.IsTrue(_entityManager.Exists(grid));
     }
 
+    [TestCase(true, false)]
+    [TestCase(true, true)]
+    [TestCase(false, false)]
+    [TestCase(false, true)]
+    public void PowerBudget_SelectedPoleInvalidBeforeReservation_DoesNotAllocate(
+        bool includeGenerator, bool removePoleEntity)
+    {
+        EnablePowerSystems();
+        SubmitPole(int2.zero, 1);
+        if (includeGenerator)
+        {
+            SubmitParticipant(BuildingTypeEnum.CoalGenerator, new int2(1, 0));
+        }
+        SubmitParticipant(BuildingTypeEnum.DroneStation, new int2(2, 0));
+        _simulation.Update();
+        _simulation.Update();
+        Entity pole = PoleAt(int2.zero);
+        Entity consumer = ParticipantAt(new int2(2, 0));
+        Entity generator = includeGenerator ? ParticipantAt(new int2(1, 0)) : Entity.Null;
+        if (includeGenerator)
+        {
+            _entityManager.SetComponentData(generator, new FuelEnergyState { RemainingEnergy = 10f });
+        }
+        PreparePowerInputs();
+        SetDemand(consumer, 2f);
+        Simulation.UpdateAndComplete(_topology);
+        var connectionBefore = Connection(consumer);
+        var generationBefore = includeGenerator ? Generation(generator) : default;
+        Assert.IsFalse(_entityManager.IsComponentEnabled<PowerSupplyReservation>(consumer));
+        if (removePoleEntity)
+        {
+            _entityManager.DestroyEntity(pole);
+        }
+        else
+        {
+            _entityManager.RemoveComponent<PowerGridTopologyDecision>(pole);
+        }
+
+        Assert.DoesNotThrow(() => Simulation.UpdateAndComplete(_budget));
+
+        Assert.IsFalse(_entityManager.IsComponentEnabled<PowerSupplyReservation>(consumer));
+        Assert.AreEqual(0f, Reservation(consumer).AllocatedEnergy);
+        Assert.AreEqual(0f, Supply(consumer).AllocatedEnergy);
+        Assert.AreEqual(connectionBefore, Connection(consumer));
+        Assert.IsTrue(_entityManager.Exists(connectionBefore.Grid));
+        if (includeGenerator)
+        {
+            Assert.AreEqual(generationBefore, Generation(generator));
+            Assert.AreEqual(10f, _entityManager.GetComponentData<FuelEnergyState>(generator).RemainingEnergy);
+        }
+        Simulation.Playback(_endPower);
+        Assert.IsFalse(SimulationFailureUtility.HasFatalError(_entityManager));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void PowerBudget_UnpreparedPlanOrDemand_DoesNotAllocate(bool generatorPlanUnprepared)
+    {
+        EnablePowerSystems();
+        SubmitPole(int2.zero, 1);
+        SubmitParticipant(BuildingTypeEnum.CoalGenerator, new int2(1, 0));
+        SubmitParticipant(BuildingTypeEnum.DroneStation, new int2(2, 0));
+        _simulation.Update();
+        _simulation.Update();
+        Entity generator = ParticipantAt(new int2(1, 0));
+        Entity consumer = ParticipantAt(new int2(2, 0));
+        _entityManager.SetComponentData(generator, new FuelEnergyState { RemainingEnergy = 10f });
+        PreparePowerInputs();
+        SetDemand(consumer, 2f);
+        Simulation.UpdateAndComplete(_topology);
+        var generationBefore = Generation(generator);
+        var connectionBefore = Connection(consumer);
+        if (generatorPlanUnprepared)
+        {
+            _entityManager.SetComponentEnabled<PowerGeneratorSupplyPlan>(generator, false);
+        }
+        else
+        {
+            _entityManager.SetComponentEnabled<PowerDemand>(consumer, false);
+        }
+
+        Simulation.UpdateAndComplete(_budget);
+
+        Assert.IsFalse(_entityManager.IsComponentEnabled<PowerSupplyReservation>(consumer));
+        Assert.AreEqual(generationBefore, Generation(generator));
+        Assert.AreEqual(0f, Supply(consumer).AllocatedEnergy);
+        Assert.AreEqual(10f, _entityManager.GetComponentData<FuelEnergyState>(generator).RemainingEnergy);
+        Assert.AreEqual(connectionBefore, Connection(consumer));
+        Simulation.Playback(_endPower);
+        Assert.IsFalse(SimulationFailureUtility.HasFatalError(_entityManager));
+    }
+
+    [TestCase(true)]
+    [TestCase(false)]
+    public void PowerExecution_UnpreparedPlanOrReservation_DoesNotConsume(bool generatorUnprepared)
+    {
+        EnablePowerSystems();
+        SubmitPole(int2.zero, 1);
+        SubmitParticipant(BuildingTypeEnum.CoalGenerator, new int2(1, 0));
+        SubmitParticipant(BuildingTypeEnum.DroneStation, new int2(2, 0));
+        _simulation.Update();
+        Entity generator = ParticipantAt(new int2(1, 0));
+        Entity consumer = ParticipantAt(new int2(2, 0));
+        _entityManager.SetComponentData(generator, new FuelEnergyState { RemainingEnergy = 10f });
+        PreparePowerInputs();
+        SetDemand(consumer, 2f);
+        ReservePower();
+        if (generatorUnprepared)
+        {
+            _entityManager.SetComponentEnabled<PowerGeneratorSupplyPlan>(generator, false);
+        }
+        else
+        {
+            _entityManager.SetComponentEnabled<PowerSupplyReservation>(consumer, false);
+        }
+
+        Simulation.UpdateAndComplete(_supplyExecution);
+
+        Assert.AreEqual(10f, _entityManager.GetComponentData<FuelEnergyState>(generator).RemainingEnergy);
+        Assert.AreEqual(0f, Supply(consumer).AllocatedEnergy);
+        Simulation.Playback(_endPower);
+        Assert.IsFalse(SimulationFailureUtility.HasFatalError(_entityManager));
+    }
+
     [Test]
-    public void PowerBudget_MissingReservation_ClearsOldSupplyDemandAndUsageBeforeFatal()
+    public void PowerPreparation_ResetClearsPreviousSupplyAndDemand()
     {
         EnablePowerSystems();
         SubmitPole(int2.zero, 1);
@@ -942,17 +1031,13 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         ReservePower();
         Simulation.UpdateAndComplete(_supplyExecution);
         Assert.AreEqual(2f, Supply(consumer).AllocatedEnergy);
-        _entityManager.SetComponentData(consumer, new PowerUsageResult { UsedEnergy = 1f });
-        _entityManager.RemoveComponent<PowerSupplyReservation>(consumer);
-        Simulation.UpdateAndComplete(_availability);
-        LogAssert.Expect(LogType.Error, new Regex("BuildingPowerDemandDecisionSystem.*Invalid consumer"));
+        Simulation.UpdateAndComplete(_frameReset);
         Simulation.UpdateAndComplete(_demand);
         Assert.AreEqual(0f, Supply(consumer).AllocatedEnergy);
         Assert.AreEqual(0f, Demand(consumer));
-        Assert.AreEqual(0f, _entityManager.GetComponentData<PowerUsageResult>(consumer).UsedEnergy);
-        Assert.IsFalse(_entityManager.IsComponentEnabled<PowerDemand>(consumer));
-        Simulation.Playback(_endBuilding);
-        Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
+        Assert.IsTrue(_entityManager.IsComponentEnabled<PowerDemand>(consumer));
+        Simulation.Playback(_endPower);
+        Assert.IsFalse(SimulationFailureUtility.HasFatalError(_entityManager));
     }
 
     [Test]
@@ -977,7 +1062,8 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         Assert.AreEqual(0f, Supply(consumer).AllocatedEnergy);
         Assert.IsFalse(_entityManager.IsComponentEnabled<PowerSupplyReservation>(consumer));
         Assert.IsFalse(_entityManager.IsComponentEnabled<PowerGeneratorSupplyPlan>(generator));
-        Assert.AreEqual(10f, _entityManager.GetComponentData<FuelEnergyState>(generator).RemainingEnergy);
+        Assert.AreEqual(9f, _entityManager.GetComponentData<FuelEnergyState>(generator).RemainingEnergy,
+            "활성 틱의 배정 1은 소비하고, 이후 비활성 소비자는 추가 연료를 쓰지 않는다.");
         _entityManager.RemoveComponent<Disabled>(consumer);
         _entityManager.RemoveComponent<Disabled>(generator);
         _simulation.Update();
@@ -985,30 +1071,314 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         RequestDemolition(generator);
         _simulation.Update();
         Assert.IsFalse(_entityManager.Exists(generator));
-        Assert.IsTrue(_entityManager.GetComponentData<MinerDecision>(consumer).CanMine);
+        Assert.IsTrue(_entityManager.GetComponentData<MinerWorkPreparation>(consumer).CanMine);
         Assert.AreEqual(1f, Demand(consumer));
         Assert.AreEqual(0f, Supply(consumer).AllocatedEnergy);
     }
 
+    [TestCase(0)]
+    [TestCase(50)]
+    public void PowerPhase_EndPowerConsumesBeforeBuilding_AndNewCoalStartsNextTick(int previousCoalCount)
+    {
+        EnablePowerSystems();
+        EnableProductionAndStorage();
+        Entities.CreateResourceNode(new int2(3, 0), ItemTypeEnum.Iron_Ore, 50);
+        SubmitPole(new int2(0, -2), 1);
+        SubmitParticipant(BuildingTypeEnum.CoalGenerator, new int2(1, 0));
+        SubmitParticipant(BuildingTypeEnum.Miner, new int2(3, 0));
+        _simulation.Update();
+        Entity generator = ParticipantAt(new int2(1, 0));
+        Entity miner = ParticipantAt(new int2(3, 0));
+        for (int i = 0; i < previousCoalCount; i++)
+        {
+            Entities.CreateStoredItem(generator, ItemTypeEnum.Coal);
+        }
+        Assert.IsTrue(_entityManager.GetComponentData<StorageFilter>(generator).IsItemAllowed(ItemTypeEnum.Coal));
+        Assert.IsFalse(_entityManager.GetComponentData<StorageFilter>(generator).IsItemAllowed(ItemTypeEnum.Iron_Ore));
+        Entities.CreateBelt(int2.zero, DirectionEnum.Right);
+        Entity incoming = Entities.CreateBeltItem(int2.zero, DirectionEnum.Right, 1f, itemType: ItemTypeEnum.Coal);
+        SyncStorageIndices();
+
+        _simulation.Update();
+        Assert.IsTrue(_entityManager.Exists(incoming));
+        Assert.AreEqual(generator, _entityManager.GetComponentData<ItemOwnership>(incoming).Owner);
+        Assert.AreEqual(previousCoalCount == 0 ? 1 : 50, _entityManager.GetBuffer<StoredItemElement>(generator).Length);
+        Assert.AreEqual(previousCoalCount == 0 ? 0f : 1f, Supply(miner).AllocatedEnergy, 0.00001f);
+        Assert.AreEqual(previousCoalCount == 0 ? 0f : 599f, _entityManager.GetComponentData<FuelEnergyState>(generator).RemainingEnergy, 0.00001f);
+        Assert.AreEqual(previousCoalCount == 0 ? 0f : 0.1f, _entityManager.GetComponentData<MinerState>(miner).Progress, 0.00001f);
+
+        _simulation.Update();
+        Assert.AreEqual(1f, Supply(miner).AllocatedEnergy, 0.00001f);
+        Assert.AreEqual(previousCoalCount == 0 ? 599f : 598f, _entityManager.GetComponentData<FuelEnergyState>(generator).RemainingEnergy, 0.00001f);
+        Assert.AreEqual(previousCoalCount != 0, _entityManager.Exists(incoming));
+        Assert.IsFalse(SimulationFailureUtility.HasFatalError(_entityManager));
+    }
+
+    [Test]
+    public void PowerPhase_PartialSupplyControlsProduction_AndDoesNotRefundFinishedWork()
+    {
+        EnablePowerSystems();
+        EnableProductionAndStorage();
+        Entities.CreateResourceNode(new int2(3, 0), ItemTypeEnum.Iron_Ore, 50);
+        SubmitPole(int2.zero, 1);
+        SubmitParticipant(BuildingTypeEnum.CoalGenerator, new int2(1, 0));
+        SubmitParticipant(BuildingTypeEnum.Miner, new int2(3, 0));
+        SubmitParticipant(BuildingTypeEnum.Crafter, new int2(4, 0));
+        _simulation.Update();
+        Entity generator = ParticipantAt(new int2(1, 0));
+        Entity miner = ParticipantAt(new int2(3, 0));
+        Entity crafter = ParticipantAt(new int2(4, 0));
+        _entityManager.SetComponentData(generator, new FuelEnergyState { RemainingEnergy = 1.5f });
+        _entityManager.SetComponentData(crafter, new CrafterState(1)
+        {
+            IsCraftingActive = true, Progress = 0.99f, Status = CrafterStatusEnum.Crafting
+        });
+        _simulation.Update();
+        Assert.AreEqual(0.5f, Supply(miner).SupplyRatio, 0.00001f);
+        Assert.AreEqual(0.05f, _entityManager.GetComponentData<MinerState>(miner).Progress, 0.00001f);
+        Assert.AreEqual(1f, _entityManager.GetComponentData<CrafterState>(crafter).Progress);
+        Assert.AreEqual(0f, _entityManager.GetComponentData<FuelEnergyState>(generator).RemainingEnergy);
+        Assert.AreEqual(1f, Supply(crafter).AllocatedEnergy, 0.00001f, "조기 완료해도 확정 소비는 환급하지 않는다.");
+
+        _simulation.Update();
+        Assert.AreEqual(0.05f, _entityManager.GetComponentData<MinerState>(miner).Progress, 0.00001f);
+        Assert.AreEqual(0f, Demand(crafter));
+        Assert.AreEqual(1, _entityManager.GetBuffer<ProductItemElement>(crafter).Length, "완료 결과 확정은 무전력에도 허용한다.");
+        Assert.IsFalse(SimulationFailureUtility.HasFatalError(_entityManager));
+    }
+
+    [Test]
+    public void PowerPhase_NoPowerPreservesNewCraftIngredients_ThenSupplyStartsCraft()
+    {
+        EnablePowerSystems();
+        EnableProductionAndStorage();
+        var command = _world.GetOrCreateSystemManaged<CommandGroup>();
+        command.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterRecipeCommandSystem>());
+        command.SortSystems();
+        SubmitPole(int2.zero, 1);
+        SubmitParticipant(BuildingTypeEnum.CoalGenerator, new int2(1, 0));
+        SubmitParticipant(BuildingTypeEnum.Crafter, new int2(3, 0));
+        _simulation.Update();
+        Entity generator = ParticipantAt(new int2(1, 0));
+        Entity crafter = ParticipantAt(new int2(3, 0));
+        Entity request = _entityManager.CreateEntity(typeof(ChangeCrafterRecipeRequest));
+        _entityManager.SetComponentData(request, new ChangeCrafterRecipeRequest(crafter, 1));
+        _simulation.Update();
+        Assert.IsFalse(_entityManager.Exists(request));
+        // 레시피 변경의 기존 재료 반환 이후 공급한다. 변경 전 버퍼를 새 레시피 재료로 재사용하지 않는다.
+        Entity ingredient = Entities.CreateStoredItem(crafter, ItemTypeEnum.Iron_Ore);
+        _simulation.Update();
+        Assert.IsTrue(_entityManager.IsComponentEnabled<PowerConsumer>(crafter));
+        Assert.IsFalse(_entityManager.IsComponentEnabled<PowerGenerator>(generator));
+        Assert.AreEqual(2f, Demand(crafter));
+        Assert.AreEqual(0f, Supply(crafter).AllocatedEnergy);
+        Assert.IsFalse(_entityManager.GetComponentData<CrafterState>(crafter).IsCraftingActive);
+        Assert.AreEqual(crafter, _entityManager.GetComponentData<ItemOwnership>(ingredient).Owner);
+        Assert.AreEqual(1, _entityManager.GetBuffer<StoredItemElement>(crafter).Length);
+
+        _entityManager.SetComponentData(generator, new FuelEnergyState { RemainingEnergy = 1f });
+        _simulation.Update();
+        Assert.IsTrue(_entityManager.GetComponentData<CrafterState>(crafter).IsCraftingActive);
+        Assert.AreEqual(0.05f, _entityManager.GetComponentData<CrafterState>(crafter).Progress, 0.00001f);
+        Assert.IsFalse(_entityManager.Exists(ingredient));
+        Assert.AreEqual(0f, _entityManager.GetComponentData<FuelEnergyState>(generator).RemainingEnergy);
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void PowerPhase_InvalidFuelStopsBuildingAndDrone_WithoutPartialCommit(bool duplicateReference)
+    {
+        EnablePowerSystems();
+        Entity counts = _entityManager.CreateEntity(typeof(PowerPhaseExecutionCounts));
+        var buildingExecution = _world.GetOrCreateSystemManaged<BuildingExecutionGroup>();
+        buildingExecution.AddSystemToUpdateList(_world.GetOrCreateSystem<PowerPhaseBuildingProbeSystem>());
+        buildingExecution.SortSystems();
+        var drone = _world.GetOrCreateSystemManaged<DroneSimulationGroup>();
+        var droneExecution = _world.GetOrCreateSystemManaged<DroneExecutionGroup>();
+        drone.AddSystemToUpdateList(droneExecution);
+        droneExecution.AddSystemToUpdateList(_world.GetOrCreateSystem<PowerPhaseDroneProbeSystem>());
+        droneExecution.SortSystems();
+        drone.SortSystems();
+        _simulation.AddSystemToUpdateList(drone);
+        _simulation.SortSystems();
+        Entities.CreateResourceNode(new int2(2, 0), ItemTypeEnum.Iron_Ore, 50);
+        SubmitPole(int2.zero, 1);
+        SubmitParticipant(BuildingTypeEnum.CoalGenerator, new int2(1, 0));
+        SubmitParticipant(BuildingTypeEnum.CoalGenerator, new int2(3, 0));
+        SubmitParticipant(BuildingTypeEnum.Miner, new int2(2, 0));
+        _simulation.Update();
+        Entity generator = ParticipantAt(new int2(1, 0));
+        Entity otherGenerator = ParticipantAt(new int2(3, 0));
+        Entity coal = Entities.CreateStoredItem(generator, ItemTypeEnum.Coal);
+        _entityManager.SetComponentData(generator, new FuelEnergyState { RemainingEnergy = 0f });
+        _entityManager.SetComponentData(otherGenerator, new FuelEnergyState { RemainingEnergy = 2f });
+        if (duplicateReference)
+        {
+            var stored = _entityManager.GetBuffer<StoredItemElement>(generator);
+            stored.Add(stored[0]);
+        }
+        else
+        {
+            _entityManager.SetComponentData(coal, ItemOwnership.WorldItem);
+        }
+        LogAssert.Expect(LogType.Error, new Regex("PowerSupplyExecutionSystem.*Invalid fuel consumption"));
+
+        _simulation.Update();
+        var result = _entityManager.GetComponentData<PowerPhaseExecutionCounts>(counts);
+        Assert.AreEqual(1, result.Building);
+        Assert.AreEqual(1, result.Drone);
+        Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
+        Assert.IsTrue(_entityManager.Exists(coal));
+        Assert.Greater(Generation(generator).FuelItemCount, 0);
+        Assert.AreEqual(0f, _entityManager.GetComponentData<FuelEnergyState>(generator).RemainingEnergy);
+        Assert.AreEqual(2f, _entityManager.GetComponentData<FuelEnergyState>(otherGenerator).RemainingEnergy);
+        Assert.AreEqual(0, GridCount());
+        using var errors = _entityManager.CreateEntityQuery(typeof(SimulationFatalError));
+        Assert.AreEqual(SimulationFailureStopScope.RemainingDomains,
+            errors.GetSingleton<SimulationFatalError>().StopScope);
+        _simulation.Update();
+        Assert.AreEqual(result.Building, _entityManager.GetComponentData<PowerPhaseExecutionCounts>(counts).Building);
+        Assert.AreEqual(result.Drone, _entityManager.GetComponentData<PowerPhaseExecutionCounts>(counts).Drone);
+
+    }
+
+    [Test]
+    public void PowerPhase_DemolitionReturnsOnlyUnconvertedCoal()
+    {
+        EnablePowerSystems();
+        SubmitPole(int2.zero, 1);
+        SubmitParticipant(BuildingTypeEnum.CoalGenerator, new int2(1, 0));
+        SubmitParticipant(BuildingTypeEnum.DroneStation, new int2(2, 0));
+        _simulation.Update();
+        Entity generator = ParticipantAt(new int2(1, 0));
+        Entity consumer = ParticipantAt(new int2(2, 0));
+        Entity remaining = Entities.CreateStoredItem(generator, ItemTypeEnum.Coal);
+        Entity converted = Entities.CreateStoredItem(generator, ItemTypeEnum.Coal);
+        PreparePowerInputs();
+        SetDemand(consumer, 1f);
+        ReservePower();
+        Simulation.UpdateAndComplete(_supplyExecution);
+        PublishTopology();
+        Assert.IsFalse(_entityManager.Exists(converted));
+        Assert.AreEqual(599f, _entityManager.GetComponentData<FuelEnergyState>(generator).RemainingEnergy);
+        RequestDemolition(generator);
+        _simulation.Update();
+        Assert.IsFalse(_entityManager.Exists(generator));
+        Assert.IsTrue(_entityManager.Exists(remaining));
+        Assert.AreEqual(Entity.Null, _entityManager.GetComponentData<ItemOwnership>(remaining).Owner);
+        Assert.IsFalse(_entityManager.Exists(converted));
+    }
+
+    [Test]
+    public void CommonFatal_EndBuildingStillFinishesDrone_AndStopsNextTick()
+    {
+        Entity counts = _entityManager.CreateEntity(typeof(PowerPhaseExecutionCounts));
+        var buildingExecution = _world.GetOrCreateSystemManaged<BuildingExecutionGroup>();
+        buildingExecution.AddSystemToUpdateList(_world.GetOrCreateSystem<PowerPhaseBuildingProbeSystem>());
+        buildingExecution.SortSystems();
+        var drone = _world.GetOrCreateSystemManaged<DroneSimulationGroup>();
+        var droneExecution = _world.GetOrCreateSystemManaged<DroneExecutionGroup>();
+        drone.AddSystemToUpdateList(droneExecution);
+        droneExecution.AddSystemToUpdateList(_world.GetOrCreateSystem<PowerPhaseDroneProbeSystem>());
+        droneExecution.SortSystems();
+        drone.SortSystems();
+        _simulation.AddSystemToUpdateList(drone);
+        _simulation.SortSystems();
+        LogAssert.Expect(LogType.Error, "[PowerPhaseTest] EndBuilding failure.");
+        var failureEcb = _endBuilding.CreateCommandBuffer();
+        SimulationFailureUtility.Record(ref failureEcb, "[PowerPhaseTest] EndBuilding failure.");
+        Entities.PrepareSimulationConfiguration();
+        _simulation.Update();
+        var result = _entityManager.GetComponentData<PowerPhaseExecutionCounts>(counts);
+        Assert.AreEqual(1, result.Building);
+        Assert.AreEqual(1, result.Drone);
+        using var errors = _entityManager.CreateEntityQuery(typeof(SimulationFatalError));
+        Assert.AreEqual(SimulationFailureStopScope.NextTick, errors.GetSingleton<SimulationFatalError>().StopScope);
+        _simulation.Update();
+        Assert.AreEqual(result.Building, _entityManager.GetComponentData<PowerPhaseExecutionCounts>(counts).Building);
+        Assert.AreEqual(result.Drone, _entityManager.GetComponentData<PowerPhaseExecutionCounts>(counts).Drone);
+    }
+
+    [Test]
+    public void ApplyWithoutPreparedSelection_WithNoActivePoles_PreservesPublishedGrid()
+    {
+        SubmitPole(int2.zero, 1);
+        SubmitParticipant(BuildingTypeEnum.Miner, new int2(2, 0));
+        _simulation.Update();
+        _simulation.Update();
+        Entity pole = PoleAt(int2.zero);
+        Entity participant = ParticipantAt(new int2(2, 0));
+        var published = Connection(participant);
+        _entityManager.AddComponent<Disabled>(pole);
+        _entityManager.SetComponentEnabled<PowerGridConnectionDecision>(participant, false);
+
+        Simulation.UpdateAndComplete(_topologyApply);
+        Simulation.Playback(_endPower);
+
+        Assert.AreEqual(published.Grid, Connection(participant).Grid);
+        Assert.AreEqual(published.PowerPole, Connection(participant).PowerPole);
+        Assert.IsTrue(_entityManager.Exists(published.Grid));
+        Assert.IsFalse(SimulationFailureUtility.HasFatalError(_entityManager));
+    }
+
+    private void EnableProductionAndStorage()
+    {
+        var buildingDecision = _world.GetOrCreateSystemManaged<BuildingDecisionGroup>();
+        buildingDecision.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerDecisionSystem>());
+        buildingDecision.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterDecisionSystem>());
+        buildingDecision.SortSystems();
+
+        var execution = _world.GetOrCreateSystemManaged<BuildingExecutionGroup>();
+        execution.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerExecutionSystem>());
+        execution.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterExecutionSystem>());
+        var decision = _world.GetOrCreateSystemManaged<BuildingDecisionGroup>();
+        decision.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemInputDecisionSystem>());
+        var reservation = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
+        reservation.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingStorageInputReservationSystem>());
+        var apply = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
+        apply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
+        apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
+        apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemLifecycleApplySystem>());
+        apply.AddSystemToUpdateList(_world.GetOrCreateSystem<CrafterStateApplySystem>());
+        var sync = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
+        sync.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingSpatialSyncSystem>());
+        sync.AddSystemToUpdateList(_world.GetOrCreateSystem<BeltSpatialSyncSystem>());
+        sync.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemSpatialSyncSystem>());
+        decision.SortSystems();
+        reservation.SortSystems();
+        execution.SortSystems();
+        apply.SortSystems();
+        sync.SortSystems();
+    }
+
+    private void SyncStorageIndices()
+    {
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<BuildingSpatialSyncSystem>());
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<BeltSpatialSyncSystem>());
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<ItemSpatialSyncSystem>());
+    }
+
     private void EnablePowerSystems()
     {
-        _demand = _world.GetOrCreateSystem<BuildingPowerDemandDecisionSystem>();
+        _demand = _world.GetOrCreateSystem<BuildingPowerDemandPreparationSystem>();
         _availability = _world.GetOrCreateSystem<PowerSupplyDecisionSystem>();
         _budget = _world.GetOrCreateSystem<PowerBudgetReservationSystem>();
         _supplyExecution = _world.GetOrCreateSystem<PowerSupplyExecutionSystem>();
-        _minerDecision = _world.GetOrCreateSystem<MinerDecisionSystem>();
-        _crafterDecision = _world.GetOrCreateSystem<CrafterDecisionSystem>();
-        var decision = _world.GetOrCreateSystemManaged<BuildingDecisionGroup>();
-        var reservation = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
-        var execution = _world.GetOrCreateSystemManaged<BuildingExecutionGroup>();
+        _minerDecision = _world.GetOrCreateSystem<MinerWorkPreparationSystem>();
+        _crafterDecision = _world.GetOrCreateSystem<CrafterWorkPreparationSystem>();
+        var preparation = _world.GetOrCreateSystemManaged<SimulationPreparationGroup>();
+        var decision = _world.GetOrCreateSystemManaged<PowerDecisionGroup>();
+        var reservation = _world.GetOrCreateSystemManaged<PowerReservationGroup>();
+        var execution = _world.GetOrCreateSystemManaged<PowerExecutionGroup>();
         var sync = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
-        decision.AddSystemToUpdateList(_minerDecision);
-        decision.AddSystemToUpdateList(_crafterDecision);
-        decision.AddSystemToUpdateList(_demand);
+        preparation.AddSystemToUpdateList(_minerDecision);
+        preparation.AddSystemToUpdateList(_crafterDecision);
+        preparation.AddSystemToUpdateList(_demand);
         decision.AddSystemToUpdateList(_availability);
         reservation.AddSystemToUpdateList(_budget);
         execution.AddSystemToUpdateList(_supplyExecution);
         sync.AddSystemToUpdateList(_world.GetOrCreateSystem<ResourceSpatialSyncSystem>());
+        preparation.SortSystems();
         decision.SortSystems();
         reservation.SortSystems();
         execution.SortSystems();
@@ -1017,6 +1387,7 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
 
     private void PreparePowerInputs()
     {
+        Simulation.UpdateAndComplete(_frameReset);
         Simulation.UpdateAndComplete(_minerDecision);
         Simulation.UpdateAndComplete(_crafterDecision);
         Simulation.UpdateAndComplete(_connectionSelection);
@@ -1033,7 +1404,7 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
     private void PublishTopology()
     {
         Simulation.UpdateAndComplete(_topologyApply);
-        Simulation.Playback(_endBuilding);
+        Simulation.Playback(_endPower);
         Simulation.UpdateAndComplete(_sync);
     }
 
@@ -1042,6 +1413,7 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         // 실제 연구/충전 Producer는 후속이다. 배분 입력만 명시적으로 제공한다.
         _entityManager.SetComponentData(consumer, new PowerDemand { RequestedEnergy = energy });
         _entityManager.SetComponentEnabled<PowerDemand>(consumer, true);
+        _entityManager.SetComponentEnabled<PowerConsumer>(consumer, energy > 0f);
     }
 
     private float Demand(Entity entity) => _entityManager.GetComponentData<PowerDemand>(entity).RequestedEnergy;
@@ -1167,5 +1539,29 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         [ReadOnly] public NativeParallelHashMap<Entity, PowerGridConnection>.ReadOnly Map;
         public NativeArray<int> Observed;
         public void Execute() => Observed[0] = Map.Count();
+    }
+}
+
+public struct PowerPhaseExecutionCounts : IComponentData
+{
+    public int Building;
+    public int Drone;
+}
+
+[DisableAutoCreation]
+public partial struct PowerPhaseBuildingProbeSystem : ISystem
+{
+    public void OnUpdate(ref SystemState state)
+    {
+        SystemAPI.GetSingletonRW<PowerPhaseExecutionCounts>().ValueRW.Building++;
+    }
+}
+
+[DisableAutoCreation]
+public partial struct PowerPhaseDroneProbeSystem : ISystem
+{
+    public void OnUpdate(ref SystemState state)
+    {
+        SystemAPI.GetSingletonRW<PowerPhaseExecutionCounts>().ValueRW.Drone++;
     }
 }

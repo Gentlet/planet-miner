@@ -32,7 +32,8 @@
 Initialization에서 설정과 초기 청크 요청을 준비한다. SimulationSystemGroup 아래 GameSimulationGroup은 다음 순서로 각 그룹을 한 번씩 실행한다.
 
 ```text
-Command → EndCommand
+Command → EndCommand → Preparation
+        → PowerSimulation: Decision → Reservation → Execution → StateApply → EndPower
         → BuildingSimulation: Decision → Reservation → Execution → StateApply(마지막 완공)
         → EndBuilding
         → DroneSimulation: Decision → Reservation → Execution → StateApply
@@ -44,16 +45,18 @@ Command → EndCommand
 - 각 도메인은 한 번만 실행한다. 건물의 이번 틱 입고 자재를 재차 생산 판단하지 않는다. 드론은 드론 실행 전 계획을 모두 준비하며, 드론 처리 도중 새 수집품이나 새 공간을 기존 계획에 추가하지 않는다.
 - 작업·경로·배정과 행동 결과는 EndSimulation에 공개한다. 새 작업·배정·경로는 다음 틱부터 사용한다.
 - 완공은 BuildingStateApply 마지막에서 판단한다. 이번 틱 드론의 마지막 납품·방해물 회수는 다음 틱 완공 판정에 반영된다. 이번 틱 완공된 건물은 드론에 보이지만 자체 생산·출고는 다음 틱부터 한다.
-- GameSimulationGroup은 틱 시작에 PrefabDatabaseReady, 건물·아이템·레시피·자원/바닥 설정 엔티티와 필수 버퍼, SimulationFatalError를 검사한다. 중간 EndBuilding에서 오류가 확정되어도 현재 틱은 끝까지 수행하고 다음 틱부터 차단한다. 현재 틱 전체 rollback은 보장하지 않는다.
+- GameSimulationGroup은 틱 시작에 PrefabDatabaseReady, 건물·아이템·레시피·자원/바닥 설정 엔티티와 필수 버퍼, SimulationFatalError를 검사한다. 중간 EndBuilding에서 오류가 확정되어도 현재 틱은 끝까지 수행하고 다음 틱부터 차단한다. 현재 틱 전체 rollback은 보장하지 않는다. Power 검증 실패는 EndPower에서 공통 SimulationFatalError의 StopScope=RemainingDomains로 게시하여 이번 틱 Building/Drone도 건너뛴다.
 
 | 그룹 / 소스 위치 | 시스템과 책임 |
 | --- | --- |
 | Initialization / Systems/Initialization | 설정 게시·초기 청크 요청과 프리팹 DB 준비를 처리한다. |
 | Command / Systems/Command | 청크·자원 요청, 레시피 변경, 배치·철거 승인·공사 취소를 처리한다. EndCommandEntityCommandBufferSystem이 마지막에 현장·자원 생성과 반환·요청 삭제를 확정한다. |
-| BuildingDecision / Systems/Buildings/Decision, Items/Decision | 기존 생산/이동/입출고 결정과 PowerGridConnectionDecisionSystem의 공급 선택을 작성한다. BuildingPowerDemandDecisionSystem은 생산 결정 뒤 수요/사용을 초기화하고 실제 작업 수요를 준비한다. PowerSupplyDecisionSystem은 공급/예약/발전 계획을 초기화하고 가용량을 판단한다. |
-| BuildingReservation / Systems/Buildings/Reservation | 기존 저장 슬롯/출고·라우팅 경합을 중재한다. OrderLast의 PowerGridTopologyReservationSystem이 연결 집합/유지권/대표를 준비하고 그 뒤 PowerBudgetReservationSystem이 현재 대표·수요/가용량으로 전력 예산을 배정한다. |
-| BuildingExecution / Systems/Buildings/Execution | PowerSupplyExecutionSystem은 OrderFirst로 예산의 연결/수요/연료/총량을 최종 검사하고 공급 결과를 게시한다. 기존 벨트 위치·채굴/제작 진행·결과·재료 선소비는 유지하며 전력에 따른 실제 진행/사용은 8.7 후속이다. |
-| BuildingStateApply / Systems/Buildings/StateApply, Items/StateApply, Construction/StateApply | Storage/Routing 뒤 일반 Ownership을 적용한다. 아이템·건물 수명주기를 처리하며 ConstructionLifecycleApplySystem은 OrderLast로 현재 월드 Owner/GridPosition·활성 Destroy와 도착 자재를 검사한다. PowerGridTopologyApplySystem은 망/공급 선택을 최종 검사하고 망 수명주기·참가자 연결/참조 정리를 같은 ECB에 기록한다. EndBuildingEntityCommandBufferSystem은 BuildingSimulationGroup의 마지막 직접 자식이다. |
+| Preparation / Systems/Buildings/Preparation | 공급/검증 scratch 초기화 뒤 MinerWorkPreparation/CrafterWorkPreparation에 전력 외 작업 자격을 작성하고 전력 요청을 준비한다. 활성 소비 역할은 양수 요청이며 전력 부족으로 의도를 지우지 않는다. |
+| PowerSimulation / Systems/Power | Decision은 선택/가용량, Reservation은 망/예산/연료 계획, Execution은 준비·실제 연료 소비 조건 확인 후 확정 소비/공급 게시, StateApply/EndPower는 망/연료 실물 공개를 소유한다. |
+| BuildingDecision / Systems/Buildings/Decision, Items/Decision | 기존 이동·입출고·라우팅·아이템 생성 자격을 판단한다. MinerDecisionSystem/CrafterDecisionSystem은 준비 자격과 공급을 읽어 실행/완료 출력·상태 후보를 작성한다. |
+| BuildingReservation / Systems/Buildings/Reservation | 기존 저장 슬롯/출고·라우팅 경합을 중재한다. EndPower에서 비워진 연료 공간을 이번 틱 입고에 사용한다. |
+| BuildingExecution / Systems/Buildings/Execution | 벨트와 생산 진행/재료 선소비를 처리한다. Miner/Crafter는 확정 공급률·에너지 한도 내에서 진행하고 무전력 신규 착수는 재료를 보존한다. 완료 결과 확정은 전력 때문에 막지 않는다. |
+| BuildingStateApply / Systems/Buildings/StateApply, Items/StateApply, Construction/StateApply | 기존 Storage/Routing/Ownership·일반 아이템/건물 수명주기를 적용한다. ConstructionLifecycleApplySystem은 마지막 완공을 담당하며 EndBuilding은 건물 도메인의 마지막 직접 자식이다. 전력망/연료 실물은 앞선 EndPower에서 확정한다. |
 | DroneDecision / Systems/Drones/Decision | DroneTaskDecisionSystem은 생성·무효화·경로 의도와 배정 후보를, DroneItemTransferDecisionSystem은 행동 자격을 작성한다. |
 | DroneReservation / Systems/Drones/Reservation | ConstructionSupplyReservationSystem은 미공개·무효 예약을 정산한 뒤 후보를 선택하고 현장 공급량을 예약한다. |
 | DroneExecution / Systems/Drones/Execution | DroneItemTransferExecutionSystem은 OrderFirst로 건물 종료 상태 기준 실물·수량·공간 계획을 준비한다. DroneTaskExecutionSystem은 생성·경로 명령과 순번 발급·최종 ECB 기록을 소유한다. |
@@ -70,6 +73,7 @@ Command → EndCommand
 | --- | --- |
 | Initialization | 현재 `*InitializationSystem`, `*InitSystem`, `*LoadSystem`, `*BootstrapSystem`을 사용한다. 로드·게시 책임과 BuildingConfigLoadSystem.cs의 예외는 아래 초기화 절을 따른다. |
 | Command | `*CommandSystem`. 외부 입력과 시스템 내부에서 전달한 요청을 처리한다. |
+| Preparation | `*PreparationSystem`. 전력 외 작업 자격과 요청 근거를 준비 컴포넌트에 작성한다. |
 | Decision | `*DecisionSystem` |
 | Reservation | `*ReservationSystem` |
 | Execution | `*ExecutionSystem`. 진행도·재료 선소비 등 원본 값도 소유 계약에 따라 변경한다. |
@@ -98,7 +102,7 @@ DroneTaskCandidateDecisionElement는 Decision이 매 틱 Clear하고 다시 만�
 다음 추천인 [공통 적재량 초기화 검토안](Docs/Specifications/DroneCapacityInitializationPlan.md)은 설정 출처·오류 정책·기존 singleton 처리 결정 전의 제안으로 구현 승인이 아니다. 개발 마일스톤 Phase7 등의 숫자는 런타임 그룹 개수를 뜻하지 않는다.
 ## 핵심 데이터와 변경 규칙
 
-2026-10-14 Task 8.1~8.5를 구현했다. 공통 생성/완공은 전신주/주 시설의 자기 참조와 일반 참가자의 초기 연결, MainFacility/CoalGenerator 발전 역할/계획, MainFacility/Miner/Crafter/ResearchBuilding/DroneStation 소비 역할/수요/미게시 예약/공급/사용 상태를 부착한다. CoalGenerator 연료 상태는 0으로 시작한다. Decision은 실제 Miner/Crafter 수요와 가용량을, Topology 뒤 Reservation은 예산을, Execution 처음은 최종 검사/공급 게시를 소유한다. PowerDemand/PowerGeneratorSupplyPlan/PowerSupplyReservation은 enableable 준비 상태이며 정상 0과 미준비를 구분한다. PowerSupplyReservation의 기준 대표/수요는 게시 직전 대조하는 예산 근거다. 기초 발전 우선·정격 기준 동일 가동률과 연료 한도 제한, 요청 수요 기반 공통 공급률, 같은 틱 미사용 예산 재배분 금지를 적용한다. 망 집계는 임시 double Native 맵이고 개별 float 예산을 아래로 반올림해 소비자 합계가 발전기 배정을 넘지 않게 한다. 집계는 이번 틱 선택/Topology 대표를 사용하고 공개 Grid/공간 인덱스나 별도 시계/영속 집계/연결 스냅샷을 쓰지 않는다. Job Lookup 의존성·입력 해제와 동기 검사 시 Writer 완료를 등록한다. 입력 실패/미준비/최종 손상은 정상 공급으로 게시하지 않으며 현재 Fatal·다음 틱 차단 계약을 유지한다. 망 수명주기/연결은 기존 Apply의 같은 EndBuilding ECB이고 공급 Result 필드 게시와 구분한다. 생성/새 입고는 다음 틱부터, 승인 철거는 이번 틱부터 반영한다. 8.5는 기초 발전/이미 전환된 RemainingEnergy만 읽고 미전환 Coal을 공급하지 않으며 연료/진행량/실제 사용을 변경하지 않는다. 실물 전환/정산은 8.6, 생산 사용은 8.7, 연구/충전과 주 시설 자동 시작은 각각 후속이다. 이번 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·ready/비컴파일/비리로드·최신 runtime/Editor DLL과 선택 EditMode 76/76(전력 38·생성 11·완공 8·철거 19)을 확인했다. 이전 실행과 합산하지 않으며 Play Mode·베이킹·Player 빌드·성능은 미수행이다. [전력 명세](Docs/Specifications/PowerGrid.md)의 현재 코드/기획/검증을 구분한다.
+2026-10-15 Preparation 이름을 유지하고 준비/실행 결정 컴포넌트를 분리했다. Preparation만 MinerWorkPreparation/CrafterWorkPreparation을 작성하며 enable은 준비 완료이고 작업 불가도 정상 준비 결과다. BuildingPowerDemandPreparationSystem은 이 자격으로 전력 요청을 작성한다. BuildingDecision만 MinerDecision/CrafterDecision/CrafterStateDecision을 작성하고 공급과 완료 출력/상태를 판단한다. Power는 연결/가용량·망/예산·연료 전환/배정 소비·공급을 소유한다. PowerFrameState는 제거하고 공통 SimulationFatalError.StopScope를 사용한다. Power는 RemainingDomains로 같은 틱 Building/Drone을, 기존 오류의 NextTick은 다음 게임 틱을 차단한다. 기초 우선·정격 분담/연료 한도·미사용 배정 소비와 환급/재배분 금지·새 입고/참가자의 다음 틱 참여를 유지한다. 실제 소비할 연료 조건을 모두 확인한 뒤 소비하며 EndPower에 연료 실물/망을 확정한다. 이번 준비/결정 분리·공통 Fatal·Job 의존성 변경은 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·Editor ready/비컴파일/비리로드·최신 runtime/Editor DLL과 관련 선택 EditMode 170/170(실패·생략·불확정 0)으로 확인했다. Play Mode·베이킹·Player 빌드·성능은 미수행이다. 이전 157/157은 이 분리 전의 실행 기록이다. [전력 명세](Docs/Specifications/PowerGrid.md)를 따른다.
 
 ### 공간과 작업 의존성
 
@@ -106,7 +110,7 @@ DroneTaskCandidateDecisionElement는 Decision이 매 틱 Clear하고 다시 만�
 - `BeltSpatialIndex`는 셀→`BeltInfo`, `BuildingSpatialIndex`는 점유 셀→`BuildingInfo`, `ResourceSpatialIndex`는 셀→자원 엔티티, `ItemSpatialIndex`는 셀→복수 월드 아이템을 저장한다. 원본 ECS에서 파생한 검색용 데이터이며 생성·갱신·해제 위치는 다음 수명 관리 절을 따른다. `ChunkMapSystem`은 현재 소스에 없다.
 - 인덱스는 Synchronization 이전의 구조 변경을 즉시 반영하지 않는다. 동일 프레임 배치·입출고·스폰 경합은 해당 요청/예약 경계에서 처리하며, 인덱스만 조회하고 이미 반영됐다고 간주하지 않는다.
 - 청크 변환은 `Chunks/ChunkUtility`의 floor division, 방향 오프셋은 `DirectionExtensions`, 라우팅 회전·포트 계산은 `RoutingDirectionUtility`를 사용한다. Footprint 정규화·회전 계산은 `Common/BuildingFootprintUtility.GetEffectiveSize`를 사용한다. `BuildingFootprint.Size`는 현장과 완공 건물 모두 방향 적용 전 기본 크기다. 크기 원본은 `BuildingConfigElement.Footprint`이며 건물 종류·티어 조합별로 고정한다. 배치 후보는 Config 크기의 스냅샷이고 다른 크기를 거절한다. 직접 생성의 `(0,0)`은 생략이며 Config를 사용하고 그 외 입력은 Config와 일치해야 한다. DB/타입 기본 크기 fallback은 없다. 동명 확장 메서드도 같은 계산을 호출하며 각 Reader가 한 번 회전한다. 크기 변경은 요청→생성→인덱스의 회전 적용 횟수까지 추적한다.
-- 구조 변경은 세 경계에서 확정한다. Command 요청은 EndCommandEntityCommandBufferSystem, 건물·아이템·공사 완공은 EndBuildingEntityCommandBufferSystem, 드론 작업·경로·배정·행동 결과는 EndSimulationEntityCommandBufferSystem에 기록한다. 실제 생성·삭제·렌더 태그 변경은 해당 Playback에서 확정되고 공간 인덱스는 마지막 Synchronization에서 갱신된다. 구조 변경 전후에 DynamicBuffer를 보관하지 말고 필요하면 ToNativeArray로 복사한 뒤 다시 얻는다. 기존 DynamicBufferCopyUtility는 현재 소스에 없다.
+- 구조 변경은 네 경계에서 확정한다. Command는 EndCommand, 전력망/전환 연료는 EndPower, 건물·일반 아이템·완공은 EndBuilding, 드론은 EndSimulation에 기록한다. Playback과 마지막 Synchronization의 인덱스 갱신을 구분한다. 구조 변경 전후 DynamicBuffer를 보관하지 않고 필요한 경우 복사 후 재조회한다.
 
 ### 공유 인덱스와 Fence의 수명·등록 관리
 
@@ -123,7 +127,7 @@ DroneTaskCandidateDecisionElement는 Decision이 매 틱 Clear하고 다시 만�
 
 - **생성·공개:** 소유 시스템의 `OnCreate`가 `Allocator.Persistent` 맵을 생성하고, 새 singleton 엔티티 하나에 인덱스와 초기 Fence를 함께 게시한다. 소비 시스템은 공유 맵을 빌려 사용하며 별도 맵·Fence를 중복 생성하거나 Dispose하지 않는다.
 - **내용 갱신:** 소유 시스템의 `OnUpdate`가 Synchronization에서 Clear → Populate를 예약하고 최종 Writer를 등록한다. 원본 엔티티가 0개여도 Clear한다. 맵의 수명과 매 틱 내용 갱신은 서로 다른 책임이다.
-- **Reader Job 등록:** 공유 맵을 읽는 Job을 예약하는 시스템이 `state.Dependency`와 `GetReaderDependency()`를 결합하고, 반환 핸들을 해당 Fence의 `AddReader(handle)`와 자신의 `state.Dependency`에 등록한다. 예를 들어 Resource Reader Job은 MinerDecisionSystem이, Belt Reader Job은 벨트·입출고·라우팅·예약 시스템이 예약한다.
+- **Reader Job 등록:** 공유 맵을 읽는 Job을 예약하는 시스템이 `state.Dependency`와 `GetReaderDependency()`를 결합하고, 반환 핸들을 해당 Fence의 `AddReader(handle)`와 자신의 `state.Dependency`에 등록한다. 예를 들어 Resource Reader Job은 MinerWorkPreparationSystem이, Belt Reader Job은 벨트·입출고·라우팅·예약 시스템이 예약한다.
 - **Writer Job 등록:** 공유 맵을 쓰는 Job을 예약하는 시스템이 `GetWriterDependency()`로 이전 Writer와 누적 Reader를 의존성에 포함하고, 최종 쓰기 핸들을 `SetWriter(handle)`와 자신의 `state.Dependency`에 등록한다.
 - **메인 스레드 동기 접근:** 직접 조회 전에 마지막 Writer 완료를 확보한다. BuildingPlacementCommandSystem은 필요한 세 Writer 핸들을 결합하여 완료하고, WorldInvariantValidationSystem은 해당 Fence를 Complete한 뒤 검사한다. 동기 조회에는 Reader Job 등록을 적용하지 않는다. Clear·Capacity 변경·Dispose 같은 직접 쓰기 전에는 `Fence.Complete()`로 Writer와 모든 Reader를 기다린다. ECS 컴포넌트 의존성만으로 공유 맵 접근이 동기화된다고 가정하지 않는다.
 - **핸들 추적 정리:** `SetWriter`는 새 Writer를 저장하고 Reader 추적 핸들을 비운다. 선행 Reader가 새 Writer의 의존성에 포함되어야 하며, `SetWriter` 자체가 완료를 기다리지는 않는다. `Complete`는 Writer와 Reader를 기다린 뒤 양쪽 핸들을 초기화한다. Reader별 `RemoveReader`나 소비자 `OnDestroy`의 등록 해제 API는 없다.
@@ -131,6 +135,21 @@ DroneTaskCandidateDecisionElement는 Decision이 매 틱 Clear하고 다시 만�
 - **ECB Producer 등록:** 현재 managed ECB 시스템의 `CreateCommandBuffer` 경로에서 Job이 ECB에 기록하면 해당 종료 시스템의 `AddJobHandleForProducer(handle)`에도 기록 핸들을 등록한다. 이는 공유 맵의 Reader/Writer 등록과 별도이며 하나로 다른 쪽을 대신하지 않는다. 메인 스레드에서만 ECB를 기록하고 Job을 예약하지 않는 경로에는 Producer JobHandle이 없다.
 - **다른 공유 자료의 소유자:** GeneratedChunkTracker는 ChunkLoadCommandSystem의 `OnCreate`에서 singleton이 없을 때 생성하고 기존 singleton은 재사용한다. Map/Pending은 같은 시스템의 Command `OnUpdate`가 메인 스레드에서 갱신하며, `OnDestroy`는 직접 생성했는지와 무관하게 조회한 singleton의 생성된 집합을 Dispose한다. 공간 Fence는 사용하지 않는다. 새 공유 자료도 수명 소유자·게시 엔티티·접근 방식·갱신 페이즈를 먼저 정하고, Job 접근이 있으면 그에 맞는 의존성 계약을 명시한다.
 - **전력 공개 연결 자료:** PowerGridConnectionIndex/PowerGridConnectionIndexFence는 PowerGridConnectionSyncSystem이 같은 singleton에 생성하고 Synchronization에서 Query의 공개 연결을 Clear/재등록하며 종료 시 Fence 완료 후 맵을 Dispose한다. 위 Reader/Writer·재할당·해제 계약을 따른다. 위치/점유를 복제하지 않는 Entity→연결 맵이며 실제 제품 Reader는 후속이다. 같은 틱 준비는 이 맵 대신 PowerGridTopologyDecision/PowerGridConnectionDecision을 사용한다.
+
+### 전력 검증 scratch와 Job 경계
+
+이번 소유자/Lookup 분리 변경은 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·Editor ready/비컴파일/비리로드·최신 runtime/Editor DLL과 관련 선택 EditMode 170/170(실패·생략·불확정 0)으로 확인했다. Play Mode·베이킹·Player 빌드·성능은 미수행이다.
+
+- PowerSimulationGroup은 단계 구성만 담당한다. PowerValidationInitializationSystem은 OnCreate에서 비공개 NativeReference<PowerValidationResult>를 Persistent로 생성한다. 값은 틱 내 검증 결과이며 ECS 상태/설정/연결을 복제하지 않는다. Preparation의 PowerSupplyResetPreparationSystem이 Reset Job을 예약한다.
+- 모든 전력 소비자는 GetDependency(state.Dependency)로 선행 scratch 접근을 결합하고 최종 작업/해제 핸들을 소유자의 Register에 등록한다. 이 전력 내부 체인은 첫 오류 보존과 소비 전 연료 조건 확인을 위해 순서를 유지하며 개별 선택/수요/가용량 Job은 병렬 실행한다.
+- 입력 Entity 목록은 ToEntityListAsync와 deferred array로 전달한다. 검증 Job은 필요한 RO Lookup만 직접 받고 소비는 별도 RW Job이 소유한다. 공통 PowerReadContext와 반복 소비자/발전기·선택 검증 Job은 제거했다. EndPower는 소유자의 체인 완료/오류 인계 후 공통 Fatal과 ECB를 공개한다. 소유자는 OnDestroy에서 마지막 접근 완료 후 scratch를 Dispose한다. ECS 의존성·ECB Producer 등록은 별도로 유지한다.
+- 예산 Reservation은 호출별 로컬 Ready로 준비·대표·배분 수치 검사를 전달한다. 미준비 계획·수요나 무효 대표로 검증이 조기 반환하면 후속 배분·예약 게시를 생략하고 Ready 해제 핸들도 소유자에 등록한다. 공급 결과 초기화는 Preparation의 단독 책임이며 Power Decision에서 반복하지 않는다.
+
+2026-10-15 검수 보완은 선택 전신주 삭제/토폴로지 제거·미준비 계획/수요의 회귀 6사례를 추가하고 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·Editor ready/비컴파일/비리로드·최신 runtime/Editor DLL과 관련 선택 EditMode 112/112(실패·생략·불확정 0)을 확인했다. 이전 170/170과 별도 실행이며 대상·한계는 [전력 명세](Docs/Specifications/PowerGrid.md#검수-지적-보완-2026-10-15)를 따른다.
+
+- 전력 설정은 게시 전에 검증하고 필수 구성은 공통 생성이 부착한다. 위치·방향·footprint·선택·수요·배정은 Power 내부의 지정 Writer 이후 바뀌지 않는다. 후속 단계는 그 계약을 신뢰하며 같은 틱 원본/계획을 재대조하지 않는다. 이전 공개 망의 유지권 검사는 Topology Reservation에 한 번, 실제 소비할 석탄·잔량/수량/한도 검사는 Execution에 한 번 남긴다. 소비/망 적용의 준비 누락 차단, 일반 소유 버퍼의 개발용 불변식 검사, Fatal 중단 범위와 해제/ECB 핸들 등록은 유지한다. 자세한 Writer 표는 [전력 명세](Docs/Specifications/PowerGrid.md#writer와-검사-경계-2026-10-15)를 따른다.
+
+2026-10-15 Writer 경계 정리는 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·Editor ready/비컴파일/비리로드·최신 runtime/Editor DLL과 관련 선택 EditMode 174/174(실패·생략·불확정 0)을 확인했다. 이전 170/170·112/112과 별도 실행이며 대상과 미수행 범위는 전력 명세를 따른다.
 
 ### 아이템·결정·요청
 
@@ -231,7 +250,7 @@ DroneTaskCandidateDecisionElement는 Decision이 매 틱 Clear하고 다시 만�
 - 2026-09-30 사용자 확정: 일반 벨트끼리의 T형 직접 합류는 자동 경합 중재·사전 대기·교착 해소 보장 대상에서 제외한다. 합류/분배 중재는 Merger/Splitter의 역할이며 이를 일반 벨트 예약으로 확장하지 않는다. 현재 외향 벨트의 바로 뒤 셀은 출처 건물 또는 라우터이므로, 해당 출력 셀에 추가 일반 벨트가 직접 진입하는 측면 합류도 통합 예약 구현의 근거로 삼지 않는다. 이 정책이 기존 겹침을 복구하거나 불변식 위반을 면제한다는 뜻은 아니다.
 - 분배/합류: `SplitterDecisionSystem`은 입력 벨트 기준 forward→right→left, `MergerDecisionSystem`은 출력 벨트 기준 back→left→right 순환 후보를 선택한다. 예약을 통과한 `RoutingTransferDecision`은 `RoutingApplySystem`이 실제 이동과 커서 갱신에 사용한다. 설치 우선순위는 `PlacementStamp`와 해당 비교 구현을 따른다.
 - 채굴: Decision이 footprint 아래 첫 유효 자원과 동일 품목 1스택 출력 여유를 검사한다. Execution은 진행도·자원량과 `ProductResult`를 갱신하며 유한 자원 고갈은 ECB로 삭제한다. `ResourceConfig` 부재 시 기본은 유한 자원이다.
-- 제작: `CrafterDecisionSystem`이 실행 결정과 `CrafterStateDecision`을 나누어 기록한다. Decision과 Execution은 기존 `RecipeConfigLookupUtility.HasRequiredIngredients`로 모든 유일한 재료 요구량과 비활성 `DestroyItemRequest`를 가진 보관 실물을 검사한다. Execution은 전체 확인이 성공한 뒤에만 재료를 선소비하고 진행/출력 결과를 만들며, 부족하면 버퍼·삭제 요청·진행도를 변경하지 않는다. `CrafterStateApplySystem`이 상태를 반영한다. 출력은 주생산품과 모든 부산물 슬롯의 여유를 함께 검사한다.
+- 제작: `CrafterDecisionSystem`이 실행 결정과 `CrafterStateDecision`을 나누어 기록한다. Preparation의 CrafterWorkPreparationSystem과 Execution은 기존 `RecipeConfigLookupUtility.HasRequiredIngredients`로 모든 유일한 재료 요구량과 비활성 `DestroyItemRequest`를 가진 보관 실물을 검사한다. Execution은 전체 확인이 성공한 뒤에만 재료를 선소비하고 진행/출력 결과를 만들며, 부족하면 버퍼·삭제 요청·진행도를 변경하지 않는다. `CrafterStateApplySystem`이 상태를 반영한다. 출력은 주생산품과 모든 부산물 슬롯의 여유를 함께 검사한다.
 - 레시피 변경: `CrafterRecipeCommandSystem`이 새 입력 슬롯 계산을 검증한 뒤 진행을 초기화하고 슬롯 수·배정·필터를 함께 갱신한다. 남은 입력 재료는 기존 입력 슬롯 구분을 유지하여 생산물 버퍼의 빈 후속 슬롯으로 옮긴다. 설정 미게시 시 선택 요청을 대기시키고, 무효 레시피/계산 실패는 기존 상태를 보존한다. 해제는 0슬롯/빈 Whitelist이며 설정 없이도 처리한다. `WaitingForByproductOutput` 동안 입고와 새 제작을 막는다. Execution은 이 변경을 다시 처리하지 않고 확정된 레시피와 실행 결정으로 선소비·진행·생산 결과를 기록한다.
 
 ## 주요 폴더와 테스트 탐색

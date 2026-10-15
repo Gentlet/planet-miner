@@ -227,6 +227,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
             .ToNativeArray(Allocator.Temp);
         Entity crafter = Entities.CreateCrafter(new int2(5, 5), recipe.Id,
             recipe.CraftTime / GameConstants.MaxSimulationDeltaTime * 2f);
+        Entities.PrepareIsolatedPowerSupply(crafter);
         for (int i = 0; i < recipe.IngredientCount; i++)
         {
             var ingredient = recipeIngredients[recipe.IngredientStart + i];
@@ -289,9 +290,12 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
     public void ApprovedDemolition_StopsMining_LeavesResourceUnconsumed(bool demolish, int amount)
     {
         var pipeline = CreatePipeline(false);
-        var decision = _world.GetExistingSystemManaged<BuildingDecisionGroup>();
-        decision.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerDecisionSystem>());
-        decision.SortSystems();
+        var preparation = _world.GetExistingSystemManaged<SimulationPreparationGroup>();
+        preparation.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerWorkPreparationSystem>());
+        var buildingDecision = _world.GetExistingSystemManaged<BuildingDecisionGroup>();
+        buildingDecision.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerDecisionSystem>());
+        buildingDecision.SortSystems();
+        preparation.SortSystems();
         var execution = _world.GetExistingSystemManaged<BuildingExecutionGroup>();
         execution.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerExecutionSystem>());
         execution.SortSystems();
@@ -374,6 +378,8 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         // Apply 생성 순서를 바꾸어 상대 실행 순서와 관계없이 앞단 철거 승인 차단 계약을 검사한다.
         var simulation = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
         var command = _world.GetOrCreateSystemManaged<CommandGroup>();
+        var preparation = _world.GetOrCreateSystemManaged<SimulationPreparationGroup>();
+        var power = _world.GetOrCreateSystemManaged<PowerSimulationGroup>();
         var building = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();
         var decision = _world.GetOrCreateSystemManaged<BuildingDecisionGroup>();
         var reservation = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
@@ -383,6 +389,8 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         simulation.AddSystemToUpdateList(sync);
         simulation.AddSystemToUpdateList(building);
         simulation.AddSystemToUpdateList(command);
+        simulation.AddSystemToUpdateList(preparation);
+        simulation.AddSystemToUpdateList(power);
         building.AddSystemToUpdateList(apply);
         building.AddSystemToUpdateList(execution);
         building.AddSystemToUpdateList(reservation);
@@ -403,6 +411,8 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         }
         building.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>());
         command.SortSystems();
+        preparation.SortSystems();
+        power.SortSystems();
         decision.SortSystems();
         apply.SortSystems();
         building.SortSystems();

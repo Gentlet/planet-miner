@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using PlanetMiner.Config;
 using PlanetMiner.Tests;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -25,6 +26,8 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
     {
         base.SetUp();
         CreateGameplayPrefabDatabases();
+        // 채굴 자격은 실제 품목별 MaxStack을 읽는다. DB Ready는 품목 설정을 대신하지 않는다.
+        ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
 
         _resourceSpatialSyncHandle = _world.GetOrCreateSystem(typeof(ResourceSpatialSyncSystem));
         _beltSpatialSyncHandle = _world.GetOrCreateSystem(typeof(BeltSpatialSyncSystem));
@@ -41,7 +44,11 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         => Entities.CreateResourceNode(position, resourceType, amount);
 
     private Entity CreateMiner(int2 position, int2 size, DirectionEnum direction, float miningSpeed = 1.0f, float progress = 0.0f)
-        => Entities.CreateMiner(position, size, direction, miningSpeed, progress);
+    {
+        Entity miner = Entities.CreateMiner(position, size, direction, miningSpeed, progress);
+        Entities.PrepareIsolatedPowerSupply(miner);
+        return miner;
+    }
 
     private Entity CreateBelt(int2 position, DirectionEnum direction, float speed = 2.0f)
         => Entities.CreateBelt(position, direction, speed);
@@ -87,6 +94,7 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         // Case A: 자원이 없음
         var minerNoRes = CreateMiner(new int2(10, 10), new int2(1, 1), DirectionEnum.Up, 1.0f);
         SyncAllSpatialIndices();
+        _world.GetOrCreateSystem<MinerWorkPreparationSystem>().Update(_world.Unmanaged);
         _minerDecisionHandle.Update(_world.Unmanaged);
 
         Assert.IsFalse(_entityManager.IsComponentEnabled<MinerDecision>(minerNoRes));
@@ -104,6 +112,7 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         }
 
         SyncAllSpatialIndices();
+        _world.GetOrCreateSystem<MinerWorkPreparationSystem>().Update(_world.Unmanaged);
         _minerDecisionHandle.Update(_world.Unmanaged);
 
         Assert.IsFalse(_entityManager.IsComponentEnabled<MinerDecision>(minerFull), "MinerDecision should be disabled when buffer is full.");
@@ -121,6 +130,7 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         var minerEntity = CreateMiner(new int2(10, 10), new int2(1, 1), DirectionEnum.Up, miningSpeed: 1.0f, progress: 0.95f);
 
         SyncAllSpatialIndices();
+        _world.GetOrCreateSystem<MinerWorkPreparationSystem>().Update(_world.Unmanaged);
         _minerDecisionHandle.Update(_world.Unmanaged);
 
         _world.SetTime(new Unity.Core.TimeData(0.1, 0.1f));
@@ -142,6 +152,7 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         productBuffer.Add(new ProductItemElement(dummyIron, ItemTypeEnum.Iron_Ore, 0));
 
         SyncAllSpatialIndices();
+        _world.GetOrCreateSystem<MinerWorkPreparationSystem>().Update(_world.Unmanaged);
         _minerDecisionHandle.Update(_world.Unmanaged);
 
         Assert.IsFalse(
@@ -149,6 +160,7 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
             "Miner should not mine Copper while Iron remains in its single-stack ProductBuffer.");
 
         productBuffer.Clear();
+        _world.GetOrCreateSystem<MinerWorkPreparationSystem>().Update(_world.Unmanaged);
         _minerDecisionHandle.Update(_world.Unmanaged);
 
         Assert.IsTrue(
@@ -175,6 +187,7 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         }
 
         SyncAllSpatialIndices();
+        _world.GetOrCreateSystem<MinerWorkPreparationSystem>().Update(_world.Unmanaged);
         _minerDecisionHandle.Update(_world.Unmanaged);
         Assert.IsTrue(_entityManager.IsComponentEnabled<MinerDecision>(minerEntity));
 
@@ -198,6 +211,7 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
         Assert.AreEqual(50, productBuffer.Length, "A consumed ProductResult must never create a duplicate item.");
 
         SyncAllSpatialIndices();
+        _world.GetOrCreateSystem<MinerWorkPreparationSystem>().Update(_world.Unmanaged);
         _minerDecisionHandle.Update(_world.Unmanaged);
 
         Assert.IsFalse(
@@ -218,6 +232,7 @@ public class Phase4MinerPipelineTests : EcsWorldTestFixture
             progress: 0.0f);
 
         SyncAllSpatialIndices();
+        _world.GetOrCreateSystem<MinerWorkPreparationSystem>().Update(_world.Unmanaged);
         _minerDecisionHandle.Update(_world.Unmanaged);
         Assert.IsTrue(_entityManager.IsComponentEnabled<MinerDecision>(minerEntity));
 

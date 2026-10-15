@@ -98,18 +98,18 @@ SynchronizationGroup은 GameSimulationGroup의 OrderLast이며 최종 EndSimulat
 - **종류와 부착:** 일반 `IComponentData`, ResourceSpatialSyncSystem이 만든 싱글톤에 ResourceSpatialIndexFence와 함께 부착된다.
 - **목적과 필드:** `NativeParallelHashMap<int2, Entity> Map`으로 자원 셀에서 ResourceNode 엔티티를 찾는다. 자원 종류와 잔량은 엔티티 컴포넌트에서 읽는다.
 - **생성·갱신:** OnCreate에서 용량 1024로 생성한다. Synchronization에서 ResourceNode/GridPosition을 가진 엔티티를 셀당 TryAdd한다. 맵 쿼리 자체에는 잔량 양수 조건이 없다.
-- **Reader와 단계:** 배치 Command/BuildingPlacementValidationUtility가 채굴기 하부 자원을 확인한다. MinerDecisionSystem이 채굴 대상을 고르며, Validator가 자원 엔티티와 맵의 일치를 검사한다.
+- **Reader와 단계:** 배치 Command/BuildingPlacementValidationUtility가 채굴기 하부 자원을 확인한다. MinerWorkPreparationSystem이 채굴 대상을 고르며, Validator가 자원 엔티티와 맵의 일치를 검사한다.
 - **수명과 결합:** 자원 생성은 EndCommand에서 실체화되고 해당 프레임 Synchronization에서 등록된다. 그 인덱스를 이용한 채굴 판단은 다음 프레임부터 가능하다. 고갈 자원 삭제도 EndBuilding 후 재구축에서 반영된다. OnDestroy에서 Fence 완료 후 Dispose한다.
-- **근거:** [정의](../../../Assets/Scripts/Components/Resources/ResourceSpatialIndex.cs#L13), [소유 시스템](../../../Assets/Scripts/Systems/Synchronization/ResourceSpatialSyncSystem.cs), [채굴 조회](../../../Assets/Scripts/Systems/Buildings/Decision/MinerDecisionSystem.cs), [자원 생성 Command](../../../Assets/Scripts/Systems/Command/ResourceGenerationCommandSystem.cs).
+- **근거:** [정의](../../../Assets/Scripts/Components/Resources/ResourceSpatialIndex.cs#L13), [소유 시스템](../../../Assets/Scripts/Systems/Synchronization/ResourceSpatialSyncSystem.cs), [채굴 조회](../../../Assets/Scripts/Systems/Buildings/Preparation/MinerWorkPreparationSystem.cs), [자원 생성 Command](../../../Assets/Scripts/Systems/Command/ResourceGenerationCommandSystem.cs).
 
 ## ResourceSpatialIndexFence
 
 - **종류와 목적:** 일반 `IComponentData`. ResourceSpatialIndex의 마지막 Writer와 Reader 의존성을 보관한다.
 - **부착·생성:** ResourceSpatialSyncSystem이 Index와 동일 싱글톤에 기본값으로 추가한다.
-- **Reader와 Writer:** MinerDecisionSystem이 Reader 핸들을 등록한다. 배치 Command는 마지막 Writer를 완료하고 자원을 직접 조회한다. ResourceSpatialSyncSystem이 재구축 Writer를 등록한다.
+- **Reader와 Writer:** MinerWorkPreparationSystem이 Reader 핸들을 등록한다. 배치 Command는 마지막 Writer를 완료하고 자원을 직접 조회한다. ResourceSpatialSyncSystem이 재구축 Writer를 등록한다.
 - **처리:** Reader는 마지막 Writer를, Writer는 누적 Reader까지 기다린다. 맵 용량 확장·시스템 종료·개발 검증 시 Complete가 현재 작업을 완료한다.
 - **수명:** Index와 함께 유지되며 SetWriter/Complete로 핸들이 갱신된다. 별도 Dispose할 메모리는 없고 Resource 맵 해제 전에 완료된다.
-- **근거:** [정의](../../../Assets/Scripts/Components/Resources/ResourceSpatialIndex.cs#L48), [채굴 Reader 등록](../../../Assets/Scripts/Systems/Buildings/Decision/MinerDecisionSystem.cs#L79), [배치 완료 경계](../../../Assets/Scripts/Systems/Command/BuildingPlacementCommandSystem.cs#L42), [소유 시스템](../../../Assets/Scripts/Systems/Synchronization/ResourceSpatialSyncSystem.cs).
+- **근거:** [정의](../../../Assets/Scripts/Components/Resources/ResourceSpatialIndex.cs#L48), [채굴 Reader 등록](../../../Assets/Scripts/Systems/Buildings/Preparation/MinerWorkPreparationSystem.cs#L76), [배치 완료 경계](../../../Assets/Scripts/Systems/Command/BuildingPlacementCommandSystem.cs#L42), [소유 시스템](../../../Assets/Scripts/Systems/Synchronization/ResourceSpatialSyncSystem.cs).
 
 ## 요청 인터페이스와 Unity 제공 타입
 

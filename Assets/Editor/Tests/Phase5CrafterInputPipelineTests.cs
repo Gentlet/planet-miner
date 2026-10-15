@@ -151,6 +151,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
         Assert.IsTrue(_entityManager.IsComponentEnabled<CrafterStateDecision>(crafter));
 
         // 다음 Decision 단계가 변경된 레시피와 잔여물 대기를 기준으로 다시 판단한다.
+        Run<CrafterWorkPreparationSystem>();
         Run<CrafterDecisionSystem>();
         Assert.AreEqual(1, _entityManager.GetComponentData<CrafterDecision>(crafter).RecipeId);
         Assert.IsFalse(_entityManager.IsComponentEnabled<CrafterDecision>(crafter));
@@ -164,6 +165,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
         // 기존 배출 동작의 완료 상태를 구성한다. 살아 있는 아이템 참조를 남기지 않는다.
         _entityManager.GetBuffer<ProductItemElement>(crafter).Clear();
         _entityManager.DestroyEntity(remaining);
+        Run<CrafterWorkPreparationSystem>();
         Run<CrafterDecisionSystem>();
         Run<CrafterStateApplySystem>();
         RunInputDecision();
@@ -309,6 +311,7 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
         Assert.AreEqual(ore, _entityManager.GetBuffer<StoredItemElement>(crafter)[0].ItemEntity);
 
         Simulation.SetDeltaTime(GameConstants.MaxSimulationDeltaTime);
+        Run<CrafterWorkPreparationSystem>();
         Run<CrafterDecisionSystem>();
         Run<CrafterExecutionSystem>();
         Assert.AreEqual(0, _entityManager.GetBuffer<StoredItemElement>(crafter).Length);
@@ -322,7 +325,8 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
         int ticks = (int)math.ceil(craftTime / GameConstants.MaxSimulationDeltaTime) + 2;
         for (int i = 0; i < ticks && _entityManager.GetBuffer<ProductItemElement>(crafter).Length == 0; i++)
         {
-            Run<CrafterDecisionSystem>();
+            Run<CrafterWorkPreparationSystem>();
+        Run<CrafterDecisionSystem>();
             Run<CrafterExecutionSystem>();
             Run<CrafterStateApplySystem>();
             Run<ItemLifecycleApplySystem>();
@@ -498,7 +502,9 @@ public class Phase5CrafterInputPipelineTests : EcsWorldTestFixture
         Simulation.Playback(_applyEcb);
         Assert.IsFalse(_entityManager.Exists(source));
         using var query = _entityManager.CreateEntityQuery(typeof(CrafterState));
-        return query.GetSingletonEntity();
+        Entity crafter = query.GetSingletonEntity();
+        Entities.PrepareIsolatedPowerSupply(crafter);
+        return crafter;
     }
 
     private Entity CreateCrafterSource(bool withCustomPrefab, bool fromConstruction)

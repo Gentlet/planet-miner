@@ -82,7 +82,10 @@ public partial struct CrafterDecisionSystem : ISystem
             RecipeIngredientLookup = _recipeIngredientLookup,
             RecipeOutputLookup = _recipeOutputLookup,
             ItemRegistryEntity = itemRegistryEntity,
-            ItemConfigLookup = _itemConfigLookup
+            ItemConfigLookup = _itemConfigLookup,
+            Preparations = SystemAPI.GetComponentLookup<CrafterWorkPreparation>(true),
+            Demands = SystemAPI.GetComponentLookup<PowerDemand>(true),
+            Supplies = SystemAPI.GetComponentLookup<PowerSupplyResult>(true)
         };
 
         state.Dependency = job.ScheduleParallel(_crafterQuery, state.Dependency);
@@ -95,6 +98,9 @@ public partial struct CrafterDecisionSystem : ISystem
 [BurstCompile]
 public partial struct CrafterDecisionJob : IJobEntity
 {
+    [ReadOnly] public ComponentLookup<CrafterWorkPreparation> Preparations;
+    [ReadOnly] public ComponentLookup<PowerDemand> Demands;
+    [ReadOnly] public ComponentLookup<PowerSupplyResult> Supplies;
     public Entity RecipeRegistryEntity;
 
     [ReadOnly]
@@ -249,16 +255,19 @@ public partial struct CrafterDecisionJob : IJobEntity
 
         // 이번 Execution에서 처음 완료될 진행도도 현재 Decision에서는 진행 중이다.
         // 출력 승인은 Progress가 완료된 상태를 다음 Decision이 읽을 때 정하며, 출력 전체 공간을 확보한 뒤 결과를 기록한다.
-        // 3. 제작 진행 상태에 따른 의사결정 분기
+        bool prepared = Preparations.HasComponent(building) && Preparations.IsComponentEnabled(building);
+        var preparation = prepared ? Preparations[building] : default;
+        bool powered = PowerFrameUtility.HasAllocatedPower(building, Demands, Supplies);
+        // 3. 준비된 자격과 공급으로 실행/표시 결정을 작성한다.
         if (state.IsCraftingActive)
         {
             // 이미 재료를 선소비하고 제작 중인 상태
             if (state.Progress < 1.0f)
             {
                 // 진행도 누적 가능
-                decision.CanCraft = true;
+                decision.CanCraft = preparation.CanAdvance && powered;
                 decision.CanStartCraft = false;
-                decision.CanAdvance = true;
+                decision.CanAdvance = decision.CanCraft;
                 decision.CanProduceOutput = false;
                 stateDecision.NextStatus = CrafterStatusEnum.Crafting;
                 stateDecisionEnabled.ValueRW = true;
@@ -293,15 +302,14 @@ public partial struct CrafterDecisionJob : IJobEntity
         else
         {
             // 신규 제작 대기 상태: StoredItemElement에 레시피 필요 재료가 완비되었는지 검사
-            bool hasAllIngredients = RecipeConfigLookupUtility.HasRequiredIngredients(
-                recipe, ingredients, storedItems, DestroyItemRequestLookup);
+            bool hasAllIngredients = preparation.CanStartCraft;
 
             if (hasAllIngredients)
             {
                 // 재료 완비: 신규 제작 시작 가능
-                decision.CanCraft = true;
-                decision.CanStartCraft = true;
-                decision.CanAdvance = true;
+                decision.CanCraft = powered;
+                decision.CanStartCraft = powered;
+                decision.CanAdvance = powered;
                 decision.CanProduceOutput = false;
                 stateDecision.NextStatus = CrafterStatusEnum.Idle;
                 stateDecisionEnabled.ValueRW = true;

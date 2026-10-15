@@ -1,136 +1,78 @@
-# 전력 설정과 실행 계약
+# 전력망 명세
 
-2026-10-14 Task 8.1~8.5를 구현했다. 선택·실제 Miner/Crafter 수요·발전 가용량은 Decision, 토폴로지·전력 예산 배정은 Reservation, 공급 결과 게시는 Execution, 망 수명주기/연결 기록은 StateApply와 EndBuilding이 소유한다. 공통 생성/완공에 발전/소비 역할과 프레임 상태를 부착했다. 실제 석탄 입고/전환/연료 정산은 8.6, 생산 반영/실제 사용량 기록은 8.7, 연구·충전은 각 후속 Task다. 전력 전용 그룹은 추가하지 않는다.
+2026-10-15 사용자 확정 1A·2A·3A·4A·5A·6A를 구현한다. 배정 에너지를 이번 틱 소비로 확정하며 미사용분은 환급하거나 재배분하지 않는다. Preparation은 작업 자격/수요, Power는 선택·망·가용량·배분·연료 소비·공개를, Building/Drone은 공개 공급에 따른 작업을 소유한다. 현재 검사는 실제 Writer와 공개 경계를 기준으로 좁혔으며 상세 계약은 아래 「Writer와 검사 경계」를 따른다. 연구·충전의 실제 Producer는 후속이고 과거 검증 수치는 각 변경 시점의 별도 기록이다.
 
 ## 설정 원본과 검증
 
-- 유일한 입력은 `Assets/Resources/Config/BuildingConfig.json`이다. 기존 `BuildingConfigInitSystem`/`BuildingConfigLoader`가 전력 필드까지 검증하여 같은 `BuildingConfigElement` 버퍼에 게시한다. 별도 PowerConfig 로더·singleton·호환 전력 원본을 만들지 않는다. 기존 PowerConfig.json과 meta는 이관 후 제거했다.
-- 건물별 선택 키는 기존 BuildingTypeEnum + 명시적 양수 Tier다. 다른 Tier의 값 상속/대체는 없다. `BuildingConfigElement.Power: BuildingPowerConfig`는 능력 설정이며 실제 수요·공급·진행·연료 잔량을 기록하지 않는다.
-- 아래 종류는 `power` 객체와 역할별 필드를 모두 명시한다. 누락·null·잘못된 JSON 형식·알 수 없는/다른 역할의 필드·비정상 숫자는 실패다. range는 JSON 정수 0~int.MaxValue이며 전력/에너지는 유한 양수다. 비대상 종류의 power 객체도 거절한다.
-- MainFacility의 가상 전신주 supplyRange는 0으로 고정한다. connectionRange는 자신의 Tier 정의에서 읽으며 초기 1티어는 기존 일반 전신주와 같은 8을 명시했다. PowerPole 정의를 대신 조회하는 fallback은 없다.
-- CoalGenerator의 storageCapacity는 명시적 정수 1~GameConstants.MaxStorageSlots다. 현재 1티어는 사용자 지정 임시 1슬롯이며 슬롯당 용량은 기존 ItemRegistry의 Coal MaxStack 50이다. 별도 fuelStorageCapacity/실물 10개 제한을 두지 않는다.
-- coalEnergyPerItem은 발전기 종류·Tier별 연료 효율이며 1티어의 임시값 600은 후속 밸런스 조정 대상이다.
-- JSON·공개 PublishConfig·사전 등록 ValidatePublishedConfig는 같은 전력 값 계약을 적용한다. HasConfiguration은 필수 power 객체의 명시 여부를 보존하여 ECS 입력의 누락도 검출한다. 무효 공개 입력은 엔티티를 생성하지 않으며 Init 실패는 기존 로그·미게시·SimulationFatalError·자동 재시도 없음 정책을 따른다. 무효 사전 등록 원본은 보존한다.
+전력 능력은 `BuildingConfigElement.Power`의 `BuildingPowerConfig`에 통합한다. 별도 PowerConfig/시계/Tick singleton은 없다. 능력은 게시 후 불변이며 종류·Tier별 명시 설정을 검증한다. maximumGeneration/maximumConsumption은 에너지/초, coalEnergyPerItem/RemainingEnergy/RequestedEnergy/AllocatedEnergy는 에너지 단위다. World 시간의 `min(DeltaTime, GameConstants.MaxSimulationDeltaTime)`을 모든 도메인이 공유한다.
 
-| 종류 | power 필수 필드 | 현재 1티어 값 |
-| --- | --- | --- |
-| PowerPole | supplyRange, connectionRange | 5, 8 |
-| MainFacility | supplyRange, connectionRange, maximumGeneration | 0, 8, 40 |
-| CoalGenerator | maximumGeneration, coalEnergyPerItem | 100, 600; storageCapacity 1 |
-| Miner | maximumConsumption | 10 |
-| Crafter | maximumConsumption | 20 |
-| ResearchBuilding | maximumConsumption | 20 |
+- MainFacility는 기초 발전과 자기 셀의 가상 전신주, 후속 동적 충전 수요를 갖는다. 주변 셀 공급은 일반 전신주가 확장한다.
+- CoalGenerator는 명시적 `storageCapacity` 슬롯과 Coal MaxStack을 사용한다. 1티어 임시 1슬롯·석탄 에너지 600은 유지한다. 별도 실물 10개 제한은 없다. Coal Whitelist만 허용한다.
+- Miner/Crafter의 정격 수요는 작업 가능한 경우에만 작성한다. 제작 완료/출력 확정 대기는 수요 0이다.
+- ResearchBuilding 및 DroneStation/MainFacility의 연구·충전 수요는 후속 도메인이 작성한다. 임의의 고정 충전 수요는 추가하지 않는다.
 
-DroneStation/MainFacility의 충전은 후속 드론 도메인이 후보별로 작성하는 동적 수요다. 현재 DroneConfig의 충전 능력/전력 변환 계약은 Task 9.14에서 연결하며 임의의 고정 최대 소비량을 새로 부여하지 않는다. power 객체가 없는 일반 건물을 필수 전력 소비자로 취급하지 않는다.
+## 데이터 소유와 활성 상태
 
-## 데이터 소유와 단위
+`PowerConsumer`와 `PowerGenerator`는 enableable 역할이다. 컴포넌트의 존재는 역할, 활성은 이번 틱 양수 요청/양수 발전 가용량을 뜻한다. 공급 부족 때문에 소비 의도를 비활성화하지 않는다. 공통 생성은 두 역할을 비활성으로 부착한다.
 
-설정 원본은 BuildingConfig, 토폴로지 원본은 전신주 등록 상태와 연결 집합, 실물 원본은 기존 ItemOwnership/StoredItemElement, 연료 에너지 원본은 FuelEnergyState다. FuelEnergyState는 연료 종류·소비처에 독립적인 잔량이며 현재 석탄 설정을 다른 연료 정의로 자동 확장한 것은 아니다. 망 집계·연결·셀 공급 조회는 이 원본에서 계산하는 파생 데이터다. 기존 건물 점유 인덱스와 같은 원본을 소유하는 공간 캐시를 추가하지 않는다.
+`PowerDemand`, `PowerGeneratorSupplyPlan`, `PowerSupplyReservation`의 활성은 각 단계의 준비 완료다. 정상적인 0도 준비 완료이며 역할 활성과 구분한다. 역할의 필수 구성은 공통 생성이 부착하고 설정은 게시 전에 검증한다. 매 단계에서 전체 구성을 재검사하지 않으며 미준비와 정상 0을 구분한다. Prefab·Disabled·승인 철거는 처리 쿼리에서 제외한다.
 
-사용자 확정(2026-10-12): 전신주와 망은 각각 PowerPole/PowerGrid 태그가 부착된 별도 Entity로 식별하며 StableId나 번호 발급 카운터를 두지 않는다. PowerGridConnection은 기존 Entity 참조를 유지한다. 토폴로지의 처리 순서·병합 대표 전신주 선택과 공급 거리 동률 처리는 기존 PlacementStamp.Compare의 설치 기록 유무·기록 비교·격자 좌표 순서를 재사용한다. Entity의 숫자 순서는 설치 순서가 아니다. 현재 생성/병합·제거/분리 수명주기와 Task 8.4의 일반 건물 공급 전신주 선택을 구현했다.
+`PowerSupplyResult.AllocatedEnergy`는 Power에서 확정한 소비량이다. `PowerUsageResult`와 소비 이후 정산 Writer는 제거한다. 생산 진행·충전량은 배정 에너지를 초과하지 않으며, 미사용분은 손실이다. 망별 집계는 임시 double Native 맵, 개별 필드는 float이다. 아래 방향 반올림과 미세 미배정량도 손실로 처리하며 같은 틱 재배분하지 않는다.
 
-이번 틱 수요는 생산·충전 도메인이, 배분과 공급 결과는 전력 도메인이, 실제 사용 결과는 소비 도메인이 기록한다. 생산·충전은 PowerSupplyResult와 공통 World 시간 정책을 사용하며 전력망 내부 연결/집계 API를 실행하지 않는다. [컴포넌트별 계약](../CodeMemory/Components/PowerGrid.md)을 따른다.
+`PowerFrameState`는 제거했다. 공통 `SimulationFatalError.StopScope`는 NextTick/RemainingDomains를 구분한다. Power 내부 검증 메시지는 PowerValidationInitializationSystem이 소유하는 비공개 Native scratch이며 원본·연결·위치 캐시나 시계가 아니다. 전력 원본은 설정, 전신주/건물 ECS, ItemOwnership/StoredItemElement, FuelEnergyState다.
 
-maximumGeneration/maximumConsumption은 에너지/초, coalEnergyPerItem/RemainingEnergy 및 Requested/Allocated/UsedEnergy는 에너지 단위다. 모든 도메인은 같은 World 시간의 `DeltaTime = min(World DeltaTime, GameConstants.MaxSimulationDeltaTime)` 정책을 사용한다. 전력 전용 시계 singleton과 프레임 데이터의 Tick 필드는 두지 않는다.
+## 실행 순서와 공개 경계
 
-매 틱 Decision에서 PowerSupplyDecisionSystem은 공급 결과·미게시 예약·발전기 계획을, BuildingPowerDemandDecisionSystem은 수요·실제 사용 결과를 먼저 0으로 초기화한다. Disabled·승인 철거·무수요·단절도 기존 필드의 초기화에서 제외하지 않고 Prefab은 제외한다. 각 필드를 독립 초기화하여 다른 필수 컴포넌트가 누락되어도 이전 결과를 남기지 않는다. 수요/가용량의 활성은 준비 완료이며 값 0도 정상 준비 완료다. Reservation은 별도 PowerSupplyReservation에 예산을 배정하고 Execution이 최종 검사 후 한 번 게시한다. 이전 결과나 필수 데이터 누락을 전력 충분 상태로 보충하지 않는다.
+```text
+Command → EndCommand → Preparation
+    → Power: Decision → Reservation → Execution → StateApply → EndPower
+    → Building: Decision → Reservation → Execution → StateApply → EndBuilding
+    → Drone: Decision → Reservation → Execution → StateApply
+    → SimulationCommit: EndSimulation → Synchronization
+```
 
-## 전신주 생성·망 준비·공개 기획
-
-- 공통 직접 Spawn/현장 완공에서 일반 전신주와 주 시설에 전신주 태그·프레임 결정과 자기 전신주/미연결 망의 초기 연결을 부착한다. Task 8.4는 Miner·Crafter·ResearchBuilding·CoalGenerator·DroneStation에 초기 미연결 PowerGridConnection과 비활성 PowerGridConnectionDecision을 부착한다. 발전/소비 역할·수요/공급/연료 상태와 생산 연결은 해당 후속 Task, 주 시설 자동 생성은 9.22다.
-- 전신주 연결은 생존 ECS·BuildingConfig의 종류/Tier ConnectionRange·GridPosition.Value·기존 설치 기록을 사용한다. 승인 철거와 비활성/Prefab 참가자를 제외하고 이전 공간 인덱스만으로 이번 틱 생존을 판단하지 않는다.
-- 망은 전신주와 별도 Entity로 관리한다. 별도 StableId/번호 발급은 사용하지 않고 기존 PlacementStamp.Compare로 순서를 정한다.
-- 한쪽 정사각형 연결 범위에 상대 중심이 들어가면 연결한다(OR). 독립 집합은 별도 망이며 공급 범위 중첩만으로 병합하지 않는다. 병합 시 기존 유효 망 소속 전신주 중 가장 이른 설치 멤버의 망 Entity를 유지하고 나머지는 소속 갱신과 같은 ECB 경계에 제거한다. 새 전신주의 설치 기록이 더 빨라도 기존 망 중에서 유지 대상을 선택한다.
-- 이번 틱 연결 계산 결과는 같은 틱 공급 계획에 사용하고 실제 망 생성/소속 변경은 EndBuilding에 공개한다. N틱 EndBuilding에서 생성된 전신주는 N+1부터 공급 계산에 참여한다. 준비 결과에는 살아 있는 대표 전신주를 사용하고 ECB 예약 망 Entity는 생성/연결을 기록한 동일 ECB 안에서만 참조한다.
-- 망 준비는 기존 BuildingReservation 마지막에서 Burst Job으로 수행하며 전력 전용 페이즈를 추가하지 않는다. 메인 스레드의 입력 검증 실패는 이전 결정을 비운 뒤 EndBuilding에 Fatal을 게시하며 잘못된 망 참조를 새 망으로 보충하지 않는다. Apply는 활성 전신주의 준비 결과가 없거나 구성이 누락되면 정상 변경을 시작하지 않아, 입력 실패를 빈 망으로 오인해 기존 망/참조를 삭제하지 않는다.
-- PowerGridTopologyReservationSystem은 연결/대표/유지 망 계획만 작성한다. 망 생성·연결 변경·병합 망 삭제 기록은 BuildingStateApply의 PowerGridTopologyApplySystem으로 분리했다. Apply는 현재 생존/활성과 ExpectedGrid 스냅샷·대표 계획을 최종 대조하며 연결 집합/대표를 재탐색하지 않는다. 실패 시 정상 망 변경 없이 Fatal만 기록한다. 정상 변경은 같은 EndBuilding ECB 안에서 생성/연결/삭제하며 예약 망 Entity를 다른 단계로 전달하지 않는다.
-- 관련 파생 자료의 수명·갱신은 BuildingSpatialSyncSystem의 기존 인덱스/Fence 관례에 맞춘다. Sync는 Query에서 받은 공개 자료를 수집하며 참조 망 Entity를 Lookup으로 재검증하지 않는다. 연결 유효성은 망 생성·병합·정리 소유자가 보장하고 미연결 자료는 등록하지 않는다. 기존 건물 위치/점유 원본을 복제하지 않는다.
-- 이번 틱 대표 전신주·유지할 망·최종 검사할 이전 공개 값은 PowerGridTopologyDecision으로 전달한다. RepresentativePole은 살아 있는 전신주, RetainedGrid/ExpectedGrid는 살아 있는 망 또는 Null이며 예약 Entity가 아니다. 공개 연결은 PowerGridConnectionIndex의 Entity→연결 맵으로 수집하고 PowerGridConnectionSyncSystem이 기존 Fence 관례로 생성/재구축/해제한다. 별도 준비 맵·Fence는 없으며 ECS 결정의 Job 의존성과 공개 Native 맵 Fence를 구분한다.
-
-## 같은 틱의 읽기/쓰기 기획 순서
-
-Task 8.3 사용자 확정 정책(2026-10-13):
-
-- **1A — 분리 유지권:** 기존 망의 남은 활성 전신주 중 PlacementStamp.Compare가 가장 앞선 멤버의 연결 집합만 그 망 Entity를 유지할 수 있다. 다른 집합은 새 망을 생성한다. 이전 대표가 제거되면 남은 멤버로 유지권을 정한다.
-- **2A — 분리 후 병합:** 각 기존 망의 유지권을 먼저 한 집합에 부여한다. 집합은 자신이 유지권을 가진 망 중 가장 이른 기존 멤버의 망을 유지한다. 같은 집합이 다른 망을 병합하여 남는 Entity는 다른 집합에 재배정하지 않고 삭제한다. 유지권이 없는 집합은 새 망을 생성한다.
-- **3A — 비활성:** Disabled 전신주는 이번 틱 계산에서 제외하고 Grid를 Null로 해제한다. 자기 PowerPole 참조·건물 엔티티·PlacementStamp는 보존한다. 재활성화 시 미연결 참가자로 다시 연결하며, 과거 소속을 복원하거나 기존 망을 위해 비활성 상태의 빈 망을 유지하지 않는다.
-
-Apply는 활성 전신주의 토폴로지와 활성 일반 참가자의 공급 선택을 모두 최종 검사한 뒤 런타임 PowerGridConnection을 Disabled 참가자까지 수집한다. 일반 참가자는 이번 틱 선택 전신주의 새 망으로 두 참조를 맞추며 활성 Null 선택이면 둘 다 해제한다. 비활성 참가자는 새 선택 없이 기존 전신주의 새 망으로 참조를 맞추거나 사라진/비활성/철거된 선택을 해제한다. 전신주 자체는 자기 참조를 유지한다. Prefab은 변경하지 않는다.
-
-기존 PowerGrid 엔티티 전체를 별도 조회하므로 마지막 전신주 제거나 외부 제거 뒤에도 빈 망을 회수한다. 모든 정상 참조 변경 뒤 사용하지 않는 기존 망을 같은 EndBuilding ECB에 삭제하며 생성 예약 Entity는 그 ECB 안에서만 사용한다. 철거 자체는 기존 DemolishBuildingRequest → Command 승인/EndCommand → BuildingLifecycleApply/EndBuilding 경로를 재사용한다. 주 시설의 파괴 불가 규칙은 유지한다.
-
-Task 8.4 사용자 확정 정책과 구현(2026-10-13):
-
-- **1A — 전체 footprint:** 회전 후 점유 셀 중 하나라도 경계 포함 정사각형 공급 범위에 들어오면 후보다. 전신주 중심에서 직사각형 전체의 가장 가까운 점유 셀을 구해 최소 제곱거리로 비교한다. 동률은 PlacementStamp.Compare를 사용한다. 공급 범위 중첩은 망 병합 조건이 아니다.
-- **2A — 매 틱 재선택:** 기존 선택이 유효해도 더 가까운 전신주로 변경한다. 발전 가능량이나 공급률로 전신주를 선택하지 않는다.
-- **3A — 생성 연결:** 위 다섯 일반 건물 종류의 직접 생성과 완공에 연결/선택 데이터를 부착한다. PowerPole/MainFacility의 자기 전신주 참조는 보존한다. 발전/소비/연료/충전 역할과 실제 Writer의 초기화는 후속이다.
-- **4A — 활성 선택:** Disabled·Prefab·승인 철거 참가자는 새 선택에서 제외한다. 비활성 참가자는 기존 참조 정리만 받고 활성화된 다음 준비에서 다시 선택한다. 현장은 참가자가 아니다.
-
-PowerGridConnectionDecisionSystem은 BuildingDecisionGroup에서 실행한다. 모든 런타임 결정의 값/활성을 먼저 비우고 활성 일반 참가자의 위치/회전/크기와 활성 전신주의 종류/Tier·위치·설정을 검증한 뒤 Burst IJobEntity를 병렬 예약한다. 입력은 전신주 Entity 목록과 읽기 전용 설정/위치/종류/설치 Lookup이며 연결/점유 스냅샷이나 별도 준비 맵을 만들지 않는다. 토폴로지 준비 결과를 읽지 않는다. PowerGridConnectionDecision의 활성은 선택 준비 완료, PowerPole Null은 공급 범위 밖이며 토폴로지 준비 성공을 뜻하지 않는다.
-
-Apply는 선택 전신주의 생존·활성·준비 상태와 현재 footprint의 공급 경계를 최종 검사하고 전신주를 재선택하지 않는다. 준비 누락이면 정상 변경을 시작하지 않으며 유효하지 않은 준비는 Fatal만 기록한다. 선택 전신주와 새/유지 망의 매핑은 기존 Apply의 같은 ECB에서 해결한다. N EndBuilding의 생성/완공은 N+1 선택부터 참여하고 N Command의 철거 승인은 N 선택에서 제외한다. 공유 공개 인덱스는 Synchronization에서만 갱신한다.
-
-최상위 Command → Building → Drone → Commit → Synchronization 순서와 세 ECB 경계는 유지한다. 아래 준비·공급 실행·사용 정산은 보존한 기획 역할이며 별도 전력 그룹 정의는 제거했다. 실제 배치는 기존 시스템/그룹 관례에 맞춰 재구현하고 각 도메인을 다시 실행하지 않는다.
-
-| 경계 | 현재 및 후속 Writer/Reader 계약 |
+| 단계 | 책임 |
 | --- | --- |
-| Command/EndCommand | 승인 철거 대상은 이번 틱 토폴로지·수요·발전 후보에서 제외한다. 현장은 전력 참가자가 아니다. 레시피 변경은 뒤의 BuildingDecision에서 읽는다. |
-| BuildingDecision | 기존 작업/연결 결정 뒤 BuildingPowerDemandDecisionSystem이 실제 Miner/Crafter 작업 자격으로 수요를 준비한다. PowerSupplyDecisionSystem은 전력 소유 필드를 초기화하고 MainFacility의 정격량과 CoalGenerator의 이미 전환된 RemainingEnergy로 가용량을 준비한다. 공급 여부로 작업 자격을 먼저 지우지 않는다. |
-| BuildingReservation 마지막: **예산 배정** | PowerBudgetReservationSystem은 TopologyReservation 뒤 이번 틱 선택/대표 계획과 준비된 수요/가용량으로 망별 예산을 배정한다. 소비자 PowerSupplyReservation과 발전기 AllocatedEnergy를 기록한다. 집계는 Job 안의 임시 Native 맵이며 이전 공개 Grid/인덱스나 영속 집계는 쓰지 않는다. |
-| BuildingExecution 시작의 **공급 게시** | PowerSupplyExecutionSystem은 배정 기준 대표/수요, 현재 선택/공급 경계와 발전/연료 한도·망별 배정 합계를 최종 검사하고 PowerSupplyResult를 한 번 게시한다. 8.5는 미전환 석탄을 공급하지 않는다. 8.6의 실물 조회/전환은 공급 게시 전에 연결하며 신규 입고는 다음 틱부터 쓴다. |
-| 일반 BuildingExecution | 8.7에서 생산을 이번 틱 공급 비율·에너지 예산에 연결하고 실제 사용량을 기록한다. 현재 Miner/Crafter Execution의 진행/선소비 동작은 변경하지 않았다. 공급 게시와 후속 생산 Job의 명시적 ECS 의존성을 연결하며 그룹 순서만으로 Job 완료를 가정하지 않는다. |
-| BuildingStateApply/EndBuilding | 준비된 망 계획을 최종 검사하여 생성/병합/분리·비활성 해제·모든 런타임 참조 정리·빈 망 삭제를 같은 ECB에 기록하고 공개한다. 전신주/일반 건물의 물리적 삭제는 기존 BuildingLifecycleApply가 소유한다. 후속 전환 석탄은 기존 ItemLifecycle/EndBuilding으로 소비하며 새 석탄·전력 참가자는 다음 틱부터 공급에 참여한다. |
-| DroneSimulation | 준비한 충전 후보·예산과 같은 World DeltaTime 정책으로 실제 충전분을 기록한다. 새 귀환 드론은 다음 틱 충전 후보이며 후속 배차 등으로 실행하지 못한 충전의 사용량은 0이다. |
-| SimulationCommit 안: **후속 사용 정산 단계** | 8.6/8.7 이후 건물·드론의 이번 틱 실제 사용을 모아 기초 발전을 먼저 배정하고 부족분만 석탄 발전으로 정산한다. 발전기별 실제 발전량과 망별 합계는 정산 내 파생 계산이며 독립 ECS 결과/집계로 중복 보관하지 않는다. 연료 에너지를 갱신하고 이 시점에 새 석탄 Destroy 요청을 발행하지 않는다. 미사용 예산을 같은 틱에 재배분하지 않는다. |
-| EndSimulation/Synchronization | 드론 구조 변경과 결과 공개 뒤 공간 인덱스를 갱신한다. 연료 실물 소비를 지연하여 활성 Destroy 요청을 남기거나 삭제 ECB를 추가 재생하지 않는다. |
+| Command/EndCommand | 철거 승인과 레시피 변경을 확정한다. 승인 철거는 이번 틱 전력 후보에서 제외한다. |
+| Preparation | PowerSupplyResetPreparationSystem은 공급/검증 scratch를 초기화한다. MinerWorkPreparationSystem/CrafterWorkPreparationSystem이 전력 외 작업 자격을 준비하고 BuildingPowerDemandPreparationSystem이 요청과 소비 역할을 작성한다. 준비 enable은 완료이며 정상 작업 불가도 준비 완료다. |
+| PowerDecision | 일반 참가자의 전체 회전 footprint 공급 전신주를 매 틱 선택한다. 발전 가용량은 정격 한도와 이전 잔량·현재 보관 Coal의 전환 가능 에너지로 제한한다. 계획·활성을 먼저 초기화한다. |
+| PowerReservation | 토폴로지 연결 집합·유지권·대표를 준비한 뒤 망별 예산을 배분한다. 발전기별 기준 잔량·전환 실물 개수·소비 후 잔량도 작성한다. |
+| PowerExecution | 계획·예약의 준비 완료와 실제 소비할 연료 수량/잔량/실물을 확인한다. 전체 발전기의 소비 조건 확인 후 연료를 전환/차감하고 공급을 게시한다. 연결/범위·수요·망 총량은 다시 계산하지 않는다. |
+| PowerStateApply/EndPower | 망 생성·병합·분리·빈 망 삭제와 연결 변경을 같은 ECB에 기록한다. EndPower는 공급 Writer와 ECB Producer를 완료하고 연료 실물 삭제·망 변경을 Building 전에 확정한다. |
+| Building | MinerDecisionSystem/CrafterDecisionSystem이 준비 자격과 공급으로 실행/완료 출력·상태 후보를 작성한다. 입출고·채굴/제작·수명주기를 기존 경계에서 수행한다. 진행은 공급률과 배정/요청 에너지 비율 중 작은 값으로 제한하고, 무전력 신규 제작은 재료를 소비하지 않는다. 이미 완료된 결과의 확정/출고는 전력 때문에 막지 않는다. |
+| Drone | EndBuilding의 재고/건물을 읽는다. 후속 충전은 사전 수요와 공급을 사용하며 실행하지 못한 예산도 환급하지 않는다. |
+| EndSimulation/Synchronization | 드론 결과와 최종 인덱스를 공개한다. 전력 연료 정산은 다시 실행하지 않는다. |
 
-3A에 따라 순수 선택·수요·가용량 판단과 소유 필드 초기화는 Decision, 유한 예산 배정은 Reservation, 최종 공급 게시는 Execution이다. Demand는 MinerDecisionSystem/CrafterDecisionSystem 뒤, Budget는 PowerGridTopologyReservationSystem 뒤 OrderLast, SupplyExecution은 OrderFirst이며 Miner/Crafter Execution보다 앞이다. Entity 목록·읽기 전용 Lookup과 state.Dependency를 사용하고 임시 입력 해제 핸들을 등록한다. 실제 사용 정산 역할은 SimulationCommit의 EndSimulation 앞이며 8.6/8.7 후속이다.
+EndBuilding의 새 건물과 새 입고 석탄은 N+1부터 공급 계산에 참여한다. EndPower에서 비워진 보관 공간은 N Building 입고에 사용하지만 그 입고가 N 전력 예산을 늘리지는 않는다. 새 귀환 드론은 후속 충전 수요에 다음 틱부터 참여한다.
 
-발전기 가용량/배정량은 PowerGeneratorSupplyPlan, 소비자 미게시 예산은 PowerSupplyReservation으로 전달한다. 배정 기준 대표와 수요는 게시 직전 대조할 예산의 근거이며 공개 망 Entity나 위치/연결 원본의 캐시가 아니다. Budget/게시의 메인 스레드 검사는 해당 ECS Writer를 명시적으로 완료하고 Job은 Lookup 의존성을 등록한다. 미준비 입력은 정상 0으로 게시하지 않고, 잘못된 입력/손상된 배정은 EndBuilding에 Fatal을 기록하고 공급 결과를 초기값 0으로 유지한다. 정상 Result 필드 게시에는 ECB를 쓰지 않으며 망 생성/연결의 EndBuilding 경계와 구분한다. 전체 틱 rollback·중단 월드 재개·자동 복구는 제공하지 않는다.
+## 공급 선택과 망 수명주기
 
-Task 8.5 사용자 확정 1A·2A·3A·4A:
+전신주 연결 범위는 종류/Tier별 OR 판정이며 공급 범위 중첩만으로 망을 병합하지 않는다. 일반 참가자는 회전 footprint의 가장 가까운 점유 셀 거리로 공급 가능한 전신주를 선택하고 동률은 PlacementStamp.Compare를 사용한다. 기존 연결이 유효해도 매 틱 재선택한다. ECS Disabled·Prefab·승인 철거는 새 선택에서 제외하고 비활성 참가자의 기존 참조는 정리한다.
 
-- **1A:** 같은 망의 소비자는 요청 에너지에 비례한 공통 공급 비율을 적용한다. 기초 발전을 먼저 배정하고 같은 종류의 발전기는 정격 최대 출력 기준 동일 가동률로 나눈다. 연료 한도에 걸린 발전기를 고정하고 나머지가 부족분을 분담한다. 틱당 정격 10·10, 가용 1·10, 석탄 부담 5.5이면 배정은 1·4.5다. Tier별 정격 차이도 적용한다.
-- **2A:** MainFacility/CoalGenerator에 발전 역할·계획을, MainFacility/Miner/Crafter/ResearchBuilding/DroneStation에 소비 역할·수요/예약/공급/사용 상태를 공통 생성/완공에서 부착한다. CoalGenerator의 FuelEnergyState는 0으로 생성한다. 실제 Miner/Crafter 수요 Producer만 이번에 연결하며 연구/충전의 수요는 후속까지 0이다. 공통 생성은 여전히 실제 게임 입력/주 시설 자동 생성 Producer를 대신하지 않는다.
-- **3A:** 위 역할에 맞춘 Decision → Reservation → Execution을 적용한다. PowerDemand/PowerGeneratorSupplyPlan/PowerSupplyReservation의 활성은 단계별 준비 완료이며 IRequestComponent가 아니다. 무수요·무발전의 준비 완료 0과 준비 실패/미실행을 구분한다.
-- **4A:** MainFacility는 정격 × 공통 DeltaTime, CoalGenerator는 min(정격 × DeltaTime, 이미 전환된 RemainingEnergy)만 공급 근거로 사용한다. StoredItemElement의 미전환 Coal은 8.5 가용량에 포함하지 않는다. 실물 조회/전환·연료 차감은 8.6, 진행량/실제 사용량은 8.7이며 그 전에도 공급을 수요/가용량 한도 내에서 게시한다.
+분리 시 가장 이른 남은 활성 멤버의 집합이 기존 망 유지권을 갖고, 유지권을 확정한 뒤 병합한다. 준비 실패를 빈 망으로 처리하지 않는다. 예약 망 Entity는 같은 EndPower ECB 안에서만 사용하고, 배분은 공개 Grid 대신 이번 틱 선택/토폴로지 대표를 사용한다. 별도 위치·연결 스냅샷이나 영속 망 집계를 추가하지 않는다. 공개 연결 인덱스/Fence는 마지막 Synchronization의 기존 수명·Reader/Writer 계약을 유지한다.
 
-망별 합계는 double 임시 계산, 개별 에너지 필드는 float이다. 발전기 float 배정 합계를 기준으로 공통 소비 비율을 계산하고 에너지 변환을 아래로 반올림하여 소비자 총 예산이 발전기 배정을 넘지 않게 한다. 미세한 미배정량과 실행되지 않은 예산도 같은 틱에 재배분하지 않는다. 단절은 비율/배정 0, 연결된 망의 총 수요 0은 비율 1/배정 0이다.
+## 배분과 연료 소비
 
-## 작업 수요와 무전력
+기초 발전을 먼저 배정하고 부족분을 석탄 발전에 배정한다. 같은 종류의 발전기는 정격 기준 동일 가동률로 분담하며 연료 제한 발전기를 제외한 나머지가 가능한 범위에서 보충한다. 발전기별 배정량은 정격·가용 연료를 넘지 않는다. 망별 공통 공급률은 `min(1, 발전 배정 합계 / 총 요청량)`이며 연결된 무수요 망은 비율 1/에너지 0, 단절은 비율/에너지 0이다.
 
-- Miner는 CanMine일 때, Crafter는 CanStartCraft 또는 CanAdvance일 때 현재 정격량 × 공통 DeltaTime을 요청한다. Crafter가 이미 진행 완료 상태에서 결과 확정/출력 공간만 기다리면 수요 0이다. 미완료 Crafter의 출력 공간과 진행 허용 여부는 현재 결정을 유지한다.
-- 공급률 0 또는 사용할 에너지 예산이 없으면 신규 제작 착수·재료 선소비를 대기하고 진행 중 상태를 보존한다. 완료된 결과 확정/출고는 전력 때문에 막지 않으며 기존 전체 출력 공간 검사는 유지한다.
-- 후속 실제 진행에 사용한 시간/충전량에 해당하는 에너지만 UsedEnergy로 기록하고 배정량을 넘지 않는다. 현재는 Decision의 0 초기화만 연결했으며 성공분 기록은 8.7/9.14/10A.3이다. 틱 중 완료 또는 최종 검사 실패로 사용하지 않은 부분은 연료에서 차감하지 않는다.
-- 연구는 전력 외 착수 조건 또는 진행할 로컬 주기를 기준으로 수요를 준비한다. 실제 신규 착수는 기존 [연구 명세](ResearchBuilding.md)의 공급률 > 0 조건을 따른다.
-- 수요 0의 공급률 표시는 1이어도 배정·사용 에너지는 0이며 전력 작업을 수행할 수 없다. 단절된 참가자의 공급 비율·배정량은 0이다. 공급 비율만 읽어 배정 에너지가 없는 작업을 실행하지 않는다.
+연료가 부족한 경우 공급을 먼저 게시한 뒤 줄이지 않는다. 배정 시 현재 잔량을 기준 값으로 보관하고 부족한 에너지에 필요한 정수 Coal 개수만 계획한다. 소비 직전에 기준 잔량/수량과 소비 후 에너지 한도를 확인한다. 실제 전환할 실물에만 생존·종류·Owner·활성 Destroy를 확인하고, 삭제 대상의 중복 참조가 소비하지 않는 슬롯에 남지 않는지도 검사한다. 전체 성공 뒤 StoredItemElement에서 참조를 먼저 제거하고 ItemLifecycleUtility의 공통 삭제 기록을 EndPower에 남긴다. 생성/삭제 Owner를 이중 실행하지 않는다.
 
-## 석탄 전환과 실제 사용 정산
+`소비 후 잔량 = 이전 잔량 + 전환 개수 × CoalEnergyPerItem - 발전기 AllocatedEnergy`다. 소비자 실제 성공량을 다시 모으지 않는다. 예를 들어 잔량 0·Coal 1개·배정 10이면 600을 전환하고 10을 확정 소비해 590을 보존한다. 이후 작업을 하지 못해도 590이며 환급하지 않는다. 철거는 미전환 실물만 기존 반환 경로를 사용한다.
 
-이 절은 8.6 이후의 확정 계약이며 8.5의 현재 전환/연소 구현이 아니다. 석탄 실물 → 잔여 에너지 전환과 실제 발전으로 에너지를 차감하는 연소를 구분한다. 전환은 필요한 정수 개수만, 연소는 실제 사용량만 수행한다. 예를 들어 잔량 0·석탄 1개·배정 10에서 실행 사용량이 0이면 공급 실행에서 전환한 600을 보존하고 실제 발전은 0이다. 같은 상황에서 실제 석탄 발전량이 4이면 잔여 에너지는 596이다. 전환 후 생긴 저장 공간을 이번 틱 입고 예약에 다시 추가하지 않는다.
+정상 틱은 `0 ≤ 소비자 AllocatedEnergy ≤ RequestedEnergy`, `0 ≤ 발전기 AllocatedEnergy ≤ AvailableEnergy ≤ 정격 × DeltaTime`, `소비자 배정 합계 ≤ 발전기 배정 합계`를 만족한다. 부동소수 반올림 차이와 미사용 예산은 손실이며 음수 잔량·연료 없는 공급·이중 실물 소비를 허용하지 않는다.
 
-정상 틱에서 아래를 대조한다.
+## 실패 정책과 검증 범위
 
-- 소비자마다 `0 <= UsedEnergy <= AllocatedEnergy <= RequestedEnergy`.
-- 발전기마다 `0 <= GeneratedEnergy <= AllocatedEnergy <= AvailableEnergy <= maximumGeneration × DeltaTime`.
-- 망의 실제 발전 합계 = 소비자의 실제 사용 합계. 서로 다른 망의 발전/수요는 섞지 않는다.
-- 생존 발전기의 석탄 에너지 보존: `이전 잔량 + (이전 실물 개수 + 이번 틱 입고) × coalEnergyPerItem = 이후 잔량 + 이후 실물 개수 × coalEnergyPerItem + 실제 석탄 발전 에너지`. 새 입고는 보존식에만 포함하고 이번 틱 발전 예산에는 포함하지 않는다. 철거로 제거한 상태와 반환 실물은 별도 수명주기 정산으로 구분한다.
-- 마지막 연료가 최대 출력 한 틱분보다 적으면 그 에너지로 가능한 만큼만 배정한다. 부족한 발전을 먼저 게시한 뒤 연료 차감에서 줄이지 않는다.
+Power 검증 실패는 내부 검증 결과에 첫 메시지를 기록하고 EndPower에서 공통 Fatal을 RemainingDomains로 게시한다. 정상 공급/연료/망 변경을 확정하지 않으며 BuildingSimulationGroup/DroneSimulationGroup은 같은 틱 실행을 건너뛴다. 이미 EndCommand에서 확정한 변경은 롤백하지 않는다. EndBuilding에서 새로 발생한 Fatal은 기존 다음 틱 전체 차단 계약을 유지한다. 실패 월드는 폐기하며 자동 복구/재개를 제공하지 않는다.
 
-## 범위와 경계 사례의 기대 결과
+관련 EditMode는 실제 생성·완공·철거 경계, 준비 누락·소비 연료 부족/실물 오류, 부분 공급·무전력 착수/완료, 새 석탄의 다음 틱 사용과 전환 공간 재사용, 연료 확정 소비와 도메인 중단을 검증한다. 실제 연구·드론 충전·이동·Play Mode·베이킹·Player 빌드·성능은 별도 후속이다.
 
-PowerRangeUtility는 단일 셀 반경의 경계를 포함하는 정사각형을 판정한다. range 5는 11×11셀, 주 시설 가상 공급 range 0은 자기 셀이다. 전신주는 한쪽 연결 범위에 상대 중심이 들어가면 연결한다(OR). 공급 영역 중첩만으로 망을 병합하지 않는다. TryGetFootprintDistanceSquared는 회전된 직사각형 전체의 가장 가까운 점유 셀을 사용해 공급 가능 여부와 최소 제곱거리를 반환하며 Task 8.4의 선택/최종 검사가 공유한다.
 
-| 사례 | 확정 기대 결과 | 실행 검증 담당 |
-| --- | --- | --- |
-| 연료 없음 → 틱 N 신규 석탄 입고 | N 공급은 기존 연료만 사용; 새 석탄은 N+1부터 발전 가능 | 8.6/8.7 |
-| 마지막 연료가 한 틱 최대 출력보다 부족 | 같은 틱에 연료로 가능한 부분 공급·진행; 잔량 음수/미지원 공급 없음 | 8.5~8.7 |
-| N에 전신주/발전기/소비자 완공·직접 생성 | EndBuilding에 실체화하고 N+1부터 공급 계산에 참가 | 연결 8.2~8.4; 수요/공급 게시 8.5; 생산 8.7 |
-| N Command에서 공급 중 참가자 철거 승인 | N 계획부터 제외; EndBuilding 삭제 후 고아 연결 없음 | 8.3/8.7 |
-| 재료 없음/진행 완료 대기 ↔ 작업 가능 | 해당 틱의 공개 도메인 결정으로 수요 0 ↔ 정격 수요; 전력이 없다는 이유로 수요를 지우지 않음 | 8.7/10A.3 |
-| 계획 뒤 실행 실패·틱 중 작업 완료 | 실제 사용분만 정산; 미사용분 재배분 없음; 전환 연료의 미사용 에너지 보존 | 8.6/8.7 |
-| N 새 귀환·후속 배차·완충 | 새 귀환은 N+1 충전; 실행하지 않은 초기 후보는 실제 사용 0 | 9.14 |
-| range 경계·다른 Tier의 range | 경계 포함·정사각형·OR 연결; 전체 footprint 공급 선택과 구분 | 순수 판정 8.1; 망/참가자 실행 8.2~8.4 |
+## 준비/결정과 Job 의존성
+
+Preparation 이름을 유지한다. MinerWorkPreparation은 자원/출력 조건의 자격과 대상을, CrafterWorkPreparation은 재료/진행 자격만 전달한다. 기존 MinerDecision/CrafterDecision/CrafterStateDecision의 단독 Writer는 BuildingDecision이다. 전력 요청에 필요하지 않은 완료 출력/표시 상태 판단은 Building에서 수행하며 자원 탐색·재료 자격 검사는 준비 결과를 재사용한다. Execution은 실제 변경 전 자원/재료를 최종 검사한다.
+
+PowerSimulationGroup은 단계 구성만 맡고 PowerValidationInitializationSystem이 Native 검증 결과와 마지막 접근 핸들의 수명을 소유한다. 생성 → Preparation Reset → Job/해제 핸들 등록 → EndPower 완료/공통 Fatal·ECB 게시 → 종료 시 완료/Dispose 순서다. Entity 목록은 필요한 처리에만 비동기 수집하며 해제를 의존성에 포함한다. 예산 Reservation과 연료 Execution은 로컬 Ready로 검사 완료를 전달하고 StateApply는 토폴로지/선택의 준비 여부만 확인한다. 공급 결과 초기화는 Preparation의 단독 책임이다. 중간 EntityManager 검증/CompleteDependencyBeforeRO나 Lookup 묶음은 없고 기존 Fence·ECB Producer 계약을 유지한다.
 
 ## Task 8.1 검증 근거와 한계
 
@@ -195,3 +137,60 @@ Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·Ed
 Unity CLI 연결은 Pipeline 서버 대기 상태였으며 사용자가 서버를 시작한 뒤 복구했다. 저장소 검증 래퍼의 기존 CompileOnly 모드 선택 오류로 개별 CLI 검증 경로를 사용했다. 최초 Native 맵 using 변수 갱신 컴파일 오류 두 곳은 누적 메서드로 수정하고 이후 runtime/Editor 컴파일을 확인했다. 최종 상태는 completed/failed false/errors 없음/compilationFailed false, ready·비컴파일·비리로드·Play stopped이며 두 DLL의 최신성을 확인했다.
 
 최종 선택 EditMode는 Phase8PowerTopologyTests 38/38, Phase7BuildingLifecycleTests 11/11, Phase7ConstructionCompletionTests 8/8, Phase7BuildingDemolishTests 19/19로 이번 76/76, 실패·생략·불확정 0이다. 중간 36사례 실행이나 이전 41/59사례와 합산하지 않는다. Play Mode·베이킹·Player 빌드·성능은 미수행이다.
+
+## Power 페이즈 분리·Task 8.6~8.7 검증 (2026-10-15)
+
+Preparation의 작업 의도/수요 → Power의 선택·망·가용량/배분·석탄 전환/확정 소비·EndPower 공개 → Building/Drone 작업을 연결했다. 원래 시스템 meta GUID를 보존하여 이동했고 일반 아이템 수명주기는 EndBuilding을 유지한다. 소비 이후 정산/PowerUsageResult는 제거했다.
+
+Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·Editor ready/비컴파일/비리로드와 최신 runtime/Editor DLL을 확인했다. 관련 선택 EditMode 157/157, 실패·생략·불확정 0이다. Play Mode·베이킹·Player 빌드·성능은 미수행이다.
+
+이번 실행은 전력 70(Topology 44·Contract 26), 생산 33(Miner 5·EndToEnd 3·Crafter Execution 6·Input 19), 생성/완공/철거 54(Lifecycle 11·Completion 8·Demolish 19·ItemCreationDemolition 16)다. 실제 GameSimulationGroup/EndPower 경계에서 부분 공급·무전력 재료 보존·조기 완료 잔여분 소비·전환 공간의 같은 틱 입고·새 입고의 다음 틱 발전·철거 반환·전역 손상 시 연료/게시 보존과 같은 틱 Building/Drone 차단을 검사했다. 기존 생산/철거 fixture는 새 그룹 순서와 명시적인 전력 입력으로 갱신했으며 전력 입력 대체 fixture를 실제 Power 통합 증거로 확대하지 않는다. 연구/충전 수요의 fixture 입력은 실제 Producer가 아니다. 과거 실행은 합산하지 않는다.
+
+## 준비/실행 결정 분리·공통 Fatal·Job 연결 검증 (2026-10-15)
+
+Preparation 이름을 유지하고 준비 컴포넌트 두 개와 Building의 실행 결정을 분리했다. 기존 생산 Decision GUID를 보존해 Building으로 복귀시켰다. PowerFrameState 대신 공통 Fatal의 중단 범위와 비공개 검증 scratch를 사용한다. 입력 수집/검증·배분·소비·공개를 Job 의존성으로 연결하고 EndPower에서 완료한다.
+
+이번 준비/결정 분리·공통 Fatal·Job 의존성 변경은 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·Editor ready/비컴파일/비리로드·최신 runtime/Editor DLL과 관련 선택 EditMode 170/170(실패·생략·불확정 0)으로 확인했다.
+
+관련 선택 실행은 PowerTopology 47·PowerContract 26, Miner 5·생산 EndToEnd 3·Crafter Execution 6·Input 19, 생성 11·완공 8·철거 19·아이템 생성/철거 16, 공유 자원 생성/채굴 fixture 10으로 총 170사례다. 이전 157/76 등의 실행과 합산하지 않는다.
+
+기존 흐름 안에서 준비 단계가 실행/완료 출력 결정을 덮어쓰지 않는 것을 검사했다. 추가로 중복 연료 참조의 전체 소비 거부, EndBuilding Fatal의 같은 틱 Drone 완주/다음 틱 차단, 활성 전신주 0개에서 미준비 선택을 빈 망으로 오인해 공개 망/참조를 삭제하지 않는 회귀를 확인했다. 기존 Owner 손상·부분 공급·무전력 신규 재료 보존·완료 출력·같은 틱 전환 공간 입고·새 연료 다음 틱 사용과 실제 생성/완공/철거는 유지했다.
+
+공유 자원 fixture는 현재 지원 반경 상한 2와 명시적인 격리 전력 입력에 맞췄으며 제품의 생성 범위/게임 설정은 바꾸지 않았다. Editor는 Edit Mode인데 일시정지 플래그가 남아 테스트 시작이 지연되어 Editor API로 확인 후 해제했다. Play Mode·베이킹·Player 빌드·성능은 미수행이며 Job 이관을 성능 측정 결과로 해석하지 않는다.
+
+## 검증 소유자와 Job 입력 분리 (2026-10-15)
+
+PowerSimulationGroup의 필드·메모리 관리·완료·오류 게시 코드를 제거했다. PowerValidationInitializationSystem이 OnCreate 생성, Preparation의 Reset 요청, GetDependency/Register 접근 추적, EndPower의 완료/오류 인계, OnDestroy 완료/해제를 소유한다. OnUpdate는 초기화 이후 비활성화하며 저장 자료는 World 수명으로 유지한다. 공통 Fatal 게시자는 EndPower이고 중단 범위·소비/공개 시점은 유지한다.
+
+PowerReadContext를 제거하고 각 Job에 필요한 Lookup을 직접 전달한다. 공유 검증 함수도 필요한 Lookup만 명시적 인자로 받는다. 당시 소비자/발전기 입력 검증을 별도 Job으로 나눴으나 아래 Writer 경계 정리에서 반복 구성 검사와 함께 제거했다. 공통 Lookup 생성기는 없다. 내부 검증 자료의 접근 순서와 ECB Producer/Fence 계약은 유지하며 병렬성/성능을 측정한 결과로 해석하지 않는다.
+
+이번 소유자/Lookup 분리 변경은 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·Editor ready/비컴파일/비리로드·최신 runtime/Editor DLL과 관련 선택 EditMode 170/170(실패·생략·불확정 0)으로 확인했다. Play Mode·베이킹·Player 빌드·성능은 미수행이다.
+
+## 검수 지적 보완 (2026-10-15)
+
+예산 검증의 조기 반환이 후속 배분을 허용하던 경로를 호출별 Ready로 차단했다. 선택된 전신주 삭제/토폴로지 컴포넌트 제거를 발전기·소비자 검증 경로에서 각각 확인하는 4사례와 미준비 발전 계획·수요 2사례를 추가했다. 배분 예외 없음, 예약 미게시, 발전 계획·연료·공급·공개 연결 보존을 검사한다. 공급 결과 중복 초기화는 제거했으며 기존 누락 예약 테스트도 Preparation Reset부터 실행한다. 건물 구성 문서의 석탄 전환·생산 전력 반영 범위도 현재 구현에 맞췄다.
+
+이번 보완은 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false, Editor ready/비컴파일/비리로드, 최신 runtime/Editor DLL을 확인했다. 선택 EditMode는 Phase8PowerTopologyTests 53/53, Phase8PowerContractTests 26/26, Phase4MinerPipelineTests 5/5, Phase5CrafterExecutionTests 6/6, Phase5CrafterInputPipelineTests 19/19, Phase4EndToEndPipelineTests 3/3으로 총 112/112(실패·생략·불확정 0)이다. 이전 170/170과 별도 실행이며 Play Mode·베이킹·Player 빌드·성능은 미수행이다.
+
+이번 선택 실행은 전력 73(Topology 47·Contract 26), 채굴/제작 33, 생성/완공/철거 54, 공유 자원 fixture 10으로 170사례다. 이전 실행과 합산하지 않는다. 기존 같은 틱 Power 차단·EndBuilding 오류의 다음 틱 차단·확정 소비·부분 공급·무전력 재료 보존·완료 출력·망 병합/분리·미준비 보존과 반복 World 정리 흐름을 유지했다. 소유권 이동/Lookup 필드 대입만 확인하는 별도 테스트는 추가하지 않았다.
+
+## Writer와 검사 경계 (2026-10-15)
+
+| 원본/계획 | Writer와 가시성 | 런타임 Reader의 계약 |
+| --- | --- | --- |
+| BuildingConfigElement.Power | BuildingConfigLoader가 JSON·공개·사전 등록을 검증하고 Initialization이 게시한다. 게시 후 불변이다. | 필요한 값을 조회하며 전력 설정 parser의 전체 검증을 반복하지 않는다. |
+| 건물 종류·Tier·위치·방향·footprint·전력 필수 구성 | 공통 Spawn/완공이 EndBuilding에 부착한다. 승인 철거는 Command에 게시하고 실물 삭제는 EndBuilding이다. | Power 내부 Writer가 없으므로 생성된 구성을 사용한다. 각 단계가 존재·종류·설정·범위를 다시 검증하지 않는다. |
+| PowerDemand·작업 준비 | Preparation의 단독 Writer. | Reservation은 준비 상태와 배분에 필요한 유한/비음수 수요를 검사한다. Execution은 수요를 다시 읽거나 대조하지 않는다. |
+| PowerGridConnectionDecision | Power Decision의 단독 Writer. | Reservation이 대표 참조/준비를 확인하고 StateApply는 준비된 선택을 사용한다. |
+| PowerGridTopologyDecision | Power Reservation의 단독 Writer. | Reservation의 대표/유지권을 후속 단계가 사용한다. ExpectedGrid 복사와 소비 직전/Apply의 재대조는 제거했다. |
+| PowerGeneratorSupplyPlan·PowerSupplyReservation | 가용량은 Decision, 배정량·정수 연료 계획·소비자 공급률은 Reservation이 작성한다. | Execution은 준비 상태·실제 소비 조건을 확인하고 배분 결과를 게시한다. 대조 전용 대표·수요 사본은 제거했다. |
+| FuelEnergyState·Coal 실물 | 생성 시 잔량 0. Power Execution이 잔량·저장 참조를 바꾸고 EndPower가 실물을 삭제한다. 이후 Building/Drone이 입출고한다. | 가용량은 현재 개수/잔량으로 계산하고, 실물 소비 검사는 Execution에서 삭제 대상에 한 번 수행한다. |
+| PowerGridConnection·PowerGrid | StateApply가 EndPower에 기록한다. | Topology Reservation이 이전 공개 망을 읽어 유지권을 계산한다. 그 이후에는 같은 틱 원본 변경이 없으므로 Execution/StateApply가 다시 전체 검사하지 않는다. |
+
+구성 불변식은 생성/변경 Writer가 유지한다. 소유 버퍼의 일반 Owner·참조 유일성은 기존 WorldInvariantValidationSystem의 Editor/Development Build 검사 대상이며 매 전력 단계에서 전체 버퍼를 순회하지 않는다. Topology의 이전 공개 망 검사는 유지권/삭제 대상 Entity를 안전하게 계획하는 한 지점에 남긴다. 단계 사이에 위치·연결·수요·필수 컴포넌트를 임의로 수정하는 외부 경로는 지원 계약이 아니며 해당 Writer가 추가되면 준비 시점과 의존성 경계를 다시 설계해야 한다.
+
+Preparation/Decision의 소비자·발전기·선택 전체 검증 Job을 제거했다. 예산 검증 Lookup은 22개에서 9개, Execution은 26개에서 9개, StateApply 수집은 14개에서 2개로 줄었다. 준비 누락을 차단하는 Ready, 실제 소비 에너지/수량, 소비할 아이템의 Owner/종류/중복·Destroy와 전체 소비 전 검사, 기존 Fatal 범위·Fence·ECB Producer 등록은 유지한다. 성능 개선을 측정한 결과는 아니다.
+
+테스트는 중간 Writer가 없는 구간에 공개 연결·위치·수요를 임의로 바꾸고 재검증을 요구하던 4사례를 제거했다. 공급 Reset 검사는 필수 컴포넌트 임의 제거 대신 정상 Preparation의 단독 초기화를 확인한다. 예산 준비 누락/무효 대표 6사례를 유지하고 소비 직전 준비 누락 2사례를 추가했다. 연료 Owner/중복 실패 사례는 실제 전환이 필요한 Miner 수요와 두 발전기를 사용해 어느 쪽도 부분 소비하지 않는지 검사한다.
+
+Unity 컴파일 completed/failed false/errors 없음/compilationFailed false, Editor ready/비컴파일/비리로드와 최신 runtime/Editor DLL을 확인했다. 관련 선택 EditMode는 Phase8PowerTopologyTests 51/51, Phase8PowerContractTests 26/26, Phase4MinerPipelineTests 5/5, Phase4EndToEndPipelineTests 3/3, Phase5CrafterExecutionTests 6/6, Phase5CrafterInputPipelineTests 19/19, Phase7BuildingLifecycleTests 11/11, Phase7ConstructionCompletionTests 8/8, Phase7BuildingDemolishTests 19/19, Phase7ItemCreationDemolitionTests 16/16, Phase4ResourceAuthoringAndSpawnTests 10/10으로 총 174/174(실패·생략·불확정 0)이다. 이전 실행과 합산하지 않으며 Play Mode·베이킹·Player 빌드·성능은 미수행이다.

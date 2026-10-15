@@ -30,10 +30,11 @@ public class Phase4ResourceAuthoringAndSpawnTests : EcsWorldTestFixture
         _entityManager.SetComponentData(settingsEntity, new ResourceGenerationSettings(worldSeed, 3));
 
         var buffer = _entityManager.AddBuffer<ResourceGenerationConfigElement>(settingsEntity);
-        buffer.Add(new ResourceGenerationConfigElement(ItemTypeEnum.Iron_Ore, 0.8f, 2, 4, 0.7f, 50, 200));
-        buffer.Add(new ResourceGenerationConfigElement(ItemTypeEnum.Copper_Ore, 0.6f, 2, 3, 0.6f, 40, 150));
-        buffer.Add(new ResourceGenerationConfigElement(ItemTypeEnum.Coal, 0.5f, 1, 3, 0.65f, 30, 120));
-        buffer.Add(new ResourceGenerationConfigElement(ItemTypeEnum.Stone, 0.7f, 2, 4, 0.75f, 60, 250));
+        // 격리 입력도 제품의 지원 반경 상한을 따른다.
+        buffer.Add(new ResourceGenerationConfigElement(ItemTypeEnum.Iron_Ore, 0.8f, 2, GameConstants.MaxResourcePatchRadius, 0.7f, 50, 200));
+        buffer.Add(new ResourceGenerationConfigElement(ItemTypeEnum.Copper_Ore, 0.6f, 2, GameConstants.MaxResourcePatchRadius, 0.6f, 40, 150));
+        buffer.Add(new ResourceGenerationConfigElement(ItemTypeEnum.Coal, 0.5f, 1, GameConstants.MaxResourcePatchRadius, 0.65f, 30, 120));
+        buffer.Add(new ResourceGenerationConfigElement(ItemTypeEnum.Stone, 0.7f, 2, GameConstants.MaxResourcePatchRadius, 0.75f, 60, 250));
 
         Entity prefabDbEntity = _entityManager.CreateEntity(typeof(ResourcePrefabDatabase));
         var prefabBuffer = _entityManager.AddBuffer<ResourcePrefabElement>(prefabDbEntity);
@@ -161,6 +162,7 @@ public class Phase4ResourceAuthoringAndSpawnTests : EcsWorldTestFixture
 
         // 4. 채굴기 설치 (자원 노드 위치 위에 1x1 마이너 설치)
         Entity minerEntity = Entities.CreateMiner(targetPos, new int2(1, 1), DirectionEnum.Up, miningSpeed: 100.0f);
+        Entities.PrepareIsolatedPowerSupply(minerEntity);
 
         // 5. 다음 실제 시뮬레이션 프레임에서 결정 -> 채굴 -> 생산물 생성 -> 고갈 반영.
         Simulation.SetDeltaTime(0.1f);

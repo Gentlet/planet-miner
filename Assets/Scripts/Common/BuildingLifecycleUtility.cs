@@ -138,6 +138,8 @@ public static class BuildingLifecycleUtility
                 AttachPowerParticipantComponents(ref ecb, building);
                 AttachPowerConsumerComponents(ref ecb, building);
                 ecb.AddComponent(building, new MinerState(speed > 0f ? speed : 1.0f));
+                ecb.AddComponent<MinerWorkPreparation>(building);
+                ecb.SetComponentEnabled<MinerWorkPreparation>(building, false);
                 ecb.AddComponent<MinerDecision>(building);
                 ecb.SetComponentEnabled<MinerDecision>(building, false);
                 ecb.AddBuffer<ProductItemElement>(building);
@@ -151,6 +153,8 @@ public static class BuildingLifecycleUtility
                 AttachPowerParticipantComponents(ref ecb, building);
                 AttachPowerConsumerComponents(ref ecb, building);
                 ecb.AddComponent(building, new CrafterState(selectedRecipeId: 0, speed: speed > 0f ? speed : 1.0f));
+                ecb.AddComponent<CrafterWorkPreparation>(building);
+                ecb.SetComponentEnabled<CrafterWorkPreparation>(building, false);
                 ecb.AddComponent<CrafterDecision>(building);
                 ecb.SetComponentEnabled<CrafterDecision>(building, false);
                 ecb.AddComponent(building, new CrafterStateDecision(CrafterStatusEnum.NoRecipe));
@@ -200,6 +204,10 @@ public static class BuildingLifecycleUtility
                 break;
 
             case BuildingTypeEnum.CoalGenerator:
+                AttachStorageComponents(ref ecb, building, storageCapacity);
+                var fuelFilter = new StorageFilter(StorageFilterMode.Whitelist);
+                fuelFilter.Mask.Set((byte)ItemTypeEnum.Coal, true);
+                ecb.SetComponent(building, fuelFilter);
                 AttachPowerParticipantComponents(ref ecb, building);
                 AttachPowerGeneratorComponents(ref ecb, building, true);
                 break;
@@ -221,17 +229,18 @@ public static class BuildingLifecycleUtility
     private static void AttachPowerConsumerComponents(ref EntityCommandBuffer ecb, Entity building)
     {
         ecb.AddComponent<PowerConsumer>(building);
+        ecb.SetComponentEnabled<PowerConsumer>(building, false);
         ecb.AddComponent<PowerDemand>(building);
         ecb.SetComponentEnabled<PowerDemand>(building, false);
         ecb.AddComponent<PowerSupplyResult>(building);
         ecb.AddComponent<PowerSupplyReservation>(building);
         ecb.SetComponentEnabled<PowerSupplyReservation>(building, false);
-        ecb.AddComponent<PowerUsageResult>(building);
     }
 
     private static void AttachPowerGeneratorComponents(ref EntityCommandBuffer ecb, Entity building, bool usesFuel)
     {
         ecb.AddComponent<PowerGenerator>(building);
+        ecb.SetComponentEnabled<PowerGenerator>(building, false);
         ecb.AddComponent<PowerGeneratorSupplyPlan>(building);
         ecb.SetComponentEnabled<PowerGeneratorSupplyPlan>(building, false);
         if (usesFuel)
