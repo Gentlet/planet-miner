@@ -369,6 +369,16 @@ public static class BuildingConfigLoader
                     Debug.LogError("[BuildingConfigLoader] Construction material references an undefined building type/tier.");
                     return false;
                 }
+                if (material.ItemType == ItemTypeEnum.None || !Enum.IsDefined(typeof(ItemTypeEnum), material.ItemType))
+                {
+                    Debug.LogError("[BuildingConfigLoader] Construction material has an invalid item type.");
+                    return false;
+                }
+                if (material.Quantity <= 0)
+                {
+                    Debug.LogError("[BuildingConfigLoader] Construction material quantity must be positive.");
+                    return false;
+                }
             }
         }
         return true;

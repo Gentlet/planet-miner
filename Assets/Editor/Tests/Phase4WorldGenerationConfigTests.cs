@@ -1,3 +1,4 @@
+using System;
 using System.Text.RegularExpressions;
 using NUnit.Framework;
 using PlanetMiner.Tests;
@@ -7,11 +8,60 @@ using UnityEngine.TestTools;
 
 /// <summary>
 /// 역할·목적: 월드 설정 유효성 검사와 초기화 한 번 게시에 대한 NUnit EditMode 회귀 검증.
-/// 입력·검사: 잘못된 resourceType/수량 상한과 초기화 호출로 부분 게시 방지·설정 엔티티 유일성을 검사한다.
+/// 입력·검사: 잘못된 종류/수량/NaN 확률의 게시 거부와 초기화 실패 시 원본 보존·정상 게시 유일성을 검사한다.
 /// 수명: EcsWorldTestFixture가 각 사례의 독립 World를 준비하고 종료 시 해제한다.
 /// </summary>
 public class Phase4WorldGenerationConfigTests : EcsWorldTestFixture
 {
+    [TestCase(nameof(ResourceGenerationConfigElement.Weight))]
+    [TestCase(nameof(ResourceGenerationConfigElement.CellFillChance))]
+    public void NaNProbability_PublicationRejectsAndPreregisteredInitStops(string probabilityField)
+    {
+        Assert.IsTrue(WorldGenerationConfigLoader.TryLoadConfigFromResources(
+            WorldGenerationConfigLoader.DefaultResourcePath, out uint seed, out int initialSize,
+            out var resources, out var floor));
+        var validResource = resources[0];
+        var invalidResource = validResource;
+        string errorField;
+        if (probabilityField == nameof(ResourceGenerationConfigElement.Weight))
+        {
+            invalidResource.Weight = float.NaN;
+            errorField = "weight";
+        }
+        else
+        {
+            invalidResource.CellFillChance = float.NaN;
+            errorField = "cellFillChance";
+        }
+        resources[0] = invalidResource;
+
+        var exception = Assert.Throws<ArgumentException>(() =>
+            WorldGenerationConfigLoader.PublishConfig(_entityManager, seed, initialSize, resources, floor));
+        StringAssert.Contains($"Invalid {errorField}", exception.Message);
+        using var query = _entityManager.CreateEntityQuery(typeof(ResourceGenerationSettings));
+        Assert.AreEqual(0, query.CalculateEntityCount());
+        using var floorQuery = _entityManager.CreateEntityQuery(typeof(FloorGenerationSettings));
+        Assert.AreEqual(0, floorQuery.CalculateEntityCount());
+
+        // 초기화 전에 구성한 사전 등록 입력은 실패해도 삭제하거나 보정하지 않는다.
+        resources[0] = validResource;
+        Entity entity = WorldGenerationConfigLoader.PublishConfig(_entityManager, seed, initialSize, resources, floor);
+        var preregisteredResources = _entityManager.GetBuffer<ResourceGenerationConfigElement>(entity);
+        preregisteredResources[0] = invalidResource;
+        LogAssert.Expect(LogType.Error,
+            new Regex($"WorldGenerationConfigLoadSystem.*Invalid {errorField}.*Game simulation stopped"));
+        _world.GetOrCreateSystem<WorldGenerationConfigLoadSystem>().Update(_world.Unmanaged);
+
+        Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
+        Assert.AreEqual(entity, query.GetSingletonEntity());
+        Assert.AreEqual(entity, floorQuery.GetSingletonEntity());
+        var preservedResources = _entityManager.GetBuffer<ResourceGenerationConfigElement>(entity);
+        Assert.AreEqual(resources.Count, preservedResources.Length);
+        var preservedResource = preservedResources[0];
+        Assert.IsTrue(float.IsNaN(probabilityField == nameof(ResourceGenerationConfigElement.Weight)
+            ? preservedResource.Weight : preservedResource.CellFillChance));
+    }
+
     [TestCase("255")]
     [TestCase("None")]
     [TestCase("UnknownOre")]

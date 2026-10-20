@@ -446,9 +446,9 @@ public static class WorldGenerationConfigLoader
 
     private static bool TryValidateResourceParameters(in ResourceGenerationConfigElement config, out string error)
     {
-        if (config.Weight < 0f || config.Weight > 1f)
+        if (!IsNonNegativeFinite(config.Weight) || config.Weight > 1f)
         {
-            error = $"Invalid weight for type '{config.ResourceType}': {config.Weight}. Must be between 0.0 and 1.0.";
+            error = $"Invalid weight for type '{config.ResourceType}': {config.Weight}. Must be finite and between 0.0 and 1.0.";
             return false;
         }
         if (!ResourceGenerationConfigLookupUtility.IsPatchRadiusSupported(config.MinPatchRadius, config.MaxPatchRadius))
@@ -456,9 +456,9 @@ public static class WorldGenerationConfigLoader
             error = $"Invalid patch radius for type '{config.ResourceType}': min={config.MinPatchRadius}, max={config.MaxPatchRadius}. Must satisfy 0 <= min <= max <= {GameConstants.MaxResourcePatchRadius}.";
             return false;
         }
-        if (config.CellFillChance < 0f || config.CellFillChance > 1f)
+        if (!IsNonNegativeFinite(config.CellFillChance) || config.CellFillChance > 1f)
         {
-            error = $"Invalid cellFillChance for type '{config.ResourceType}': {config.CellFillChance}. Must be between 0.0 and 1.0.";
+            error = $"Invalid cellFillChance for type '{config.ResourceType}': {config.CellFillChance}. Must be finite and between 0.0 and 1.0.";
             return false;
         }
         if (!ResourceGenerationConfigLookupUtility.IsAmountRangeSupported(config.MinAmount, config.MaxAmount))

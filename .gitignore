@@ -107,3 +107,10 @@ InitTestScene*.unity*
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
 FixTests/*
 .serena
+
+# Share review agent profiles while keeping local Codex settings private.
+!/.codex/
+/.codex/*
+!/.codex/agents/
+/.codex/agents/*
+!/.codex/agents/*.toml
