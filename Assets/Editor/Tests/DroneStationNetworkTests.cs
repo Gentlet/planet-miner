@@ -197,7 +197,7 @@ public class DroneStationNetworkTests : EcsWorldTestFixture
         int index = -1;
         for (int i = 0; i < configs.Length; i++) if (configs[i].BuildingType == type && configs[i].Tier == tier) index = i;
         var row = index < 0
-            ? new BuildingConfigElement(type, tier, "Test station", 0, 20, true, footprint: footprint)
+            ? new BuildingConfigElement(type, tier, "Test station", 0, 20, true, footprint: footprint, droneStationStorageCapacity: 5)
             : configs[index];
         row.Footprint = footprint;
         row.DroneStationRangeInChunks = range;

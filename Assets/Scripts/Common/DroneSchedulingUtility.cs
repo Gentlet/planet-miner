@@ -137,6 +137,11 @@ public static class DroneSchedulingUtility
             return false;
         }
 
+        if (manager.HasComponent<DroneDocked>(worker))
+        {
+            return false;
+        }
+
         var observation = manager.GetComponentData<DroneWorkerObservation>(worker);
         return carryingCapacity > 0 && observation.Revision > 0 &&
                observation.CanAcceptTask && math.all(math.isfinite(observation.Position)) &&
@@ -189,7 +194,8 @@ public static class DroneSchedulingUtility
         if (!TryReadStorageLimit(manager, storage, type, registry, out int slots, out int maxStack)) return -1;
         for (int slot = 0; slot < slots; slot++)
         {
-            if (SlotHasRoom(manager, storage, type, slot, maxStack)) return slot;
+            int candidate = StationStorageUtility.SearchSlot(slot, slots, StationStorageUtility.ReadDedicatedCount(manager, storage), type);
+            if (SlotHasRoom(manager, storage, type, candidate, maxStack)) return candidate;
         }
         return -1;
     }
@@ -237,6 +243,15 @@ public static class DroneSchedulingUtility
 
     private static bool SlotHasRoom(EntityManager manager, Entity storage, ItemTypeEnum type, int slot, int maxStack)
     {
+        if (!StationStorageUtility.IsItemSlotAllowed(slot, manager.GetComponentData<Storage>(storage).SlotCount,
+            StationStorageUtility.ReadDedicatedCount(manager, storage), type))
+        {
+            return false;
+        }
+        if (StationStorageUtility.IsDockOccupied(manager, storage, slot))
+        {
+            return false;
+        }
         var items = manager.GetBuffer<StoredItemElement>(storage, true);
         if (manager.HasBuffer<BuildingInputSlotElement>(storage))
         {

@@ -105,11 +105,11 @@ DroneTaskCandidateDecisionElement는 Decision이 매 틱 Clear하고 다시 만�
 
 건물 철거는 Command에서 승인·PendingBuildingDemolition 게시·이전 Transfer 비활성화·ProductResult Clear 후 후보 생성을 차단한다. ItemSpawnAdmissionDecisionSystem은 철거 대상 Storage/Product 요청을 비활성화하고 EndBuilding에 삭제한다. BuildingLifecycleApplySystem은 승인 상태로 기존 Disabled 포함 대상을 조회하여 반환·환급·철거를 EndBuilding에 기록하며 BuildingType 소실만 방어한다. 기존 실물 반환·비용 환급·활성 Destroy 제외와 같은 틱 재배치의 이전 인덱스 점유 규칙은 유지한다.
 
-현재 드론 관리에는 Task 9.3.1의 생성 유틸리티가 있다. 실제 출고/수납 등록·이동·경로 평가·지속 관측·행동 신호 Producer와 공통 초기 능력·연구 Writer는 후속이다. [드론 계약](Docs/CodeMemory/Components/DroneLogistics.md), [건설 명세](Docs/Specifications/ConstructionAndDroneSupply.md)를 따른다. 기존 통합 4사례와 기존 142사례는 이전 여섯 phase의 별도 실행 기록이며 새 구조의 검증으로 합산하거나 소급 해석하지 않는다.
+현재 드론 관리에는 Task 9.3.1의 생성 유틸리티와 Task 9.3의 명시적 출고/정박/수납 요청 처리가 있다. 실제 이동/귀환 선택/경로 평가/지속 관측/행동 신호와 연구 Writer는 후속이다. [드론 계약](Docs/CodeMemory/Components/DroneLogistics.md), [건설 명세](Docs/Specifications/ConstructionAndDroneSupply.md)를 따른다. 기존 통합 4사례와 기존 142사례는 이전 여섯 phase의 별도 실행 기록이며 새 구조의 검증으로 합산하거나 소급 해석하지 않는다.
 
 2026-10-15 Task 9.1은 [드론 상태 전이·Lifecycle Owner 계약](Docs/Specifications/DroneLifecycle.md)을 문서로 확정했다. 작업·배정·예약·화물은 기존 소유자를 유지하고, 수행자 자체 상태·배터리·관측의 후속 Writer와 공개 경계를 구분한다. 1A~6A의 엄격한 수납 자격, 충전 경유의 완충 전/연속 배차, 정상/비상 귀환과 실제 중단 시 예약 해제·화물 보존을 적용한다. 이 계약 완료는 실제 정거장·이동·충전 구현이나 새 실행 검증의 완료가 아니다. 슬롯 수·충전 수치·적재량 초기화의 남은 결정은 해당 후속 Task에서 다룬다.
 
-[공통 적재량 초기화 계약](Docs/Specifications/DroneCapacityInitializationPlan.md)은 2026-10-22 사용자 확정 6A(기존 설정값 3·공통 Fatal·유효한 기존 singleton 보존)를 기록한다. 구현은 Task 9.3에 남기며 이번 9.3.1 생성 기반과 구분한다. 개발 마일스톤 Phase7 등의 숫자는 런타임 그룹 개수를 뜻하지 않는다.
+[공통 적재량 초기화 계약](Docs/Specifications/DroneCapacityInitializationPlan.md)은 2026-10-22 사용자 확정 6A(설정값 3/공통 Fatal/유효한 기존 singleton 보존)를 따른다. Task 9.3의 DroneConfigInitializationSystem이 carryingCapacity와 최대 배터리를 한 번 게시한다. 개발 마일스톤 Phase7 등의 숫자는 런타임 그룹 개수를 뜻하지 않는다.
 2026-10-22 Task 9.2는 [정거장 네트워크 명세](Docs/Specifications/DroneStationNetwork.md)를 따른다. 공통 건물 생성은 주 시설·정거장에 역할/결정/공개 연결을 부착한다. BuildingConfig의 종류·티어별 단일 DroneStationRangeInChunks와 회전 footprint 긴 변으로 정사각형 활동 영역을 계산한다. 음수 Range는 0, 홀수 여백은 양의 축에 1셀을 더 두며 long 합산을 사용한다. 무전력 참가·공유 셀 연결·PlacementStamp 대표 Entity를 적용한다. DroneDecision의 이번 틱 결과를 DroneStationNetworkApplySystem이 EndSimulation에 공개한다. DroneStationSpatialSyncSystem은 공개 연결/건물 원본으로 맵을 재구축하고 같은 singleton의 Fence를 완료한 뒤 재할당/해제한다. 작업 망 필터·수용량·귀환·충전·철거 시 수행자 재배치는 후속 Task다.
 
 ## 핵심 데이터와 변경 규칙
@@ -186,7 +186,13 @@ DroneTaskCandidateDecisionElement는 Decision이 매 틱 Clear하고 다시 만�
 - `PrefabDatabaseInitializationSystem`은 Initialization 마지막에 요청된 SubScene 로딩을 기다린 뒤 건물·아이템·자원 DB의 유일성, 등록 타입·중복·필수 항목, 엔티티 생존·Prefab·LocalTransform, 아이템 ItemIdentity 일치를 검증한다. 건물은 None/Count/ConstructionSite를 제외한 모든 종류의 1티어와 Config에 작성한 모든 종류·티어 조합이며 설정 없는 등록도 거절한다. 아이템은 None을 제외한 종류, 자원은 활성 생성 설정의 품목이 필수다. 실패하면 오류를 기록하고 시작을 차단하며 자동 재시도하지 않는다.
 - `GameSimulationGroup`은 프리팹 DB와 필수 설정의 게시 데이터가 준비되고 `SimulationFatalError`가 없을 때만 실행한다. `PrefabDatabaseReady` 자체는 설정 준비를 뜻하지 않는다. DB는 검증 후 월드 수명 동안 불변이다. Spawn 중 DB/항목 누락은 ECB로 중단 오류를 게시하여 다음 틱을 차단한다. 현재 틱 전체 rollback은 보장하지 않는다. 공사 완료는 공통 Spawn의 non-Null 결과 이후에만 자재·현장 삭제를 기록한다. Null이면 현장과 보관 자재를 보존한다. 직접 생성 요청 소비·생산 결과 Clear·환급 실패 정책의 별도 보상은 이번 변경 범위가 아니다.
 
-2026-10-22 Task 9.3.1은 [드론 생성 명세](Docs/Specifications/DroneCreation.md)를 따른다. DronePrefabDatabaseAuthoring이 V2 SubScene에 단일 Dynamic 원형 참조를 게시하며 공통 준비 검증은 건물·아이템·자원·드론 4종 DB를 요구한다. 원형에는 런타임 수행자/배터리/아이템 상태를 베이킹하지 않는다. DroneSpawnUtility는 Ready 이후 EndSimulation ECB에 새 Entity 또는 기존 루트의 초기 구성을 기록하고 표시 원형의 회전·scale·PostTransformMatrix를 보존한다. 초기 관측은 Revision 1/CanAcceptTask=false, 배정/화물은 비어 있으며 배터리는 호출자가 명시한 최대치로 최초 초기화하고 기존 값은 유지한다. 실제 설정 최대치 로딩·아이템↔드론 전환·정거장 수용량·적재량 초기화·출고/수납 요청은 Task 9.3 후속이다. 자동 생성/배차·실제 이동/충전은 추가하지 않았다.
+2026-10-22 Task 9.3.1은 [드론 생성 명세](Docs/Specifications/DroneCreation.md)를 따른다. DronePrefabDatabaseAuthoring이 V2 SubScene에 단일 Dynamic 원형 참조를 게시하며 공통 준비 검증은 건물·아이템·자원·드론 4종 DB를 요구한다. 원형에는 런타임 수행자/배터리/아이템 상태를 베이킹하지 않는다. DroneSpawnUtility는 Ready 이후 EndSimulation ECB에 새 Entity 또는 기존 루트의 초기 구성을 기록하고 표시 원형의 회전·scale·PostTransformMatrix를 보존한다. 초기 관측은 Revision 1/CanAcceptTask=false, 배정/화물은 비어 있으며 배터리는 호출자가 명시한 최대치로 최초 초기화하고 기존 값은 유지한다. 이 생성 API는 설정/Identity/보관 관계를 직접 소유하지 않으며 아래 Task 9.3의 별도 소유자가 연결한다. 자동 생성/배차·실제 이동/충전은 추가하지 않았다.
+
+### 드론 Identity/정거장 보관
+
+Task 9.3의 [Identity/정거장 보관 계약](Docs/Specifications/DroneIdentityAndStationStorage.md)은 같은 Entity의 Item/Worker 전환과 정박 관계를 EndSimulation에 공개한다. DroneStationLifecycleDecisionSystem은 병렬 Burst IJobEntity로 자격을, ReservationSystem은 단일 Burst IJob으로 기존 작업 예약 선택 뒤 Sequence 순서/슬롯 경합을 처리한다. ApplySystem의 단일 Burst 데이터 Job은 DroneTaskAssignmentPublishSystem의 공개 기록 뒤 최신 실물/활동/공간을 재검사하고 역할/버퍼/결과/비관리형 표시를 ECB에 기록한다. 승인된 Actor/Prefab 목록 완료를 기다린 메인 스레드는 관리형 RenderMeshArray만 별도 ECB에 기록하며 두 ECB 모두 기존 EndSimulation에 공개한다. 입력 deferred array/임시 Native 자료의 마지막 접근과 state.Dependency/ECB Producer를 등록하며 새 공유 Fence는 없다. 새 수행자는 최초 CanAcceptTask=false다. 입고만으로 활성화하지 않으며 수납에는 완충/무배정/Idle/빈 화물/공간을 모두 요구한다. DroneDocked와 DockedDroneElement는 같은 Lifecycle 소유자가 정박 양방향 관계를 기록하고 활성 정박은 슬롯 전체를 차지한다. 철거 시 이 관계의 재배치는 Task 9.19 후속이므로 현재 활성 정박 드론이 있는 정거장 철거는 Command에서 거부한다.
+
+BuildingConfig의 DroneStationStorageCapacity는 주 시설/정거장의 종류/티어별 전용 5슬롯이다. 일반 StorageCapacity 50/20과 분리하며 생성된 Storage.SlotCount는 두 구간의 합계다. 전용 구간은 총 슬롯의 뒤쪽이고 일반 아이템은 들어가지 않는다. 드론 아이템은 ItemConfig MaxStack 50으로 보관하고 귀환 보관은 전용부터 일반 공간을 공유한다. 벨트 드론 입고는 전용 여유만 허용하고 드론 출고는 금지하며 일반 아이템 FIFO는 유지한다. 실제 이동/충전과 DroneActivityState의 지속 Writer는 후속이다.
 
 ### 코드 작성 스타일
 
@@ -214,6 +220,7 @@ DroneTaskCandidateDecisionElement는 Decision이 매 틱 Clear하고 다시 만�
 | `Assets/Resources/Config/CrafterRecipeConfig.json` | `RecipeInitSystem` / `RecipeConfigLoader` → `RecipeRegistry`와 레시피·재료·출력 버퍼. 전체 초기화는 ID 1~5를 요구하며 파일 실패 뒤 기본 레시피로 대체하지 않는다. |
 | `Assets/Resources/Config/BuildingConfig.json` | `BuildingConfigInitSystem` / `BuildingConfigLoader` → 전력 능력 Power를 포함한 `BuildingConfigElement`, `BuildingConstructionMaterialElement`, 호환용 `BuildingRuntimeConfigElement`. 역할별 전력 검증을 포함하며 실패 시 게시하지 않는다. |
 | `Assets/Resources/Config/WorldGenerationConfig.json` | `WorldGenerationConfigLoadSystem` / `WorldGenerationConfigLoader` → 자원 설정과 `FloorGenerationSettings`, `FloorBiomeElement`, `FloorVariantElement`를 같은 엔티티에 게시한다. 자원·바닥·Sprite 참조 검증 실패 시 부분 게시하지 않는다. |
+| `Assets/Resources/Config/DroneConfig.json` | `DroneConfigInitializationSystem` → 공통 `DroneCapacityState`와 읽기 전용 `DroneBatteryConfig`. 명시적 양수 적재량/유한 양수 최대 배터리를 검증하고 유효한 기존 상태는 보존한다. 오류/중복은 공통 Fatal이며 이동/충전 설정 필드는 아직 읽지 않는다. |
 
 `BuildingConfigLoadSystem.cs`에는 실제 로더인 managed `BuildingConfigInitSystem`과, `BuildingConfig`를 요구하고 한 번 실행 후 비활성화되는 `BuildingConfigLoadSystem`이 함께 있다. 이름만 보고 로드 책임을 잘못 배정하지 않는다. 전력 능력은 BuildingConfig로 통합했고 별도 PowerConfig.json은 제거했다. 기존 드론·연구·시작 아이템 JSON의 존재는 현재 로더가 사용한다는 증거가 아니다.
 

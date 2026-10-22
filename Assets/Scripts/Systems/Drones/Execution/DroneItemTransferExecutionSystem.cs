@@ -211,11 +211,13 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
                 ItemType = mixed ? ItemTypeEnum.None : currentType,
                 ItemCount = mixed ? math.max(maxStack, count) : count
             });
-            bool allowed = true;
+            bool allowed = StationStorageUtility.IsItemSlotAllowed(slot, slotCount,
+                StationStorageUtility.ReadDedicatedCount(manager, storage), type) &&
+                !StationStorageUtility.IsDockOccupied(manager, storage, slot);
             if (hasInputSlots)
             {
                 var inputs = manager.GetBuffer<BuildingInputSlotElement>(storage, true);
-                allowed = slot < inputs.Length && inputs[slot].ItemType == type;
+                allowed &= slot < inputs.Length && inputs[slot].ItemType == type;
             }
             if (!allowed || mixed || (currentType != ItemTypeEnum.None && currentType != type)) continue;
             available += math.min(math.max(0, wanted - available), math.max(0, maxStack - count));

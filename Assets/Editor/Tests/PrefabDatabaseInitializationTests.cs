@@ -162,6 +162,7 @@ public class PrefabDatabaseInitializationTests : EcsWorldTestFixture
     [TestCase("missingReference")]
     [TestCase("nullPrefab")]
     [TestCase("workerState")]
+    [TestCase("dockedState")]
     [TestCase("itemState")]
     [TestCase("disabled")]
     public void InvalidDroneTemplate_StopsBeforePublishingReady(string fault)
@@ -178,6 +179,9 @@ public class PrefabDatabaseInitializationTests : EcsWorldTestFixture
                 break;
             case "workerState":
                 _entityManager.AddComponent<DroneWorker>(prefab);
+                break;
+            case "dockedState":
+                _entityManager.AddComponent<DroneDocked>(prefab);
                 break;
             case "itemState":
                 _entityManager.AddComponentData(prefab, new ItemIdentity(ItemTypeEnum.Drone));

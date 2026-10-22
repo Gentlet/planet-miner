@@ -185,6 +185,8 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
     public void RecoveryTargetChangesAfterExecution_NextDecisionRejectsStaleTaskAndRoute(
         bool afterRouteCommand, bool becomesStored)
     {
+        // 이 사례는 Tick 이전에 Command를 직접 호출하므로 제품의 필수 설정 전제를 먼저 준비한다.
+        Entities.PrepareSimulationConfiguration();
         CreateSite(new int2(4, 4), 1, ItemTypeEnum.Iron, 0);
         Entity item = CreateItem(ItemTypeEnum.Copper, Entity.Null, new int2(4, 4));
         Entity storage = CreateStorage(new int2(10, 4), 1, ItemTypeEnum.Copper, 0);

@@ -17,6 +17,7 @@ public partial struct StorageItemOutputDecisionSystem : ISystem
     private ComponentLookup<BeltMovementState> _beltMovementStateLookup;
     private ComponentLookup<ItemOwnership> _itemOwnershipLookup;
     private ComponentLookup<PendingBuildingDemolition> _pendingDemolitionLookup;
+    private ComponentLookup<DroneStationStorage> _stationStorageLookup;
     private EntityQuery _buildingQuery;
 
     [BurstCompile]
@@ -25,6 +26,7 @@ public partial struct StorageItemOutputDecisionSystem : ISystem
         _beltMovementStateLookup = state.GetComponentLookup<BeltMovementState>(true);
         _itemOwnershipLookup = state.GetComponentLookup<ItemOwnership>(true);
         _pendingDemolitionLookup = state.GetComponentLookup<PendingBuildingDemolition>(true);
+        _stationStorageLookup = state.GetComponentLookup<DroneStationStorage>(true);
 
         _buildingQuery = SystemAPI.QueryBuilder()
             .WithAllRW<BuildingItemOutputDecision>()
@@ -59,6 +61,7 @@ public partial struct StorageItemOutputDecisionSystem : ISystem
         _beltMovementStateLookup.Update(ref state);
         _itemOwnershipLookup.Update(ref state);
         _pendingDemolitionLookup.Update(ref state);
+        _stationStorageLookup.Update(ref state);
 
         var job = new StorageItemOutputDecisionJob
         {
@@ -66,7 +69,8 @@ public partial struct StorageItemOutputDecisionSystem : ISystem
             ItemMap = itemIndex.Map,
             BeltMovementStateLookup = _beltMovementStateLookup,
             ItemOwnershipLookup = _itemOwnershipLookup,
-            PendingDemolitionLookup = _pendingDemolitionLookup
+            PendingDemolitionLookup = _pendingDemolitionLookup,
+            StationStorageLookup = _stationStorageLookup
         };
 
         var readDep = Unity.Jobs.JobHandle.CombineDependencies(beltFence.GetReaderDependency(), itemFence.GetReaderDependency());
@@ -101,6 +105,7 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
 
     [ReadOnly]
     public ComponentLookup<PendingBuildingDemolition> PendingDemolitionLookup;
+    [ReadOnly] public ComponentLookup<DroneStationStorage> StationStorageLookup;
 
     public void Execute(
         Entity building,
@@ -121,7 +126,15 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
         }
 
         // 1. 보관 버퍼에 아이템이 전혀 없으면 방출 불가 및 비활성화
-        if (storedItems.Length == 0)
+        int outputIndex = 0;
+        if (StationStorageLookup.HasComponent(building))
+        {
+            while (outputIndex < storedItems.Length && storedItems[outputIndex].ItemType == ItemTypeEnum.Drone)
+            {
+                outputIndex++;
+            }
+        }
+        if (outputIndex == storedItems.Length)
         {
             outputDecision.CanOutput = false;
             outputDecision.ItemToOutput = Entity.Null;
@@ -171,7 +184,7 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
         {
             // 첫 보관 실물을 출고 후보로 지정한다. 실제 제거/이동은 Reservation 승인 뒤 Apply가 수행한다.
             outputDecision.CanOutput = true;
-            outputDecision.ItemToOutput = storedItems[0].ItemEntity;
+            outputDecision.ItemToOutput = storedItems[outputIndex].ItemEntity;
             outputDecision.TargetBeltPosition = foundBeltPos;
             outputDecisionEnabled.ValueRW = true;
         }

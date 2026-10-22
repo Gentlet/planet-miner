@@ -26,9 +26,17 @@ public static class ItemLifecycleUtility
         ItemOwnership ownership)
     {
         Entity item = ecb.Instantiate(prefab);
-        ecb.SetComponent(item, new ItemIdentity(itemType));
+        InitializeItemRole(ref ecb, item, itemType, gridPosition, worldPosition, ownership);
+        return item;
+    }
+
+    /// <summary>같은 Entity에 아이템 역할을 구성한다. 호출자가 이전 역할/소유 버퍼와 표시 원형 전환을 소유한다.</summary>
+    public static void InitializeItemRole(ref EntityCommandBuffer ecb, Entity item, ItemTypeEnum itemType,
+        int2 gridPosition, float3 worldPosition, ItemOwnership ownership)
+    {
+        ecb.AddComponent(item, new ItemIdentity(itemType));
         ecb.AddComponent(item, new GridPosition(gridPosition));
-        ecb.SetComponent(item, LocalTransform.FromPosition(worldPosition));
+        ecb.AddComponent(item, LocalTransform.FromPosition(worldPosition));
         ecb.AddComponent(item, ownership);
 
         // 요청/이동 컴포넌트는 미리 부착하되 비활성으로 시작해 생성 직후 자동 삭제/이전/이동하지 않게 한다.
@@ -47,6 +55,5 @@ public static class ItemLifecycleUtility
             ecb.AddComponent<DisableRendering>(item);
         }
 
-        return item;
     }
 }

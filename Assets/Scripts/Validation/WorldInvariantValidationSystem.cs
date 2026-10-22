@@ -111,6 +111,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
 
         // 소유 버퍼/Owner 참조와 보관 슬롯 규칙 검사.
         ValidateStorageInvariants();
+        ValidateDroneStationInvariants();
 
         // 승인된 입출고/라우팅 결정의 잔류 검사.
         ValidateStorageDecisionInvariants();
@@ -952,9 +953,74 @@ public partial class WorldInvariantValidationSystem : SystemBase
     }
 
     /// <summary>
-    /// 프레임 종료 시점(SynchronizationGroup)에 소비되지 않고 잔류한 확정 입출력 Decision을 감시.
-    /// StateApplyGroup에서 정상적으로 처리되었어야 할 확정 결정이 남아있으면 상태 전이 누락 버그.
+    /// 최종 공개 원본의 드론 전용 슬롯과 정박 양방향 소유권을 검사한다.
     /// </summary>
+    private void ValidateDroneStationInvariants()
+    {
+        foreach (var (type, station) in SystemAPI.Query<RefRO<BuildingType>>()
+                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities).WithEntityAccess())
+        {
+            if (!DroneStationRangeUtility.IsStationType(type.ValueRO.Type))
+            {
+                continue;
+            }
+            if (!EntityManager.HasComponent<DroneStationStorage>(station) || !EntityManager.HasComponent<Storage>(station) ||
+                !EntityManager.HasBuffer<StoredItemElement>(station) || !EntityManager.HasBuffer<DockedDroneElement>(station))
+            {
+                ReportViolation("DroneStationInvariant", "Station is missing required storage/dock configuration.", station);
+            }
+        }
+        var registered = new HashSet<Entity>();
+        foreach (var (stationStorage, storage, docked, items, station) in
+                 SystemAPI.Query<RefRO<DroneStationStorage>, RefRO<Storage>, DynamicBuffer<DockedDroneElement>,
+                     DynamicBuffer<StoredItemElement>>().WithOptions(EntityQueryOptions.IncludeDisabledEntities).WithEntityAccess())
+        {
+            int total = storage.ValueRO.SlotCount;
+            int dedicated = stationStorage.ValueRO.DedicatedSlotCount;
+            if (dedicated <= 0 || total <= dedicated || total > GameConstants.MaxStorageSlots)
+            {
+                ReportViolation("DroneStationInvariant", "Invalid dedicated/general capacity.", station);
+            }
+            foreach (var item in items)
+            {
+                if (!StationStorageUtility.IsItemSlotAllowed(item.SlotIndex, total, dedicated, item.ItemType))
+                {
+                    ReportViolation("DroneStationInvariant", "Item occupies an incompatible station slot.", item.ItemEntity);
+                }
+            }
+            var slots = new HashSet<int>();
+            foreach (var entry in docked)
+            {
+                bool valid = registered.Add(entry.Drone) && slots.Add(entry.SlotIndex) &&
+                    entry.SlotIndex >= 0 && entry.SlotIndex < total && EntityManager.Exists(entry.Drone) &&
+                    EntityManager.HasComponent<DroneDocked>(entry.Drone) && EntityManager.HasComponent<DroneWorker>(entry.Drone) &&
+                    !EntityManager.HasComponent<ItemIdentity>(entry.Drone);
+                if (valid)
+                {
+                    var relation = EntityManager.GetComponentData<DroneDocked>(entry.Drone);
+                    valid = relation.Station == station && relation.SlotIndex == entry.SlotIndex;
+                }
+                foreach (var item in items)
+                {
+                    valid &= item.SlotIndex != entry.SlotIndex;
+                }
+                if (!valid)
+                {
+                    ReportViolation("DroneStationInvariant", "Docked actor/slot ownership is inconsistent.", station);
+                }
+            }
+        }
+        foreach (var (_, drone) in SystemAPI.Query<RefRO<DroneDocked>>()
+                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities).WithEntityAccess())
+        {
+            if (!registered.Contains(drone))
+            {
+                ReportViolation("DroneStationInvariant", "Docked actor has no station reference.", drone);
+            }
+        }
+    }
+
+    /// <summary>StateApply 뒤에도 잔류한 확정 입출력 결정을 검사한다.</summary>
     private void ValidateStorageDecisionInvariants()
     {
         // 1. BuildingItemInputDecision 확정 결정(CanDeposit == true && TargetSlotIndex >= 0) 잔류 감시

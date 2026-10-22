@@ -93,7 +93,8 @@ public class Phase7PlacementCommandTests : EcsWorldTestFixture
         foreach (var c in configs)
         {
             configBuffer.Add(new BuildingConfigElement(c.type, 1, c.type.ToString(), c.speed, c.storage, c.unlocked,
-                footprint: PlanetMiner.Tests.TestEntityFactory.GetFixtureBuildingFootprint(c.type)));
+                footprint: PlanetMiner.Tests.TestEntityFactory.GetFixtureBuildingFootprint(c.type),
+                droneStationStorageCapacity: DroneStationRangeUtility.IsStationType(c.type) ? 5 : 0));
             runtimeBuffer.Add(new BuildingRuntimeConfigElement(c.type, 1, c.speed, c.storage));
             if (c.mats != null)
             {

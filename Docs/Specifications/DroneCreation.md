@@ -1,6 +1,6 @@
 # 드론 Authoring·프리팹 DB·생성 초기화
 
-2026-10-22 Task 9.3.1의 범위다. Task 9.3의 아이템↔드론 전환·정거장 수용량·출고/수납 요청·공통 적재량 초기화는 구현하지 않는다. [Lifecycle 계약](DroneLifecycle.md)과 [정거장 네트워크](DroneStationNetwork.md)의 기존 소유자/공개 경계를 유지한다.
+2026-10-22 Task 9.3.1의 생성 기반 범위다. 이후 Task 9.3에서 연결한 아이템/드론 전환, 정거장 수용량, 출고/수납 요청과 공통 설정 초기화는 [Identity/정거장 보관 명세](DroneIdentityAndStationStorage.md)를 따른다. [Lifecycle 계약](DroneLifecycle.md)과 [정거장 네트워크](DroneStationNetwork.md)의 기존 소유자/공개 경계를 유지한다.
 
 ## Authoring과 준비 검증
 
@@ -31,16 +31,16 @@ TryInitializeWorkerRole은 기존 Entity를 교체하지 않는 초기 구성 AP
 
 ## 이번 범위와 후속 연결
 
-- 이번 배터리 상태는 현재량 하나만 가진다. 최대치를 개체마다 복제하지 않는다. 최대 배터리 값은 호출자가 명시하는 필수 입력이다. 현재 DroneConfig의 `maximumBattery`를 읽어 제품 입력으로 전달하는 소유자는 Task 9.3에서 연결한다. 공통 carryingCapacity 게시도 이번 범위에 포함하지 않는다.
-- 이번 생성 유틸리티는 아이템 역할/Owner/소유 버퍼를 제거하거나 정거장 슬롯·예약을 정산하지 않는다. 기존 Entity의 표시를 아이템↔드론 원형으로 바꾸는 책임도 Task 9.3에 남긴다. 기존 Entity 재사용 API의 존재를 전체 Identity 전환 완료로 해석하지 않는다.
-- 독립적인 자동 생성/배차 Producer를 추가하지 않았다. 후속 9.3·9.22의 소유자가 EndSimulation ECB를 제공해 호출한다. 새 작업·배정·경로의 다음 틱 사용 계약은 유지한다.
+- 이번 배터리 상태는 현재량 하나만 가진다. 최대치를 개체마다 복제하지 않는다. 최대 배터리 값은 호출자가 명시하는 필수 입력이다. Task 9.3의 DroneConfigInitializationSystem과 정거장 Lifecycle이 maximumBattery를 읽기 전용 설정에서 전달한다. 공통 carryingCapacity 게시도 이번 범위에 포함하지 않는다.
+- 이번 생성 유틸리티는 아이템 역할/Owner/소유 버퍼를 제거하거나 정거장 슬롯·예약을 정산하지 않는다. 기존 Entity의 표시를 아이템/드론 원형으로 바꾸는 책임도 Task 9.3의 별도 정거장 Lifecycle이 소유한다. 기존 Entity 재사용 API의 존재를 전체 Identity 전환 완료로 해석하지 않는다.
+- 독립적인 자동 생성/배차 Producer를 추가하지 않았다. Task 9.3 정거장 Lifecycle이 EndSimulation ECB로 기존 Entity 초기화를 호출하며 9.22의 자동 시작 Producer는 후속이다. 새 작업·배정·경로의 다음 틱 사용 계약은 유지한다.
 - 수용량·벨트 입출고·귀환·수납·충전·이동·연구 정책은 해당 후속 Task의 범위다. 기존 ItemConfig 이동과 MaxStack 50, 레거시 설정 보관 변경은 보존한다.
 
 ## 검증
 
 새 DronePrefabAndSpawnTests는 기존 테스트에 없던 드론 원형 생성→EndSimulation 공개·초기 상태, 기존 루트/배터리 보존과 중복 초기화 거부, 실패 시 원본 아이템 보존을 검증한다. 공통 PrefabDatabaseInitializationTests에는 드론 DB 누락·중복·무효 원형의 시작 차단을 추가했다. 그 외 기존 테스트의 의미나 assertion을 완화하지 않았다.
 
-현재 코드의 Unity 컴파일 오류 없음과 선택 EditMode 56/56(실패·생략·불확정 0)을 확인했다: DronePrefabAndSpawnTests 6, PrefabDatabaseInitializationTests 26, Phase1ItemAuthoringPrefabTests 4, DroneLifecycleIntegrationTests 6, DroneStationNetworkTests 14.
+Task 9.3.1 당시 Unity 컴파일 오류 없음과 선택 EditMode 56/56(실패/생략/불확정 0)을 확인했다: DronePrefabAndSpawnTests 6, PrefabDatabaseInitializationTests 26, Phase1ItemAuthoringPrefabTests 4, DroneLifecycleIntegrationTests 6, DroneStationNetworkTests 14. 후속 9.3의 검증과 합산하지 않는다.
 
 저장된 V2 SubScene 루트들을 현재 Entities의 실제 Baker로 격리 World에 베이킹했다. 현재 제품 설정 초기화와 4종 DB 검증 뒤 Ready 1/Fatal 0, 드론 DB 1을 확인했다. 실제 베이킹 원형의 MaterialMeshInfo와 생성 드론의 렌더 데이터, scale 0.5, 입력 위치, 배터리 100, CanAcceptTask=false도 확인했다. 배터리 100은 이 probe의 명시적 입력이며 제품 DroneConfig 로더 실행 증거가 아니다.
 

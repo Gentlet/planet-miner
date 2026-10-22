@@ -36,6 +36,8 @@ public struct BuildingConfigElement : IBufferElementData
     public BuildingPowerConfig Power;
     /// <summary>주 시설·드론 정거장의 정사각형 활동 영역을 확장할 청크 수. 음수는 0으로 사용한다.</summary>
     public int DroneStationRangeInChunks;
+    /// <summary>일반 storageCapacity와 별개인 드론 전용 슬롯 수. 정거장 종류에만 양수로 설정한다.</summary>
+    public int DroneStationStorageCapacity;
 
     public BuildingConfigElement(
         BuildingTypeEnum buildingType,
@@ -47,7 +49,8 @@ public struct BuildingConfigElement : IBufferElementData
         FixedString32Bytes requiredResearch = default,
         int2 footprint = default,
         BuildingPowerConfig power = default,
-        int droneStationRangeInChunks = 0)
+        int droneStationRangeInChunks = 0,
+        int droneStationStorageCapacity = 0)
     {
         BuildingType = buildingType;
         Tier = tier;
@@ -59,6 +62,7 @@ public struct BuildingConfigElement : IBufferElementData
         Footprint = footprint;
         Power = power;
         DroneStationRangeInChunks = math.max(0, droneStationRangeInChunks);
+        DroneStationStorageCapacity = droneStationStorageCapacity;
     }
 }
 

@@ -39,7 +39,8 @@ namespace PlanetMiner.Tests
                 if (BuildingConfigLookupUtility.TryGetConfig(configs, type, 1, out _))
                     continue;
                 configs.Add(new BuildingConfigElement(type, 1, type.ToString(), type == BuildingTypeEnum.Belt ? 2f : 1f, 20, true,
-                    footprint: GetFixtureBuildingFootprint(type), power: GetFixtureBuildingPower(type)));
+                    footprint: GetFixtureBuildingFootprint(type), power: GetFixtureBuildingPower(type),
+                    droneStationStorageCapacity: DroneStationRangeUtility.IsStationType(type) ? 5 : 0));
             }
         }
 

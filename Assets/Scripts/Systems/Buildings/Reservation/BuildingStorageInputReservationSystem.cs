@@ -16,6 +16,8 @@ using Unity.Mathematics;
 public partial struct BuildingStorageInputReservationSystem : ISystem
 {
     private ComponentLookup<Storage> _storageLookup;
+    private ComponentLookup<DroneStationStorage> _stationStorageLookup;
+    private BufferLookup<DockedDroneElement> _dockedLookup;
     private BufferLookup<StoredItemElement> _storedBufferLookup;
     private BufferLookup<BuildingInputSlotElement> _inputSlotLookup;
     private BufferLookup<ItemConfigElement> _itemConfigLookup;
@@ -26,6 +28,8 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
     public void OnCreate(ref SystemState state)
     {
         _storageLookup = state.GetComponentLookup<Storage>(true);
+        _stationStorageLookup = state.GetComponentLookup<DroneStationStorage>(true);
+        _dockedLookup = state.GetBufferLookup<DockedDroneElement>(true);
         _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
         _inputSlotLookup = state.GetBufferLookup<BuildingInputSlotElement>(true);
         _itemConfigLookup = state.GetBufferLookup<ItemConfigElement>(true);
@@ -46,6 +50,8 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         _storageLookup.Update(ref state);
+        _stationStorageLookup.Update(ref state);
+        _dockedLookup.Update(ref state);
         _storedBufferLookup.Update(ref state);
         _inputSlotLookup.Update(ref state);
         _itemConfigLookup.Update(ref state);
@@ -65,6 +71,8 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
         var job = new BuildingStorageInputReservationJob
         {
             StorageLookup = _storageLookup,
+            StationStorageLookup = _stationStorageLookup,
+            DockedLookup = _dockedLookup,
             StoredBufferLookup = _storedBufferLookup,
             InputSlotLookup = _inputSlotLookup,
             ItemRegistryEntity = itemRegistryEntity,
@@ -95,6 +103,8 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
 
     [ReadOnly]
     public ComponentLookup<Storage> StorageLookup;
+    [ReadOnly] public ComponentLookup<DroneStationStorage> StationStorageLookup;
+    [ReadOnly] public BufferLookup<DockedDroneElement> DockedLookup;
 
     [ReadOnly]
     public BufferLookup<StoredItemElement> StoredBufferLookup;
@@ -131,6 +141,7 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
         var storage = StorageLookup[building];
         var storedBuffer = StoredBufferLookup[building];
         int slotCount = storage.SlotCount;
+        int dedicated = StationStorageLookup.HasComponent(building) ? StationStorageLookup[building].DedicatedSlotCount : 0;
         if (slotCount <= 0)
         {
             inputDecision.CanDeposit = false;
@@ -203,11 +214,26 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
         }
 
         // 적재 가능 슬롯 탐색
+        if (DockedLookup.HasBuffer(building))
+        {
+            foreach (var docked in DockedLookup[building])
+            {
+                if (docked.SlotIndex >= 0 && docked.SlotIndex < safeSlotCount)
+                {
+                    slotOccupancy[docked.SlotIndex] = maxStack;
+                    slotTypes[docked.SlotIndex] = ItemTypeEnum.Drone;
+                }
+            }
+        }
         int sameTypeSlot = -1;
         int firstEmptySlot = -1;
 
         for (int s = 0; s < safeSlotCount; s++)
         {
+            if (!StationStorageUtility.IsItemSlotAllowed(s, slotCount, dedicated, itemType, true))
+            {
+                continue;
+            }
             if (hasInputSlots && inputSlots[s].ItemType != itemType)
             {
                 continue;

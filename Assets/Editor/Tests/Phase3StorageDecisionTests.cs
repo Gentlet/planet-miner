@@ -77,6 +77,45 @@ public class Phase3StorageDecisionTests : EcsWorldTestFixture
         outputState.Dependency.Complete();
     }
 
+    [TestCase(49, true)]
+    [TestCase(50, false)]
+    public void Station_DroneBeltIntakeUsesDedicatedRoom_AndOutputSkipsDroneInFifo(int storedDrones, bool admitted)
+    {
+        ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
+        Entity station = CreateStorage(new int2(1, 0), new int2(1, 1));
+        _entityManager.SetComponentData(station, new Storage(2));
+        _entityManager.AddComponentData(station, new DroneStationStorage { DedicatedSlotCount = 1 });
+        _entityManager.AddBuffer<DockedDroneElement>(station);
+        for (int i = 0; i < storedDrones; i++) CreateStoredItem(station, ItemTypeEnum.Drone, 1);
+        Entity iron = CreateStoredItem(station, ItemTypeEnum.Iron, 0);
+        Entity secondIron = CreateStoredItem(station, ItemTypeEnum.Iron, 0);
+        CreateBelt(int2.zero, DirectionEnum.Right);
+        CreateBelt(new int2(1, -1), DirectionEnum.Down);
+        Entity incoming = CreateBeltItem(int2.zero, DirectionEnum.Right, 1f, ItemTypeEnum.Drone);
+        RunDecisionPhase();
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<BuildingStorageInputReservationSystem>());
+        Assert.AreEqual(admitted, _entityManager.IsComponentEnabled<BuildingItemInputDecision>(incoming));
+        if (admitted) Assert.AreEqual(1, _entityManager.GetComponentData<BuildingItemInputDecision>(incoming).TargetSlotIndex);
+        Assert.AreEqual(iron, _entityManager.GetComponentData<BuildingItemOutputDecision>(station).ItemToOutput);
+        Assert.AreNotEqual(secondIron, _entityManager.GetComponentData<BuildingItemOutputDecision>(station).ItemToOutput);
+    }
+
+    [Test]
+    public void Station_OrdinaryIntakeCannotUseEmptyDroneDedicatedSlot()
+    {
+        ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
+        Entity station = CreateStorage(new int2(1, 0), new int2(1, 1));
+        _entityManager.SetComponentData(station, new Storage(2));
+        _entityManager.AddComponentData(station, new DroneStationStorage { DedicatedSlotCount = 1 });
+        _entityManager.AddBuffer<DockedDroneElement>(station);
+        for (int i = 0; i < 100; i++) CreateStoredItem(station, ItemTypeEnum.Iron, 0);
+        CreateBelt(int2.zero, DirectionEnum.Right);
+        Entity incoming = CreateBeltItem(int2.zero, DirectionEnum.Right, 1f, ItemTypeEnum.Copper);
+        RunDecisionPhase();
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<BuildingStorageInputReservationSystem>());
+        Assert.IsFalse(_entityManager.IsComponentEnabled<BuildingItemInputDecision>(incoming));
+    }
+
     [Test]
     public void Test01_BeltMovement_To_BuildingInput_PipelineIntegration()
     {
@@ -180,7 +219,7 @@ public class Phase3StorageDecisionTests : EcsWorldTestFixture
 
         Assert.IsFalse(_entityManager.IsComponentEnabled<BuildingItemInputDecision>(blockedItem));
         var decisionBlocked = _entityManager.GetComponentData<BuildingItemInputDecision>(blockedItem);
-        Assert.AreEqual(storage, decisionBlocked.TargetBuilding);
+        Assert.AreEqual(Entity.Null, decisionBlocked.TargetBuilding, "Rejected candidates clear their previous target.");
         Assert.IsFalse(decisionBlocked.CanDeposit, "Coal must be blocked by whitelist filter.");
     }
 

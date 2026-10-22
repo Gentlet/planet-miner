@@ -21,6 +21,7 @@ public partial struct BuildingDemolitionCommandSystem : ISystem
     private BufferLookup<StoredItemElement> _storedLookup;
     private BufferLookup<ProductItemElement> _productLookup;
     private BufferLookup<ProductResult> _resultLookup;
+    private BufferLookup<DockedDroneElement> _dockedLookup;
 
     public void OnCreate(ref SystemState state)
     {
@@ -33,6 +34,7 @@ public partial struct BuildingDemolitionCommandSystem : ISystem
         _storedLookup = state.GetBufferLookup<StoredItemElement>(true);
         _productLookup = state.GetBufferLookup<ProductItemElement>(true);
         _resultLookup = state.GetBufferLookup<ProductResult>(false);
+        _dockedLookup = state.GetBufferLookup<DockedDroneElement>(true);
         state.RequireForUpdate(_requestQuery);
     }
 
@@ -46,6 +48,7 @@ public partial struct BuildingDemolitionCommandSystem : ISystem
         _storedLookup.Update(ref state);
         _productLookup.Update(ref state);
         _resultLookup.Update(ref state);
+        _dockedLookup.Update(ref state);
         var ecbSystem = state.World.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
         // 승인 상태는 EndCommand까지 보이지 않으므로 같은 Job의 중복 요청은 별도 집합으로 차단한다.
         var acceptedTargets = new NativeParallelHashSet<Entity>(_requestQuery.CalculateEntityCount(), Allocator.TempJob);
@@ -60,6 +63,7 @@ public partial struct BuildingDemolitionCommandSystem : ISystem
             StoredLookup = _storedLookup,
             ProductLookup = _productLookup,
             ResultLookup = _resultLookup,
+            DockedLookup = _dockedLookup,
             AcceptedTargets = acceptedTargets
         };
         var handle = job.Schedule(_requestQuery, state.Dependency);
@@ -80,6 +84,7 @@ public partial struct ValidateBuildingDemolitionJob : IJobEntity
     [ReadOnly] public BufferLookup<StoredItemElement> StoredLookup;
     [ReadOnly] public BufferLookup<ProductItemElement> ProductLookup;
     public BufferLookup<ProductResult> ResultLookup;
+    [ReadOnly] public BufferLookup<DockedDroneElement> DockedLookup;
     public NativeParallelHashSet<Entity> AcceptedTargets;
 
     public void Execute(Entity requestEntity, in DemolishBuildingRequest request)
@@ -163,8 +168,17 @@ public partial struct ValidateBuildingDemolitionJob : IJobEntity
         {
             return false;
         }
-
+        // 정박 실물의 재배치 소유자는 Task 9.19 후속이다. 아직 인계할 수 없는 정거장은 승인하지 않는다.
         BuildingTypeEnum type = BuildingTypeLookup[target].Type;
+        if (DroneStationRangeUtility.IsStationType(type) && !DockedLookup.HasBuffer(target))
+        {
+            return false;
+        }
+        if (DockedLookup.HasBuffer(target) && !DockedLookup[target].IsEmpty)
+        {
+            return false;
+        }
+
         if (type == BuildingTypeEnum.None || type == BuildingTypeEnum.ConstructionSite || type == BuildingTypeEnum.MainFacility)
         {
             return false;

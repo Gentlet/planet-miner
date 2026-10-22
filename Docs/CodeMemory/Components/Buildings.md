@@ -88,6 +88,8 @@
 
 Task 9.2는 `DroneStationRangeInChunks`를 주 시설·정거장의 종류·티어별 범위 원본으로 추가했다. JSON의 단일 정수 `droneStationRangeInChunks`를 로드하며 음수는 0으로 사용한다. DroneStationNetworkDecisionSystem과 DroneStationSpatialSyncSystem이 원본 위치·방향·footprint와 함께 읽는다. [정거장 명세](../../Specifications/DroneStationNetwork.md)를 따른다.
 
+Task 9.3의 `DroneStationStorageCapacity`는 종류/티어별 드론 전용 슬롯 원본이다. 현재 주 시설/정거장은 명시적 5칸이며 다른 종류는 0이다. 일반 StorageCapacity와 합계가 MaxStorageSlots 이하여야 한다. 공통 생성은 Storage.SlotCount에 일반+전용 합계를, DroneStationStorage에 전용 수를 부착한다. 호환 BuildingRuntimeConfigElement의 StorageCapacity는 기존 일반 설정값을 유지한다. [Identity/보관 명세](../../Specifications/DroneIdentityAndStationStorage.md)를 따른다.
+
 ## BuildingConstructionMaterialElement
 
 - **종류·부착 대상·목적:** `IBufferElementData`. 통합 설정 엔티티에서 `(BuildingType, Tier, ItemType, Quantity)`로 종류·티어별 건축 비용을 정의한다. 현장별 Delivered/Reserved 상태와 구별되는 원본 요구량이다.

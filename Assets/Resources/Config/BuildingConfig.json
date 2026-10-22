@@ -110,6 +110,7 @@
     },
     {
       "buildingType": "DroneStation",
+      "droneStationStorageCapacity": 5,
       "droneStationRangeInChunks": 1,
       "tier": 1,
       "displayName": "DroneStation",
@@ -139,6 +140,7 @@
     },
     {
       "buildingType": "MainFacility",
+      "droneStationStorageCapacity": 5,
       "droneStationRangeInChunks": 1,
       "tier": 1,
       "displayName": "MainFacility",

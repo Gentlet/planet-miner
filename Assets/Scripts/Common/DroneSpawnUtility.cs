@@ -95,6 +95,7 @@ public static class DroneSpawnUtility
     {
         return manager.HasComponent<DroneWorker>(entity) || manager.HasComponent<DroneWorkerObservation>(entity) ||
             manager.HasComponent<DroneWorkerAssignment>(entity) || manager.HasComponent<DroneCargoState>(entity) ||
+            manager.HasComponent<DroneActivityState>(entity) || manager.HasComponent<DroneDocked>(entity) ||
             manager.HasBuffer<StoredItemElement>(entity);
     }
 
@@ -114,16 +115,10 @@ public static class DroneSpawnUtility
     {
         cell = default;
         error = null;
-        if (!math.all(math.isfinite(position)))
+        if (!TryReadGridCell(position, out cell))
         {
-            error = "Drone position must be finite.";
-            return false;
-        }
-        double cellX = Math.Floor(position.x);
-        double cellY = Math.Floor(position.y);
-        if (cellX < int.MinValue || cellX > int.MaxValue || cellY < int.MinValue || cellY > int.MaxValue)
-        {
-            error = "Drone position is outside the supported grid coordinate range.";
+            error = math.all(math.isfinite(position))
+                ? "Drone position is outside the supported grid coordinate range." : "Drone position must be finite.";
             return false;
         }
         if (!math.isfinite(maximumBatteryCharge) || maximumBatteryCharge <= 0f)
@@ -131,7 +126,22 @@ public static class DroneSpawnUtility
             error = "Maximum drone battery must be finite and positive.";
             return false;
         }
-        cell = new int2((int)cellX, (int)cellY);
+        return true;
+    }
+
+    internal static bool TryReadGridCell(float3 position, out int2 cell)
+    {
+        cell = default;
+        if (!math.all(math.isfinite(position)))
+        {
+            return false;
+        }
+        double2 coordinates = math.floor((double2)position.xy);
+        if (math.any(coordinates < int.MinValue) || math.any(coordinates > int.MaxValue))
+        {
+            return false;
+        }
+        cell = new int2((int)coordinates.x, (int)coordinates.y);
         return true;
     }
 
@@ -165,10 +175,17 @@ public static class DroneSpawnUtility
         {
             ecb.AddComponent(drone, localToWorld);
         }
+        RecordWorkerRole(ref ecb, drone, position, charge, hasBattery);
+    }
+
+    /// <summary>자격/입력 검사가 끝난 같은 Entity의 역할만 기록한다. 위치/표시와 양쪽 보관 참조는 호출자 책임이다.</summary>
+    internal static void RecordWorkerRole(ref EntityCommandBuffer ecb, Entity drone, float3 position, float charge, bool hasBattery)
+    {
         ecb.AddComponent<DroneWorker>(drone);
         ecb.AddComponent(drone, new DroneWorkerObservation { Position = position, Revision = 1, CanAcceptTask = false });
         ecb.AddComponent<DroneWorkerAssignment>(drone);
         ecb.AddComponent<DroneCargoState>(drone);
+        ecb.AddComponent<DroneActivityState>(drone);
         ecb.AddBuffer<StoredItemElement>(drone);
         if (!hasBattery)
         {

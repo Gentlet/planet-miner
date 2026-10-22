@@ -2,11 +2,11 @@
 
 [전체 색인](README.md) · [배치와 공사](Construction.md) · [아이템과 저장](ItemsAndStorage.md)
 
-2026-10-06의 드론 ECS 타입 23개와 2026-10-22 Task 9.2의 정거장 타입 5개와 Task 9.3.1의 배터리 현재량 1개를 설명한다. 관리 계층의 작업·예약·인계·재배정·안전 방출 계약과 정거장 연결·공개 범위 조회를 포함한다.
+2026-10-06의 드론 ECS 타입 23개와 Task 9.2의 5개, 9.3.1의 1개, 9.3의 보관/활동/설정/요청 9개를 포함해 38개를 설명한다. 기존 작업/예약/인계/재배정과 정거장 연결/보관/Identity 공개 계약을 포함한다.
 
 2026-10-15 Task 9.1은 [상태 전이·Lifecycle Owner 계약](../../Specifications/DroneLifecycle.md)을 확정했다. 1A~6A의 수납·완충 전/연속 배차·귀환·비상 이동·중단 정산은 후속 수행부가 따라야 할 정책이다. Task 9.1 당시 23개 타입과 관리 계층을 유지했으며 실제 정거장·이동·배터리·충전·수납 Writer나 새 상태 enum을 추가하지 않았다. 이후 Task 9.2의 정거장 기반은 아래 별도 타입/명세로 구분한다. 작업/배정의 기존 상태와 수행자 자체의 후속 개념 상태를 구분한다.
 
-기존 142사례와 기존 통합 4사례는 이전 공통 여섯 phase의 별도 실행 기록이다. 새 입력/완공 시점의 검증으로 소급 해석하거나 합산하지 않는다. Task 9.3.1은 생성 초기화 API와 최초 관측을 제공한다. 실제 출고/수납 Producer, 이동/경로 계산/지속 관측/행동 신호와 공통 능력/연구 Writer는 후속이다. DropPosition은 선택 목표이며 실제 위치 원본이 아니다. [공통 적재량 초기화 검토안](../../Specifications/DroneCapacityInitializationPlan.md)은 사용자 확정 6A와 Task 9.3의 구현 대기를 구분한다.
+기존 142사례와 기존 통합 4사례는 이전 구조의 별도 실행이며 합산하지 않는다. Task 9.3.1은 생성 초기화, 9.3은 [명시적 출고/정박/수납과 용량](../../Specifications/DroneIdentityAndStationStorage.md), [공통 설정 초기화](../../Specifications/DroneCapacityInitializationPlan.md)를 연결한다. 이동/귀환 선택/경로 계산/지속 관측/행동 신호와 연구 Writer는 후속이다. DropPosition은 실제 위치 원본이 아니다.
 
 ```text
 Command / EndCommand: 현장·자재 요구와 취소 반환·삭제 공개
@@ -44,7 +44,45 @@ Construction은 BuildingStateApply 마지막에서 현재 Owner=Null/GridPositio
 
 ## DroneBatteryState
 
-현재 배터리량 CurrentCharge만 소유한다. DroneSpawnUtility가 호출자의 명시적 최대치로 새 개체를 초기화하고 기존 값은 역할 초기화로 충전하지 않는다. 실제 최대치 설정 로딩/아이템 Identity 전환은 9.3, 이동 소비/충전은 9.10·9.14 후속이다. 생성 초기 구성과 EndSimulation 공개·Ready 전제는 [드론 생성 명세](../../Specifications/DroneCreation.md)를 따른다.
+현재 배터리량 CurrentCharge만 소유한다. DroneSpawnUtility가 호출자의 명시적 최대치로 새 개체를 초기화하고 기존 값은 역할 초기화로 충전하지 않는다. 최대치 설정과 Identity 전환은 Task 9.3에서 연결했고 이동 소비/충전은 9.10/9.14 후속이다. 생성 초기 구성과 EndSimulation 공개·Ready 전제는 [드론 생성 명세](../../Specifications/DroneCreation.md)를 따른다.
+
+## DroneStationStorage
+
+공통 건물 생성이 Config의 전용 수를 부착한다. Storage.SlotCount의 뒤쪽 전용 구간을 뜻하며 이후 불변이다. StationStorageUtility, 벨트 슬롯 Reservation과 드론 보관 계획/인계가 읽는다. 일반 구간은 총 슬롯에서 전용 수를 뺀 앞 구간이다. [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneStationStorageComponents.cs).
+
+## DockedDroneElement
+
+정거장의 활성 정박 드론/슬롯 역참조 버퍼다. 공통 건물 생성은 빈 버퍼, DroneStationLifecycleApplySystem은 Docked 관계와 함께 EndSimulation에 양쪽을 기록한다. 활성 드론 하나가 슬롯 전체를 점유하며 아이템 스택과 혼합하지 않는다. 보관 계획/철거 Command/최종 불변식 검사가 읽고 출고/수납 때 제거한다.
+
+## DroneDocked
+
+활성 수행자의 Station/SlotIndex 관계 원본이다. 수납 아이템의 ItemOwnership과 상호 배타적이다. Lifecycle만 EndSimulation에 양쪽 관계를 기록한다. 실제 귀환 도착 Producer는 후속이다. IsIdleWorker는 정박 중 새 후보를 만들지 않으며 명시적 Activate로 정박을 해제한다.
+
+## DroneActivityState
+
+수행자 자체의 Idle/Moving/Acting/Charging/WaitingForCharge 활동이다. 생성이 Idle을 기록하고 Store/Dock 자격 검사가 읽는다. 작업/배정 상태를 복제하지 않는다. 실제 이동/충전 갱신 Writer는 후속이며 수납 전환에서 제거한다.
+
+## DroneBatteryConfig
+
+World의 읽기 전용 최대 배터리 singleton이다. DroneConfigInitializationSystem이 maximumBattery를 검증/게시하며 기존 유효 singleton을 보존한다. 개체 현재량과 적재량을 복제하지 않는다. Station Lifecycle이 최초 생성 최대치와 완충 수납 자격에 사용한다.
+
+## DroneStationRequest
+
+외부 메인 스레드 Submit이 Drone/Station/Operation/양수 Sequence를 접수하고 Decision과 함께 생성한다. Activate/Dock/Store 요청이며 단순 입고가 자동 생성하지 않는다. 처리 뒤 Request/Decision 제거와 결과 추가는 같은 EndSimulation이다. [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneStationRequests.cs).
+
+## DroneStationDecision
+
+병렬 Burst Decision Job이 요청별 자격/거부 상태를 초기화하고 단일 Burst Reservation Job이 Sequence 순으로 승인/SlotIndex/경합 거부 Status를 작성한다. 단일 Burst Apply 데이터 Job은 승인 슬롯과 최신 원본을 검사하며 다른 슬롯으로 확장하지 않는다. 실물/영속 예약/공개 결과가 아니며 EndSimulation에 소비한다.
+
+입력 Entity 목록은 비동기 수집의 deferred array로 전달하고 state.Dependency를 연결한다. 요청 정렬/Busy 수행자 집합/슬롯 예산은 각 Job 내부 Native 임시 자료다. 공통 자격 규칙은 QueryMask와 값별 RO Lookup을 읽으며 ECS 원본을 별도 캐시하지 않는다. Apply만 Actor/Prefab 표시 목록을 TempJob으로 전달한다. 데이터 ECB Producer를 등록하고 목록 완료를 기다린 뒤 관리형 RenderMeshArray를 메인 스레드에서 별도 EndSimulation ECB에 기록한다. 두 ECB는 순서대로 같은 경계에서 공개하며 임시 자료는 마지막 접근 뒤 해제한다. 상세 계약과 현재 검증은 [Identity/보관 명세](../../Specifications/DroneIdentityAndStationStorage.md)를 따른다.
+
+## DroneStationResult
+
+처리 요청 Entity에 Applied/Rejected/Busy/NoSpace/Duplicate와 Drone/Operation을 EndSimulation 공개한다. 외부 TryConsumeResult가 결과를 읽고 Entity를 삭제한다. 결과 조회로 정산을 반복하지 않는다.
+
+## DroneStationRequestSequence
+
+Submit이 단독 생성/증가하는 World 접수 순번이다. 0/순환을 허용하지 않는다. Reservation/Apply는 이 순서로 요청을 처리한다. 작업/행동 순번과 별개다.
 
 ## DroneStation
 
@@ -151,7 +189,7 @@ DroneStationSpatialSyncSystem이 같은 singleton의 Fence와 함께 생성한�
 ## DroneWorker
 
 - **종류·부착 대상·목적:** 빈 일반 IComponentData. 드론 작업을 수행할 수 있는 엔티티의 표시다. 수행자별 적재량을 보관하지 않으며 최대 적재량의 원본은 World의 DroneCapacityState다.
-- **Producer/Reader:** DroneSpawnUtility가 EndSimulation에 초기 구성을 기록한다. 실제 출고/수납 등록 Producer는 후속이다. Decision/Reservation/Publish와 Execution의 경로 적용 검사가 이 표시와 관측/활성 배정 연결/적재 출처/StoredItemElement를 확인한다. 공통 적재량이 없거나 0 이하이면 신규 배정을 진행하지 않는다.
+- **Producer/Reader:** DroneSpawnUtility가 EndSimulation에 초기 구성을 기록한다. 명시적 출고/수납 요청은 DroneStationLifecycleApplySystem이 EndSimulation에 반영한다. Decision/Reservation/Publish와 Execution의 경로 적용 검사가 이 표시와 관측/활성 배정 연결/적재 출처/StoredItemElement를 확인한다. 공통 적재량이 없거나 0 이하이면 신규 배정을 진행하지 않는다.
 - **한계·수명:** 현재 신규 배정과 수집은 빈 적재 수행자만 대상이다. 실제 인계는 한 품목과 이미 배정한 수량 상한을 확인한다. 수행자 자체의 종료 시 적재 반환은 후속이다. 등록된 수행자와 함께 유지하며 타입만 추가한다고 드론이나 버퍼가 생성되지 않는다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneWorkerComponents.cs), [수행자 검사](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs), [보관 버퍼](../../../Assets/Scripts/Components/Storage/StorageComponents.cs).
 
@@ -159,7 +197,7 @@ DroneStationSpatialSyncSystem이 같은 singleton의 Fence와 함께 생성한�
 
 - **종류·부착 대상·목적:** 일반 IComponentData. World의 단일 엔티티에 붙는 모든 드론의 공통 최대 적재량 상태다. CarryingCapacity는 한 품목의 최대 실물 개수이며 Storage.SlotCount·품목 MaxStack과 독립적이다. 수행자마다 같은 값을 복제하지 않는다.
 - **현재 Reader:** 빈 수행자 신규 후보·Reservation 승인·ViaSource 경로 검사·Publish 공개는 공통 값으로 제한한다. 부재/0 이하면 신규 배정은 대기하고 singleton을 자동 생성하거나 기본값으로 대체하지 않는다. 이미 적재한 수행자의 Direct 경로·재배정 수량에는 이 제한을 소급 적용하지 않는다.
-- **후속 Producer·Writer:** 런타임 초기화와 연구 갱신 시스템은 아직 없다. 후속 초기화가 기본 적재량을 게시하고 연구 처리가 공통 값을 갱신할 계약이다. 테스트가 명시적으로 준비하는 singleton은 제품 초기화 구현의 증거가 아니다.
+- **Producer/Writer:** DroneConfigInitializationSystem이 Resources의 명시적 carryingCapacity를 한 번 게시하고 유효한 기존 값을 보존한다. 중복/무효/설정 실패는 공통 Fatal이며 기본값 대체/자동 재시도는 없다. 연구 갱신 Writer는 후속이다.
 - **변경 적용·수명:** World 수명 동안 공통 값을 유지한다. 연구로 한도가 증가하면 이후 새로 배정하는 작업부터 적용하며 기존 AssignedQuantity·ConstructionSupplyReservation·StoredItemElement를 다시 늘리거나 정산하지 않는다. 후보는 공개 전까지 현재 값을 재검사한다. 실제 수집은 이미 공개한 AssignedQuantity와 해당 예약·현재 현장 잔여량을 상한으로 삼아 공통 값 변경을 소급 적용하지 않는다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneCapacityState.cs), [공통 값·후보 검사](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs), [예약](../../../Assets/Scripts/Systems/Drones/Reservation/ConstructionSupplyReservationSystem.cs), [경로 적용 검사](../../../Assets/Scripts/Systems/Drones/Execution/DroneTaskExecutionSystem.cs), [최종 공개](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskAssignmentPublishSystem.cs).
 

@@ -25,6 +25,7 @@ public class Phase3StorageOwnershipTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
+        ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
 
         _beltSpatialSyncHandle = _world.GetOrCreateSystem(typeof(BeltSpatialSyncSystem));
         _itemSpatialSyncHandle = _world.GetOrCreateSystem(typeof(ItemSpatialSyncSystem));

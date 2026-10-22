@@ -148,6 +148,13 @@ public static class BuildingConfigLoader
                 buildingType == BuildingTypeEnum.DroneStation;
             if (hasStorageSettings || buildingType == BuildingTypeEnum.CoalGenerator)
             {
+                JToken capacityToken = (rawEntries[i] as JObject)?["storageCapacity"];
+                if (capacityToken == null || capacityToken.Type != JTokenType.Integer ||
+                    !int.TryParse(capacityToken.ToString(Formatting.None), NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+                {
+                    Debug.LogError($"[BuildingConfigLoader] {buildingType} storageCapacity must be an explicit JSON integer.");
+                    return false;
+                }
                 if (entry.storageCapacity <= 0 || entry.storageCapacity > GameConstants.MaxStorageSlots)
                 {
                     Debug.LogError($"[BuildingConfigLoader] {buildingType} has invalid storageCapacity {entry.storageCapacity} (allowed: 1 ~ {GameConstants.MaxStorageSlots}).");
@@ -196,6 +203,10 @@ public static class BuildingConfigLoader
             {
                 return false;
             }
+            if (!TryReadDroneStationCapacity(rawEntry, buildingType, out int droneStationCapacity))
+            {
+                return false;
+            }
 
             FixedString32Bytes reqResearch = default;
             if (!string.IsNullOrEmpty(entry.requiredResearch))
@@ -219,7 +230,8 @@ public static class BuildingConfigLoader
                 reqResearch,
                 footprint,
                 power,
-                droneStationRange));
+                droneStationRange,
+                droneStationCapacity));
 
             // 건설 자재 검증
             if (entry.materials != null)
@@ -377,6 +389,32 @@ public static class BuildingConfigLoader
         return true;
     }
 
+    private static bool TryReadDroneStationCapacity(JObject entry, BuildingTypeEnum type, out int capacity)
+    {
+        capacity = 0;
+        JToken token = entry["droneStationStorageCapacity"];
+        if (!DroneStationRangeUtility.IsStationType(type))
+        {
+            if (token == null)
+            {
+                return true;
+            }
+            Debug.LogError("[BuildingConfigLoader] Only station types can define droneStationStorageCapacity.");
+            return false;
+        }
+        if (token == null)
+        {
+            Debug.LogError("[BuildingConfigLoader] Station requires droneStationStorageCapacity.");
+            return false;
+        }
+        if (token.Type != JTokenType.Integer || !int.TryParse(token.ToString(Formatting.None), out capacity) || capacity <= 0)
+        {
+            Debug.LogError("[BuildingConfigLoader] droneStationStorageCapacity must be a positive int.");
+            return false;
+        }
+        return true;
+    }
+
     private static bool ValidateDefinitions(List<BuildingConfigElement> configs, List<BuildingConstructionMaterialElement> materials,
         out HashSet<(BuildingTypeEnum Type, int Tier)> keys)
     {
@@ -396,6 +434,21 @@ public static class BuildingConfigLoader
             }
             if (!BuildingPowerConfigParser.Validate(config))
             {
+                return false;
+            }
+            bool station = DroneStationRangeUtility.IsStationType(config.BuildingType);
+            // CoalGenerator의 용량은 바로 위 전력 역할 검증이 검사한다.
+            bool storesItems = station || config.BuildingType == BuildingTypeEnum.Storage;
+            if (storesItems && (config.StorageCapacity <= 0 || config.StorageCapacity > GameConstants.MaxStorageSlots))
+            {
+                Debug.LogError("[BuildingConfigLoader] Invalid storage capacity; expected 1..MaxStorageSlots.");
+                return false;
+            }
+            if ((station && (config.DroneStationStorageCapacity <= 0 ||
+                    (long)config.StorageCapacity + config.DroneStationStorageCapacity > GameConstants.MaxStorageSlots)) ||
+                (!station && config.DroneStationStorageCapacity != 0))
+            {
+                Debug.LogError("[BuildingConfigLoader] Invalid station dedicated/general storage capacity.");
                 return false;
             }
             if (!DroneStationRangeUtility.IsStationType(config.BuildingType) && config.DroneStationRangeInChunks != 0)

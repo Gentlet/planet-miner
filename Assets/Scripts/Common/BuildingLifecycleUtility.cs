@@ -104,6 +104,12 @@ public static class BuildingLifecycleUtility
         ecb.SetComponent(newBuilding, LocalTransform.FromPosition(spawnPosition));
 
         AttachTypeSpecificComponents(ref ecb, newBuilding, targetType, direction, speed, storageCapacity);
+        if (DroneStationRangeUtility.IsStationType(targetType))
+        {
+            ecb.SetComponent(newBuilding, new Storage(storageCapacity + config.DroneStationStorageCapacity));
+            ecb.AddComponent(newBuilding, new DroneStationStorage { DedicatedSlotCount = config.DroneStationStorageCapacity });
+            ecb.AddBuffer<DockedDroneElement>(newBuilding);
+        }
 
         return newBuilding;
     }
@@ -268,7 +274,7 @@ public static class BuildingLifecycleUtility
 
     private static void AttachStorageComponents(ref EntityCommandBuffer ecb, Entity building, int storageCapacity)
     {
-        ecb.AddComponent(building, new Storage(storageCapacity > 0 ? storageCapacity : 20));
+        ecb.AddComponent(building, new Storage(storageCapacity));
         ecb.AddBuffer<StoredItemElement>(building);
         ecb.AddComponent(building, new StorageFilter());
         ecb.AddComponent<BuildingItemOutputDecision>(building);

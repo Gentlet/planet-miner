@@ -18,7 +18,7 @@ public enum DroneCargoOriginEnum : byte
 /// <summary>
 /// 역할·목적: 드론 작업을 수행할 엔티티를 식별하는 태그다. 최대 적재량이나 행동 상태를 저장하지 않는다.
 /// 부착 엔티티: DroneWorkerObservation·DroneWorkerAssignment·DroneCargoState·StoredItemElement를 갖춘 드론 수행자 엔티티다.
-/// 생성: DroneSpawnUtility가 호출자의 EndSimulation ECB에 초기 구성을 기록한다. 실제 출고/수납 등록 Producer는 후속이다.
+/// 생성: DroneSpawnUtility가 초기 구성을 기록하고 DroneStationLifecycleApplySystem이 출고/수납 역할 전환을 EndSimulation에 공개한다.
 /// 이용: Decision의 DroneTaskDecisionSystem이 수행자를 조회하고 DroneItemTransferDecisionSystem이 행동 자격을 검사한다.
 /// ConstructionSupplyReservationSystem(Reservation), DroneTaskExecutionSystem/DroneItemTransferExecutionSystem(Execution), DroneTaskAssignmentPublishSystem/DroneTaskLifecycleApplySystem(StateApply)도 공통 검증 Utility로 수행자 자격을 검사한다.
 /// 제거: 작업·배정 종료로 제거하지 않는다. 수행자 등록 해제·삭제의 수명주기는 후속이며 엔티티 삭제 시 함께 사라진다.

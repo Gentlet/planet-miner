@@ -116,6 +116,18 @@ public partial struct ItemOwnershipApplySystem : ISystem
             if (!manager.HasBuffer<StoredItemElement>(targetOwner)) return false;
             if (slotIndex < 0) return false;
             if (ContainsStoredItem(manager.GetBuffer<StoredItemElement>(targetOwner, true), item)) return false;
+            if (manager.HasComponent<DroneStationStorage>(targetOwner))
+            {
+                if (!StationStorageUtility.IsItemSlotAllowed(slotIndex, manager.GetComponentData<Storage>(targetOwner).SlotCount,
+                    StationStorageUtility.ReadDedicatedCount(manager, targetOwner), type))
+                {
+                    return false;
+                }
+                if (StationStorageUtility.IsDockOccupied(manager, targetOwner, slotIndex))
+                {
+                    return false;
+                }
+            }
         }
 
         // 아이템 엔티티를 재생성하지 않고 같은 실물의 출발/도착 참조와 Owner를 바꾼다.

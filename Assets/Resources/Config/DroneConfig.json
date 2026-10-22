@@ -1,6 +1,5 @@
 {
   "defaultTaskPriority": 5,
-  "stationStorageCapacity": 13,
   "carryingCapacity": 3,
   "movementSpeed": 4.0,
   "emergencyMovementSpeed": 0.5,
