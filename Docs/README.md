@@ -10,7 +10,8 @@
 | 건설·공급·회수의 확정 규칙 | [건설·드론 명세](Specifications/ConstructionAndDroneSupply.md) | 관리 계층 구현과 후속 수행부를 구분한다. 자동 비행·실제 도착 신호 Producer는 후속이다. |
 | 드론 상태 전이·귀환·충전·수납 정책 | [드론 Lifecycle 계약](Specifications/DroneLifecycle.md) | Task 9.1에서 확정한 1A~6A와 상태/이벤트/Owner·검증 기준. 정거장 기반은 Task 9.2, 실제 수행자·이동·충전은 해당 후속 Task에서 다룬다. |
 | 드론 정거장 등록·활동 범위·네트워크 | [정거장 네트워크 명세](Specifications/DroneStationNetwork.md) | Task 9.2의 단일 Range·정사각형·무전력 참가·대표·같은 틱 연결/공개 조회 계약. 작업 필터·수용량·충전은 후속이다. |
-| 아직 결정이 필요한 초기화 | [공통 적재량 초기화 검토안](Specifications/DroneCapacityInitializationPlan.md) | 설정 출처·오류·기존 singleton 처리 정책이 미확정인 제안이다. 구현 승인으로 해석하지 않는다. |
+| 드론 Authoring·DB·생성 초기화 | [드론 생성 명세](Specifications/DroneCreation.md) | Task 9.3.1의 실제 Baker·4종 DB 준비·EndSimulation 생성 초기화. Identity 전환·수용량·제품 배차/이동/충전은 후속이다. |
+| 공통 적재량 초기화 후속 | [공통 적재량 초기화 계약](Specifications/DroneCapacityInitializationPlan.md) | 6A 정책은 사용자 확정이며 구현은 Task 9.3에 남는다. Task 9.3.1은 생성 초기 구성만 다룬다. |
 | 연구의 합의된 게임 규칙 | [연구건물 명세](Specifications/ResearchBuilding.md) | 설계 규칙과 임시 데이터를 구분한다. 현재 V2 연구 진행 Writer의 구현 증거는 아니다. |
 | 개발 마일스톤·설계 배경 | [V2 작업 목록](architecture%20v2%20plan/Architecture%20V2%20Tasks.md), [V2 설계](architecture%20v2%20plan/Architecture%20V2%20Plan_0.2.md) | Phase 번호와 체크는 해당 개발 작업의 범위다. 현재 런타임 그룹 수/순서나 전체 기능 완료를 뜻하지 않는다. |
 | 아직 이식하지 않은 게임 동작·정책 차이 | [V2 작업 목록](architecture%20v2%20plan/Architecture%20V2%20Tasks.md)의 도메인별 레거시 검토 항목 | 이전 CodeMemory에서 필요한 동작만 보존했다. 현재 확정 계약과 충돌하는 내용은 후속 결정 사항이며 구현 승인이나 완료를 뜻하지 않는다. |

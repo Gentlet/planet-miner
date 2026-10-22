@@ -20,6 +20,7 @@ public class PrefabDatabaseInitializationTests : EcsWorldTestFixture
     private Entity _buildings;
     private Entity _items;
     private Entity _resources;
+    private Entity _drones;
 
     [SetUp]
     public override void SetUp()
@@ -37,6 +38,7 @@ public class PrefabDatabaseInitializationTests : EcsWorldTestFixture
         _buildings = TestPrefabDatabaseFactory.CreateBuildings(_entityManager);
         _items = TestPrefabDatabaseFactory.CreateItems(_entityManager);
         _resources = TestPrefabDatabaseFactory.CreateResources(_entityManager);
+        _drones = TestPrefabDatabaseFactory.CreateDrones(_entityManager);
         Entity config = _entityManager.CreateEntity(typeof(ResourceGenerationSettings));
         _entityManager.AddBuffer<ResourceGenerationConfigElement>(config).Add(
             new ResourceGenerationConfigElement(ItemTypeEnum.Iron_Ore, 1, 1, 1, 1, 1, 1));
@@ -100,10 +102,12 @@ public class PrefabDatabaseInitializationTests : EcsWorldTestFixture
     [TestCase(0)]
     [TestCase(1)]
     [TestCase(2)]
+    [TestCase(3)]
     public void MissingDatabase_StopsWithoutFallback(int domain)
     {
         CreateValidDatabases();
-        _entityManager.DestroyEntity(domain == 0 ? _buildings : domain == 1 ? _items : _resources);
+        Entity database = domain == 0 ? _buildings : domain == 1 ? _items : domain == 2 ? _resources : _drones;
+        _entityManager.DestroyEntity(database);
         AssertFailed();
     }
 
@@ -139,11 +143,49 @@ public class PrefabDatabaseInitializationTests : EcsWorldTestFixture
         AssertFailed();
     }
 
-    [Test]
-    public void DuplicateDatabase_Stops()
+    [TestCase(false)]
+    [TestCase(true)]
+    public void DuplicateDatabase_Stops(bool droneDatabase)
     {
         CreateValidDatabases();
-        TestPrefabDatabaseFactory.CreateBuildings(_entityManager);
+        if (droneDatabase)
+        {
+            TestPrefabDatabaseFactory.CreateDrones(_entityManager);
+        }
+        else
+        {
+            TestPrefabDatabaseFactory.CreateBuildings(_entityManager);
+        }
+        AssertFailed();
+    }
+
+    [TestCase("missingReference")]
+    [TestCase("nullPrefab")]
+    [TestCase("workerState")]
+    [TestCase("itemState")]
+    [TestCase("disabled")]
+    public void InvalidDroneTemplate_StopsBeforePublishingReady(string fault)
+    {
+        CreateValidDatabases();
+        Entity prefab = _entityManager.GetComponentData<DronePrefab>(_drones).Prefab;
+        switch (fault)
+        {
+            case "missingReference":
+                _entityManager.RemoveComponent<DronePrefab>(_drones);
+                break;
+            case "nullPrefab":
+                _entityManager.SetComponentData(_drones, new DronePrefab(Entity.Null));
+                break;
+            case "workerState":
+                _entityManager.AddComponent<DroneWorker>(prefab);
+                break;
+            case "itemState":
+                _entityManager.AddComponentData(prefab, new ItemIdentity(ItemTypeEnum.Drone));
+                break;
+            case "disabled":
+                _entityManager.AddComponent<Disabled>(prefab);
+                break;
+        }
         AssertFailed();
     }
 

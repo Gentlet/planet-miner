@@ -16,7 +16,7 @@
 | 화물 | `StoredItemElement`와 `ItemOwnership`, 출처는 `DroneCargoState`. | 실제 실물의 종류·수량·Owner가 원본이다. 배정 수량으로 실물을 대체하지 않는다. |
 | 예약 | 개별 `ConstructionSupplyReservation`과 현장 `ReservedQuantity`, 미공개 예약 기록. | 공급 예정량을 관리한다. 공급원 재고·일반 보관 공간의 영속 예약을 새로 만들지 않는다. |
 | 드론 자체 상태 | 귀환·정박·충전·수납·비상 귀환은 후속 개념 상태다. 현재 원본 컴포넌트/Writer는 없다. | 작업 상태를 복제하지 않고 수행자의 활동·보관 전환을 관리한다. |
-| 배터리/관측 | 배터리 원본은 후속이다. 현재 `DroneWorkerObservation`은 Position/Revision/CanAcceptTask 입력 계약이다. | 실제 이동·충전 결과를 관측과 배차 자격에 연결한다. 관측값만으로 배터리를 만들지 않는다. |
+| 배터리/관측 | 현재량 원본은 `DroneBatteryState.CurrentCharge`다. DroneSpawnUtility가 호출자의 EndSimulation ECB에 최초 현재량과 입력 위치/Revision 1/CanAcceptTask=false 관측을 기록하고 기존 배터리는 보존한다. | 지속 이동 소비/충전 Writer와 관측 갱신은 후속이다. 실제 결과를 관측과 배차 자격에 연결하며 관측값만으로 배터리를 만들지 않는다. |
 
 `Pending → Reserved → Assigned → PickingUp → Delivering → Completed`는 후보·예약·배정·행동의 흐름을 설명하는 말이다. 이를 `DroneLogisticsTask.State` 하나에 합치지 않는다. `AwaitingRoute/AwaitingCollection/AwaitingDelivery`는 배정 enum에 있지만 실제 이동·도착 Producer의 전체 전이가 구현된 것은 아니다. 수납은 화물의 `StoreCargo`와 구분한다.
 
@@ -133,7 +133,8 @@
 
 ## 후속 Task 연결
 
-- 9.2: [정거장 등록·범위·네트워크](DroneStationNetwork.md). 9.3·9.3.1: 정거장 수용량, 드론 Identity 전환과 실제 수행자 생성. [적재량 초기화 정책](DroneCapacityInitializationPlan.md)은 여전히 해당 후속 작업에서 확정한다.
+- 9.3.1: [드론 Authoring·DB·생성 초기화](DroneCreation.md)는 구현했다. 실제 관측/이동·제품 배차·Identity 전환·수용량의 완료와 구분한다.
+- 9.2: [정거장 등록/범위/네트워크](DroneStationNetwork.md)는 구현했다. 9.3: 정거장 수용량, 드론 Identity 전환과 실제 출고/수납 등록은 미착수다. [적재량 초기화 정책](DroneCapacityInitializationPlan.md)은 사용자 확정 6A를 따르며 초기화 Writer 구현은 9.3에 남긴다.
 - 9.10·9.13·9.14: 실제 이동/배터리와 관측, 정상/비상 귀환, 충전·재배차·수납 연결. 개념 상태를 구현하기 전에 기존 관리 계층과 연결한다.
 - 9.15·9.16: 새 수행 실패 사유를 기존 종료/예약 정산·적재 보존에 연결한다. 복구를 이유로 기존 실물을 재생성하지 않는다.
 - 9.17·9.19·9.20: 추가 작업·정거장 철거의 재배치와 전체 흐름 검증. 기존 정거장 철거의 전체 수용량 선검사/불충족 시 철거 보류 규칙은 유지한다.

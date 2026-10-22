@@ -4,7 +4,7 @@
 
 최초 조사 2026-10-03, 2026-10-06 도메인 분리의 실행 게이트와 ECB 경계를 현재 소스와 대조했다. 이번 문서 감사에서 베이킹·SubScene 실행·컴파일·테스트·Play Mode를 실행하지 않았다. Baker의 존재와 실제 장면의 베이킹 결과는 구분한다.
 
-건물·아이템·자원 DB는 각각 별도 엔티티의 태그와 매핑 버퍼로 구성된다. `PrefabDatabaseInitializationSystem`은 SubScene 로딩 뒤 DB를 검증하고 성공하면 `PrefabDatabaseReady`, 실패하면 `SimulationFatalError`를 게시한다. 기존 Fatal 뒤에는 비활성화한다. `GameSimulationGroup`은 틱 시작에 DB Ready와 건물·아이템·레시피·자원/바닥 설정의 게시 데이터가 준비되고 Fatal이 없으면 도메인 그룹을 진행한다. DB Ready는 설정 준비를 포함하지 않는다. 검증 후 DB는 불변이며 런타임 소비자는 재작성하지 않는다.
+건물·아이템·자원 DB는 각각 별도 엔티티의 태그와 매핑 버퍼이며, Task 9.3.1의 드론 DB는 별도 엔티티의 태그와 단일 DronePrefab 참조다. `PrefabDatabaseInitializationSystem`은 SubScene 로딩 뒤 DB를 검증하고 성공하면 `PrefabDatabaseReady`, 실패하면 `SimulationFatalError`를 게시한다. 기존 Fatal 뒤에는 비활성화한다. `GameSimulationGroup`은 틱 시작에 DB Ready와 건물·아이템·레시피·자원/바닥 설정의 게시 데이터가 준비되고 Fatal이 없으면 도메인 그룹을 진행한다. DB Ready는 설정 준비를 포함하지 않는다. 검증 후 DB는 불변이며 런타임 소비자는 재작성하지 않는다.
 
 ## BuildingPrefabDatabase
 
@@ -62,26 +62,21 @@
 
 ## DronePrefabDatabase
 
-- **목적·종류:** 드론 프리팹 DB 식별용으로 정의된 필드 없는 `IComponentData` 태그다.
-- **부착·생성 여부:** 현재 제품 소스(`Assets/Scripts`)에서 정의 외의 참조가 없다. 이를 부착하는 Baker·Init·생성 시스템 또는 실제 부착 엔티티는 확인되지 않는다.
-- **Reader·Writer·단계:** 현재 런타임 Reader/Writer와 처리 단계가 없다. `PrefabDatabaseInitializationSystem`은 건물·아이템·자원 DB만 검증하고 이 태그를 검사하지 않는다.
-- **결합 계약:** 같은 파일의 `DronePrefab`과 함께 쓰려는 데이터 형태는 있으나 두 컴포넌트를 같은 엔티티에 구성하거나 드론을 Instantiate하는 연결은 현재 소스에 없다. DroneStation 건물 프리팹의 존재와 별개의 타입이다.
-- **생명주기·현재 범위:** 정의만 있어 현재 생성→소비→삭제 수명주기는 없다. 별도 Dispose 자원도 없다. 드론 생성 기능이 구현되어 있다는 근거로 사용하지 않는다.
-- **소스:** [정의](../../../Assets/Scripts/Components/Prefabs/PrefabDatabaseComponents.cs), [현재 검증 대상](../../../Assets/Scripts/Systems/Initialization/PrefabDatabaseInitializationSystem.cs).
+- **목적·생성:** DronePrefabDatabaseAuthoring의 Baker가 DronePrefab과 같은 별도 Entity에 게시하는 태그다. 원형은 Dynamic 참조다.
+- **읽기/수명:** 공통 초기화가 드론 DB까지 포함해 4종 DB의 준비를 검증한다. Ready 이후 DroneSpawnUtility가 읽으며 DB/원형은 World 수명 동안 불변이다. 자체 NativeContainer/Dispose는 없다.
+- **현재 연결:** V2 SubScene의 Drone Prefab Database가 기존 Drone.prefab을 참조한다. 작업 배차·수납 전환·실제 비행의 Producer는 후속이다.
 
 ## DronePrefab
 
-- **목적·필드:** 단일 드론 프리팹 엔티티를 가리키는 `Prefab` 필드와 생성자를 가진 `IComponentData`다. 종류별 버퍼 형태의 다른 DB와 다르다.
-- **부착·생성 여부:** 현재 제품 소스에서 정의 외의 참조가 없다. 생성자를 호출하거나 ECS에 부착하는 Baker·Init·런타임 경로는 확인되지 않는다.
-- **Reader·Writer·단계:** 프리팹 조회·Instantiate를 수행하는 소비 시스템이 없고, 특정 실행 단계에 연결되어 있지 않다. DB 초기 검증도 이 필드의 유효성을 확인하지 않는다.
-- **결합 계약:** `DronePrefabDatabase`와 같이 선언되어 있으나 실제 동일 엔티티 부착 계약을 실행하는 코드가 없다. 건물 종류 `DroneStation`을 생성하는 Building DB 경로는 이 컴포넌트를 사용하지 않는다.
-- **생명주기·현재 범위:** 현재 확인할 수 있는 것은 타입 정의와 Entity 참조 형태다. 소비·재사용·삭제·World 종료 훅은 구현되어 있지 않으며 자체 NativeContainer/Dispose도 없다.
-- **소스:** [정의](../../../Assets/Scripts/Components/Prefabs/PrefabDatabaseComponents.cs), [현재 DB 검증 범위](../../../Assets/Scripts/Systems/Initialization/PrefabDatabaseInitializationSystem.cs), [건물 생성 경로](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs).
+- **목적·생성:** 단일 표시 원형 Entity 참조다. Baker는 런타임 수행자/배터리/소유권을 원형에 부착하지 않는다.
+- **검증/소비:** 유일성·생존·Prefab/LocalTransform·활성 상태와 런타임 구성 부재를 준비 시 검사한다. DroneSpawnUtility는 Ready 이후 복제하고 EndSimulation에 위치·관측·빈 화물/배정·초기 배터리를 기록한다.
+- **경계:** 기존 Entity 역할 초기화도 제공하지만 아이템 Identity/Owner/버퍼·정거장 슬롯과 표시 전환은 Task 9.3 소유다. 자동 생성/배차·이동·충전은 구현하지 않았다.
+- **근거:** [Authoring](../../../Assets/Scripts/Authoring/DronePrefabDatabaseAuthoring.cs), [검증](../../../Assets/Scripts/Systems/Initialization/PrefabDatabaseInitializationSystem.cs), [생성](../../../Assets/Scripts/Common/DroneSpawnUtility.cs), [Task 9.3.1 명세](../../Specifications/DroneCreation.md).
 
 ## PrefabDatabaseReady
 
 - **목적·종류:** 프리팹 초기 검증을 통과했다는 사실을 나타내는 필드 없는 `IComponentData` 태그다. DB마다 붙이지 않고 별도 준비 상태 엔티티에 부착한다.
-- **생성·초기화:** `PrefabDatabaseInitializationSystem`이 Initialization 마지막에 요청된 SubScene들의 성공 로딩을 확인하고 건물·아이템·자원 DB 검증을 전부 통과하면 `EntityManager.CreateEntity`로 즉시 만든다. 이후 검증 시스템은 비활성화한다.
+- **생성·초기화:** `PrefabDatabaseInitializationSystem`이 Initialization 마지막에 요청된 SubScene들의 성공 로딩을 확인하고 건물·아이템·자원·드론 DB 검증을 전부 통과하면 `EntityManager.CreateEntity`로 즉시 만든다. 이후 검증 시스템은 비활성화한다.
 - **Reader·처리:** `GameSimulationGroup.OnUpdate`가 DB Ready와 각 필수 설정 엔티티/버퍼, Fatal을 함께 검사한다. DB Ready 또는 설정 준비가 없거나 Fatal이 있으면 Command·BuildingSimulation·DroneSimulation·SimulationCommit·Synchronization 전체를 실행하지 않는다.
 - **대기·실패:** SubScene이 아직 로딩 중이면 Ready를 만들지 않고 다음 Initialization에서 다시 확인한다. 로딩 실패 또는 DB 검증 실패는 Fatal 게시와 시스템 비활성화로 끝나며 자동 재시도하지 않는다.
 - **생명주기·경계:** Ready 자체를 소비하거나 제거하는 제품 경로는 없다. 검증 후 DB를 매 틱 재검사하는 표식이 아니므로 이후 불변 DB 계약이 연결된다. World 종료 때 일반 ECS 엔티티로 정리된다.

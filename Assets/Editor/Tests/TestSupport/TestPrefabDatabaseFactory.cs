@@ -7,7 +7,7 @@ namespace PlanetMiner.Tests
 {
     /// <summary>
     /// 역할·목적: 제품 Instantiate를 사용할 격리 사례에 최소 ECS Prefab과 종류별 DB를 제공한다.
-    /// 호출·입출력: 테스트 EntityManager에 건물/아이템/자원 DB·Prefab을 생성하여 DB 엔티티를 반환한다.
+    /// 호출·입출력: 테스트 EntityManager에 건물/아이템/자원/드론 DB·Prefab을 생성하여 DB 엔티티를 반환한다.
     /// 수명: RemoveDatabase는 지정 DB만 제거하고 전체 정리는 World Dispose가 담당한다. 실제 자산 Baker/SubScene 로딩 검증을 대신하지 않는다.
     /// </summary>
     public static class TestPrefabDatabaseFactory
@@ -43,6 +43,15 @@ namespace PlanetMiner.Tests
                 manager.SetComponentData(prefab, new ItemIdentity(type));
                 manager.GetBuffer<ItemPrefabElement>(database).Add(new ItemPrefabElement(type, prefab));
             }
+            return database;
+        }
+
+        public static Entity CreateDrones(EntityManager manager)
+        {
+            Entity database = manager.CreateEntity(typeof(DronePrefabDatabase), typeof(DronePrefab));
+            Entity prefab = manager.CreateEntity(typeof(Prefab), typeof(LocalTransform));
+            manager.SetComponentData(prefab, LocalTransform.Identity);
+            manager.SetComponentData(database, new DronePrefab(prefab));
             return database;
         }
 

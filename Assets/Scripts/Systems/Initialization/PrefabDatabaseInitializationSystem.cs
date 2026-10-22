@@ -8,9 +8,9 @@ using UnityEngine;
 
 /// <summary>
 /// 역할·목적: Initialization 마지막에서 요청된 SubScene 로딩과 필수 프리팹 DB 계약을 검사해 게임 시작을 허용한다.
-/// 입력·생성자: DB Authoring이 베이킹한 건물/아이템/자원 매핑, SceneSystem 로드 상태와 게시된 자원 생성 설정.
+/// 입력·생성자: DB Authoring이 베이킹한 건물/아이템/자원/드론 원형, SceneSystem 로드 상태와 게시된 자원 생성 설정.
 /// 출력·소유권: 전체 검증 성공 시 PrefabDatabaseReady, 실패 시 SimulationFatalError를 즉시 생성한다. DB 원본은 변경하지 않는다.
-/// 이용: GameSimulationGroup이 Ready 존재/중단 오류 부재를 확인하여 여섯 실행 phase를 허용한다.
+/// 이용: GameSimulationGroup이 Ready 존재/중단 오류 부재를 확인하여 게임 도메인 실행을 허용한다.
 /// 정리·가시화: 로딩 중은 다음 Initialization에서 기다리며 성공/실패 뒤 비활성화한다. 실패 자동 재시도·ECB 기록은 없고 준비 후 DB는 불변 계약이다.
 /// </summary>
 [UpdateInGroup(typeof(InitializationSystemGroup), OrderLast = true)]
@@ -56,7 +56,8 @@ public partial class PrefabDatabaseInitializationSystem : SystemBase
         }
 
         // 개별 DB의 유일성·원형 생존과 필수 타입을 모두 확인한 뒤 한 번만 게임 실행을 허용한다.
-        if (!ValidateBuildings(out string error) || !ValidateItems(out error) || !ValidateResources(out error))
+        if (!ValidateBuildings(out string error) || !ValidateItems(out error) || !ValidateResources(out error) ||
+            !ValidateDrones(out error))
         {
             Fail(error);
             return;
@@ -174,6 +175,42 @@ public partial class PrefabDatabaseInitializationSystem : SystemBase
                 error = $"Missing building prefab: {key.Type}/{key.Tier}.";
                 return false;
             }
+        }
+        return true;
+    }
+
+    private bool ValidateDrones(out string error)
+    {
+        using var tags = EntityManager.CreateEntityQuery(ComponentType.ReadOnly<DronePrefabDatabase>());
+        using var references = EntityManager.CreateEntityQuery(ComponentType.ReadOnly<DronePrefab>());
+        error = null;
+        if (tags.CalculateEntityCount() != 1 || references.CalculateEntityCount() != 1)
+        {
+            error = "Expected exactly one DronePrefabDatabase and its DronePrefab reference.";
+            return false;
+        }
+        Entity database = tags.GetSingletonEntity();
+        if (!EntityManager.HasComponent<DronePrefab>(database))
+        {
+            error = "DronePrefabDatabase has no DronePrefab reference.";
+            return false;
+        }
+        Entity prefab = EntityManager.GetComponentData<DronePrefab>(database).Prefab;
+        if (!ValidatePrefab(prefab, "Drone", out error))
+        {
+            return false;
+        }
+        if (EntityManager.HasComponent<Disabled>(prefab))
+        {
+            error = "Drone prefab must be enabled.";
+            return false;
+        }
+        if (DroneSpawnUtility.HasWorkerComponents(EntityManager, prefab) ||
+            EntityManager.HasComponent<DroneBatteryState>(prefab) ||
+            EntityManager.HasComponent<ItemIdentity>(prefab) || EntityManager.HasComponent<ItemOwnership>(prefab))
+        {
+            error = "Drone prefab must not contain runtime worker, battery, cargo or item ownership state.";
+            return false;
         }
         return true;
     }

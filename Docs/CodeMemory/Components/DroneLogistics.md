@@ -2,11 +2,11 @@
 
 [전체 색인](README.md) · [배치와 공사](Construction.md) · [아이템과 저장](ItemsAndStorage.md)
 
-2026-10-06의 드론 ECS 타입 23개와 2026-10-22 Task 9.2의 정거장 타입 5개를 설명한다. 관리 계층의 작업·예약·인계·재배정·안전 방출 계약과 정거장 연결·공개 범위 조회를 포함한다.
+2026-10-06의 드론 ECS 타입 23개와 2026-10-22 Task 9.2의 정거장 타입 5개와 Task 9.3.1의 배터리 현재량 1개를 설명한다. 관리 계층의 작업·예약·인계·재배정·안전 방출 계약과 정거장 연결·공개 범위 조회를 포함한다.
 
 2026-10-15 Task 9.1은 [상태 전이·Lifecycle Owner 계약](../../Specifications/DroneLifecycle.md)을 확정했다. 1A~6A의 수납·완충 전/연속 배차·귀환·비상 이동·중단 정산은 후속 수행부가 따라야 할 정책이다. Task 9.1 당시 23개 타입과 관리 계층을 유지했으며 실제 정거장·이동·배터리·충전·수납 Writer나 새 상태 enum을 추가하지 않았다. 이후 Task 9.2의 정거장 기반은 아래 별도 타입/명세로 구분한다. 작업/배정의 기존 상태와 수행자 자체의 후속 개념 상태를 구분한다.
 
-기존 142사례와 기존 통합 4사례는 이전 공통 여섯 phase의 별도 실행 기록이다. 새 입력·완공 시점의 검증으로 소급 해석하거나 합산하지 않는다. 실제 수행자 생성·이동·경로 계산·관측·행동 신호와 공통 능력/연구 Writer는 후속이다. DropPosition은 선택 목표이며 실제 위치 원본이 아니다. [공통 적재량 초기화 검토안](../../Specifications/DroneCapacityInitializationPlan.md)은 미확정 정책의 제안이다.
+기존 142사례와 기존 통합 4사례는 이전 공통 여섯 phase의 별도 실행 기록이다. 새 입력/완공 시점의 검증으로 소급 해석하거나 합산하지 않는다. Task 9.3.1은 생성 초기화 API와 최초 관측을 제공한다. 실제 출고/수납 Producer, 이동/경로 계산/지속 관측/행동 신호와 공통 능력/연구 Writer는 후속이다. DropPosition은 선택 목표이며 실제 위치 원본이 아니다. [공통 적재량 초기화 검토안](../../Specifications/DroneCapacityInitializationPlan.md)은 사용자 확정 6A와 Task 9.3의 구현 대기를 구분한다.
 
 ```text
 Command / EndCommand: 현장·자재 요구와 취소 반환·삭제 공개
@@ -41,6 +41,10 @@ Construction은 BuildingStateApply 마지막에서 현재 Owner=Null/GridPositio
 
 생성 판단·배정/행동 정산·공통 실물 API는 각 시스템 본체 한 파일에서 유지하며 Unity Entities 소스 생성용 partial 선언을 파일 분리 근거로 사용하지 않는다.
 2026-10-22 Task 9.2의 Unity 컴파일 오류 없음과 관련 선택 EditMode 99/99(신규 정거장 14/14 포함)를 확인했다. 기존 건설 통합 fixture의 그룹/준비·격리 공급 누락 보완과 검수 결과는 [정거장 명세](../../Specifications/DroneStationNetwork.md#검증)에 기록했다. 실제 드론 수행자·수용량·귀환·충전과 작업 후보의 망 필터는 후속이다.
+
+## DroneBatteryState
+
+현재 배터리량 CurrentCharge만 소유한다. DroneSpawnUtility가 호출자의 명시적 최대치로 새 개체를 초기화하고 기존 값은 역할 초기화로 충전하지 않는다. 실제 최대치 설정 로딩/아이템 Identity 전환은 9.3, 이동 소비/충전은 9.10·9.14 후속이다. 생성 초기 구성과 EndSimulation 공개·Ready 전제는 [드론 생성 명세](../../Specifications/DroneCreation.md)를 따른다.
 
 ## DroneStation
 
@@ -147,7 +151,7 @@ DroneStationSpatialSyncSystem이 같은 singleton의 Fence와 함께 생성한�
 ## DroneWorker
 
 - **종류·부착 대상·목적:** 빈 일반 IComponentData. 드론 작업을 수행할 수 있는 엔티티의 표시다. 수행자별 적재량을 보관하지 않으며 최대 적재량의 원본은 World의 DroneCapacityState다.
-- **Producer·Reader:** 실제 생성·등록 Producer는 없다. 등록 데이터가 준비되면 Decision·Reservation·Publish와 Execution의 경로 적용 검사가 이 표시와 관측·활성 배정 연결·적재 출처·StoredItemElement를 확인한다. 공통 적재량이 없거나 0 이하이면 신규 배정을 진행하지 않는다.
+- **Producer/Reader:** DroneSpawnUtility가 EndSimulation에 초기 구성을 기록한다. 실제 출고/수납 등록 Producer는 후속이다. Decision/Reservation/Publish와 Execution의 경로 적용 검사가 이 표시와 관측/활성 배정 연결/적재 출처/StoredItemElement를 확인한다. 공통 적재량이 없거나 0 이하이면 신규 배정을 진행하지 않는다.
 - **한계·수명:** 현재 신규 배정과 수집은 빈 적재 수행자만 대상이다. 실제 인계는 한 품목과 이미 배정한 수량 상한을 확인한다. 수행자 자체의 종료 시 적재 반환은 후속이다. 등록된 수행자와 함께 유지하며 타입만 추가한다고 드론이나 버퍼가 생성되지 않는다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneWorkerComponents.cs), [수행자 검사](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs), [보관 버퍼](../../../Assets/Scripts/Components/Storage/StorageComponents.cs).
 
@@ -163,15 +167,15 @@ DroneStationSpatialSyncSystem이 같은 singleton의 Fence와 함께 생성한�
 
 - **종류·부착 대상·목적:** 일반 IComponentData. 외부 수행부가 수행자에 게시할 위치·신규 작업 가능 상태의 스냅샷이다. 관리 측의 배정 상태와 작성 책임을 분리한다.
 - **필드·검사:** Position은 출발 월드 좌표, Revision은 양수 관측 버전, CanAcceptTask는 신규 작업 가능 여부다. 후보에는 유한한 위치·양수 버전·작업 가능 상태가 필요하며 경로 결과와 후보 공개 시 요청의 버전·위치와 대조한다.
-- **현재 Reader·후속 Writer:** Decision과 예약·공개 검사에서 읽는다. 실제 관측을 게시·갱신하거나 드론을 이동시키는 시스템은 없다. 위치·경로 조건이 바뀌면 수행부가 Revision을 갱신해야 한다.
+- **현재 Reader/후속 Writer:** DroneSpawnUtility가 입력 위치/Revision 1/CanAcceptTask=false로 최초 관측을 기록한다. Decision과 예약/공개 검사에서 읽는다. 지속 관측을 갱신하거나 드론을 이동시키는 시스템은 없다. 위치/경로 조건이 바뀌면 후속 수행부가 Revision을 갱신해야 한다.
 - **수명:** 수행자 수명 동안 최신 스냅샷을 유지하는 계약이다. GridPosition이나 렌더 위치 원본을 대체하지 않는다.
-- **현재 원본 연결 한계:** 관리 측은 Position/Revision을 서로 비교하지만 실제 드론 위치 원본을 요구하거나 관측이 원본에서 갱신되었는지 검사하지 않는다. 위치/관측 Producer가 아직 없어 실제 이동과 관측의 정합성은 구현된 계약이 아니다.
+- **현재 원본 연결 한계:** 생성 시 위치와 최초 관측은 같은 입력을 사용한다. 관리 측은 Position/Revision을 서로 비교하지만 지속 관측이 위치 원본에서 갱신되었는지 검사하지 않는다. 이동/지속 관측 Producer는 후속이며 실제 이동과 관측의 정합성은 구현된 계약이 아니다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneWorkerComponents.cs), [경로·후보 검사](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs).
 
 ## DroneWorkerAssignment
 
 - **종류·부착 대상·목적:** 일반 IComponentData. 수행자에서 관리 측이 소유하는 활성 배정 연결이다. Assignment=Null은 배정 없음이다.
-- **Writer·순서:** 초기 구성은 후속 등록 측 책임이다. Reservation의 동일 틱 중복 선택 방지와 기존 연결 검사로 수행자당 하나를 고른다. Publish가 EndSimulation에 새 배정과 연결을 함께 기록한다. DroneTaskLifecycleApplySystem은 검증한 배정의 0개 수집 또는 인계 후 빈 적재 완료 시 연결을 해제한다. DroneTaskLifecycleApplySystem은 무효/종료된 빈 적재 배정을 정리할 때 같은 배정을 가리키는 연결만 해제한다.
+- **Writer/순서:** DroneSpawnUtility가 Assignment=Null로 초기화한다. Reservation의 동일 틱 중복 선택 방지와 기존 연결 검사로 수행자당 하나를 고른다. Publish가 EndSimulation에 새 배정과 연결을 함께 기록한다. DroneTaskLifecycleApplySystem은 검증한 배정의 0개 수집 또는 인계 후 빈 적재 완료 시 연결을 해제한다. DroneTaskLifecycleApplySystem은 무효/종료된 빈 적재 배정을 정리할 때 같은 배정을 가리키는 연결만 해제한다.
 - **Reader·수명:** Decision·Reservation·Publish는 신규 배정 가능 여부를 읽고 후속 수행부는 작업 조회 시작점으로 쓴다. 수행자에 유지하며 Null 변경만으로 적재품이나 회수 출처를 지우지 않는다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneWorkerComponents.cs), [공개](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskAssignmentPublishSystem.cs), [인계 후 해제](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs), [무효화](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs).
 
@@ -179,7 +183,7 @@ DroneStationSpatialSyncSystem이 같은 singleton의 Fence와 함께 생성한�
 
 - **종류·부착 대상·목적:** 일반 IComponentData. 수행자의 적재 출처 제약이다. Origin은 None/Supply/Recovery이며 실제 목록·품목·수량은 StoredItemElement가 원본이다.
 - **현재 Reader:** 신규 배정 검사에서 Origin=None 및 빈 보관 버퍼를 요구한다. 적재가 남은 수행자에게 신규 작업을 중복 배정하지 않는다.
-- **Writer·제약:** DroneTaskLifecycleApplySystem이 수집 성공 시 Supply 또는 Recovery로 설정하고 인계 후 빈 적재이면 None으로 비운다. Recovery는 보관 건물에 넣기 전 현장에 직접 공급할 수 없도록 SupplyConstructionSite에서 Origin=Supply를 요구한다. 상위 작업 종료나 Retargeting만으로 출처를 지우지 않는다. 적재품 목적지 재탐색은 Direct 경로로 연결했고 실제 이동은 후속이다.
+- **Writer/제약:** DroneSpawnUtility가 Origin=None과 빈 화물 버퍼로 초기화한다. DroneTaskLifecycleApplySystem이 수집 성공 시 Supply 또는 Recovery로 설정하고 인계 후 빈 적재이면 None으로 비운다. Recovery는 보관 건물에 넣기 전 현장에 직접 공급할 수 없도록 SupplyConstructionSite에서 Origin=Supply를 요구한다. 상위 작업 종료나 Retargeting만으로 출처를 지우지 않는다. 적재품 목적지 재탐색은 Direct 경로로 연결했고 실제 이동은 후속이다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneWorkerComponents.cs), [빈 수행자 검사](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs), [출처 반영·공급 검사](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs).
 
 ## DroneRouteEvaluationRequest

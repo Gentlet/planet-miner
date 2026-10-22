@@ -96,20 +96,20 @@ public struct ResourcePrefabElement : IBufferElementData
 }
 
 /// <summary>
-/// 역할·목적: 향후 드론 프리팹 DB를 식별하기 위한 태그 계약이다.
-/// 부착 엔티티: 드론 수행자가 아니라 DronePrefab을 가진 별도 DB 엔티티를 의도한다.
-/// 생성·이용: 현재 제품 코드에 Authoring/Baker·게시 Producer·드론 생성 Consumer가 없다. 건물/아이템/자원 DB 검증에 드론 DB를 포함하지 않는다.
-/// 제거: 현재 관리된 생성/제거 경계가 없으며 외부에서 붙인 데이터는 해당 엔티티/World 수명을 따른다.
+/// 역할·목적: 드론 표시 원형 DB를 식별한다. DronePrefabDatabaseAuthoring의 Baker가 단독 참조와 함께 게시한다.
+/// 부착 엔티티: DronePrefab을 가진 별도 DB 엔티티다. 수행자 Entity가 아니다.
+/// 이용: PrefabDatabaseInitializationSystem이 유일성/원형을 검증하고 DroneSpawnUtility가 Ready 이후 읽는다.
+/// 제거: 준비 이후 불변이며 DB 엔티티/World 수명을 따른다.
 /// </summary>
 public struct DronePrefabDatabase : IComponentData
 {
 }
 
 /// <summary>
-/// 역할·목적: 향후 드론 인스턴스 생성에 사용할 단일 Prefab 엔티티 참조 계약이다.
-/// 부착 엔티티: DronePrefabDatabase가 있는 별도 DB 엔티티를 의도한다. 실제 DroneWorker 상태가 아니다.
-/// 생성·이용: 현재 제품 코드에 게시 Producer나 이 참조로 드론을 생성하는 Consumer는 없다. 필드가 존재한다는 것과 수행부 구현을 구분한다.
-/// 제거: 현재 관리된 생성/제거 경계가 없으며 외부 등록 엔티티/World 수명을 따른다.
+/// 역할·목적: 활성 드론 생성에 사용할 단일 표시 원형 참조다. 런타임 수행자 상태를 원형에 저장하지 않는다.
+/// 부착 엔티티: DronePrefabDatabase가 있는 DB 엔티티다. Baker가 Dynamic 원형 참조를 게시한다.
+/// 이용: DroneSpawnUtility는 원형을 복제하고 위치·관측·배터리·빈 화물/배정 상태를 EndSimulation ECB에 초기화한다.
+/// 제거: 준비 이후 불변이며 DB 엔티티/World 수명을 따른다. 자동 배차·이동·충전은 후속이다.
 /// </summary>
 public struct DronePrefab : IComponentData
 {
