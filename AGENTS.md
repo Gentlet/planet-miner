@@ -210,7 +210,7 @@ DroneTaskCandidateDecisionElement는 Decision이 매 틱 Clear하고 다시 만�
 
 | 설정 입력 | 게시 시스템 / 데이터 |
 | --- | --- |
-| `Assets/StreamingAssets/ItemConfig.json` | `ItemConfigInitSystem` → `ItemRegistry` 태그 / `ItemConfigElement` 버퍼. None을 제외한 모든 품목의 명시적 양수 MaxStack이 필수이며 파일/파싱/검증 실패는 중단 오류다. |
+| `Assets/Resources/Config/ItemConfig.json` | `ItemConfigInitSystem`이 `Resources.Load<TextAsset>("Config/ItemConfig")`로 읽어 `ItemRegistry` 태그 / `ItemConfigElement` 버퍼에 게시한다. None을 제외한 모든 품목의 명시적 양수 MaxStack이 필수이며 로드/파싱/검증 실패는 중단 오류다. |
 | `Assets/Resources/Config/CrafterRecipeConfig.json` | `RecipeInitSystem` / `RecipeConfigLoader` → `RecipeRegistry`와 레시피·재료·출력 버퍼. 전체 초기화는 ID 1~5를 요구하며 파일 실패 뒤 기본 레시피로 대체하지 않는다. |
 | `Assets/Resources/Config/BuildingConfig.json` | `BuildingConfigInitSystem` / `BuildingConfigLoader` → 전력 능력 Power를 포함한 `BuildingConfigElement`, `BuildingConstructionMaterialElement`, 호환용 `BuildingRuntimeConfigElement`. 역할별 전력 검증을 포함하며 실패 시 게시하지 않는다. |
 | `Assets/Resources/Config/WorldGenerationConfig.json` | `WorldGenerationConfigLoadSystem` / `WorldGenerationConfigLoader` → 자원 설정과 `FloorGenerationSettings`, `FloorBiomeElement`, `FloorVariantElement`를 같은 엔티티에 게시한다. 자원·바닥·Sprite 참조 검증 실패 시 부분 게시하지 않는다. |

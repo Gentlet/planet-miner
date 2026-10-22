@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.IO;
 using Unity.Entities;
 using UnityEngine;
 
@@ -23,7 +22,7 @@ public class ItemConfigJsonEntry
 
 /// <summary>
 /// 역할·목적: Initialization에서 품목별 최대 스택 설정을 한 번 게시한다.
-/// 입력·생성: StreamingAssets의 ItemConfig.json 또는 사전 등록 API의 JSON을 읽는다. 모든 실제 품목의 명시적 양수 값이 필수이며 읽기/파싱/검증 실패는 중단 오류다.
+/// 입력·생성: Resources/Config/ItemConfig 또는 사전 등록 API의 JSON을 읽는다. 모든 실제 품목의 명시적 양수 값이 필수이며 읽기/파싱/검증 실패는 중단 오류다.
 /// 출력·소유권: ItemRegistry와 ItemConfigElement 버퍼를 즉시 생성한다. 유효한 기존 Registry는 보존하고 직접 중복 게시 API 호출은 거부한다.
 /// 이용: 입고 슬롯 예약, 생산 출력 공간 검사와 드론 보관 계획이 World 수명 동안 읽기 전용으로 이용한다.
 /// 정리: 초기화 뒤 비활성화하며 게시 도중 예외는 이번 호출이 만든 미완성 엔티티만 회수한다. 게시된 설정을 시스템 종료 시 삭제하지 않는다.
@@ -31,6 +30,8 @@ public class ItemConfigJsonEntry
 [UpdateInGroup(typeof(InitializationSystemGroup))]
 public partial class ItemConfigInitSystem : SystemBase
 {
+    public const string DefaultResourcePath = "Config/ItemConfig";
+
     protected override void OnUpdate()
     {
         if (SimulationFailureUtility.HasFatalError(EntityManager))
@@ -82,7 +83,7 @@ public partial class ItemConfigInitSystem : SystemBase
 
         try
         {
-            string jsonText = jsonOverride ?? ReadConfigFile();
+            string jsonText = jsonOverride ?? ReadConfigResource();
             var items = ParseItems(jsonText);
             Entity registryEntity = entityManager.CreateEntity(typeof(ItemRegistry), typeof(ItemConfigElement));
             try
@@ -218,18 +219,13 @@ public partial class ItemConfigInitSystem : SystemBase
         }
     }
 
-    private static string ReadConfigFile()
+    private static string ReadConfigResource()
     {
-        string path = Path.Combine(Application.streamingAssetsPath, "ItemConfig.json");
-        if (File.Exists(path))
+        var asset = Resources.Load<TextAsset>(DefaultResourcePath);
+        if (asset == null)
         {
-            return File.ReadAllText(path);
+            throw new InvalidOperationException($"Item config resource was not found at '{DefaultResourcePath}'.");
         }
-        string altPath = Path.Combine(Application.dataPath, "StreamingAssets", "ItemConfig.json");
-        if (File.Exists(altPath))
-        {
-            return File.ReadAllText(altPath);
-        }
-        throw new FileNotFoundException($"Item config file was not found at '{path}' or '{altPath}'.", path);
+        return asset.text;
     }
 }

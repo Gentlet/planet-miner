@@ -8,6 +8,6 @@
     { "ItemType": "Copper", "MaxStack": 100 },
     { "ItemType": "Iron_Stick", "MaxStack": 100 },
     { "ItemType": "Copper_Stick", "MaxStack": 100 },
-    { "ItemType": "Drone", "MaxStack": 1 }
+    { "ItemType": "Drone", "MaxStack": 50 }
   ]
 }

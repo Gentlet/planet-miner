@@ -17,3 +17,5 @@
 | 아직 이식하지 않은 게임 동작·정책 차이 | [V2 작업 목록](architecture%20v2%20plan/Architecture%20V2%20Tasks.md)의 도메인별 레거시 검토 항목 | 이전 CodeMemory에서 필요한 동작만 보존했다. 현재 확정 계약과 충돌하는 내용은 후속 결정 사항이며 구현 승인이나 완료를 뜻하지 않는다. |
 
 문서가 충돌하면 현재 코드의 타입·쿼리·Writer/Reader·그룹 속성·ECB 소비 시점을 확인한다. 코드 정의, 테스트 구성, 실제 실행 결과는 서로 다른 근거다. 미확정 게임 규칙은 문서 보완 과정에서 새로 정하지 않는다.
+
+제품 설정 JSON은 `Assets/Resources/Config`에 둔다. 대체가 끝난 StorageLimitConfig·ResourceGenerationConfig는 [레거시 설정 보관](../Assets/Legacy/Config/README.md)으로 이동했다. Drone·Research·StartingItem 설정은 후속 Task의 입력으로 유지한다.

@@ -43,7 +43,7 @@ ECB 재생으로 구조가 변경되는 경계 전후에 기존 DynamicBuffer �
 ## ItemRegistry
 
 - **종류·부착 대상:** 설정 엔티티 하나에 붙는 데이터 없는 `IComponentData` 태그다. 같은 엔티티의 `ItemConfigElement` 버퍼를 식별하며 공통 기본값을 보관하지 않는다. 개별 아이템이나 창고에 붙지 않는다.
-- **생성:** Initialization의 managed `ItemConfigInitSystem`이 `StreamingAssets/ItemConfig.json`에 실제 모든 품목의 명시적 양수 MaxStack이 있는지 검증한 뒤 태그+버퍼를 한 번 게시한다. 파일 누락·읽기/파싱 실패·무효 값·품목 누락·무효 이름·None 항목·중복은 로그·설정 미게시·즉시 SimulationFatalError다. `InitializeItemRegistry`로 사전 등록할 수 있으며 기존 Registry가 있으면 입력 처리 전에 예외로 거부한다.
+- **생성:** Initialization의 managed `ItemConfigInitSystem`이 `Resources/Config/ItemConfig.json`에 실제 모든 품목의 명시적 양수 MaxStack이 있는지 검증한 뒤 태그+버퍼를 한 번 게시한다. 파일 누락·읽기/파싱 실패·무효 값·품목 누락·무효 이름·None 항목·중복은 로그·설정 미게시·즉시 SimulationFatalError다. `InitializeItemRegistry`로 사전 등록할 수 있으며 기존 Registry가 있으면 입력 처리 전에 예외로 거부한다.
 - **Reader:** Command의 `CrafterRecipeCommandSystem`/`BuildingInputSlotUtility`가 입력 슬롯 수를 계산한다. Decision의 `MinerWorkPreparationSystem`/`CrafterDecisionSystem`은 생산품 스택 한도를, Reservation의 `BuildingStorageInputReservationSystem`은 입고 슬롯 스택 한도를 읽는다. 개발용 불변식 진단도 설정을 참조한다.
 - **처리 방법:** 정적 `ItemRegistry.GetMaxStack`은 품목 enum 값을 원본 버퍼 인덱스로 사용한다. None·범위 밖·인덱스의 품목 불일치는 용량 0이며 정상 기본값으로 대체하지 않는다. 태그의 값 조회 API를 호출하지 않고 singleton 엔티티와 읽기 전용 버퍼로 접근한다. 생산·예약·드론·진단도 설정 부재를 50으로 보충하지 않는다.
 - **수명·결합:** 자동 Init은 기존 Registry의 전체 버퍼·품목 번호·실제 품목의 양수 값·내부 None/0을 확인한다. 실패해도 사전 등록 원본을 삭제/보충하지 않고 Fatal을 게시한다. 초기화 실패나 기존 Fatal 뒤 비활성화하며 자동 재시도하지 않는다. 설정은 World 수명 동안 읽기 전용이며 Init 제거와 함께 삭제/Dispose하지 않는다. 게시 실패 시 이번 호출의 미완성 엔티티만 회수한다.
