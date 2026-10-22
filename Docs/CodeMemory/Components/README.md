@@ -2,7 +2,7 @@
 
 이 문서는 컴포넌트를 출발점으로 Planet Miner의 현재 데이터 흐름을 따라가기 위한 지도다. 각 하위 문서에서 **목적 → 부착 엔티티 → 생성과 초기화 → 읽고 쓰는 시스템 → 처리와 반영 시점 → 소비와 종료**를 확인할 수 있다. 함께 유지하는 데이터 관계와 조건도 해당 컴포넌트에 기록했다.
 
-최초 조사는 **2026-10-03**, 조사 시작 커밋은 `0998016624ee15ee035beb8dc306d68990a69bb0`이다. **2026-10-06 건물·드론 도메인 분리와 후보/공개 대기 예약 분리까지**의 정의와 경로로 갱신했다. **프로젝트 ECS 컴포넌트/버퍼 요소 103개를 9개 하위 문서에 정리**하며 드론은 23개다. 현장 내부의 새 월드 생성·방출은 금지하고 완공은 현재 월드 실물과 활성 Destroy만 조회한다. 실제 수행부·관측/경로 계산·공통 능력/연구 Writer는 후속이다. 소스와 실행 검증을 구분한다.
+최초 조사는 **2026-10-03**, 조사 시작 커밋은 `0998016624ee15ee035beb8dc306d68990a69bb0`이다. **2026-10-06 건물·드론 도메인 분리와 후보/공개 대기 예약 분리까지**의 정의와 경로로 갱신했다. **프로젝트 ECS 컴포넌트/버퍼 요소 103개를 9개 하위 문서에 정리**했으며 당시 드론은 23개다. 2026-10-22 Task 9.2로 정거장 타입 5개를 추가해 현재 드론 문서는 28개를 다룬다. 현장 내부의 새 월드 생성·방출은 금지하고 완공은 현재 월드 실물과 활성 Destroy만 조회한다. 실제 수행부·관측/경로 계산·공통 능력/연구 Writer는 후속이다. 소스와 실행 검증을 구분한다.
 
 드론 관리 1~4단계의 작업·예약·인계·Direct 재배정·현장 외부 방출·완공 차단과 5단계 선별 통합 회귀를 연결했다. 기존 142사례와 신규 4사례는 이전 구조의 별도 실행이다. 현재 구조에서 수행한 컴파일·선택 EditMode·제한된 Play Mode 검증은 과거 실행과 합산하지 않는다. 실제 수행부·관측/경로·초기 능력/연구 Writer는 후속이며 다음 추천은 [공통 적재량 초기화 검토안](../../Specifications/DroneCapacityInitializationPlan.md)이다. 설정 출처·오류·기존 singleton 정책은 미확정이므로 구현 승인으로 해석하지 않는다. 세부 계약은 [명세](../../Specifications/ConstructionAndDroneSupply.md)와 [드론 컴포넌트 계약](DroneLogistics.md)을 따른다.
 
@@ -27,7 +27,7 @@ Task 9.1에서 확정한 귀환·충전·수납·재배차 정책과 Lifecycle O
 | [건물과 건물 설정](Buildings.md) | 12 | 건물 식별·크기·배치 순번, 설정, 직접 생성과 철거 요청 |
 | [전력 설정과 상태 계약](PowerGrid.md) | 14 | 통합 능력 설정, 망 생성/병합/분리·빈 망/기존 참조 정리·공개 인덱스/Fence·프레임 결정; 공급·석탄 전환/배정 소비·생산 반영; 연구/충전은 후속 |
 | [배치와 공사](Construction.md) | 5 | 배치 묶음, 현장, 자재 요구 데이터, 현장 취소·완공 |
-| [드론 작업 관리 계약](DroneLogistics.md) | 23 | 작업·배정·예약·공통 적재량, 인계 계획·정산·적재품 Direct 재배정·외부 결과 소비 |
+| [드론 작업 관리 계약](DroneLogistics.md) | 28 | 작업·배정·예약·공통 적재량, 실물 인계·재배정, 정거장 등록·연결·공개 범위 조회 |
 | [아이템과 저장](ItemsAndStorage.md) | 13 | 아이템·소유권·요청, 보관·입출고·입력 슬롯, 현장 내부 World Spawn 거부 |
 | [벨트와 분배 및 합류](BeltsAndRouting.md) | 6 | 벨트 속도·실제 이동·프레임 계획, 라우팅 상태·전달 결정 |
 | [채굴과 제작](Production.md) | 14 | 작업 상태·결정, 레시피 설정, 결과와 출력 대기 실물 |
@@ -41,7 +41,12 @@ Task 9.1에서 확정한 귀환·충전·수납·재배차 정책과 Lifecycle O
 | 월드 또는 보관 아이템 | [ItemIdentity](ItemsAndStorage.md#itemidentity), [ItemOwnership](ItemsAndStorage.md#itemownership), [GridPosition](CommonAndSpatial.md#gridposition), 아이템 자체의 [이동 상태](BeltsAndRouting.md#beltmovementstate)와 [입고 결정](ItemsAndStorage.md#buildingiteminputdecision) |
 | 완공 건물 | [BuildingType](Buildings.md#buildingtype), [BuildingFootprint](Buildings.md#buildingfootprint), [PlacementStamp](Buildings.md#placementstamp), GridPosition/Direction과 타입별 저장·생산·라우팅 데이터 |
 | 공사 현장 | [ConstructionSite](Construction.md#constructionsite), [ConstructionMaterialRequirementElement](Construction.md#constructionmaterialrequirementelement), StoredItemElement, 건물 공통 위치·크기·방향 |
-| 드론 작업·배정·최소 수행자 계약 | [DroneLogisticsTask](DroneLogistics.md#dronelogisticstask)는 Execution이, [DroneTaskAssignment](DroneLogistics.md#dronetaskassignment)는 Publish가 생성 명령을 기록하며 EndSimulation에 실체화하며 다음 틱부터 사용한다. [DroneWorker](DroneLogistics.md#droneworker)는 수행자 표시이고 [DroneCapacityState](DroneLogistics.md#dronecapacitystate)는 World 공통 적재량이다. 실제 등록/생성과 용량 초기화·연구 갱신은 후속이다. |
+| 드론 작업·배정·최소 수행자 계약 | [DroneStation](DroneLogistics.md#dronestation) | 역할 마커 | [DroneStationComponents.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneStationComponents.cs) |
+| [DroneStationNetworkDecision](DroneLogistics.md#dronestationnetworkdecision) | 이번 틱 연결 판단 | [DroneStationComponents.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneStationComponents.cs) |
+| [DroneStationNetwork](DroneLogistics.md#dronestationnetwork) | 공개 연결 | [DroneStationComponents.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneStationComponents.cs) |
+| [DroneStationSpatialIndex](DroneLogistics.md#dronestationspatialindex) | 파생 범위 조회 | [DroneStationSpatialIndex.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneStationSpatialIndex.cs) |
+| [DroneStationSpatialIndexFence](DroneLogistics.md#dronestationspatialindexfence) | 공유 자료 의존성 | [DroneStationSpatialIndex.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneStationSpatialIndex.cs) |
+| [DroneLogisticsTask](DroneLogistics.md#dronelogisticstask)는 Execution이, [DroneTaskAssignment](DroneLogistics.md#dronetaskassignment)는 Publish가 생성 명령을 기록하며 EndSimulation에 실체화하며 다음 틱부터 사용한다. [DroneWorker](DroneLogistics.md#droneworker)는 수행자 표시이고 [DroneCapacityState](DroneLogistics.md#dronecapacitystate)는 World 공통 적재량이다. 실제 등록/생성과 용량 초기화·연구 갱신은 후속이다. |
 | 건물의 저장품과 생산품 목록 | 건물에 붙는 [StoredItemElement](ItemsAndStorage.md#storeditemelement)와 [ProductItemElement](Production.md#productitemelement). 버퍼 요소가 참조하는 실물 아이템은 별도 엔티티다. |
 | 일회성 요청 엔티티 | [SpawnBuildingRequest](Buildings.md#spawnbuildingrequest), [DemolishBuildingRequest](Buildings.md#demolishbuildingrequest), [SpawnItemRequest](ItemsAndStorage.md#spawnitemrequest), [BuildingPlacementRequest](Construction.md#buildingplacementrequest), 공사·레시피 요청 |
 | 자원 노드 | [ResourceNode](WorldAndResources.md#resourcenode), GridPosition. 현재 매장량은 설정/프리팹 DB와 분리된다. |

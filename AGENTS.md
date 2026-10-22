@@ -65,12 +65,12 @@ Command → EndCommand → Preparation
 | BuildingReservation / Systems/Buildings/Reservation | 기존 저장 슬롯/출고·라우팅 경합을 중재한다. EndPower에서 비워진 연료 공간을 이번 틱 입고에 사용한다. |
 | BuildingExecution / Systems/Buildings/Execution | 벨트와 생산 진행/재료 선소비를 처리한다. Miner/Crafter는 확정 공급률·에너지 한도 내에서 진행하고 무전력 신규 착수는 재료를 보존한다. 완료 결과 확정은 전력 때문에 막지 않는다. |
 | BuildingStateApply / Systems/Buildings/StateApply, Items/StateApply, Construction/StateApply | 기존 Storage/Routing/Ownership·일반 아이템/건물 수명주기를 적용한다. ConstructionLifecycleApplySystem은 마지막 완공을 담당하며 EndBuilding은 건물 도메인의 마지막 직접 자식이다. 전력망/연료 실물은 앞선 EndPower에서 확정한다. |
-| DroneDecision / Systems/Drones/Decision | DroneTaskDecisionSystem은 생성·무효화·경로 의도와 배정 후보를, DroneItemTransferDecisionSystem은 행동 자격을 작성한다. |
+| DroneDecision / Systems/Drones/Decision | DroneStationNetworkDecisionSystem은 앞단에서 이번 틱 정거장 망을 판단한다. DroneTaskDecisionSystem은 생성·무효화·경로 의도와 배정 후보를, DroneItemTransferDecisionSystem은 행동 자격을 작성한다. 작업 후보의 실제 망 필터 연결은 Task 9.5 후속이다. |
 | DroneReservation / Systems/Drones/Reservation | ConstructionSupplyReservationSystem은 미공개·무효 예약을 정산한 뒤 후보를 선택하고 현장 공급량을 예약한다. |
 | DroneExecution / Systems/Drones/Execution | DroneItemTransferExecutionSystem은 OrderFirst로 건물 종료 상태 기준 실물·수량·공간 계획을 준비한다. DroneTaskExecutionSystem은 생성·경로 명령과 순번 발급·최종 ECB 기록을 소유한다. |
 | DroneStateApply / Systems/Drones/StateApply | DroneTaskLifecycleApplySystem은 의도 최종 재검사·종료·연결·삭제 보류와 신호 인계·실제 성공량 정산을 담당한다. DroneTaskAssignmentPublishSystem은 OrderLast로 배정을 최종 검사하고 롤백하거나 공개를 기록한다. |
 | SimulationCommit / Systems/Commit | EndSimulationEntityCommandBufferSystem이 드론 작업·경로·배정·결과 및 종료 삭제를 확정한다. |
-| Synchronization / Systems/Synchronization | 최상위 OrderLast로 최종 Commit 뒤에 실행한다. Belt/Building/Item/ResourceSpatialSyncSystem과 PowerGridConnectionSyncSystem이 원본 ECS로 맵을 재구축하며 WorldInvariantValidationSystem은 내부 OrderLast다. |
+| Synchronization / Systems/Synchronization | 최상위 OrderLast로 최종 Commit 뒤에 실행한다. Belt/Building/Item/ResourceSpatialSyncSystem, PowerGridConnectionSyncSystem, DroneStationSpatialSyncSystem이 원본 ECS로 맵을 재구축하며 WorldInvariantValidationSystem은 내부 OrderLast다. |
 
 ### 페이즈 배치와 시스템 명명
 
@@ -110,6 +110,8 @@ DroneTaskCandidateDecisionElement는 Decision이 매 틱 Clear하고 다시 만�
 2026-10-15 Task 9.1은 [드론 상태 전이·Lifecycle Owner 계약](Docs/Specifications/DroneLifecycle.md)을 문서로 확정했다. 작업·배정·예약·화물은 기존 소유자를 유지하고, 수행자 자체 상태·배터리·관측의 후속 Writer와 공개 경계를 구분한다. 1A~6A의 엄격한 수납 자격, 충전 경유의 완충 전/연속 배차, 정상/비상 귀환과 실제 중단 시 예약 해제·화물 보존을 적용한다. 이 계약 완료는 실제 정거장·이동·충전 구현이나 새 실행 검증의 완료가 아니다. 슬롯 수·충전 수치·적재량 초기화의 남은 결정은 해당 후속 Task에서 다룬다.
 
 다음 추천인 [공통 적재량 초기화 검토안](Docs/Specifications/DroneCapacityInitializationPlan.md)은 설정 출처·오류 정책·기존 singleton 처리 결정 전의 제안으로 구현 승인이 아니다. 개발 마일스톤 Phase7 등의 숫자는 런타임 그룹 개수를 뜻하지 않는다.
+2026-10-22 Task 9.2는 [정거장 네트워크 명세](Docs/Specifications/DroneStationNetwork.md)를 따른다. 공통 건물 생성은 주 시설·정거장에 역할/결정/공개 연결을 부착한다. BuildingConfig의 종류·티어별 단일 DroneStationRangeInChunks와 회전 footprint 긴 변으로 정사각형 활동 영역을 계산한다. 음수 Range는 0, 홀수 여백은 양의 축에 1셀을 더 두며 long 합산을 사용한다. 무전력 참가·공유 셀 연결·PlacementStamp 대표 Entity를 적용한다. DroneDecision의 이번 틱 결과를 DroneStationNetworkApplySystem이 EndSimulation에 공개한다. DroneStationSpatialSyncSystem은 공개 연결/건물 원본으로 맵을 재구축하고 같은 singleton의 Fence를 완료한 뒤 재할당/해제한다. 작업 망 필터·수용량·귀환·충전·철거 시 수행자 재배치는 후속 Task다.
+
 ## 핵심 데이터와 변경 규칙
 
 2026-10-15 Preparation 이름을 유지하고 준비/실행 결정 컴포넌트를 분리했다. Preparation만 MinerWorkPreparation/CrafterWorkPreparation을 작성하며 enable은 준비 완료이고 작업 불가도 정상 준비 결과다. BuildingPowerDemandPreparationSystem은 이 자격으로 전력 요청을 작성한다. BuildingDecision만 MinerDecision/CrafterDecision/CrafterStateDecision을 작성하고 공급과 완료 출력/상태를 판단한다. Power는 연결/가용량·망/예산·연료 전환/배정 소비·공급을 소유한다. PowerFrameState는 제거하고 공통 SimulationFatalError.StopScope를 사용한다. Power는 RemainingDomains로 같은 틱 Building/Drone을, 기존 오류의 NextTick은 다음 게임 틱을 차단한다. 기초 우선·정격 분담/연료 한도·미사용 배정 소비와 환급/재배분 금지·새 입고/참가자의 다음 틱 참여를 유지한다. 실제 소비할 연료 조건을 모두 확인한 뒤 소비하며 EndPower에 연료 실물/망을 확정한다. 이번 준비/결정 분리·공통 Fatal·Job 의존성 변경은 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·Editor ready/비컴파일/비리로드·최신 runtime/Editor DLL과 관련 선택 EditMode 170/170(실패·생략·불확정 0)으로 확인했다. Play Mode·베이킹·Player 빌드·성능은 미수행이다. 이전 157/157은 이 분리 전의 실행 기록이다. [전력 명세](Docs/Specifications/PowerGrid.md)를 따른다.

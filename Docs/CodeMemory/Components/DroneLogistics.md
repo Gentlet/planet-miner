@@ -2,9 +2,9 @@
 
 [전체 색인](README.md) · [배치와 공사](Construction.md) · [아이템과 저장](ItemsAndStorage.md)
 
-2026-10-06 건물·드론 도메인 분리 이후 드론 ECS 타입 23개를 설명한다. 관리 계층의 작업·예약·인계·재배정·안전 방출 계약과 순수 후보/공개 대기 예약 분리를 포함한다.
+2026-10-06의 드론 ECS 타입 23개와 2026-10-22 Task 9.2의 정거장 타입 5개를 설명한다. 관리 계층의 작업·예약·인계·재배정·안전 방출 계약과 정거장 연결·공개 범위 조회를 포함한다.
 
-2026-10-15 Task 9.1은 [상태 전이·Lifecycle Owner 계약](../../Specifications/DroneLifecycle.md)을 확정했다. 1A~6A의 수납·완충 전/연속 배차·귀환·비상 이동·중단 정산은 후속 수행부가 따라야 할 정책이다. 현재 23개 타입과 관리 계층은 유지하며 실제 정거장·이동·배터리·충전·수납 Writer나 새 상태 enum을 구현한 것은 아니다. 작업/배정의 기존 상태와 수행자 자체의 후속 개념 상태를 구분한다.
+2026-10-15 Task 9.1은 [상태 전이·Lifecycle Owner 계약](../../Specifications/DroneLifecycle.md)을 확정했다. 1A~6A의 수납·완충 전/연속 배차·귀환·비상 이동·중단 정산은 후속 수행부가 따라야 할 정책이다. Task 9.1 당시 23개 타입과 관리 계층을 유지했으며 실제 정거장·이동·배터리·충전·수납 Writer나 새 상태 enum을 추가하지 않았다. 이후 Task 9.2의 정거장 기반은 아래 별도 타입/명세로 구분한다. 작업/배정의 기존 상태와 수행자 자체의 후속 개념 상태를 구분한다.
 
 기존 142사례와 기존 통합 4사례는 이전 공통 여섯 phase의 별도 실행 기록이다. 새 입력·완공 시점의 검증으로 소급 해석하거나 합산하지 않는다. 실제 수행자 생성·이동·경로 계산·관측·행동 신호와 공통 능력/연구 Writer는 후속이다. DropPosition은 선택 목표이며 실제 위치 원본이 아니다. [공통 적재량 초기화 검토안](../../Specifications/DroneCapacityInitializationPlan.md)은 미확정 정책의 제안이다.
 
@@ -40,6 +40,28 @@ Construction은 BuildingStateApply 마지막에서 현재 Owner=Null/GridPositio
 재배정은 같은 배정 revision을 증가시키고 행동 번호를 0으로 초기화하며 실물·출처·최초 순서·기존 결과 참조를 보존한다. 기존 적재량에 공통 용량을 소급 적용하지 않는다. 최종 Drop은 배정 목표==요청 위치==관측 셀과 현장 외부를 검사하고 새 현장이 막으면 Retargeting으로 돌려 실물을 보존한다. 관측 원본과 이동 Producer는 후속이다.
 
 생성 판단·배정/행동 정산·공통 실물 API는 각 시스템 본체 한 파일에서 유지하며 Unity Entities 소스 생성용 partial 선언을 파일 분리 근거로 사용하지 않는다.
+2026-10-22 Task 9.2의 Unity 컴파일 오류 없음과 관련 선택 EditMode 99/99(신규 정거장 14/14 포함)를 확인했다. 기존 건설 통합 fixture의 그룹/준비·격리 공급 누락 보완과 검수 결과는 [정거장 명세](../../Specifications/DroneStationNetwork.md#검증)에 기록했다. 실제 드론 수행자·수용량·귀환·충전과 작업 후보의 망 필터는 후속이다.
+
+## DroneStation
+
+주 시설·완공 정거장의 역할 마커다. 공통 건물 생성이 EndBuilding에 부착하고 건물 삭제와 함께 제거한다. 전력 공급과 독립적으로 참가하며 위치·방향·footprint·설정은 기존 원본을 사용한다. [정거장 명세](../../Specifications/DroneStationNetwork.md)를 따른다.
+
+## DroneStationNetworkDecision
+
+DroneStationNetworkDecisionSystem이 DroneDecision 앞단에서 매 틱 전체 결과를 초기화하고 활성 정거장에 대표 Entity와 enable을 작성한다. enable은 이번 틱 참가/연결 판단 완료다. 비활성·철거 승인 대상은 미준비로 남는다. 같은 틱 소비자는 이 값과 건물 원본을 읽으며 이전 공개 인덱스로 대체하지 않는다.
+
+## DroneStationNetwork
+
+DroneStationNetworkApplySystem이 Decision의 대표 Entity를 EndSimulation에 공개한다. 미참가 정거장은 Null이며 삭제될 때 함께 사라진다. 대표 변경은 정상 망 재구성으로 영속 식별을 보장하지 않는다. 작업·드론 배정/예약 상태를 소유하지 않는다.
+
+## DroneStationSpatialIndex
+
+DroneStationSpatialSyncSystem이 같은 singleton의 Fence와 함께 생성한다. Synchronization에서 공개 연결과 원본 건물로 정거장→대표/정사각형 영역을 Clear/Populate하며 0개일 때도 비운다. Contains는 영역의 합집합만 포함한다. 셀별 점유·망 외곽 사각형·위치의 별도 원본은 없다. 제품 작업 필터 Reader는 9.5 후속이다.
+
+## DroneStationSpatialIndexFence
+
+소유자는 위 Sync 시스템이다. Reader/Writer Job은 GetReaderDependency/AddReader와 GetWriterDependency/SetWriter를 사용한다. 직접 재할당·해제는 Complete 뒤 수행하며 ECS 의존성과 ECB Producer를 대신하지 않는다. World 종료에 최종 접근 완료 후 소유자가 맵을 Dispose한다. 공통 Fence 계약은 루트 AGENTS.md를 따른다.
+
 ## DroneLogisticsTask
 
 - **종류·부착 대상·목적:** 일반 IComponentData. 독립 상위 작업 엔티티의 헤더다. 공급은 (현장, 품목), 회수는 월드 실물별 작업이다. 여러 하위 배정이 같은 공급 작업을 참조할 수 있다.

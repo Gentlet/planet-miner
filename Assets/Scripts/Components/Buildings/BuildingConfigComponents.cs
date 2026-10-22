@@ -34,6 +34,8 @@ public struct BuildingConfigElement : IBufferElementData
     public int2 Footprint;
     /// <summary>이 종류·Tier의 전력 능력 원본. 미대상 종류는 default이며 런타임 수요/공급은 별도 컴포넌트다.</summary>
     public BuildingPowerConfig Power;
+    /// <summary>주 시설·드론 정거장의 정사각형 활동 영역을 확장할 청크 수. 음수는 0으로 사용한다.</summary>
+    public int DroneStationRangeInChunks;
 
     public BuildingConfigElement(
         BuildingTypeEnum buildingType,
@@ -44,7 +46,8 @@ public struct BuildingConfigElement : IBufferElementData
         bool isUnlocked,
         FixedString32Bytes requiredResearch = default,
         int2 footprint = default,
-        BuildingPowerConfig power = default)
+        BuildingPowerConfig power = default,
+        int droneStationRangeInChunks = 0)
     {
         BuildingType = buildingType;
         Tier = tier;
@@ -55,6 +58,7 @@ public struct BuildingConfigElement : IBufferElementData
         RequiredResearch = requiredResearch;
         Footprint = footprint;
         Power = power;
+        DroneStationRangeInChunks = math.max(0, droneStationRangeInChunks);
     }
 }
 

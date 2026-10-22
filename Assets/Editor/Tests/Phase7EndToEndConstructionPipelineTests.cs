@@ -37,6 +37,8 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         // 3. 최상위 시뮬레이션 그룹과 건물의 네 phase 구성
         _simulationGroup = _world.GetOrCreateSystemManaged<GameSimulationGroup>();
         var commandGroup = _world.GetOrCreateSystemManaged<CommandGroup>();
+        var preparationGroup = _world.GetOrCreateSystemManaged<SimulationPreparationGroup>();
+        var powerGroup = _world.GetOrCreateSystemManaged<PowerSimulationGroup>();
         var buildingGroup = _world.GetOrCreateSystemManaged<BuildingSimulationGroup>();
         var decisionGroup = _world.GetOrCreateSystemManaged<BuildingDecisionGroup>();
         var reservationGroup = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
@@ -45,12 +47,18 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         var synchronizationGroup = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
 
         _simulationGroup.AddSystemToUpdateList(commandGroup);
+        _simulationGroup.AddSystemToUpdateList(preparationGroup);
+        _simulationGroup.AddSystemToUpdateList(powerGroup);
         _simulationGroup.AddSystemToUpdateList(buildingGroup);
         _simulationGroup.AddSystemToUpdateList(synchronizationGroup);
         buildingGroup.AddSystemToUpdateList(decisionGroup);
         buildingGroup.AddSystemToUpdateList(reservationGroup);
         buildingGroup.AddSystemToUpdateList(executionGroup);
         buildingGroup.AddSystemToUpdateList(stateApplyGroup);
+
+        // 건설 격리 fixture도 Command → Preparation → Power → Building의 현재 순서를 따른다.
+        // 실제 전력 배분은 이 사례의 범위가 아니며, 생산 확인 시 공급을 명시적인 입력으로 준비한다.
+        preparationGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<MinerWorkPreparationSystem>());
 
         // 4. Phase 1: CommandGroup
         commandGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingPlacementCommandSystem>());
@@ -102,6 +110,7 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         // 10. 전체 의존성 순서 정렬
         _simulationGroup.SortSystems();
         commandGroup.SortSystems();
+        preparationGroup.SortSystems();
         decisionGroup.SortSystems();
         reservationGroup.SortSystems();
         executionGroup.SortSystems();
@@ -279,6 +288,7 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         }
 
         // 4. Act: 30틱 동안 시뮬레이션 가동 -> 실제 채굴 발생
+        Entities.PrepareIsolatedPowerSupply(minerEntity);
         RunSimulationTicks(30);
 
         var productBuffer = _entityManager.GetBuffer<ProductItemElement>(minerEntity);

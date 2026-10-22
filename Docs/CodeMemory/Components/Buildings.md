@@ -86,6 +86,8 @@
 - **조회·수명 경계:** 조회 유틸리티는 종류·티어가 모두 일치하는 행만 사용한다. 미등록 조합·빈 설정은 배치에서 미해금이며 공통 Spawn의 설정/조합 누락은 Fatal과 Null이다. 다른 티어/기본 스펙으로 보충하지 않는다. 버퍼는 소비·Clear되지 않고 설정 엔티티와 함께 유지된다.
 - **근거:** [정의](../../../Assets/Scripts/Components/Buildings/BuildingConfigComponents.cs), [로드·게시](../../../Assets/Scripts/Config/BuildingConfigLoader.cs), [조회·해금 변경 API](../../../Assets/Scripts/Common/BuildingConfigLookupUtility.cs), [배치 검증](../../../Assets/Scripts/Common/BuildingPlacementValidationUtility.cs), [생성 시 스펙 사용](../../../Assets/Scripts/Common/BuildingLifecycleUtility.cs).
 
+Task 9.2는 `DroneStationRangeInChunks`를 주 시설·정거장의 종류·티어별 범위 원본으로 추가했다. JSON의 단일 정수 `droneStationRangeInChunks`를 로드하며 음수는 0으로 사용한다. DroneStationNetworkDecisionSystem과 DroneStationSpatialSyncSystem이 원본 위치·방향·footprint와 함께 읽는다. [정거장 명세](../../Specifications/DroneStationNetwork.md)를 따른다.
+
 ## BuildingConstructionMaterialElement
 
 - **종류·부착 대상·목적:** `IBufferElementData`. 통합 설정 엔티티에서 `(BuildingType, Tier, ItemType, Quantity)`로 종류·티어별 건축 비용을 정의한다. 현장별 Delivered/Reserved 상태와 구별되는 원본 요구량이다.

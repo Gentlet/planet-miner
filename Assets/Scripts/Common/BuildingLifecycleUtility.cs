@@ -174,6 +174,7 @@ public static class BuildingLifecycleUtility
                 break;
 
             case BuildingTypeEnum.DroneStation:
+                AttachDroneStationComponents(ref ecb, building);
                 AttachStorageComponents(ref ecb, building, storageCapacity);
                 AttachPowerParticipantComponents(ref ecb, building);
                 AttachPowerConsumerComponents(ref ecb, building);
@@ -192,6 +193,7 @@ public static class BuildingLifecycleUtility
                 break;
 
             case BuildingTypeEnum.MainFacility:
+                AttachDroneStationComponents(ref ecb, building);
                 ecb.AddComponent<IndestructibleBuilding>(building);
                 AttachStorageComponents(ref ecb, building, storageCapacity);
                 AttachPowerPoleComponents(ref ecb, building);
@@ -217,6 +219,14 @@ public static class BuildingLifecycleUtility
                 AttachPowerConsumerComponents(ref ecb, building);
                 break;
         }
+    }
+
+    private static void AttachDroneStationComponents(ref EntityCommandBuffer ecb, Entity building)
+    {
+        ecb.AddComponent<DroneStation>(building);
+        ecb.AddComponent<DroneStationNetwork>(building);
+        ecb.AddComponent<DroneStationNetworkDecision>(building);
+        ecb.SetComponentEnabled<DroneStationNetworkDecision>(building, false);
     }
 
     private static void AttachPowerParticipantComponents(ref EntityCommandBuffer ecb, Entity building)

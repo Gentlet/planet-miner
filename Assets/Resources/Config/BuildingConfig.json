@@ -110,6 +110,7 @@
     },
     {
       "buildingType": "DroneStation",
+      "droneStationRangeInChunks": 1,
       "tier": 1,
       "displayName": "DroneStation",
       "speed": 0.0,
@@ -138,6 +139,7 @@
     },
     {
       "buildingType": "MainFacility",
+      "droneStationRangeInChunks": 1,
       "tier": 1,
       "displayName": "MainFacility",
       "speed": 0.0,

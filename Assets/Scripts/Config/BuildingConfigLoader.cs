@@ -192,6 +192,10 @@ public static class BuildingConfigLoader
             {
                 return false;
             }
+            if (!TryReadDroneStationRange(rawEntry, buildingType, out int droneStationRange))
+            {
+                return false;
+            }
 
             FixedString32Bytes reqResearch = default;
             if (!string.IsNullOrEmpty(entry.requiredResearch))
@@ -214,7 +218,8 @@ public static class BuildingConfigLoader
                 entry.isUnlockedByDefault,
                 reqResearch,
                 footprint,
-                power));
+                power,
+                droneStationRange));
 
             // 건설 자재 검증
             if (entry.materials != null)
@@ -338,6 +343,40 @@ public static class BuildingConfigLoader
         return true;
     }
 
+    private static bool TryReadDroneStationRange(JObject entry, BuildingTypeEnum type, out int range)
+    {
+        range = 0;
+        if (entry["droneStationRangeInChunksX"] != null || entry["droneStationRangeInChunksY"] != null)
+        {
+            Debug.LogError("[BuildingConfigLoader] Use a single droneStationRangeInChunks instead of X/Y ranges.");
+            return false;
+        }
+        JToken token = entry["droneStationRangeInChunks"];
+        if (!DroneStationRangeUtility.IsStationType(type))
+        {
+            if (token != null)
+            {
+                Debug.LogError($"[BuildingConfigLoader] {type} cannot define droneStationRangeInChunks.");
+                return false;
+            }
+            return true;
+        }
+        if (token == null)
+        {
+            Debug.LogError($"[BuildingConfigLoader] {type} is missing its required droneStationRangeInChunks.");
+            return false;
+        }
+        if (token.Type != JTokenType.Integer ||
+            !long.TryParse(token.ToString(Formatting.None), NumberStyles.Integer, CultureInfo.InvariantCulture, out long value) ||
+            value < int.MinValue || value > int.MaxValue)
+        {
+            Debug.LogError($"[BuildingConfigLoader] {type} droneStationRangeInChunks must be a JSON integer representable as int.");
+            return false;
+        }
+        range = math.max(0, (int)value);
+        return true;
+    }
+
     private static bool ValidateDefinitions(List<BuildingConfigElement> configs, List<BuildingConstructionMaterialElement> materials,
         out HashSet<(BuildingTypeEnum Type, int Tier)> keys)
     {
@@ -357,6 +396,11 @@ public static class BuildingConfigLoader
             }
             if (!BuildingPowerConfigParser.Validate(config))
             {
+                return false;
+            }
+            if (!DroneStationRangeUtility.IsStationType(config.BuildingType) && config.DroneStationRangeInChunks != 0)
+            {
+                Debug.LogError("[BuildingConfigLoader] Only MainFacility and DroneStation can define a drone station range.");
                 return false;
             }
         }

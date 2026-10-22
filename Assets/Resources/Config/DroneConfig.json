@@ -1,8 +1,6 @@
 {
   "defaultTaskPriority": 5,
   "stationStorageCapacity": 13,
-  "stationActivityRangeInChunksX": 1,
-  "stationActivityRangeInChunksY": 1,
   "carryingCapacity": 3,
   "movementSpeed": 4.0,
   "emergencyMovementSpeed": 0.5,
