@@ -1,8 +1,8 @@
 # PlanetMiner Architecture V2 - Implementation Tasks & Roadmap
 
-> 현재 코드와의 관계 (2026-10-15): 이 문서는 설계 배경/규약 또는 개발 마일스톤 기록이다. 현재 실행은 Command→Preparation→Power→Building→Drone→Commit→Synchronization이며 EndCommand·EndPower·EndBuilding·EndSimulation의 네 ECB 경계를 사용한다. 본문의 전역 6페이즈·이전 심볼·과거 검증은 당시 설계/작업 범위로 읽고, 구현 판단은 [AGENTS.md](../../AGENTS.md)와 [현재 컴포넌트 계약](../CodeMemory/Components/README.md)을 우선한다. 개발 Phase 번호와 런타임 그룹을 구분한다.
+> 현재 소스 대조 (2026-10-24): 현재 실행은 Command/EndCommand → Preparation → Power/EndPower → Building/EndBuilding → Drone → SimulationCommit/EndSimulation → Synchronization이다. 본문은 현재 구현 설명과 당시 완료/검증 기록을 구분한다. 개발 Phase 번호는 런타임 그룹 번호가 아니며, 현재 동작은 [AGENTS.md](../../AGENTS.md), 소스의 Writer/실행 순서와 [컴포넌트 계약](../CodeMemory/Components/README.md)을 기준으로 판단한다. 이번 전체 대조는 문서 정적 점검이며 새 Unity 실행 검증이 아니다.
 
-> 본 문서는 `Architecture V2 Plan_0.2.md`를 바탕으로, 실제 구현을 위해 단계별 세부 작업(Task)과 진행 상태를 추적하는 체크리스트 문서입니다.
+> 이 문서는 초기 `Architecture V2 Plan_0.2.md`를 설계 배경으로 참고하는 구현 체크리스트다. 과거 계획/레거시 기능보다 이후 확정한 사용자 정책과 현재 소스를 우선한다.
 > 
 > **핵심 원칙**: 
 > - 글로벌 네임스페이스 및 `V2` 접두사 배제 규칙 준수
@@ -15,13 +15,13 @@
 ## 📊 전체 마일스톤 개요
 
 ```text
-[Phase 0] Skeleton (기존 코어 완료 / Authoring 공통 계약 추가)
+[Phase 0] Skeleton (실행 그룹 / 4종 프리팹 DB 준비 계약 구현)
    ↓
-[Phase 1] Grid + Item (기존 코어 완료 / 아이템 프리팹 연결 추가)
+[Phase 1] Grid + Item (코어 / 아이템 프리팹 연결 구현)
    ↓
 [Phase 2] Belt
    ↓
-[Phase 3] Storage (기본 건물 설정 로딩 추가)
+[Phase 3] Storage (코어 / 기본 건물 설정 로딩 구현)
    ↓
 [Phase 4] Mining ───★ 코어·월드 로딩·광맥 생성·자원 스폰·바이옴 코드 구현 / 실제 바닥 렌더링은 10B.6
    ↓
@@ -33,7 +33,7 @@
    ↓
 [Phase 8] Power Grid
    ↓
-[Phase 9] Drone System ─── 공급/회수 관리·인계·재배정 부분 구현 / 실제 수행부·정거장·시작 초기화 후속
+[Phase 9] Drone System ─── 정거장/생성/Identity/수용량 구현 / 공급/회수 관리 부분 구현 / 이동/충전/시작 초기화 후속
    ↓
 [Phase 10] 10A Research → 10B Input / UI / Presentation → 10C Integration / Performance
 ```
@@ -52,14 +52,22 @@
 - 승인된 예약 정책에서 함께 성공해야 하는 상태 변경은 하나의 원자적 작업으로 유지한다. 획득과 해제·완료·복구를 나누되 반쪽 예약을 성공 상태로 게시하지 않는다. 이 원칙을 이유로 현재 제공하지 않는 실물 선점이나 목적지 영속 예약을 새로 만들지 않는다.
 - C#·에셋 변경 시 관련 컴파일과 범위에 맞는 검증을 수행한다. 컴파일/EditMode, 실제 플레이·입력·시각 결과, 성능 측정의 증거를 구분한다. 수동 작동 검증은 사용자가 수행하며, 별도 요청 없이 Play Mode 검증을 자동 실행하지 않는다.
 
-### 현재 소스 대조 결과 (2026-10-12 대조, 2026-10-22 Task 9.2/9.3.1/9.3 코드/검증 반영)
+### 현재 소스 대조 결과 (2026-10-24)
 
-- 최상위 Task 93개 중 기존 완료 기록 49개, Task 8.1~8.7과 Task 9.1~9.2/9.3.1/9.3을 완료하여 현재 체크는 60개이며 미완료는 33개다. Task 9.1은 상태 전이표/Lifecycle Owner 계약의 문서 완료이며 정거장/이동/충전의 실행 완료가 아니다. Phase 0~7의 코어와 필수 설정/프리팹/월드 준비는 유지한다. Power는 Preparation → Power(D/R/E/S/EndPower) → Building → Drone 구조와 배정량 확정 소비, 석탄 입고/전환/차감과 Miner/Crafter 공급 반영을 구현했다. 직전 Writer 경계 정리의 Unity 컴파일/관련 선택 EditMode 174/174은 그 코드 변경의 별도 기록이다. Task 9.1은 당시 문서만 변경했다. 2026-10-22 Task 9.2의 정거장 등록/단일 Range/정사각형/별도 드론 망과 공개 인덱스를 구현하고 Unity 컴파일/관련 선택 EditMode 99/99를 별도로 확인했다. Task 9.3.1의 드론 DB/생성 초기화는 관련 선택 56/56과 격리 Baker probe로 확인했다. Task 9.3은 같은 Entity 전환/정박/수납/전용 및 공유 용량/설정 초기화를 구현하고 최종 관련 선택 EditMode 340/340 및 실제 Baker 격리 전환을 확인했다. 연구/충전/실제 플레이/Player 빌드/성능은 후속이며 과거 실행과 합산하지 않는다.
-- 미완료 Task 중 **12개는 부분 구현**이다: 9.4~9.9, 9.11~9.12, 9.15~9.16, 9.18, 9.20. 현장 공급/회수의 생성·후보·예약·배정·실물 인계·무효화·적재품 재배정과 제한된 통합 테스트 정의가 구현되어 있으므로 새 소유자를 만들지 않고 재사용한다. 전체 정거장/운송 유형·수행부까지 완료된 것은 아니므로 해당 체크는 닫지 않는다.
-- **계약/진단 기반 2개**는 9.10(관측/경로/행동 계약, 배터리 최초 초기화만 있고 실제 이동/소비 없음)과 10B.6(바닥 샘플러/색상 미리보기, 제품 청크 렌더러 없음)이다. **문서 대조 일부 진행 1개**는 10C.1이다. 이 세 Task도 전체 범위 완료가 아니다.
-- 나머지 **18개는 대상 기능 또는 요구된 실행/성능 검증이 남아 있다**. Task 8.1~8.7의 전력/석탄/Miner/Crafter 검증을 연구/충전이나 제품 전체 실행/성능의 증거로 확대하지 않는다. 각 Task의 구현/검증 범위를 구분한다.
-- 드론 통합 fixture는 수행자·관측·경로 결과·행동 신호를 직접 제공한다. 현재 `DroneLifecycleIntegrationTests`의 6개 사례는 이번 Task 9.2 관련 선택 실행에서 6/6 통과했다. 실제 자동 이동·충전이나 새 실행 성공을 증명하지 않는다.
-- 다음 연결의 공통 선행은 제품 수행자 생성/등록, 관측/경로/행동 Producer와 공통 적재량 초기화다. 용량 초기화는 [검토안](../Specifications/DroneCapacityInitializationPlan.md)의 미확정 정책을 먼저 확인한다. 정거장 기반은 9.2에서 구현했고 수행자·귀환·충전·연구의 제품 연결은 별도 후속이며 완료된 전력 코어와 관리 계층을 다시 만들지 않는다.
+- 최상위 Task는 **93개 / 완료 60개 / 미완료 33개**다. 기존 완료 기록 49개에 Task 8.1~8.7과 Task 9.1/9.2/9.3.1/9.3의 완료 범위를 반영한 집계다. 이번 문서 점검에서는 새 기능 완료를 선언하거나 체크를 변경하지 않았다.
+- Phase 0~7의 코어/설정/월드 연결과 Phase 8의 전력/석탄/Miner/Crafter 연결은 구현되어 있다. Task 9.1은 상태 전이/Lifecycle Owner의 문서 계약 완료, 9.2는 정거장 망, 9.3.1은 드론 DB/생성 초기화, 9.3은 같은 Entity의 Activate/Dock/Store와 수용량/공통 적재량/최대 배터리 초기화까지 완료했다. 실제 이동/경로 평가/지속 관측/행동 신호/충전/연구/주 시설 자동 시작은 별도 후속이다.
+- 미완료 중 **부분 구현 12개**는 9.4~9.9, 9.11~9.12, 9.15~9.16, 9.18, 9.20이다. 기존 생성/후보/현장 수량 예약/배정/실물 인계/무효화/재배정과 통합 fixture를 재사용하며 추가 유형과 제품 수행부 연결이 남는다.
+- **계약/진단 기반 2개**는 9.10(관측/경로/행동 계약과 배터리 설정/최초량 준비, 실제 이동/소비 없음), 10B.6(바닥 샘플러/색상 미리보기, 제품 청크 렌더러 없음)이다. **문서 대조 일부 진행 1개**는 10C.1이고, 나머지 **18개**는 대상 기능 또는 요구된 실행/성능 검증이 남아 있다.
+- 과거 실행 근거는 범위별 별도 기록이다. 전력 Writer 경계 정리의 174/174, Task 9.2의 99/99, Task 9.3.1의 56/56, Task 9.3 초기 구현의 340/340과 후속 Burst Job 분리의 119/119를 합산하지 않는다. 상세 근거와 한계는 해당 Task/명세 및 아래 변경 이력을 따른다. 이번 대조에서 컴파일/EditMode/Play Mode/Player/성능 측정은 실행하지 않았다.
+- 드론 통합 fixture는 수행자/관측/경로 결과/행동 신호를 직접 제공한다. `DroneLifecycleIntegrationTests` 6개 사례와 격리 Baker의 성공 기록은 실제 자동 비행/충전/전체 장면 표시의 완료 증거가 아니다.
+- 다음 제품 연결은 완료된 생성/정거장/전환/[공통 설정 초기화](../Specifications/DroneCapacityInitializationPlan.md)를 재사용한다. 새로 필요한 것은 지속 관측/경로/행동 Producer, 실제 이동/귀환/충전 및 시작 지급/자동 활성화 연결이다. 이미 완료된 공통 적재량 초기화를 미확정 선행으로 되돌리지 않는다.
+
+### 확정 정책과 아직 결정하지 않은 범위
+
+- 플레이어가 지정하는 숫자/수동 드론 작업 우선순위는 기획에서 제외한다. 우선순위 필드/변경 명령/UI를 추가하거나 Task 9.8의 후속 기능으로 다시 열지 않는다. `DroneConfig.json`의 미사용 `defaultTaskPriority`는 잔존 설정이며 요구사항 근거가 아니다. 설정 파일 정리는 별도 구현 변경에서 처리한다.
+- 자동 선택은 적재품 재배정 우선, 공급 선두 PlacementStamp→CreationSequence, 회수 선두 CreationSequence, 두 선두 간 CreationSequence 비교를 유지한다. 공급원/목적지의 실제 이동거리 규칙과 별개이며 상세 기준은 [건설/드론 명세](../Specifications/ConstructionAndDroneSupply.md#작업-생성과-배정-우선순위)를 따른다.
+- Task 9.4의 지원 요청 범위, 사용자 중단의 기존 운송 영향, 취소 뒤 자동 재생성, 활성 취소 정산을 9.15에서 앞당길 범위, 동일 틱 명령 충돌 정책은 아직 확정하지 않았다. 이전 답변의 권장안은 구현 승인/확정 정책으로 기록하지 않는다.
+- 레거시 검토는 과거 동작의 참고다. 확정된 제외 사항을 다시 선택지로 올리지 않으며, 연구의 벨트 전용 재료 공급/전역 진척 보존 등은 [연구 명세](../Specifications/ResearchBuilding.md)의 확정 계약을 따른다.
 
 ### 도메인 착수 시 이식 범위 대조
 
@@ -67,13 +75,13 @@
 
 - 각 도메인 착수 시 관련 기존 소스·설정·상세 문서만 대조한다. 레거시 문서는 탐색 자료로 사용하고 실제 동작은 원본 코드로 확인한다.
 - 누락을 발견하면 `기존 기능 / 확인 근거 / 현재 V2 대응 / 담당 Task / 확인이 필요한 규칙`을 해당 Phase에 기록한다. 구현 필요성이 확인된 범위만 명시적인 하위 Task로 추가한다.
-- 시작 시설 생성, 프리팹 Authoring, 설정 로딩, 월드·자원 생성에서 확인된 누락은 아래 담당표의 미완료 Task로 등록한다. 실제 구현·이식 여부는 해당 Task의 검증으로 확인한다.
+- 아래 담당표는 시작 시설/프리팹 Authoring/설정/월드/자원 기능의 담당 범위를 보여준다. 이미 완료된 기반은 재사용하고 새로 확인한 누락만 해당 미완료 Task에 연결한다. 실제 구현·이식 여부는 해당 Task의 검증으로 확인한다.
 - 새 게임 규칙이 필요하거나 기존 규칙이 불명확하면 해당 선택지를 확인한 뒤 구현한다. 범위 대조 자체를 이유로 기존 동작을 변경하지 않는다.
 - Task 10C.1에서는 앞 단계에서 작성한 대응 목록과 완료 증거를 최종 대조한다.
 
 2026-10-12 레거시 CodeMemory 정리에서 미이식 게임 동작만 아래 관련 Task의 검토 항목으로 보존했다. 현재 원본·소유권·프레임 계약은 AGENTS와 컴포넌트 문서를 우선하고, 연구의 확정 규칙은 연구 명세를 따른다. 레거시 검토 항목은 기존 동작의 확인 자료이며 현재 V2의 지원 기능·정책 확정·구현 승인·실행 성공을 뜻하지 않는다. 상충하는 규칙은 선택지를 확인한 뒤 구현하고 과거 심볼·캐시·예약·partial 시스템을 그대로 복제하지 않는다.
 
-### 확인된 미이식 기능의 담당 Task
+### 기존 기능의 담당 Task와 연결 범위
 
 | 기능 | 구현 담당 Task | 실행·표시 연결 |
 | --- | --- | --- |
@@ -92,7 +100,7 @@
 
 - [x] **보완 검증 F1: Crafter의 실제 Group / ECB 순서 검증**
   - 선행 조건: 현재 Crafter·Item lifecycle·StateApply 실행 순서 확인.
-  - 구현 범위·상태 소유자: `CrafterDecisionSystem`의 영속 상태 직접 수정을 배제하고, `CrafterStateDecision` 컴포넌트 도입으로 `DecisionGroup`과 `StateApplyGroup`의 책임을 명확히 분리. 생산물은 `ProductResult` 버퍼를 거쳐 `ItemLifecycleApplySystem`에서 안전하게 스폰 및 소유권 반영.
+  - 구현 범위/상태 소유자: CrafterStateDecision으로 BuildingDecisionGroup과 BuildingStateApplyGroup을 분리한다. 현재 전력 외 작업 자격은 Preparation이 작성하고, ProductResult는 ItemLifecycleApplySystem이 소비하여 EndBuilding에 아이템/소유 버퍼를 공개한다. 아래 테스트 수치는 당시 검증 기록이다.
   - 후속 연결: Phase 6 생산물 출력 통합, Phase 8 전력 기반 제작, Phase 10A 연구의 재료 소비 검증.
   - 검증: 테스트 내부 임의의 추가 ECB 재생 없이 `Phase5CrafterExecutionTests` (Test01~Test08) 전수 통과 확인.
   - 완료 기준: 실제 프레임 경계에서 소유권·요청 수명주기 불변식을 만족하고 관련 회귀 테스트가 통과한다.
@@ -126,7 +134,7 @@
   - 완료 기준: 저장소 슬롯 경계값 위반이 조기에 탐지되고 메모리 오염을 차단한다.
 
 - [x] **보완 검증 F6: BuildingSpatialIndex 동적 용량 확장 및 전수 인덱싱 검증 (피드백 10)**
-  - 선행 조건: `BuildingSpatialIndex` NativeParallelMultiHashMap 구조 확인.
+  - 선행 조건: `BuildingSpatialIndex` NativeParallelHashMap<int2, BuildingInfo> 구조 확인.
   - 구현 범위·상태 소유자: 기본 용량(1024)을 초과하는 대규모/다중 타일 건물 배치 시 인덱스 동적 용량 확장 알고리즘 개선.
   - 후속 연결: Phase 7 Construction Core 대규모 배치.
   - 검증: `Phase3BuildingSpatialIndexTests`에 3x3 건물 150개(총 1350타일) 생성 시 동적 용량 확장 및 전수 인덱싱 검증(`Test05`) 통과.
@@ -153,16 +161,18 @@
   - 현재 진행(2026-10-12): **당시 작업 기록 유지**. 현재 프로젝트 루트와 부모의 `Backup Scripts/`는 없으며 다른 백업 위치·Git 복구 경로는 이번 소스 대조에서 확인하지 않았다. 아래 체크를 현재 백업 폴더 존재 보장으로 읽지 않는다.
   - [x] `Assets/Scripts`, `Assets/Editor`, `Assets/UI`를 `Backup Scripts/` 폴더로 이동하여 컴파일 에러 없는 클린 상태 확보
   - [x] 신규 `Assets/Scripts/Phases/` 폴더 구성
-- [x] **Task 0.2: 실행 Group 정의 및 건물·드론 도메인 분리**
-  - 현재 진행(2026-10-12): **코드 구현 확인**. 초기 전역 6페이즈에서 현재 도메인 그룹으로 바뀌었으며 이번에는 속성·부모/순서 선언을 확인했다. 새 실행 검증은 하지 않았다.
+- [x] **Task 0.2: 실행 Group 정의 및 전력/건물/드론 도메인 분리**
+  - 현재 진행(2026-10-24 소스 대조): **코드 구현 확인**. 초기 전역 6페이즈에서 Preparation/Power를 포함한 현재 도메인 그룹으로 바뀌었으며 이번에는 속성·부모/순서 선언을 확인했다. 새 실행 검증은 하지 않았다.
   - [x] `CommandGroup`과 마지막 `EndCommandEntityCommandBufferSystem`
+  - [x] `SimulationPreparationGroup`의 작업 자격/수요 준비
+  - [x] `PowerSimulationGroup` 내부 Decision/Reservation/Execution/StateApply와 마지막 `EndPowerEntityCommandBufferSystem`
   - [x] `BuildingSimulationGroup` 내부 Decision/Reservation/Execution/StateApply와 마지막 EndBuilding
   - [x] `DroneSimulationGroup` 내부 Decision/Reservation/Execution/StateApply
   - [x] `SimulationCommitGroup`과 마지막 EndSimulation
   - [x] 최상위 마지막 `SynchronizationGroup`, 내부 마지막 WorldInvariantValidation
 - [x] **Task 0.3: 최상위 시뮬레이션 그룹 구축 및 정렬**
   - [x] `GameSimulationGroup`을 Unity의 `SimulationSystemGroup` 내에 등록
-  - [x] 현재 그룹의 부모·`UpdateAfter`·`OrderLast` 선언은 Command→Building→Drone→Commit→Synchronization이다. GameSimulationGroup은 DB/필수 설정 준비와 Fatal을 틱 시작에 검사한다. 그룹 순서와 Job/Fence 완료는 별개다.
+  - [x] 현재 그룹 순서는 Command/EndCommand → Preparation → Power/EndPower → Building/EndBuilding → Drone → SimulationCommit/EndSimulation → Synchronization이다. GameSimulationGroup은 DB/필수 설정/Fatal을 틱 시작에 검사하고 Power의 RemainingDomains 오류는 EndPower 뒤 이번 틱 Building/Drone도 차단한다. 그룹 순서와 Job/Fence 완료는 별개다.
 - [x] **Task 0.4: Invariant Validation (데이터 무결성 검증) 프레임워크 뼈대 구축**
   - [x] `WorldInvariantValidationSystem` 생성 (Editor/Development 빌드 전용)
   - [x] 데이터 불일치/고아 엔티티 탐지 시 `Logs/InvariantErrors/` 파일 기록 및 `Debug.Break()` 에디터 일시정지 구조 마련 (콘솔 에러 제외)
@@ -173,10 +183,10 @@
 ### 후속 런타임 연결
 
 - [x] **Task 0.6: Authoring·프리팹 데이터베이스 공통 계약 정의**
-  - 현재 진행(2026-10-12): **규약과 건물·아이템·자원 연결 구현**. 필수 DB 준비/시작 관문과 정적 Baker·런타임 Spawn 책임이 있다. 이 규약 Task와 별도로 Task 9.3.1에서 드론 Authoring/DB/생성 초기화를 연결했다. 실제 출고/수납·배차·이동은 후속 범위다.
-  - 선행 조건: 기존 6대 실행 Group과 Item·건물·자원 데이터 계약, 백업 Authoring 코드 확인.
+  - 현재 진행(2026-10-24 소스 대조): **4종 프리팹 DB/공통 시작 검증 구현**. 건물/아이템/자원/드론의 정적 Baker와 런타임 생성 책임을 구분한다. Task 9.3.1의 드론 생성 초기화와 Task 9.3의 명시적 출고/정박/수납도 연결됐으며 자동 이동/귀환/충전/배차 자격 Producer는 후속이다.
+  - 선행 조건: 현재 도메인별 실행 그룹/공개 경계와 Item/건물/자원/드론 데이터 계약.
   - 구현 범위·상태 소유자: 장면·SubScene Authoring이 게시할 정의·프리팹 참조·초기 설정, 베이킹된 데이터의 준비 조건, 실제 생성 소유자의 초기화 책임을 정의한다. 개별 도메인의 런타임 상태는 Baker가 중복 소유하지 않는다.
-  - 후속 연결: Task 1.7·4.8·7.3.1·9.3.1에서 대상별 Baker·프리팹 연결을 구현한다. 이 Task를 이유로 범용 프레임워크를 새로 만들지 않는다.
+  - 대상별 연결: Task 1.7/4.8/7.3.1/9.3.1의 Baker/프리팹 연결은 완료했으며, 추가 제품 흐름은 기존 생성 소유자를 재사용한다. 이 Task를 이유로 범용 프레임워크를 새로 만들지 않는다.
   - 검증: 타입 식별자·필수 컴포넌트·TransformUsage·중복 컴포넌트 추가와 프리팹 누락 처리의 계약을 대조한다.
   - 완료 기준: 각 도메인이 사용할 베이킹 입력·출력과 스폰 시점의 책임이 명확하며 기존 소유권 경계를 보존한다. (155/155 EditMode 테스트 100% 통과)
 
@@ -224,14 +234,14 @@
 
 - [x] **Task 2.1: Belt 관련 컴포넌트 정의**
   - [x] `BeltComponent` (벨트 건물 엔티티: 속도, 방향은 공통 Direction 재사용)
-  - [x] `BeltMovementState` (아이템 엔티티: IEnableableComponent, 진행도 Progress [0~1], PlannedMovement, IsBlocked)
+  - [x] `BeltMovementState`는 아이템의 enableable 영속 Progress를, `BeltMovementDecision`은 틱별 PlannedProgress/IsBlocked를 보관한다.
 - [x] **Task 2.2: Belt Decision System 구현**
-  - [x] `BeltMovementDecisionSystem` (`DecisionGroup`에 배치)
+  - [x] `BeltMovementDecisionSystem` (`BuildingDecisionGroup`에 배치)
   - [x] 아이템이 벨트를 따라 전진 가능한지 판단 (간격, 앞선 아이템 유무)
   - [x] *주의: Request Entity 폭증 방지를 위해 Persistent Component 값 갱신 사용*
 - [x] **Task 2.3: Belt Execution System 구현**
-  - [x] `BeltMovementExecutionSystem` (`ExecutionGroup`에 배치)
-  - [x] 결정된 진행 거리만큼 실제 `ItemPosition` 업데이트 (Burst/Job 병렬 처리)
+  - [x] `BeltMovementExecutionSystem` (`BuildingExecutionGroup`에 배치)
+  - [x] 실행 결정에 따라 BeltMovementState.Progress/GridPosition과 표시용 LocalTransform을 갱신한다. 실행은 Burst Job으로 처리한다.
 - [x] **Task 2.4: 공간 동기화 및 Invariant 검증**
   - [x] 벨트 상의 아이템 위치 변화가 `SynchronizationGroup`에서 정상 반영되는지 검증
   - [x] 벨트 위 아이템 겹침(충돌) 방지 invariant test 작성
@@ -247,25 +257,25 @@
   - [x] **Task 3.2.1: 건물 메타데이터 및 BuildingSpatialIndex 공간 인덱스 인프라 구축**
     - [x] `BuildingTypeEnum`, `BuildingFootprint` 컴포넌트 정의 (다중 타일 2x2, 3x3 등 지원)
     - [x] `BuildingInfo`, `BuildingSpatialIndex`, `BuildingSpatialIndexFence` 구조체 정의 (Resource-Level JobHandle Fence 패턴)
-    - [x] `BuildingSpatialSyncSystem` (`SynchronizationGroup`, Phase 6) 구현: 다중 타일 일괄 등록 및 비동기 Clear/Populate 체인
+    - [x] `BuildingSpatialSyncSystem` (`SynchronizationGroup`) 구현: 다중 타일 일괄 등록 및 비동기 Clear/Populate 체인
     - [x] `BuildingSpatialIndex` 대규모 다중 타일 건물 수용을 위한 동적 Capacity 확장 및 안전 인덱싱 검증 (`Phase3BuildingSpatialIndexTests` Test05 Pass)
   - [x] **Task 3.2.2: 아이템별 스택 설정 인프라 (ItemConfig) 구축**
-    - [x] `ItemConfig` 컴포넌트 및 싱글톤 버퍼 정의
-    - [x] `ItemTypeEnum`별 `MaxStack`(광석 50, 완제품 100, 드론 1 등) 설정 제공
+    - [x] `ItemRegistry` singleton과 `ItemConfigElement` 버퍼를 Resources 키 `Config/ItemConfig`에서 검증/게시한다.
+    - [x] 품목별 MaxStack은 `Assets/Resources/Config/ItemConfig.json`을 따른다. 현재 드론 아이템의 MaxStack은 50이며 활성 정박 수행자의 슬롯 전체 점유와 구분한다.
   - [x] **Task 3.2.3: 입출력 의사결정 컴포넌트 정의 (상태-의사결정 분리)**
     - [x] `BuildingItemInputDecision` (아이템 엔티티 부착, Enableable: TargetBuilding, TargetSlotIndex, CanDeposit)
     - [x] `BuildingItemOutputDecision` (건물 엔티티 부착, Enableable: CanOutput, ItemToOutput, TargetBeltPosition)
   - [x] **Task 3.2.4: BuildingItemInputDecisionSystem 구현 (입고 판단)**
-    - [x] `DecisionGroup` (Phase 2)에 배치
+    - [x] `BuildingDecisionGroup`에 배치
     - [x] 벨트 종단(Progress >= 1.0f - Epsilon) 아이템 감지
     - [x] `BuildingSpatialIndex`로 다음 타일의 건물 및 종류 O(1) 식별
     - [x] `StorageFilter` 마스크 및 보관 가능 여부 검사 (중복 슬롯 검사 배제 및 Reservation 단계 위임)
     - [x] 입고 가능 시 `CanDeposit = true`, 불가 시 벨트 끝 대기(`IsBlocked = true`)
-  - [x] **Task 3.2.5: BuildingItemOutputDecisionSystem 구현 (출고 판단)**
-    - [x] `DecisionGroup` (Phase 2)에 배치
+  - [x] **Task 3.2.5: Storage/Product 출고 Decision System 구현 (출고 판단)**
+    - [x] `BuildingDecisionGroup`에 배치
     - [x] 보관 아이템이 있는 건물(`buffer.Length > 0`) 탐색
     - [x] 건물 둘레의 외향 벨트 탐색 및 벨트 입구(Progress == 0.0f) 간격(`ItemSpacing`) 확보 확인
-    - [x] 방출 가능 시 FIFO 0번 아이템(`buffer[0]`)을 대상으로 `CanOutput = true` 결정
+    - [x] StorageItemOutputDecisionSystem은 첫 출고 가능 실물을 선택하되 정거장의 Drone 아이템은 제외한다. ProductItemOutputDecisionSystem은 Slot 0을 우선하며 없으면 첫 실물을 고른다. 발신자 간 목적지 경합 승인은 Reservation이 담당한다.
   - [x] **Task 3.2.6: Task 3.2 단위 및 파이프라인 검증 테스트 작성**
     - [x] `Phase3StorageDecisionTests.cs` (다중 타일 탐색, 필터링, 슬롯 만석 차단, FIFO 출고 및 벨트 정체 대기 검증)
 - [x] **Task 3.3: Storage 소유권 이전 연동**
@@ -279,10 +289,10 @@
 ### 후속 런타임 연결
 
 - [x] **Task 3.5: 기본 건물 런타임 설정 로딩 및 게시**
-  - 현재 진행(2026-10-12): **코드 구현 확인**. 현재 BuildingConfig는 종류/티어·displayName·명시적 양수 Footprint·속도/용량과 비용을 게시한다. 설정/필수 DB 실패는 미게시·Fatal로 시작을 차단한다. 아래 초기 도입 기록의 기본값/fallback을 현재 계약으로 재사용하지 않는다.
+  - 현재 진행(2026-10-24 소스 대조): **건물 설정 검증/게시 구현** — BuildingConfig의 종류/티어별 정의, 공사 재료 비용, 전력 능력, 정거장 활동 범위/드론 전용 슬롯을 같은 초기화 경계에서 검증/게시한다.
   - 선행 조건: 기존 Belt·Storage·Miner·Crafter 컴포넌트와 백업 `BuildingRuntimeConfig` 스키마 확인.
-  - 구현 범위·상태 소유자: 건물 기본 속도·저장 칸수 등 기존 설정을 검증해 타입별 정의 데이터로 게시한다. 설정 로더는 정의만 소유하고 인스턴스 진행도·소유 버퍼는 변경하지 않는다. 기존 레시피·아이템 스택 레지스트리는 재사용한다.
-  - 후속 연결: Task 7.3.1의 건물 정의 연결과 Task 7.3의 인스턴스 초기화에서 소비한다. 공사 비용·전력·드론·연구 설정은 해당 도메인이 담당한다.
+  - 구현 범위/상태 소유자: `Assets/Resources/Config/BuildingConfig.json`(Resources 키 `Config/BuildingConfig`)의 정적 정의는 로더가 소유하고, 도메인별 생성/실행 소유자가 인스턴스 상태를 구성한다. 공통 드론 적재량/최대 배터리 정의는 DroneConfig를 따른다.
+  - 후속 연결: 구현된 건물/공사/전력/정거장 생성 경로가 게시 정의를 재사용한다. 연구 진행/충전/시작 자동 생성의 제품 연결은 해당 후속 Task가 담당한다.
   - 검증: 누락·중복 타입, 잘못된 속도·용량, 로딩 실패 시 부분 데이터 게시, 기존 레시피·스택 설정과의 역할 중복을 검사한다. (167/167 EditMode 테스트 100% 통과)
   - 완료 기준: 검증된 기본 건물 설정의 단일 조회 경로가 있고 인스턴스 생성에 사용할 수 있다.
 
@@ -291,15 +301,15 @@
 ## ⛏️ [Phase 4] Mining (1차 핵심 Vertical Slice 완성)
 
 - [x] **Task 4.1: Resource 및 Miner 컴포넌트 정의**
-  - [x] `ResourceNode` (타입, 매장량, 그리드 위치)
-  - [x] `MinerComponent` (채굴 속도, 진행도, 배출 방향)
-- [x] **Task 4.2: Miner Decision & Execution System 구현**
-  - [x] 채굴 조건 판단 (하부 자원 유무, 내부 출력 버퍼 여유 검사 및 지연 스폰을 고려한 Pending Capacity 검사)
-  - [x] 채굴 진행도 누적 및 아이템 스폰 트리거 (채굴 완료 시 채굴기 버퍼로 SpawnItemRequest 발행, 자원 차감/고갈 파괴, 기존 BuildingItemOutput 출고 파이프라인 100% 재사용)
+  - [x] `ResourceNode`는 자원 타입/매장량을 보관하고 좌표는 공통 `GridPosition`을 사용한다.
+  - [x] `MinerState`는 채굴 속도/진행도를 보관하며 방향은 공통 `Direction`을 사용한다.
+- [x] **Task 4.2: Miner 준비/결정/실행 시스템 구현**
+  - [x] MinerWorkPreparationSystem이 자원/출력 공간/미소비 결과를 확인해 작업 자격을 작성하고, MinerDecisionSystem이 준비 자격과 확정 공급으로 실행/완료 가능 여부를 결정한다.
+  - [x] MinerExecutionSystem은 확정 공급 한도 내에서 진행하고 완료 시 ProductResult를 기록하며 자원을 차감한다. 고갈 자원 삭제와 생산 아이템 실체화는 EndBuilding이며 기존 Product 출고 경로를 재사용한다.
   - [x] `GameConstants.MaxSimulationDeltaTime` (0.1f) 정책 일원화 및 대형 DeltaTime 입력 클램핑 안전망 검증 (`Phase4MinerPipelineTests` Test10 Pass)
 - [x] **Task 4.3: 자원 채굴 → 스폰 → 벨트 → 창고 파이프라인 완성**
-  - [x] 광물 스폰(`Command/StateApply`) → 벨트 이송(`Decision/Execution`) → 창고 적재(`Decision/Reservation/StateApply`)
-  - [x] 시스템 간 직접 호출 없이 오직 GameSimulationGroup 6대 Phase 데이터 파이프라인만으로 전체 게임 루프 동작 완주
+  - [x] 자원 생성(Command/EndCommand) → 준비/전력/채굴/생산 아이템 공개(Preparation/Power/Building/EndBuilding) → 벨트 이송/창고 적재(Building) → 최종 공간 동기화로 연결한다.
+  - [x] 당시 채굴→벨트→창고 코어 루프 통합 검증을 완료했다. 아래 수치는 당시 범위이며 현재 전체 게임/드론 수행부의 실행 검증으로 확대하지 않는다.
   - [x] 단일 완주 루프, 연속 스트림 흐름, 창고 만석 역류 정체(Backpressure) 3대 시나리오 NUnit 자동화 통합 테스트 및 불변식 0건 검증 완료 (Phase4EndToEndPipelineTests 3종 통과, 총 78/78 테스트 100% 통과)
 - [x] **Task 4.4: 1차 핵심 Vertical Slice 완료 판정**
   - [x] 한 화면 안에서 광물 채굴부터 보관까지의 데이터 흐름 추적 가능 여부 확인
@@ -311,7 +321,7 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 
 - [x] **Task 4.5: 초기 영역·월드 시드·자원 생성 설정 연결**
   - 선행 조건: Task 0.6 및 기존 Resource 데이터 계약, 백업 초기 영역·자원 설정 Authoring 확인.
-  - 구현 범위·상태 소유자: 초기 로드 영역, 월드 시드, 자원별 광맥·매장량 설정을 검증해 ECS 정의 데이터로 게시한다. 기존 베이킹·로드 시점과 설정 의미를 확인하고 생성 진행 상태와 분리한다. 초경량 무한 맵 아키텍처에 따라 불필요한 청크 영역 설정 엔티티를 배제하고, `WorldGenerationConfig.json`에서 `worldSeed`와 광석 4종 설정(`configs`)을 파싱하여 `ResourceGenerationSettings` 싱글톤 및 DynamicBuffer로 1회 부트스트랩 게시(`WorldGenerationConfigLoadSystem`). 완전 중단(All-or-Nothing Fail-Fast) 검증을 적용.
+  - 구현 범위/상태 소유자: `Assets/Resources/Config/WorldGenerationConfig.json`(Resources 키 `Config/WorldGenerationConfig`)의 worldSeed/initialChunkSize/자원 configs/floor를 검증하고 같은 월드 설정 엔티티에 자원/바닥 버퍼를 게시한다. 공통 범위/좌표 검증을 재사용하며 무효 입력은 공통 Fatal/미게시로 처리한다.
   - 후속 연결: Task 4.6에서 초기 청크를 요청하고 Task 4.7에서 자원 배치를 계산한다.
   - 검증: 같은 시드·설정, 잘못된 영역·품목·범위 값, 설정 누락·재초기화와 중복 게시를 검사한다. `Phase4WorldGenerationConfigTests` 6종 단위/통합 테스트 전수 통과 (173/173 EditMode 테스트 100% Pass).
   - 완료 기준: 초기 로딩과 자원 생성이 동일한 검증된 설정을 읽으며 설정 부재를 정상 초기화로 처리하지 않는다.
@@ -319,7 +329,7 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 - [x] **Task 4.6: 청크 요청 수명주기 및 초기 영역 로딩 구현**
   - 현재 진행(2026-10-12): **코드 구현 확인**. 초기 N×N Queue, Pending 중복 방지, EndCommand 생성 뒤의 Completed 알림과 다음 Command의 완료 Map 갱신이 있다. 카메라 주변 Producer는 Task 10B.5에 남는다.
   - 선행 조건: Task 4.5 및 기존 격자·청크 좌표 규칙 확인.
-  - 구현 범위·상태 소유자: 청크 로드 요청, 준비·생성 상태의 소유자를 정의하고 초기 영역 요청·중복 병합·요청 소비를 구현한다. 기존 개별 공간 인덱스의 상태를 다시 소유하지 않는다. 초경량 무한 맵 아키텍처에 맞춰 `ChunkUtility`(음수 좌표 FloorDiv 변환), `GeneratedChunkTracker`의 완료/대기 집합 및 `ChunkLoadRequestElement` 요청 큐 버퍼를 구축. `InitialChunkLoadBootstrapSystem`이 설정된 N×N(기본 3×3) 초기 청크 요청을 인큐하고, `ChunkLoadCommandSystem`(`CommandGroup`)이 중복을 O(1)로 제거(Idempotent Drop)하여 신규 청크를 `GeneratedChunkReadyElement`로 인계한다. 미처리 요청은 보존하고, EndStateApply의 완료 알림을 다음 Command에서 소비한 뒤에만 완료 집합에 등록한다.
+  - 구현 범위·상태 소유자: 청크 로드 요청, 준비·생성 상태의 소유자를 정의하고 초기 영역 요청·중복 병합·요청 소비를 구현한다. 기존 개별 공간 인덱스의 상태를 다시 소유하지 않는다. 초경량 무한 맵 아키텍처에 맞춰 `ChunkUtility`(음수 좌표 FloorDiv 변환), `GeneratedChunkTracker`의 완료/대기 집합 및 `ChunkLoadRequestElement` 요청 큐 버퍼를 구축. `InitialChunkLoadBootstrapSystem`이 설정된 N×N(기본 3×3) 초기 청크 요청을 인큐하고, `ChunkLoadCommandSystem`(`CommandGroup`)이 중복을 O(1)로 제거(Idempotent Drop)하여 신규 청크를 `GeneratedChunkReadyElement`로 인계한다. 미처리 요청은 보존하고, EndCommand의 완료 알림을 다음 Command에서 소비한 뒤에만 완료 집합에 등록한다.
   - 후속 연결: Task 4.7~4.8의 자원 생성·스폰 결과와 생성 완료를 연결하고, Task 10B.5에서 카메라 요청을 추가한다.
   - 검증: 중복 요청, 겹치는 초기 영역, 음수 좌표, 생성 실패·재시도와 이미 생성된 청크 재요청을 검사한다. `Phase4ChunkLifecycleTests` 6종 단위/통합 테스트 전수 통과 (179/179 EditMode 테스트 100% Pass).
   - 완료 기준: 요청과 청크 진행 상태가 일치하고 완료된 청크의 자원이 중복 생성되지 않는 계약이 마련된다.
@@ -327,7 +337,7 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 - [x] **Task 4.7: 시드 기반 광맥 배치 및 자원 생성 요청 구현**
   - 현재 진행(2026-10-12): **코드 구현 확인**. ResourceGenerationCommandSystem이 준비 청크·설정/DB를 읽고 자원 스폰과 완료 알림을 같은 EndCommand ECB에 기록하며 공간 등록은 Synchronization이다. 초기 문서의 EndStateApply 표기는 현재 실행 경계가 아니다.
   - 선행 조건: Task 4.5~4.6 및 기존 광맥 생성 알고리즘 확인.
-  - 구현 범위·상태 소유자: `ChunkUtility.IsInsideChunk` 헬퍼 메서드 및 `ResourceGenerationUtility`(시드 기반 결정론적 패치 계산, 청크 경계 처리, 품목 선착순 셀 선점) 구현. `ResourceGenerationCommandSystem`(`CommandGroup`, `[UpdateAfter(typeof(ChunkLoadCommandSystem))]`)을 통해 `GeneratedChunkReadyElement` 버퍼를 읽고 중간 셀별 요청 엔티티 없이 ResourceNode 스폰 및 청크 완료 알림을 EndStateApply ECB에 기록한다. 완료 상태는 실제 반영 이후 확정하며 즉시 Playback 우회는 사용하지 않는다.
+  - 구현 범위·상태 소유자: `ChunkUtility.IsInsideChunk` 헬퍼 메서드 및 `ResourceGenerationUtility`(시드 기반 결정론적 패치 계산, 청크 경계 처리, 품목 선착순 셀 선점) 구현. `ResourceGenerationCommandSystem`(`CommandGroup`, `[UpdateAfter(typeof(ChunkLoadCommandSystem))]`)을 통해 `GeneratedChunkReadyElement` 버퍼를 읽고 중간 셀별 요청 엔티티 없이 ResourceNode 스폰 및 청크 완료 알림을 EndCommand ECB에 기록한다. 완료 상태는 실제 반영 이후 확정하며 즉시 Playback 우회는 사용하지 않는다.
   - 후속 연결: Task 4.8에서 Authoring/프리팹 베이킹 DB를 연결하여 실제 렌더 프리팹 인스턴스화로 확장.
   - 검증: 동일 시드 100% 재현(Determinism), 청크 로드 순서 무관성(Cross-Chunk Load-Order Invariance), 타일 중복 배제(No Overlap), 설정 부재 안전성(Graceful Early Return), 파이프라인 연계 및 멱등성 검증. `Phase4ResourceGenerationTests` 7종 단위/통합 테스트 전수 통과 (186/186 EditMode 테스트 100% Pass).
   - 완료 기준: 기존 생성 규칙에 맞는 재현 가능한 결정을 수행하고 EndCommand에서 자원 엔티티와 완료 알림을 반영하며 Synchronization에서 공간 인덱스에 등록한다.
@@ -335,7 +345,7 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 - [x] **Task 4.8: 자원 Authoring·프리팹 DB 및 스폰·공간 등록 연결**
   - 현재 진행(2026-10-12): **코드 구현 확인**. 공통 시작 관문이 활성 자원의 필수 DB를 검증하고 게임 시작을 허용한다. 설정/시작 DB 검증 실패는 Fatal이며 자동 복구하지 않는다. 생성기의 준비 전 Ready 요청 보존과 시작 실패 정책은 별개다. 실제 화면·카메라 확장은 10B.5~10B.6에 남는다.
   - 선행 조건: Task 0.6·4.6~4.7 및 기존 ResourceNode·ResourceSpatialIndex·Miner 계약.
-  - 구현 범위·상태 소유자: `ResourcePrefabDatabaseAuthoring` 구현으로 인스펙터 수동 목록 및 `Resources/Prefabs/Resource` 폴더 자동 수집(`ResourcesAutoLoad` 및 ContextMenu) 지원, `ResourcePrefabDatabase` 싱글톤 및 `ResourcePrefabElement` 버퍼에 `TransformUsageFlags.Renderable` 프리팹 베이킹. `ResourceGenerationUtility` 및 `ResourceGenerationCommandSystem`에서 프리팹 DB를 조회하여 `ecb.Instantiate(prefab)`를 통해 렌더 컴포넌트 복제 및 `[GridPosition, ResourceNode, LocalTransform]` 초기화 연결. 방안 B 엄격 차단(Strict Fail)을 적용하여 프리팹 DB 부재 또는 필요한 프리팹 누락 시 전체 청크를 대기시킨다. 일부 광석만 생성하지 않으며 준비 후 같은 요청으로 재시도한다. 설정별 프리팹 조회는 업데이트당 한 번 수행한다. `SynchronizationGroup`의 `ResourceSpatialSyncSystem`을 통해 `ResourceSpatialIndex` 자동 등록 및 기존 채굴기(`Miner`) 파이프라인과 직결.
+  - 구현 범위·상태 소유자: `ResourcePrefabDatabaseAuthoring` 구현으로 인스펙터 수동 목록 및 `Resources/Prefabs/Resource` 폴더 자동 수집(`ResourcesAutoLoad` 및 ContextMenu) 지원, `ResourcePrefabDatabase` 싱글톤 및 `ResourcePrefabElement` 버퍼에 `TransformUsageFlags.Renderable` 프리팹 베이킹. `ResourceGenerationUtility` 및 `ResourceGenerationCommandSystem`에서 프리팹 DB를 조회하여 `ecb.Instantiate(prefab)`를 통해 렌더 컴포넌트 복제 및 `[GridPosition, ResourceNode, LocalTransform]` 초기화 연결. 방안 B 엄격 차단(Strict Fail)을 적용하여 생성기 내부에서는 Ready 미충족 요청을 보존해 일부 광석만 생성하지 않는다. 정상 시작 경로의 필수 DB/프리팹 검증 실패는 공통 Fatal로 차단하므로 이를 초기화 실패의 자동 복구/재시도로 해석하지 않는다. 설정별 프리팹 조회는 업데이트당 한 번 수행한다. `SynchronizationGroup`의 `ResourceSpatialSyncSystem`을 통해 `ResourceSpatialIndex` 자동 등록 및 기존 채굴기(`Miner`) 파이프라인과 직결.
   - 후속 연결: Task 10B.5·10C.2에서 실제 월드 확장과 시각 결과를 확인.
   - 검증: 프리팹 DB 조회, 프리팹 인스턴스화 및 Transform 초기화, 프리팹 누락 시 엄격 차단, DB 부재/빈 버퍼 시 안전 차단, 채굴기 연계 및 매장량 고갈 시 엔티티 파괴 완주 검증. `Phase4ResourceAuthoringAndSpawnTests` 6종 단위/통합 테스트 전수 통과 (192/192 EditMode 테스트 100% Pass).
   - 완료 기준: 설정과 청크 요청으로 생성한 자원이 기존 채굴 파이프라인에 참여하고 실패 시 고아 요청·중복 자원·잘못된 청크 완료 상태가 없다.
@@ -356,6 +366,7 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 - [x] **Task 5.1: RecipeRegistry 및 Unmanaged 버퍼 기반 레시피 정의**
   - 현재 진행(2026-10-12): **코드 구현 확인**. RecipeConfigElement·RecipeIngredientElement·RecipeOutputElement 버퍼와 범위 오프셋을 사용한다. RecipeBlob/BlobAsset은 현재 소스에 없으며 Init이 시작 시 한 번 게시한다.
 - [x] **Task 5.2: Crafter 재료 수집 및 제작 진행 시스템 구현**
+  - 현재 계약(2026-10-24 소스 대조): CrafterWorkPreparationSystem은 전력 외 재료/진행 자격을 준비한다. BuildingDecision의 CrafterDecisionSystem은 준비 자격과 확정 공급으로 실행/완료 출력/상태 후보를 작성하고, Execution은 공급 한도 내에서 선소비/진행을 처리한다.
   - [x] 입력 버퍼 재료 확인 → 소모 처리 → 제작 진행도 누적 → 결과물 출력 (선소비 모델 및 정책 B 만석 대기 완주)
   - [x] `CrafterStateDecision` 컴포넌트 분리 도입: `CrafterDecisionSystem`의 영속 상태 직접 수정 제거 및 `CrafterStateApplySystem`에서 상태 전이 일괄 반영
   - [x] 다중 부산물(Byproducts) 분배 및 All-or-Nothing 출력 공간 검증 (`Phase5CrafterExecutionTests` Test07, Test08 Pass)
@@ -373,8 +384,8 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 - [x] **Task 6.1: 라우팅 규칙 및 데이터 계약 정의**
   - 선행 조건: Phase 2 벨트 및 Phase 3 입출력 계약 확인, 기존 Splitter/Merger 라우팅 규칙 대조 완료.
   - 구현 범위·상태 소유자: 기존 유연한 우회 분배(Work-conserving) 동작을 유지하도록 `SplitterRoutingState`, `MergerRoutingState`, 슬림화된 `RoutingTransferDecision(Item, SourceBelt, TargetBelt)`, 범용 `PlacementStamp` 계약 정의. Splitter는 가장 먼저 설치된 입력 벨트를 기준으로 `forward -> right -> left`, Merger는 가장 먼저 설치된 출력 벨트를 기준으로 `back -> left -> right` 순환. 성공한 전달에만 cursor 진행. 아이템 위치·소유권은 기존 Item 계약 유지.
-  - 배치 순서 계약: `PlacementStamp(Tick, Order)`는 권위 있는 건물 배치 요청이 확정될 때 결정하고 공사 현장 및 실제 건물 엔티티까지 그대로 전달. 같은 Tick의 `Order`는 요청 입력의 결정적 순서에서 산출하며 전역 Sequence Singleton 증가나 `Entity.Index/Version`을 순서 원본으로 사용하지 않음. Stamp 미할당은 값 센티널이 아니라 컴포넌트 부착 여부로 구분.
-  - 데이터 책임: 영속 라우팅 상태는 StateApply 소유, DecisionGroup은 읽기 및 프레임 `RoutingTransferDecision` 산출. `RoutingTransferDecision`은 고빈도 Frame Decision으로 `TargetBeltPosition`, `PortDirection`, `PortIndex`를 배제하고 `(Item, SourceBelt, TargetBelt)`만 소유. 실제 나간 포트 인덱스는 `TargetBelt` 위치와 `ForwardDirection`의 상대 각도로 실시간 역산(`RoutingDirectionUtility.GetSplitterPortIndex`).
+  - 배치 순서 계약: PlacementStamp는 Tick/Order/ReceiptSequence를 현장과 완공 건물까지 보존한다. 공통 비교는 표식 유무 → Tick → 양수 접수번호 유무/번호 → 요청 내부 Order → 좌표 x/y다. Command는 World 접수 순서로 요청을 처리하고 승인 현장에 접수번호와 후보 Order를 승계한다. Entity.Index/Version을 설치 순서 원본으로 사용하지 않는다.
+  - 데이터 책임: 영속 라우팅 상태는 BuildingStateApply 소유, BuildingDecisionGroup은 읽기 및 프레임 `RoutingTransferDecision` 산출. `RoutingTransferDecision`은 고빈도 Frame Decision으로 `TargetBeltPosition`, `PortDirection`, `PortIndex`를 배제하고 `(Item, SourceBelt, TargetBelt)`만 소유. 실제 나간 포트 인덱스는 `TargetBelt` 위치와 `ForwardDirection`의 상대 각도로 실시간 역산(`RoutingDirectionUtility.GetSplitterPortIndex`).
   - 연결 변경 및 인계 계약: 아이템은 입력 벨트 종단(`Progress=1.0`)에서 출력 벨트 시작점(`Progress=0.0`)으로 원자적 직결 인계(Direct Hand-off)되므로 분배기 타일 내부 체류/갇힘 상태가 없으며 `SplitterRetainedItemElement` 버퍼는 배제. 선택된 입출력 벨트 소멸 시 남은 후보 중 가장 먼저 설치된 벨트로 기준선을 재선택(Task 6.5).
   - 후속 연결: Task 6.2~6.5에서 경합·이동·연결 변경 구현. `PlacementStamp` 발급과 요청 → 현장 → 건물 전달은 Task 7.2~7.5의 권위 있는 건설 경로에서 연결.
   - 검증: `Phase6RoutingContractTests`에서 4방향 상대 포트 순서, 입출력 벨트 방향 판정, cursor 순환, Frame Decision 활성 상태, 포트 역산 유틸리티, `PlacementStamp`의 Tick/Order 비교 계약 검증 통과. 전체 EditMode 124/124 Pass.
@@ -382,8 +393,8 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 
 - [x] **Task 6.2: 공유 목적지 경합 해결**
   - 선행 조건: Task 6.1.
-  - 구현 범위·상태 소유자: `ReservationGroup` (Phase 3)에서 실행되는 `BeltDestinationReservationSystem` 구현. 외부 건물 출고(`BuildingItemOutputDecision`)와 분배기/합류기 라우팅(`RoutingTransferDecision`)의 공유 대상 벨트 입구(`Progress = 0.0f`) 진입 경합을 단일 원자적으로 조율.
-  - 경합 규칙: (1) 일반 벨트 이동은 기존 `BeltMovement` 파이프라인이 담당하며 이 예약의 후보에 포함하지 않는다. (2) 출고·Routing 선검사와 최종 예약은 `BeltEntryUtility.HasEntrySpace`로 월드 소유권과 활성 `BeltMovementState`를 모두 가진 목적지 점유만 계산한다. 간격은 `GameConstants.ItemSpacing`과 `AlignmentEpsilon`, 수용량은 `MaxItemsPerBeltTile = (int)(1f / ItemSpacing)`의 파생 관계를 사용하고 별도 숫자로 고정하지 않는다. (3) 공간이 있을 때만 동일 목적지의 외부 후보 중 한 틱 최대 한 개를 기존 `PlacementStamp` 비교로 승인한다. Stamp 중복·동률 계약의 남은 문제는 F-041로 구분한다.
+  - 구현 범위·상태 소유자: `BuildingReservationGroup`에서 실행되는 `BeltDestinationReservationSystem` 구현. 외부 건물 출고(`BuildingItemOutputDecision`)와 분배기/합류기 라우팅(`RoutingTransferDecision`)의 공유 대상 벨트 입구(`Progress = 0.0f`) 진입 경합을 단일 원자적으로 조율.
+  - 경합 규칙: (1) 일반 벨트 이동은 기존 `BeltMovement` 파이프라인이 담당하며 이 예약의 후보에 포함하지 않는다. (2) 출고·Routing 선검사와 최종 예약은 `BeltEntryUtility.HasEntrySpace`로 월드 소유권과 활성 `BeltMovementState`를 모두 가진 목적지 점유만 계산한다. 간격은 `GameConstants.ItemSpacing`과 `AlignmentEpsilon`, 수용량은 `MaxItemsPerBeltTile = (int)(1f / ItemSpacing)`의 파생 관계를 사용하고 별도 숫자로 고정하지 않는다. (3) 공간이 있을 때만 동일 목적지의 외부 후보 중 한 틱 최대 한 개를 기존 `PlacementStamp` 비교로 승인한다. F-041의 접수번호 승계와 좌표 동률 비교는 현재 공통 PlacementStamp 계약에 반영되어 있다.
   - 승인·거부 계약: 거절된 후보의 결정을 비활성화하고 건물 출고에는 `CanOutput = false`도 기록한다. 거절 시 원본 아이템·소유 버퍼·라우터 커서를 보존하며, 승인된 결정의 실제 위치·소유권·커서 반영과 소비는 기존 StateApply가 담당한다. 승인 이후 원본 상태가 달라지는 무효 승인 방어는 F-033의 별도 범위다.
   - 지원 범위 (2026-09-30 사용자 확정): 일반 벨트끼리의 T형 직접 합류와 출력 셀로의 추가 측면 직접 진입은 자동 경합 중재·사전 대기·교착 해소 보장 대상에서 제외한다. 합류/분배 중재는 Merger/Splitter의 역할이다. 현재 스냅샷 공간 검사와 외부 후보 중재의 보장을 모든 벨트 이동의 간격 보장으로 확대하지 않는다. 공통 정책은 [AGENTS.md](../../AGENTS.md)의 물류·생산 계약을 따른다.
   - 후속 연결: Splitter·Merger의 구체적인 후보 선택 및 cursor 갱신은 Task 6.3~6.4에서 연결.
@@ -394,14 +405,14 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 
 - [x] **Task 6.3: Splitter 분배 구현**
   - 선행 조건: Task 6.1~6.2.
-  - 구현 범위·상태 소유자: `SplitterDecisionSystem` (`DecisionGroup`) 구현으로 입력 벨트 종단 아이템 감지 및 Forward -> Right -> Left 순환 포트 탐색(Work-conserving 우회) 처리. `RoutingApplySystem` (`StateApplyGroup`) 구현으로 승인된 이동 적용, 대상 벨트 시작점(Progress 0.0f) 인계 및 실제 배출 포트 기준 `OutputCursor` 전진(`AdvanceCursor`). 영속 상태와 의사결정 완벽 분리.
+  - 구현 범위·상태 소유자: `SplitterDecisionSystem` (`BuildingDecisionGroup`) 구현으로 입력 벨트 종단 아이템 감지 및 Forward -> Right -> Left 순환 포트 탐색(Work-conserving 우회) 처리. `RoutingApplySystem` (`BuildingStateApplyGroup`) 구현으로 승인된 이동 적용, 대상 벨트 시작점(Progress 0.0f) 인계 및 실제 배출 포트 기준 `OutputCursor` 전진(`AdvanceCursor`). 영속 상태와 의사결정 완벽 분리.
   - 후속 연결: 연결 소멸과 잔류 아이템은 Task 6.5에서 검증한다.
   - 검증: `Phase6SplitterPipelineTests` 5개 단위 테스트 전수 통과 (정상 3방향 라운드로빈 순환, 차단 포트 우회 분배, 전체 차단 시 아이템 보존 및 커서 동결, 차단 해제 시 분배 재개, PlacementStamp 우선순위 기준선 자동 선택). 전체 EditMode 135/135 Pass.
   - 완료 기준: 확인된 분배 순서를 지키며 실패한 이동에서 아이템과 순환 상태가 잘못 전진하지 않는다.
 
 - [x] **Task 6.4: Merger 합류 구현**
   - 선행 조건: Task 6.1~6.2.
-  - 구현 범위·상태 소유자: `MergerDecisionSystem` (`DecisionGroup`) 구현으로 단일 출력 벨트 수용 공간 사전 검사(정체 시 커서 동결 및 대기) 및 Back(0) -> Left(1) -> Right(2) 순환 포트 탐색(Work-conserving 우회) 처리. `RoutingApplySystem` (`StateApplyGroup`) 확장으로 승인된 합류 이동 적용, 대상 벨트 시작점(Progress 0.0f) 인계 및 실제 유입 포트 기준 `InputCursor` 전진(`AdvanceCursor`). 영속 상태와 의사결정 완벽 분리.
+  - 구현 범위·상태 소유자: `MergerDecisionSystem` (`BuildingDecisionGroup`) 구현으로 단일 출력 벨트 수용 공간 사전 검사(정체 시 커서 동결 및 대기) 및 Back(0) -> Left(1) -> Right(2) 순환 포트 탐색(Work-conserving 우회) 처리. `RoutingApplySystem` (`BuildingStateApplyGroup`) 확장으로 승인된 합류 이동 적용, 대상 벨트 시작점(Progress 0.0f) 인계 및 실제 유입 포트 기준 `InputCursor` 전진(`AdvanceCursor`). 영속 상태와 의사결정 완벽 분리.
   - 후속 연결: 연결 소멸은 Task 6.5, 복합 경합은 Task 6.6에서 검증한다.
   - 검증: `Phase6MergerPipelineTests` 5개 단위 테스트 전수 통과 (동시 도착 3방향 순환, 비어있는 포트 우회 합류, 출력 정체 시 대기 및 커서 동결, 정체 해제 시 합류 재개, PlacementStamp 기준 출력선 자동 선택). 전체 EditMode 140/140 Pass.
   - 완료 기준: 기존 우선순위·순환 규칙과 일치하고 중복 전달·규칙 위반 대기가 없다.
@@ -415,9 +426,9 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 
 - [x] **Task 6.6: 전체 물류 파이프라인 통합 검증**
   - 선행 조건: Task 6.2~6.5 및 생산물 출력에 사용하는 기존 구현의 보완 검증.
-  - 구현 범위·상태 소유자: 채굴(Miner)·제작(Crafter)·창고(Storage)·벨트(Belt)·분배(Splitter)·합류(Merger)를 실제 최상위 `GameSimulationGroup` 루트 루프(Phase 1~6 전체 하위 그룹)로 결합하여 종합 검증. 별도의 검증용 상태 소유자 생성 없이 순수 V2 데이터 계약만으로 파이프라인 무결성 입증.
+  - 당시 통합 구현 기록: 채굴(Miner)·제작(Crafter)·창고(Storage)·벨트(Belt)·분배(Splitter)·합류(Merger)를 실제 최상위 `GameSimulationGroup` 루트 루프(Phase 1~6 전체 하위 그룹)로 결합하여 종합 검증. 별도의 검증용 상태 소유자 생성 없이 순수 V2 데이터 계약만으로 파이프라인 무결성 입증.
   - 후속 연결: 설치·철거 중 물류 변화는 Phase 7의 수명주기 검증에 연결한다.
-  - 검증: `Phase6EndToEndPipelineTests` 4개 통합 테스트 전수 통과 (End-to-End 전체 생산·물류·분배 순환 흐름, Splitter vs Storage 단일 벨트 경합 PlacementStamp 중재, Merger 출력 벨트 정체 시 백프레셔 전파 및 정체 해제 시 자동 복구, 100틱 연속 시뮬레이션 동안 WorldInvariantValidationSystem 0 Violation 유지). 전체 EditMode 150/150 Pass.
+  - 당시 검증 기록(현재 전체 게임 검증과 구분): `Phase6EndToEndPipelineTests` 4개 통합 테스트 전수 통과 (End-to-End 전체 생산·물류·분배 순환 흐름, Splitter vs Storage 단일 벨트 경합 PlacementStamp 중재, Merger 출력 벨트 정체 시 백프레셔 전파 및 정체 해제 시 자동 복구, 100틱 연속 시뮬레이션 동안 WorldInvariantValidationSystem 0 Violation 유지). 전체 EditMode 150/150 Pass.
   - 완료 기준: 관련 통합 테스트가 통과하고 각 경로의 실행·동기화 계약이 확인된다.
 
 ---
@@ -428,7 +439,8 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 
 - [x] **Task 7.1: 공간 점유·예약의 소유권 계약 정의**
   - 선행 조건: 현재 `BuildingFootprint`, `BuildingSpatialIndex`, `BuildingSpatialSyncSystem`과 Phase 6 연결 계약 확인.
-  - 구현 범위·상태 소유자: 기존 크기·위치 데이터를 재사용하고 권위 있는 점유·예약 상태와 파생 조회 인덱스의 역할, 등록·해제 시점을 정의한다. `BuildingTypeEnum.ConstructionSite`를 추가하여 공사 현장을 `BuildingSpatialIndex`에 완공 건물과 동일하게 통합 등록($O(1)$ 동시 조회). `ConstructionComponents.cs`(`PlacementFlags`: 기본 `StrictAllOrNothing`, 선택 `AllowPartialPlacement`, `ConstructionSite`, `ConstructionSiteFlags`, `PlacementValidationResult`) 정의. `BuildingPlacementValidationUtility`를 통해 UI 프리뷰와 시뮬레이션 시스템이 공유하는 순수 함수 검증 유틸리티 구현 (다중 셀, 음수 좌표, 회전 Bounding Box Min Cell Anchor, 벨트 덮어쓰기 허용, 채굴기 자원 노드 필수 검사, 바닥 월드 아이템 회수 대기 연계, 다중 배치 선점 충돌 중재).
+  - 구현 범위/상태 소유자: ConstructionComponents.cs의 현장/자재 요구 데이터와 PlacementComponents.cs의 PlacementFlags/PlacementValidationResult를 구분한다. 같은 종류/티어 벨트의 방향 변경만 허용하며 다른 건물/티어의 점유 중첩은 거절한다. 공간 원본은 GridPosition과 회전 footprint를 따른다.
+  - 공간/배치 검증: 공사 현장과 완공 건물은 BuildingSpatialIndex에 함께 등록하고 Synchronization에서 원본 ECS로 재구축한다. BuildingPlacementValidationUtility는 회전/음수 좌표/다중 셀과 묶음 경합을 검사한다. 채굴기는 footprint 내 자원을 요구하고 바닥 월드 아이템은 배치를 막는 대신 회수 대기로 표시한다.
   - 후속 연결: 실제 예약과 현장 생성은 Task 7.2에서 구현한다. 레거시 `ChunkMapSystem`을 전제로 새로 만들지 않는다.
   - 검증: 다중 셀·회전·음수 좌표·동일 프레임 충돌의 예약 및 점유 상태 전이를 대조한다. `Phase7ConstructionContractTests` 8종 단위/통합 테스트 전수 통과 (218/218 EditMode 테스트 100% Pass).
   - 완료 기준: 원본 상태, 수정 권한, 인덱스 반영 시점이 하나의 계약으로 정리된다.
@@ -436,10 +448,10 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 - [x] **Task 7.2: 원자적 배치 예약 및 공사 현장 생성**
   - 2026-10-11 티어·표시 이름 현행 계약: 배치 후보는 TargetType/TargetTier와 해당 Config 크기 스냅샷을 전달한다. Command가 같은 조합의 해금·크기를 검증하고 요구 비용을 현장에 복사한다. ConstructionSite가 목표 종류·티어를 보존하며 EndCommand에 실체화한다. 같은 종류·티어 벨트 방향 변경만 유지하고 다른 티어 위의 배치는 거절한다. 기존 Strict/Partial 및 접수·설치 순서 규칙은 유지한다. [명세](../Specifications/BuildingTierAndDisplayName.md).
   - 선행 조건: Task 7.1, 관련 건물 정의·공사 비용 데이터.
-  - 구현 범위·상태 소유자: 여러 후보 footprint를 전부 예약한 뒤 건설 요청을 현장으로 전환한다. 권위 있는 배치 요청에서 `PlacementStamp(Tick, Order)`를 확정하고 현장에 그대로 전달한다. 공간 예약과 현장 상태는 각 소유자가 처리한다.
+  - 구현 범위·상태 소유자: 여러 후보 footprint를 전부 예약한 뒤 건설 요청을 현장으로 전환한다. 권위 있는 배치 요청에서 `PlacementStamp(Tick, Order, ReceiptSequence)`를 확정하고 현장에 그대로 전달한다. 공간 예약과 현장 상태는 각 소유자가 처리한다.
   - 후속 연결: 플레이어 입력·미리보기·복사는 Task 10B.2에서 연결한다.
   - 검증: 일부 셀 충돌, 잘못된 정의, 중복 요청, 생성 실패 시 모든 임시 예약의 롤백을 검사한다. `Phase7PlacementCommandTests` 8종 단위/통합 테스트 전수 통과 (226/226 EditMode 테스트 100% Pass).
-  - 완료 기준: 부분 현장·고아 예약 없이 요청이 성공하거나 전체 취소된다.
+  - 완료 기준: StrictAllOrNothing은 묶음 전체 승인/거절, AllowPartialPlacement는 유효 후보만 승인한다. 승인 후보의 footprint와 현장 구성에 부분 결과/고아 예약이 남지 않으며 같은 틱 경합과 접수 순서 계약을 유지한다.
 
 - [x] **Task 7.3.1: 건물 Authoring·프리팹 DB 및 정의 연결**
   - 2026-10-11 티어·표시 이름 현행 계약: 티어·표시 이름 지원 구조와 건물 자동 탐색 제거는 구현 완료다. BuildingConfig.json은 종류/명시적 양수 tier/displayName/footprint와 각 티어의 독립 스펙을 소유하고, 프리팹 목록은 Type/Tier/Prefab을 명시한다. ResourcesAutoLoad/LoadMode/PopulateFromResources와 전용 자동 채우기 Inspector는 제거했다. Baker는 Renderable 프리팹 참조와 DB 매핑을 게시하며 런타임 BuildingType/Tier/Footprint는 생성 소유자가 붙인다. 기존 11종만 1티어/현재 종류명/기존 수치로 전환했고 실제 상위 티어 데이터·UI·승급·연구 Writer는 후속이다. 초기화/생성의 무DB fallback은 현재 제공 기능이 아니다. [명세](../Specifications/BuildingTierAndDisplayName.md).
@@ -455,16 +467,16 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 2026-10-11 티어·표시 이름 현행 계약: BuildingStateApply의 BuildingLifecycleApplySystem과 공통 SpawnBuilding은 TargetType/TargetTier로 Config·프리팹을 조회하고 BuildingType.Type/Tier 및 원본 기본 크기·설치 표식을 EndBuilding에 기록한다. 직접 Spawn의 크기 생략만 Config를 사용하고 다른 티어를 대체 선택하지 않는다. 현장 완공도 같은 공통 Spawn을 호출한다. 조회 실패는 기존 Null/중단 진단이며 전체 Playback rollback을 보장하지 않는다. [명세](../Specifications/BuildingTierAndDisplayName.md).
   - 선행 조건: Task 7.1·7.3.1 및 현재 이식된 건물 타입의 데이터 계약.
   - 초기 구현 기록(현재 계약은 위 후속 참조): `SpawnBuildingRequest` 요청 컴포넌트(`IRequestComponent`) 및 Phase 5 `StateApplyGroup`의 `BuildingLifecycleApplySystem` 구현. 베이킹된 프리팹(`PrefabLookupUtility.TryGetBuildingPrefab`)과 `BuildingConfig` 설정 데이터를 연계하여 완공 건물 엔티티 인스턴스화, 공통 컴포넌트(`BuildingType`, `BuildingFootprint`, `GridPosition`, `Direction`, `PlacementStamp`, `LocalTransform`) 및 핵심 6종 건물(`Belt`, `Miner`, `Crafter`, `Storage`, `Splitter`, `Merger`)의 타입별 필수 상태/의사결정/버퍼 컴포넌트 원자적 초기화. 요청 및 현장의 `PlacementStamp`를 건물 엔티티로 승계. 등록 프리팹이 없으면 Null과 중단 진단으로 생성 거부(F-024). 무DB fallback은 제거했으며 테스트도 명시적인 프리팹 DB를 구성한다. 요청 엔티티는 단일 프레임 내 파괴(`Consume-on-Apply`).
-  - 후속 연결: Task 7.4 공사 자재 수령 계약 후, Task 7.5의 Completion Job이 별도 Spawn 요청 없이 `BuildingLifecycleUtility.SpawnBuilding`을 직접 호출하여 완공 건물로 전환한다. 미이식 5종 건물(`PowerPole`, `CoalGenerator`, `DroneStation`, `ResearchBuilding`, `MainFacility`) 전용 컴포넌트는 Phase 8·9·10에서 확장.
+  - 현재 연결/후속: Completion은 BuildingLifecycleUtility.SpawnBuilding으로 완공 건물을 직접 구성한다. 공통 생성은 11종의 현재 역할을 연결했으며 전신주/주 시설의 전신주, 석탄 발전기의 저장/연료/발전, 정거장/주 시설의 망/슬롯, 각 전력 참가 역할을 부착한다. 연구 진행/충전 Producer/주 시설 자동 시작은 후속이다.
   - 당시 검증 기록(새 실행 수가 아님): `Phase7BuildingLifecycleTests` 10개 단위/통합 테스트 전수 통과 (Belt/Miner/Crafter/Storage/Splitter/Merger 컴포넌트 및 버퍼 초기화, `BuildingConfig` 속도·용량 반영, 프리팹 인스턴스화, Strict Fail 거부, 회전 Footprint 유효 크기, 무효 타입 거부). 전체 EditMode 테스트 244/244 Pass (100%).
   - 완료 기준: 현재 이식 대상 건물이 일관된 초기 상태로 생성되고 실패 시 잔류 엔티티·점유가 없다.
 
 - [x] **Task 7.4: 공사 자재 요구량·수령 계약 구현**
   - 현재 진행(2026-10-12): **건설 코어·실물 정산 코드 연결 확인**. 현장 요구 버퍼와 Stored 실물에 Drone Lifecycle의 실제 공급 성공분을 반영한다. 과거 공사 운송의 별도 등록/수령 처리는 없고 실제 신호 Producer·자동 운송은 Phase 9의 남은 범위다.
   - 선행 조건: Task 7.2 및 Item 소유권·저장 계약.
-  - 구현 범위·상태 소유자: `ConstructionMaterialRequirementElement`에 `ReservedQuantity` 및 순수 계산 프로퍼티(`RemainingRequired`, `RemainingToReserve`, `IsSatisfied`, `IsFullyReserved`)를 추가하여 운송 예약과 실제 도착 자재를 구분하는 순수 데이터 계약 정립. `SupplyConstructionMaterialRequest` 요청 컴포넌트(`IRequestComponent`) 및 Phase 5 `StateApplyGroup`의 `ConstructionLifecycleApplySystem` 내부 `ConstructionMaterialApplyJob` 구현. 현장 유효성, 요구 품목 일치, 잔여량 존재 검증 후 자재 수령(`DeliveredQuantity` 증가, `ReservedQuantity` 차감), 현장 진행도(`Progress`) 갱신, 아이템 소유권의 현장 이전(`ItemOwnership.Stored(TargetSite)`), 렌더링 비활성화(`DisableRendering`), 현장 `StoredItemElement` 버퍼 등록을 처리한다. 수량/진행/버퍼는 Job에서 직접 갱신하고 Owner/렌더 태그와 요청 삭제는 EndStateApply에서 반영한다. 잘못된 품목·초과 전달·무효 현장 시 Strict Rejection(수령 거부, 아이템 소유권 유지, 요청만 소비) 적용. 단일 프레임 내 요청 엔티티 파괴(`Consume-on-Apply`).
+  - 초기 구현 기록(아래 수치는 당시 버전이며 현재 수령은 앞의 Drone Lifecycle 계약을 따름): `ConstructionMaterialRequirementElement`에 `ReservedQuantity` 및 순수 계산 프로퍼티(`RemainingRequired`, `RemainingToReserve`, `IsSatisfied`, `IsFullyReserved`)를 추가하여 운송 예약과 실제 도착 자재를 구분하는 순수 데이터 계약 정립. `SupplyConstructionMaterialRequest` 요청 컴포넌트(`IRequestComponent`) 및 Phase 5 `StateApplyGroup`의 `ConstructionLifecycleApplySystem` 내부 `ConstructionMaterialApplyJob` 구현. 현장 유효성, 요구 품목 일치, 잔여량 존재 검증 후 자재 수령(`DeliveredQuantity` 증가, `ReservedQuantity` 차감), 현장 진행도(`Progress`) 갱신, 아이템 소유권의 현장 이전(`ItemOwnership.Stored(TargetSite)`), 렌더링 비활성화(`DisableRendering`), 현장 `StoredItemElement` 버퍼 등록을 처리한다. 수량/진행/버퍼는 Job에서 직접 갱신하고 Owner/렌더 태그와 요청 삭제는 EndStateApply에서 반영한다. 잘못된 품목·초과 전달·무효 현장 시 Strict Rejection(수령 거부, 아이템 소유권 유지, 요청만 소비) 적용. 단일 프레임 내 요청 엔티티 파괴(`Consume-on-Apply`).
   - 후속 연결: 실제 드론의 아이템/목적지 용량 예약 및 운송 도착은 Task 9.6·9.12·9.20에서 구현·연결. 완공 시점의 자재 소비 및 건물 전환은 Task 7.5에서 처리.
-  - 검증: `Phase7ConstructionMaterialTests` 8개 단위/통합 테스트 전수 통과 (순수 계산 프로퍼티, 단일 유효 수령 및 소유권 이전/버퍼 등록, 기존 예약 차감, 잘못된 품목 거부, 초과 전달 거부, 무효 현장 거부, 동일 프레임 다중 전달 누적, 묶음 초과 시 한도 내 부분 수령 및 잉여분 거부). 전체 EditMode 테스트 252/252 Pass (100%).
+  - 당시 검증 기록: `Phase7ConstructionMaterialTests` 8개 단위/통합 테스트 전수 통과 (순수 계산 프로퍼티, 단일 유효 수령 및 소유권 이전/버퍼 등록, 기존 예약 차감, 잘못된 품목 거부, 초과 전달 거부, 무효 현장 거부, 동일 프레임 다중 전달 누적, 묶음 초과 시 한도 내 부분 수령 및 잉여분 거부). 전체 EditMode 테스트 252/252 Pass (100%).
   - 완료 기준: 자재 수량·품목·소유권이 일치하며 수령 성공 여부를 운반 측에 전달할 수 있다.
 
 - [x] **Task 7.5: 공사 완료 및 건물 전환 구현**
@@ -479,9 +491,9 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 - [x] **Task 7.6: 공사 취소 및 도착 자재 반환 구현**
   - 현재 진행(2026-10-12): **코드 구현 확인**. ConstructionCancelCommandSystem이 Cancelled를 즉시 기록해 중복 반환을 막고 도착 실물의 Owner/좌표/렌더와 현장 삭제를 EndCommand에 기록한다. 다른 드론의 미도착 적재품은 새로 생성/이전하지 않으며 Drone Lifecycle 재배정에서 보존한다.
   - 선행 조건: Task 7.2·7.4~7.5.
-  - 구현 범위·상태 소유자: Phase 5 `StateApplyGroup`의 `ConstructionLifecycleApplySystem` 내부 `CancelConstructionApplyJob` 구현. 같은 시스템에서 취소→수령→완공 JobHandle을 연결한다. `CancelConstructionRequest`를 소비하여 취소 승인 시 `site.Flags |= ConstructionSiteFlags.Cancelled`를 즉시 마킹하여 동일 프레임 [자재 도착/수령] 및 [완공 전환]을 원천 차단(Cancel Wins 정책). 현장에 이미 보관된 자재(`StoredItemElement`)를 `ItemOwnership.WorldItem`으로 전환하고 `DisableRendering` 제거 및 현장 그리드 좌표로 방출. `ECB.DestroyEntity(TargetSite)`를 통해 현장을 파괴하여 Phase 6 공간 동기화 시 건물 공간 점유를 안전하게 자동 해제. 중복 취소, 기파괴/완공 건물 대상 취소에 대해 요청만 안전하게 소비(Idempotent Drop / Strict Rejection).
+  - 초기 구현 기록(현재 취소는 위 Command/EndCommand 계약을 따르며 다음 Job/체인은 제거됨): Phase 5 `StateApplyGroup`의 `ConstructionLifecycleApplySystem` 내부 `CancelConstructionApplyJob` 구현. 같은 시스템에서 취소→수령→완공 JobHandle을 연결한다. `CancelConstructionRequest`를 소비하여 취소 승인 시 `site.Flags |= ConstructionSiteFlags.Cancelled`를 즉시 마킹하여 동일 프레임 [자재 도착/수령] 및 [완공 전환]을 원천 차단(Cancel Wins 정책). 현장에 이미 보관된 자재(`StoredItemElement`)를 `ItemOwnership.WorldItem`으로 전환하고 `DisableRendering` 제거 및 현장 그리드 좌표로 방출. `ECB.DestroyEntity(TargetSite)`를 통해 현장을 파괴하여 Phase 6 공간 동기화 시 건물 공간 점유를 안전하게 자동 해제. 중복 취소, 기파괴/완공 건물 대상 취소에 대해 요청만 안전하게 소비(Idempotent Drop / Strict Rejection).
   - 후속 연결: 운송 중 취소·화물 복구 및 드론 예약 롤백 연동은 Task 9.15~9.16·9.20에서 연결한다.
-  - 검증: `Phase7ConstructionCancelTests` 7개 단위/통합 테스트 전수 통과 (빈 현장 즉시 취소 및 파괴, 보관 자재 보유 현장 취소 시 WorldItem 전환 및 DisableRendering 제거/바닥 방출, 완납 현장 취소 시 자재 반환 및 완공 차단, 동일 프레임 자재 공급+취소+완공 경쟁 시 Cancel Wins 및 자재 드론/월드 보존, 동일 프레임 중복 취소 Idempotent Drop, 무효/완공 대상 취소 Strict Rejection, 취소 시 공간 인덱스 해제). 전체 EditMode 테스트 255/255 Pass (100%).
+  - 당시 검증 기록: `Phase7ConstructionCancelTests` 7개 단위/통합 테스트 전수 통과 (빈 현장 즉시 취소 및 파괴, 보관 자재 보유 현장 취소 시 WorldItem 전환 및 DisableRendering 제거/바닥 방출, 완납 현장 취소 시 자재 반환 및 완공 차단, 동일 프레임 자재 공급+취소+완공 경쟁 시 Cancel Wins 및 자재 드론/월드 보존, 동일 프레임 중복 취소 Idempotent Drop, 무효/완공 대상 취소 Strict Rejection, 취소 시 공간 인덱스 해제). 전체 EditMode 테스트 255/255 Pass (100%).
   - 완료 기준: 확인된 취소 우선순위(Cancel Wins)를 지키고 자재·현장·공간 예약이 중복 정리되거나 남지 않는다.
 
 - [x] **Task 7.7: 건물 철거 코어 및 내용물 반환 구현**
@@ -489,9 +501,9 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 2026-10-11 티어·표시 이름 현행 계약: 철거 환급은 완공 BuildingType.Type/Tier와 일치하는 비용 행만 조회하며 공통 ItemLifecycleUtility로 EndBuilding에 생성한다. 기존 Stored/Product 실물 반환·Indestructible/Destroy 보호는 유지했다. 상위 창고의 Copper 3개만 환급하는 통합 사례와 기존 철거 19/19가 통과했다. 환급 실패 보상/전체 rollback은 별도다. [명세](../Specifications/BuildingTierAndDisplayName.md).
   - 선행 조건: Task 7.3, Item 소유권 경계 및 Phase 6 연결 변경 처리.
   - 초기 구현 기록(현재 계약은 위 후속 참조): `BuildingDemolitionCommandSystem`이 검증·중복 제거한 요청을 `BuildingLifecycleApplySystem`이 소비한다. 기존 Stored/Product 실물을 반환하고 건축 비용을 공통 `ItemLifecycleUtility`로 새로 생성하며 건물/요청 삭제는 EndStateApply에 기록한다. `ItemLifecycleApplySystem`도 같은 승인 요청을 읽어 철거 대상 생산 결과와 Storage/Product Spawn을 거부한다. 선소비 재료·광물의 보상은 없으며 전력/드론 연결은 후속 범위다.
-  - 후속 연결: 전력 등록 해제는 Task 8.7, 드론 철거 실행은 Task 9.17, 정거장 드론 재배치는 Task 9.19에서 완료한다.
+  - 연결/후속: 전력 참여 제외/망 정리는 완료된 Task 8.7 계약을 따른다. 실제 드론 철거 실행과 정거장 수행자 재배치는 Task 9.17/9.19에 남는다.
   - 당시 검증 기록(새 실행 수가 아님): `Phase7BuildingDemolishTests` 13개 단위/통합 테스트 전수 통과 (빈 건물 철거, 보관/생산 내용물 월드 방출, 건축 비용 자재 100% 환급 스폰, Indestructible 파괴 거부, 무효/공사현장 대상 거부, 동일 프레임 중복 철거 멱등성, 공간 인덱스 해제, 벨트 철거 시 아이템 정적 보존, 프리팹 DB 아이템 환급 스폰, 프리팹 누락 시 Strict Fail Policy, 동일 틱 이동 아이템 타이밍 무결성 검증, 동일 프레임 물류 적용 후 철거 순서 보장 검증, EndCommandECB 즉시 커밋 검증). 전체 EditMode 테스트 268/268 Pass (100%).
-  - 완료 기준: 승인 철거의 중단·반환/환급·삭제를 현재 Command/EndBuilding 경계에 맞추고 공간 인덱스를 Synchronization에서 갱신한다. 전력·드론 연결은 해당 후속 Task로 구분하며 전체 틱 rollback을 보장하지 않는다.
+  - 완료 기준: 승인 철거의 중단/반환/환급/삭제는 Command/EndBuilding, 전력 제외/연결 정리는 Power/EndPower, 공간 갱신은 Synchronization에서 처리한다. 드론 수행/재배치는 후속이며 전체 틱 rollback은 보장하지 않는다.
 
 - [x] **Task 7.8: 건설 코어 수명주기 통합 검증**
   - 현재 진행(2026-10-12): **기존 코어 완료 기록 유지·현재 fixture 정의 확인**. 현재 Phase7EndToEndConstructionPipelineTests는 기본 수명주기·취소·벨트 방향/재배치·티어 창고 흐름을 갖는다. 아래 초기 테스트명/6페이즈/2-Sync Point 기록은 당시 범위이고 이번 새 실행 결과가 아니다. 직접 자재 준비를 실제 드론 운송으로 확대하지 않는다.
@@ -506,7 +518,7 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
     4. `Test04_ImmediateRepositioning_DemolishAndReconstructOnSameTile`: Storage 철거 후 자재 환급 및 바닥 정돈 직후 동일 타일 신규 Belt 배치, `AwaitingItemClearance` 회피 및 자재 공급 후 Belt 정상 완공 전환 검증.
     5. `Test05_MultiTickContinuousSimulation_StressAndWorldInvariantZeroViolation`: 채굴기-벨트-창고 물류 라인과 공사 현장이 공존하는 복합 환경에서 100틱 연속 시뮬레이션 구동 시 `WorldInvariantValidationSystem` 위반 0건 스트레스 검증.
     - 전체 EditMode 테스트 273/273 Pass (100%).
-  - 완료 기준: 현재 Command→Building→Drone→Commit→Synchronization과 각 ECB 경계에서 건설 코어 수명주기·공간/아이템 정합성을 확인하고 테스트 주입과 실제 수행부의 범위를 구분한다. 이후 구조 변경의 새 실행 증거는 별도로 확인한다.
+  - 완료 기준: 현재 Command/EndCommand → Preparation → Power/EndPower → Building/EndBuilding → Drone → SimulationCommit/EndSimulation → Synchronization과 각 ECB 경계에서 건설 코어 수명주기·공간/아이템 정합성을 확인하고 테스트 주입과 실제 수행부의 범위를 구분한다. 이후 구조 변경의 새 실행 증거는 별도로 확인한다.
 
 ---
 
@@ -522,27 +534,27 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 사용자 확정 — 수요: 실제로 작업 가능한 소비자만 수요를 발생시킨다. 연결된 모든 소비자의 정격 소비량을 항상 합산하던 레거시를 그대로 이식하지 않는다. 정격 능력의 설정 원본, 각 도메인이 작성하는 이번 틱 수요, 전력이 게시하는 공급 결과를 구분한다. 공급률 0 자체를 수요 0의 근거로 사용하지 않는다. 전력을 제외한 작업 조건으로 수요를 준비해야 정전 후 복구할 수 있다.
   - 사용자 확정 — 설정 원본·티어: PowerConfig.json의 전신주·발전기·소비자·석탄 연료 설정을 BuildingConfig.json으로 통합했다. 종류·Tier별 역할의 power 객체를 BuildingConfigElement.Power로 게시하며 다른 정의를 상속/대체하지 않는다. 석탄 에너지·저장 슬롯과 역할별 필수 필드/값은 JSON·공개 게시·사전 등록에서 검증한다. 별도 PowerConfig.json은 제거했다. [건물 설정 명세](../Specifications/BuildingTierAndDisplayName.md), [전력 명세](../Specifications/PowerGrid.md)를 따른다.
   - 설정 실패·게시: 통합한 전력 필드는 BuildingConfig 검증에 포함하고 성공한 전체 정의를 원자적으로 게시한다. 현재 파일/파싱/검증 실패의 로그·미게시·SimulationFatalError·자동 재시도 없음 계약을 재사용한다. 별도 PowerConfig 로더나 독립 설정 원본을 추가하지 않는다. 전력 파생 게시 데이터를 따로 둘 경우의 준비 검사는 통합 원본과 일치해야 한다.
-  - 사용자 확정 — 범위: 전신주의 공급 범위와 전신주 간 연결 범위는 각각 단일 스칼라 range로 정의하여 X/Y에 같은 값을 적용한 정사각형으로 조회·표시한다. supplyRangeX/Y·connectionRangeX/Y 구분은 제거할 대상이며 공급과 연결의 두 역할은 유지한다. range는 중심 ± range의 경계를 포함하는 셀 반경이다. range 5는 11×11 셀이다. 서로 다른 Tier/range의 전신주도 둘 중 한쪽 연결 범위에 상대 중심이 포함되면 연결한다(OR). 범위 표시 UI 구현은 Task 10B의 후속이다.
-  - 사용자 확정 — 작업 자격: 기존 Miner의 CanMine, Crafter의 CanStartCraft/CanAdvance로 이번 틱 수요를 도출한다. Crafter가 진행 완료 후 결과 확정/출력 공간만 기다리는 상태는 수요 0이다. 미완료 Crafter의 출력 공간과 진행 허용 여부는 현재 도메인 결정 계약을 유지한다. 연구는 전력 외 신규 착수 조건 또는 진행할 로컬 주기를 기준으로 수요를 준비한다.
+  - 사용자 확정 — 범위: 전신주의 공급 범위와 전신주 간 연결 범위는 각각 단일 스칼라 range로 정의하여 X/Y에 같은 값을 적용한 정사각형으로 조회·표시한다. 기존 supplyRangeX/Y 및 connectionRangeX/Y 구분은 제거했고 공급과 연결의 두 역할은 유지한다. range는 중심 ± range의 경계를 포함하는 셀 반경이다. range 5는 11×11 셀이다. 서로 다른 Tier/range의 전신주도 둘 중 한쪽 연결 범위에 상대 중심이 포함되면 연결한다(OR). 범위 표시 UI 구현은 Task 10B의 후속이다.
+  - 사용자 확정 — 작업 자격: MinerWorkPreparation.CanMine과 CrafterWorkPreparation.CanStartCraft/CanAdvance를 읽어 BuildingPowerDemandPreparationSystem이 이번 틱 수요를 준비한다. 실행 결정은 공급 이후 BuildingDecision이 작성한다. Crafter가 진행 완료 후 결과 확정/출력 공간만 기다리는 상태는 수요 0이다. 미완료 Crafter의 출력 공간과 진행 허용 여부는 현재 도메인 결정 계약을 유지한다. 연구는 전력 외 신규 착수 조건 또는 진행할 로컬 주기를 기준으로 수요를 준비한다.
   - 사용자 확정 — 무전력 제작: 공급률 0이면 Crafter의 신규 착수·재료 선소비는 대기하고 이미 착수한 진행도·실물은 보존한다. 완료된 제작물의 결과 확정·출고는 허용하며 기존 출력 공간 검사는 유지한다. 연구는 기존 확정 명세의 무전력 신규 착수 금지와 진행 보존을 따른다.
   - 사용자 확정 — 배정량 확정 소비(2026-10-15 갱신): Power에서 전역 입력/예산을 모두 검증한 뒤 발전기 연료를 전환·차감하고 공급을 한 번 게시한다. 배정받았지만 실행하지 못한 전력과 조기 완료의 잔여분도 소비로 확정한다. 소비 이후 환급·재정산·같은 틱 재배분은 없으며 마지막 연료의 부분 공급과 발전기 예산/소비자 배정 한도를 검사한다. Power 실패는 같은 틱 Building/Drone을 차단하지만 Command rollback은 보장하지 않는다.
   - 사용자 확정 — 충전 수요 준비: 드론 도메인은 EndBuilding 뒤에 실행되지만 공통 공급 계산 전에 충전 후보·배터리 상태로 이번 틱 충전 예산을 준비한다. 이번 틱 새로 귀환한 드론은 다음 틱부터 충전한다. 후속 배차 등으로 실행되지 않은 충전도 Power에서 배정량을 소비로 확정하며 환급/재정산하지 않는다. 실제 충전 Writer는 Task 9.14에서 구현한다.
   - 사용자 확정 — 연료 저장: 석탄 발전기는 종류·Tier별 BuildingConfig.storageCapacity와 기존 Coal MaxStack을 사용한다. 사용자 지정 임시 1슬롯을 실제 JSON에 설정했고 현재 슬롯당 용량은 50이다. 별도 실물 10개 상한은 유지하지 않는다. 실제 공통 생성/완공·일반 입고 연결은 Task 8.6에서 구현했다.
   - 사용자 확정 — 연료 에너지: coalEnergyPerItem은 발전기 종류·Tier별로 석탄 한 개에서 얻는 에너지를 설정한다. CoalGenerator Tier 1의 임시 600을 실제 JSON/게시 데이터에 이관했으며 향후 밸런스 조정에서 변경한다.
-  - 후속 구현: 그룹 내부 순서·각 컴포넌트의 Writer/Reader·프레임 초기화·에너지 필드·석탄 전환/정산/삭제 경계와 틱별 기대 결과는 전력 명세로 확정했다. 후속 Task에서 실제 Writer와 Job 의존성을 연결한다. 별도 전신주·망 번호 발급은 두지 않으며 망 생성·병합/분리 및 공급 전신주 선택 상세는 Task 8.2~8.4에서 구현한다. 이미 확정한 게임 규칙을 다시 미확정으로 취급하지 않는다.
-  - 후속 연결: 망 구성·연결·배분·연료는 Task 8.2~8.6에서 구현한다. Task 8.5~8.7·9.14·10A.3은 여기서 확정한 프레임 계약을 재사용한다. 기존 규칙으로 결정할 수 없는 동작 차이는 사용자 확인 후 확정한다.
-  - 검증: 통합 설정의 누락·중복·잘못된 값·종류/Tier 대응과 도메인 간 데이터 읽기·쓰기 계약을 검사한다. 연료 없음→입고, 마지막 연료 소진, 공급 중 설치/철거, 작업 가능/대기 전환, 수요 산정 후 실행 실패, 충전 후보 변경의 틱별 기대 결과와 담당 검증 Task를 기록한다. Task 8.7에서 실제 GameSimulationGroup·ECB 경계로 검증하고 드론·연구 연결은 각 후속 Task에서 확인한다.
-  - 완료 기준: 생산 도메인이 전력망 내부 구조를 몰라도 공급 결과를 소비할 수 있는 계약과 실행 순서·프레임 기준·경계 사례의 기대 결과가 확정된다. 후속 구현·실행 검증이 남아 있다는 사실은 별도로 기록한다.
+  - 현재 구현 연결: 그룹 내부 순서/Writer/초기화/연료 전환/정산/삭제와 Job 의존성은 Task 8.2~8.7에서 연결했다. 전력 검증 scratch는 PowerValidationInitializationSystem이 소유하고 EndPower가 첫 오류/ECB 공개를 담당한다. 별도 전신주/망 번호나 PowerFrameState/PowerReadContext/연결 스냅샷은 없다.
+  - 후속 연결: 완료된 망/공급/연료/생산 연결을 재사용해 Task 9.14의 충전과 Task 10A.3의 연구 수요/진행 Producer, Task 9.22의 자동 시작을 연결한다. 기존 확정 규칙을 새 미확정 사항으로 되돌리지 않는다.
+  - 검증: 통합 설정의 누락·중복·잘못된 값·종류/Tier 대응과 도메인 간 데이터 읽기·쓰기 계약을 검사한다. 연료 없음→입고, 마지막 연료 소진, 공급 중 설치/철거, 작업 가능/대기 전환, 수요 산정 후 실행 실패, 충전 후보 변경의 틱별 기대 결과와 담당 검증 Task를 기록한다. Task 8.7의 GameSimulationGroup/ECB 경계 검증 기록을 재사용하고 드론·연구 연결은 각 후속 Task에서 확인한다.
+  - 완료 기준: 생산 도메인이 전력망 내부 구조를 몰라도 공급 결과를 소비할 수 있는 계약과 실행 순서·프레임 기준·경계 사례의 기대 결과가 확정된다. 연구/충전/자동 시작의 후속 구현과 전체 제품 실행/성능 검증은 별도로 남긴다.
   - 새 검증(2026-10-12): Editor 재컴파일 completed/failed false/errors 없음·ready/비리로드·현재 runtime/editor DLL을 확인했다. 선택 EditMode는 신규 전력 계약 26, 기존 건물 Init 1·정의 24·프리팹 준비 19로 총 70/70 통과했다. 실제 GameSimulationGroup 전력 틱·연료/생산/충전·Play Mode·베이킹·Player 빌드·성능은 미실행이며 각 후속 검증에 남긴다.
   - 후속 제거 검증(2026-10-12): 소비처에 독립적인 FuelEnergyState 이름을 유지하고 전력 전용 시계·연료 참조 버퍼·발전 결과·망 집계 컴포넌트 4개와 남은 프레임 Tick 필드를 제거했다. 프레임 초기화·기존 보관 연료 재검사·일시 집계/정산 계약을 갱신하고 Editor 컴파일을 확인했다. 위 70사례는 초기 Task 8.1 검증 기록이며 이번 정의 정리 후 테스트를 재실행한 수치가 아니다.
 
 - [x] **Task 8.2: 전신주 추가 및 망 생성·병합 구현**
-  - 완료(2026-10-13): 롤백 후 공통 전신주 부착·프레임 결정·망 생성/병합·공개 연결 인덱스/Fence를 다시 구현하고 Unity 컴파일 확인과 관련 선택 EditMode를 통과했다. 전력 전용 그룹은 추가하지 않았다. 제거/분리와 공급/연료·생산/충전은 후속이다.
+  - 당시 완료 기록(2026-10-13, 이후 Power 분리/연료/생산 연결 전): 롤백 후 공통 전신주 부착·프레임 결정·망 생성/병합·공개 연결 인덱스/Fence를 다시 구현하고 Unity 컴파일 확인과 관련 선택 EditMode를 통과했다. 전력 전용 그룹은 추가하지 않았다. 제거/분리와 공급/연료·생산/충전은 후속이다.
   - 사용자 확정 — 생성 범위: 후속 공통 직접 Spawn/현장 완공은 일반 전신주와 주 시설에 전신주 태그·초기 연결을 부착한다. 발전기/소비자 연결은 8.7, 주 시설 자동 생성은 9.22다.
   - 사용자 확정 — 연결: 종류·Tier의 단일 connection range를 셀 반경 정사각형으로 검사하고 한쪽 범위에 상대 중심이 포함되면 연결한다(OR). 공급 범위 중첩만으로 병합하지 않는다.
   - 사용자 확정 — 식별/순서: 전신주와 망은 Entity로 식별하고 망은 전신주와 별도 Entity로 관리한다. 별도 StableId/번호 발급을 두지 않으며 기존 PlacementStamp.Compare를 사용한다. 기본 정의의 남은 StableId 필드를 제거했다.
   - 사용자 확정 — 병합: 기존 유효한 망 소속 전신주 중 설치 순서가 가장 앞선 전신주의 망 Entity를 유지한다. 새 전신주의 설치 기록이 더 빨라도 기존 망 중에서 유지 대상을 선택한다. 소속 변경과 나머지 망 삭제는 같은 ECB 경계에 공개한다.
-  - 사용자 확정 — 같은 틱: 연결 계산 결과는 이번 틱 공급 계획에 사용하고 실제 망 생성/소속 변경은 EndBuilding에 공개한다. N틱 EndBuilding에 생성된 참가자는 N+1부터 공급에 참여한다. ECB 예약 Entity를 살아 있는 망이나 다른 ECB의 참조로 사용하지 않는다.
+  - 사용자 확정 — 같은 틱: 연결 계산 결과는 이번 틱 공급 계획에 사용하고 실제 망 생성/소속 변경은 EndPower에 공개한다. N틱 EndBuilding에 생성된 참가자는 N+1부터 공급에 참여한다. ECB 예약 Entity를 살아 있는 망이나 다른 ECB의 참조로 사용하지 않는다.
   - 현재 소유자/자료(2026-10-15): PowerGridTopologyReservationSystem은 PowerReservation에서 이전 공개 망과 전신주 입력을 읽어 연결/대표/유지 망을 계획한다. PowerGridTopologyApplySystem은 PowerStateApply에서 준비된 계획을 EndPower에 기록한다. 계획 필드는 RepresentativePole·RetainedGrid이며 대조 전용 ExpectedGrid는 제거했다. 별도 준비 맵/Fence나 예약 Entity는 없고 PowerGridConnectionSyncSystem이 공개 연결 인덱스/Fence를 소유한다. 이후 단계는 중간 Writer가 없는 원본을 다시 대조하지 않는다.
   - 선행 조건: Task 8.1.
   - 후속 연결: 제거/분리는 8.3, 일반 건물 공급 연결은 8.4에서 구현한다.
@@ -554,22 +566,22 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 명명/책임 분리 후 검증(2026-10-13): Reservation 시스템/파일 이름과 참조·문서를 갱신하고 망 생성/연결 변경/병합 삭제 기록을 BuildingStateApply의 Apply 시스템으로 이관했다. 기존 meta GUID와 EndBuilding 공개 계약을 유지했다. Unity 컴파일 completed/failed false/errors 없음·ready/비컴파일/비리로드·최신 runtime/Editor DLL을 확인했다. 선택 EditMode는 토폴로지 6/6·공통 생성 11/11·공사 완공 8/8로 이번 25/25, 실패·생략·불확정 0이다. 기존 병합 검증에 Reservation/Apply/Playback 경계 검사를 더하고 준비 후 연결 변경 실패의 회귀 1사례를 추가했다. 앞선 50사례와 합산하지 않으며 전력 설정 테스트·Play Mode·빌드·성능은 이번에 재실행하지 않았다.
 
 - [x] **Task 8.3: 전신주 제거 및 망 분리 구현**
-  - 완료(2026-10-13): 기존 Reservation/StateApply에 망 분리 유지권·비활성 해제·빈 망/모든 런타임 참조 정리를 연결하고 기존 철거 요청/Command/EndBuilding 경계로 검증했다. 공급 전신주 검색·발전기/소비자 제품 등록·발전/연료/생산/충전은 후속이다.
+  - 당시 완료 기록(2026-10-13, 이후 Power 분리 전): 기존 Reservation/StateApply에 망 분리 유지권·비활성 해제·빈 망/모든 런타임 참조 정리를 연결하고 기존 철거 요청/Command/EndBuilding 경계로 검증했다. 공급 전신주 검색·발전기/소비자 제품 등록·발전/연료/생산/충전은 후속이다.
   - 사용자 확정 — 1A: 기존 망의 남은 활성 멤버 중 PlacementStamp.Compare가 가장 앞선 전신주의 연결 집합만 기존 망을 유지하고 다른 집합은 새 망을 생성한다. 이전 대표가 없어져도 남은 멤버로 판단한다.
   - 사용자 확정 — 2A: 기존 망별 분리 유지권을 먼저 확정한 뒤 집합별 기존 병합 규칙을 적용한다. 병합으로 남는 기존 망을 다른 집합에 재배정하지 않는다.
   - 사용자 확정 — 3A: Disabled 전신주는 Grid를 Null로 해제하되 자기 전신주 참조·엔티티·설치 기록을 보존한다. 재활성화 시 다시 연결하며 비활성 상태의 과거 소속을 복원하지 않는다.
   - 레거시 검토: 전신주 추가/제거 후 참가자 연결을 정리하고 남은 연결 성분으로 망을 재계산했다. 이전 전체 재구축은 참고 방식이며 제거·재연결의 공개 시점은 Task 8.1의 프레임 계약을 따른다.
   - 선행 조건: Task 8.2.
-  - 구현 범위·상태 소유자: Reservation이 활성 원본으로 연결 집합/유지권을 작성하고 Apply가 최종 검사 후 대표별 망 생성·기존 런타임 참조 정리·미사용 망 삭제를 같은 EndBuilding ECB에 기록한다. 기존 망 전체를 조회하여 마지막 전신주 소실 뒤에도 회수한다. 준비 실패/누락은 빈 망으로 처리하지 않아 정상 변경을 시작하지 않는다. Prefab은 정리 대상에서 제외하고 Disabled 참가자의 참조는 정리한다.
-  - 기존 철거/후속 연결: 일반 전신주의 실제 삭제는 현재 DemolishBuildingRequest → BuildingDemolitionCommandSystem/EndCommand → BuildingLifecycleApplySystem/EndBuilding 경로를 재사용한다. 살아 있는 선택 전신주의 새 망으로 참조를 맞추고 무효 선택은 해제한다. 다른 공급 전신주 검색은 8.4, 발전기/소비자 제품 부착과 실제 생산 연결은 8.7이다.
+  - 구현 범위/상태 소유자: PowerReservation이 활성 원본의 연결 집합/유지권을 계획하고 PowerStateApply가 준비 여부를 확인하여 대표별 망 생성/기존 참조 정리/미사용 망 삭제를 EndPower에 기록한다. 마지막 전신주가 사라진 망도 회수하며 준비 실패를 빈 망으로 취급하지 않는다. Prefab은 제외하고 Disabled 참가자 참조는 정리한다. 앞선 Writer가 보장한 원본 전체를 Apply에서 반복 검사하지 않는다.
+  - 기존 철거/연결: DemolishBuildingRequest의 승인은 Command/EndCommand, 이번 틱 Power의 참가 제외/망 연결 정리는 EndPower, 실제 건물 반환/삭제는 Building/EndBuilding이다. 공급 전신주 선택/발전기와 소비자 부착/생산 연결은 8.4~8.7에서 완료했고 연구/충전은 해당 후속 Task를 따른다.
   - 검증: 끝 전신주·연결 다리·마지막 전신주 제거, 반복 제거와 재설치를 검사한다.
   - 완료 기준: 분리된 망과 남은 전신주의 소속이 일치하고 사라진 연결이 남지 않는다.
   - 새 검증(2026-10-13): Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·ready/비컴파일/비리로드/Play stopped와 runtime/Editor DLL 최신성을 확인했다. 선택 EditMode는 Phase8PowerTopologyTests 13/13·Phase7BuildingDemolishTests 19/19로 이번 32/32, 실패·생략·불확정 0이다. 기존 토폴로지 6사례에 실제 철거 기반 끝/다리/이전 대표 제거, 마지막/중복 제거·재설치, Disabled 해제/재활성화, 동시 분리·병합 유지권, 기존 일반/Disabled 참조 정리와 입력 실패 보존의 7사례를 추가했다. 일반 소비자 참조 입력은 fixture이며 실제 제품 등록/공급 선택 증거가 아니다. 과거 성공 수치와 합산하지 않는다. Play Mode·베이킹·Player 빌드·성능과 실제 발전/연료/생산/충전은 미수행이다.
 
 - [x] **Task 8.4: 공급 범위 및 건물의 망 연결 구현**
-  - 현재 상태(2026-10-14): PowerGridConnectionDecisionSystem이 BuildingDecision에서 활성 일반 참가자의 공급 전신주를 선택한다. 기존 Reservation이 토폴로지를 준비하고 PowerGridTopologyApplySystem이 둘을 최종 검사·연결 공개를 같은 EndBuilding ECB에 기록한다. 전력 배분/발전/연료/생산/충전 Writer는 후속이다.
+  - 현재 상태(2026-10-24 소스 대조): PowerGridConnectionDecisionSystem은 PowerDecision에서 활성 일반 참가자의 공급 전신주를 선택한다. PowerReservation의 토폴로지와 준비된 선택을 PowerGridTopologyApplySystem이 EndPower에 공개한다. 발전/소비 역할과 연료/생산 연결은 8.5~8.7에서 완료했고 연구/충전 수요 Producer는 후속이다.
   - 사용자 확정 **1A·2A·3A·4A**: 회전된 점유 셀 하나라도 공급 범위에 닿으면 후보이고, 전체 점유 셀↔전신주의 최소 제곱거리와 PlacementStamp.Compare 동률 규칙으로 매 틱 재선택한다. 유효한 기존 연결도 더 가까운 후보로 변경한다. 일반 참가자의 새 선택은 활성 상태에서만 수행하며 비활성 상태는 8.3의 기존 참조 정리만 적용하고 재활성화 시 다시 선택한다.
-  - 공통 생성/완공: Miner·Crafter·ResearchBuilding·CoalGenerator·DroneStation에 PowerGridConnection과 비활성 PowerGridConnectionDecision을 부착한다. 전신주/주 시설은 자기 전신주 참조를 유지한다. EndBuilding에서 생성된 참가자/전신주는 다음 틱부터 선택에 참여한다. 발전기/소비자 역할·연료·수요·충전 상태 부착은 해당 후속 Task 범위다.
+  - 공통 생성/완공: Miner·Crafter·ResearchBuilding·CoalGenerator·DroneStation에 PowerGridConnection과 비활성 PowerGridConnectionDecision을 부착한다. 전신주/주 시설은 자기 전신주 참조를 유지한다. EndBuilding에서 생성된 참가자/전신주는 다음 틱부터 선택에 참여한다. 발전기/소비자 역할과 연료/생산 수요 구성은 완료했으며 충전과 연구의 실제 수요/진행은 후속이다.
   - 레거시 검토: 이전 코드 지도에는 이미 회전 후 전체 점유 셀을 검사하고 셀↔전신주 중심 거리 제곱 최소인 전신주를 선택하는 동작이 기록되어 있었다. 첫 점유 셀에서 끝내거나 anchor/시각 중심 거리로 선택하지 않았다. 앞선 단일 좌표 문제 피드백과 시점이 다른 기록이므로 현재 V2 버그나 새 실행 근거로 합치지 않는다. 과거 별도 번호를 사용한 동률 규칙은 재사용하지 않으며 후속 동률 처리는 사용자 확정한 기존 PlacementStamp.Compare를 따른다.
   - 선행 조건: Task 8.2~8.3 및 건물 footprint 계약.
   - 구현 범위·상태 소유자: BuildingConfig의 단일 supply range와 원본 GridPosition·Direction·Footprint를 조회한다. 회전 직사각형 전체에서 가장 가까운 점유 셀을 계산하므로 첫 셀/anchor/시각 중심으로 선택하지 않는다. 참가자별 선택 Job은 병렬로 실행하며 전신주 Entity 목록과 읽기 전용 Lookup을 사용한다. 별도 위치/연결 스냅샷·준비 인덱스·Fence는 만들지 않는다. 결정의 활성 상태는 준비 완료이며 활성 Null 선택은 정상 단절이다.
@@ -581,8 +593,8 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 
 - [x] **Task 8.5: 발전량·수요 집계 및 공급률 게시 구현**
   - 당시 완료(2026-10-14): BuildingPowerDemandDecisionSystem/PowerSupplyDecisionSystem이 수요·가용량과 초기화를, PowerBudgetReservationSystem이 예산을, PowerSupplyExecutionSystem이 최종 검사·공급 결과 게시를 소유한다. 실제 연료·생산/사용·연구·충전은 후속이다.
-  - 확정 **1A·2A·3A·4A**: 정격 기준 동일 가동률·연료 한도 고정 후 부족분 분담, 역할/프레임 상태와 실제 Miner/Crafter 수요의 공통 생성 연결, Decision → Reservation → Execution 책임 분리, 기초 발전/이미 전환된 RemainingEnergy만 공급 근거로 사용한다. 미전환 Coal 실물은 8.6까지 세지 않는다.
-  - 공통 생성/완공: MainFacility/CoalGenerator에 발전 역할·계획, MainFacility/Miner/Crafter/ResearchBuilding/DroneStation에 소비 역할·수요/예약/공급/사용 상태를 부착한다. 수요/가용량/예약의 enable은 준비 완료이며 정상 0과 미준비를 구분한다. 연구/충전의 실제 수요 Producer와 주 시설 자동 생성은 후속이다.
+  - 당시 8.5 계약 **1A/2A/3A/4A**(석탄 전환 구현 전의 공급 근거): 정격 기준 동일 가동률·연료 한도 고정 후 부족분 분담, 역할/프레임 상태와 실제 Miner/Crafter 수요의 공통 생성 연결, Decision → Reservation → Execution 책임 분리, 기초 발전/이미 전환된 RemainingEnergy만 공급 근거로 사용한다. 미전환 Coal 실물은 8.6까지 세지 않는다.
+  - 공통 생성/완공: MainFacility/CoalGenerator에 발전 역할·계획, MainFacility/Miner/Crafter/ResearchBuilding/DroneStation에 소비 역할/수요/예약/공급 결과를 부착한다. 수요/가용량/예약의 enable은 준비 완료이며 정상 0과 미준비를 구분한다. 연구/충전의 실제 수요 Producer와 주 시설 자동 생성은 후속이다.
   - 레거시 검토: 공급률은 min(1, 가용 발전량/최대 수요), 실제 소비는 기초 발전을 먼저 사용하고 부족분만 석탄 발전에 배정했다. 석탄 가능 출력은 남은 에너지와 보관 연료로 제한했다. 수요 0·연료 부족과 실제 발전/소비/공급의 일치를 확인하고 망 집계를 영속 원본으로 중복 보관하지 않는다.
   - 선행 조건: Task 8.4.
   - 구현 범위·상태 소유자: 이번 틱 선택/Topology의 살아 있는 대표로 집계하여 공개 망 Entity가 아직 없거나 이전 망이 병합/분리되기 전에도 올바른 예산을 계산한다. 집계는 Job 내부 임시 double Native 맵이며 개별 에너지 float를 아래로 반올림해 소비자 총 배정이 발전기 예산을 넘지 않게 한다. 공개 Grid·공간/연결 캐시·영속 집계·별도 시계는 쓰지 않는다. 소비자 PowerSupplyReservation은 준비된 공급률/배정량이며 Execution이 이를 공개한다. Reservation은 준비·대표·유한 수치만 확인하고 Execution은 실제 소비할 연료 조건을 확인한다. 지정 Writer 이후의 대표/수요/연결은 재대조하지 않는다.
@@ -613,7 +625,7 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 확정 **1A·2A·3A·4A·5A·6A**: 완충·무배정·무동작·무적재·보관 공간 충족 시 수납, 충전 경유를 포함한 실행 가능 경로의 완충 전 배차, 현재 위치 연속 배차 우선, 같은 네트워크→다른 정거장→활성 대기, 배터리 0의 비상 속도 귀환/화물 보존, 실제 작업 중단 시 이전 예약 해제와 Cancelled/Retargeting 전환을 적용한다. 경로 평가 대기·계획된 충전 경유는 중단으로 취급하지 않는다.
   - 기존 계약 유지: 상위 작업 Open/Closed, 배정 상태·Revision, 실물 원본, 적재품 우선, 공통 적재량·예약·행동 접수 순서와 EndSimulation 공개를 재사용한다. 설명용 `Pending → Reserved → Assigned…`를 하나의 상위 작업 enum으로 합치지 않는다.
   - 선행 조건 대조: 현재 작업·배정·실물 인계·예약 정산·복구와 Item·Construction·Power 계약을 소스로 확인했다. 기존 Lifecycle/Publish의 역할을 보존하고 수행자 Lifecycle·배터리·관측의 후속 단독 Writer 책임을 정의했다.
-  - 후속 연결: 정거장/Identity/수용량은 9.2~9.3.1, 이동·배터리·귀환·충전은 9.10·9.13~9.14, 실제 중단/복구·추가 작업은 9.15~9.20에서 구현한다. 설정 수치·슬롯 공유·적재량 초기화 정책은 각 후속 범위다.
+  - 연결/후속: 정거장/생성/명시적 전환/슬롯 공유/적재량 초기화는 이후 9.2/9.3.1/9.3에서 구현했다. 실제 이동/배터리 소비/귀환/충전은 9.10/9.13~9.14, 실제 중단/복구/추가 작업은 9.15~9.20에서 연결한다. 충전 수치/분담 등 해당 Task의 미결정 사항과 완료된 설정을 구분한다.
   - 검증: 현재 타입·상태 쓰기·예약/인계 API·기존 테스트 정의와 전이표를 정적으로 대조했다. 허용/금지 전이와 부분 성공·중복/지연 이벤트·무전력/배터리 0·수납 자격의 기대 결과를 작성했다. 코드/에셋 변경과 새 Unity 컴파일·테스트·Play Mode·성능 검증은 없으며 후속 상태표를 실행 성공으로 표시하지 않는다.
   - 완료 기준 충족: 작업 종료·예약 정산·연결 해제·화물 보존·후속 Entity 삭제와 드론 자체 전환의 책임/순서가 명확하다. 다른 Phase 9 Task의 완료 여부는 변경하지 않는다.
 
@@ -623,14 +635,14 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 활동 영역: 회전 footprint의 긴 변 기준 정사각형을 만들고 단일 Range×ChunkSize로 확장한다. 홀수 여백의 남는 1셀은 양의 축에 둔다. 음수 Range는 0이며 포함 경계와 long 합산을 사용한다. 기존 footprint는 바꾸지 않는다. 이전 직사각형 footprint 그대로의 확장 규칙은 이번 확정으로 대체했다.
   - 소유자: DroneStationNetworkDecisionSystem은 같은 틱 연결안, DroneStationNetworkApplySystem은 EndSimulation 공개, DroneStationSpatialSyncSystem은 최종 연결/건물 원본 기반 범위 인덱스와 Fence 수명을 소유한다. 망의 활동 영역은 소속 영역의 합집합이며 외곽 사각형의 빈 공간은 제외한다.
   - 선행 조건 충족: Task 9.1 계약과 공통 건물 생성/공간·설정·전력 구성을 재사용했다. 전력 공급/충전/수용량은 별도 조건이며 정거장 참가에 섞지 않는다.
-  - 후속 연결: 실제 작업 후보의 범위 필터는 Task 9.5, 수행자/수용량은 9.3·9.3.1, 귀환·충전은 9.13~9.14, 정거장 철거 중 드론 재배치는 9.19에서 연결한다.
+  - 후속 연결: 드론 생성/Identity 전환/수용량은 Task 9.3.1/9.3에서 연결했다. 작업 망 필터는 9.5, 실제 귀환/충전은 9.13~9.14, 정거장 철거 재배치는 9.19에 남는다.
   - 검증: DroneStationNetworkTests 14/14를 포함한 관련 선택 EditMode 99/99(실패·생략·불확정 0), Unity 컴파일 오류 없음·Editor ready/비컴파일/비리로드·관련 DLL 최신성을 확인했다. DroneStationNetworkTests에 EndBuilding 새 연결·공개 지연·무전력·정거장 제거/비활성/철거 승인·회전 정사각형·경계·합집합·종류/티어·음수/큰 정수·맵 용량/비우기와 설정 미게시 검증을 추가했다. 기존 건설 통합 fixture의 옛 그룹/준비·공급 누락(P2)을 보완하고 실패 3건의 재실행 5/5를 확인했다. 격리 공급을 실제 Power 통합 근거로 확대하지 않는다.
   - 완료 기준 충족: 네트워크와 범위 인덱스의 일치·등록/병합/분리/해제를 확인했고 다른 도메인 상태를 소유하지 않는다. 7역할 독립 검수와 P2 보완 경계 재검수를 마쳤다. 전체 EditMode·Play Mode·베이킹·Player 빌드·성능은 미수행이다.
 
 - [x] **Task 9.3.1: 드론 Authoring·프리팹 DB 및 활성 엔티티 생성 연결**
   - 현재 진행(2026-10-22): **구현/관련 검증/독립 검수 완료** — DronePrefabDatabaseAuthoring과 V2 SubScene 참조, 4종 DB 준비 검증, DroneSpawnUtility의 EndSimulation 생성/기존 루트 초기 구성을 연결했다. [생성 명세](../Specifications/DroneCreation.md)를 따른다.
   - 원형/초기 상태: 원형에는 런타임 역할을 베이킹하지 않는다. 생성은 입력 위치·Revision 1/CanAcceptTask=false·빈 배정/화물과 최초 완충 배터리를 기록한다. 최대 배터리는 호출자의 필수 입력이며 기존 개체 값은 역할 초기화로 충전하지 않는다. 회전·scale·PostTransformMatrix를 보존한다.
-  - 유지할 경계: API는 Ready 이후 사용하고 공개는 호출자의 EndSimulation ECB다. 같은 Entity에 미재생 초기화를 중복 기록하지 않는 것은 호출자의 중재 계약이다. 실제 출고/수납·아이템 역할/Owner/버퍼와 표시 전환·수용량·공통 적재량/설정 로딩은 Task 9.3에 남긴다.
+  - 유지할 경계: API는 Ready 이후 사용하고 공개는 호출자의 EndSimulation ECB다. 같은 Entity에 미재생 초기화를 중복 기록하지 않는 것은 호출자의 중재 계약이다. 명시적 출고/정박/수납의 역할/Owner/버퍼/표시 전환과 수용량/공통 적재량/최대 배터리 설정은 Task 9.3에서 연결했다. 실제 배차 자격/이동/귀환/충전과 게임 시작 지급은 해당 후속 Task가 생성 API를 재사용한다.
   - 검증: Unity 컴파일 오류 없음, 관련 선택 EditMode 56/56(실패·생략·불확정 0). 실제 저장된 V2 SubScene Baker의 드론 DB1·Ready1/Fatal0, 렌더 원형과 생성 드론의 scale/위치/배터리100/배차 불가 상태를 격리 World에서 확인했다. 제품 설정 최대치 로더·실제 비행/화면 표시·Play Mode·Player 빌드·성능은 검증하지 않았다.
   - 완료 근거: 유효 원형 생성과 준비 실패/중복 초기화의 원본 보존을 확인했다. 초기화/생성 반영/컴포넌트/guard/경계 독립 검수 5개 역할에서 확인한 범위의 지적 없음.
 
@@ -649,11 +661,11 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 
 - [ ] **Task 9.4: 작업 생성·변경·취소 요청 경로 구현**
   - 현재 진행(2026-10-12): **부분 구현** — [Decision](../../Assets/Scripts/Systems/Drones/Decision/DroneTaskDecisionSystem.cs)이 품목별 현장 공급·실물별 현장 방해물/드론 방출 회수 의도를 만들고 [Execution](../../Assets/Scripts/Systems/Drones/Execution/DroneTaskExecutionSystem.cs)이 중복 검사·생성 순번과 EndSimulation 기록을 소유한다.
-  - 남은 작업: 수동 우선순위·중단/재개·일반 반입/반출·드론 철거 명령은 미구현이다. 현장 취소/소멸의 자동 무효화와 사용자 명령을 구분한다.
-  - 레거시 검토: 공사 공급·철거·건물 반입/반출·월드 회수와 우선순위 변경·수동 중단/재개를 지원했다. 자동 보류와 사용자 중단을 구분하고 자동 사유가 해소되어도 사용자 중단을 임의 해제하지 않았다. 현재 공급/회수 관리에 미이식 명령을 지원한다고 표시하지 않으며 필요한 확장만 기존 소유자 아래 검토한다.
+  - 남은 작업: 지원할 생성/변경/중단/재개/취소 요청을 확정하고 접수/검증/명시적 결과 소비 경로를 연결해야 한다. 일반 반입/반출/드론 철거 요청과 기존 자동 생성/무효화의 구분도 남는다. 플레이어 지정 숫자/수동 우선순위는 기획에서 제외한다.
+  - 레거시 검토: 공사 공급/철거/일반 반입/반출/회수와 수동 중단/재개가 존재했다. 수동 숫자 우선순위는 V2 제외 사항이며 과거 지원 사실로 복원하지 않는다. 자동 보류와 사용자 중단은 구분하되 이번 요청 정책을 레거시 기록만으로 확정하지 않는다.
   - 선행 조건: Task 9.1~9.3.
-  - 구현 범위·상태 소유자: 작업 명령을 권위 있는 작업 데이터로 전환하고 기존 우선순위·중단·재개·취소 명령의 검증과 소비 경로를 마련한다.
-  - 후속 연결: 대상별 계획은 Task 9.5, 활성 작업의 취소 부수 효과는 Task 9.15에서 연결한다.
+  - 구현 범위/상태 소유자: 외부가 권위 작업을 직접 수정하지 않도록 요청을 기존 작업 생성/수명주기 소유자에 전달하고 유효 작업 또는 명시적 거부 결과로 소비한다. 작업 종류/대상/품목 변경 방식과 지원 명령 범위는 확정 후 구현하며 별도의 수동 우선순위 필드/명령은 추가하지 않는다.
+  - 후속 연결/결정 필요: 대상 계획은 Task 9.5, 활성 취소 부수 효과는 Task 9.15다. 요청 지원 범위, 중단 시 기존 운송 처리, 취소 뒤 자동 재생성, 9.15에서 앞당길 정산 범위, 같은 틱 명령 충돌은 사용자 미확정이다. 앞선 권장안은 승인된 정책이 아니다.
   - 검증: 무효 대상·중복 명령·종료 작업에 대한 변경과 요청 잔류를 검사한다.
   - 완료 기준: 명령이 유효한 작업 또는 명시적 거부 결과로 소비되고 미지원 경로를 완료로 처리하지 않는다.
 
@@ -663,7 +675,7 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 레거시 검토: 반입/공사는 같은 네트워크의 저장품·생산품에서 공급원을 찾았다. 반출은 첫 예약 전에 전체 남은 수량의 수용 공간을 합산하고 가까운 보관처부터 선택했다. 재고/공간/범위 부족은 자동 보류하되 이미 예약한 운송은 유지했고 직접 작업 목적지는 계획으로 전달했다. 이는 추가 작업 유형의 확인 자료이며 현재 공급·적재품 Direct 재배정 계약을 덮어쓰지 않는다. 현재 공급원은 Storage/DroneStation/MainFacility의 보관품이며 Miner/Crafter Product 버퍼는 공급원이 아니다.
   - 선행 조건: Task 9.2·9.4와 저장·공사 수령 계약.
   - 구현 범위·상태 소유자: 계획 단계가 네트워크·품목·대상 유효성을 읽어 공급원·목적지 후보를 게시한다. 실제 아이템·용량은 선점하지 않는다.
-  - 후속 연결: 선점은 Task 9.6, 후보 우선순위와 배차는 Task 9.8~9.9에서 처리한다.
+  - 후속 연결: Task 9.6의 기존 현장 수량 예약/경합 중재와 정산을 재사용하고 추가 유형을 연결한다. 공급원 실물/보관 공간의 영속 예약을 자동 추가하지 않는다. 후보 선택과 배차는 9.8~9.9에서 확장한다.
   - 검증: 공급 부족, 목적지 만석, 범위 변경, 대상 소멸 시 계획 갱신을 검사한다.
   - 완료 기준: 유효한 계획만 게시되고 계획 작성만으로 소유권·예약 상태가 변경되지 않는다.
 
@@ -672,7 +684,7 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 남은 작업: 추가 작업 유형의 예약 필요성과 수행부 연결은 남아 있다. 기존 공급 예약을 다시 구현하거나 레거시 실물 선점을 복원하지 않는다.
   - 선행 조건: Task 9.5 및 목적지 수령·용량 계약.
   - 구현 범위·상태 소유자: 현재 현장 공급 예약과 미공개 CommittedQuantity 정산을 재사용한다. 공급원 재고·보관 목적지 공간의 영속 예약은 현재 제공하지 않으며 행동 계획과 실제 성공분으로 처리한다. 과거 실물 marker·영속 목적지 예약을 추가 유형에 도입할 필요가 있으면 별도 결정을 기록하고 기존 수량·소유권·공개 계약과 대조한다.
-  - 후속 연결: 게시 이후의 해제·완료·무효화는 Task 9.7에서 구현한다.
+  - 후속 연결: Task 9.7의 기존 해제/완료/무효화 정산을 재사용하며 추가 작업 유형과 실제 수행부의 실패 원인을 연결한다.
   - 검증: 현재 현장 예약과 미공개 정산, 같은 행동 계획의 재고·공간 경합, 실제 성공분만 용량 소비, 필터·대상 변화와 부분 수량을 검사한다. 추가 영속 예약을 승인한 경우에만 실물·마지막 예약 용량의 획득/실패 롤백을 검증한다.
   - 완료 기준: 반쪽 예약·과다 예약·중복 선점이 없고 실패한 획득이 원상복구된다.
 
@@ -685,19 +697,19 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 검증: 중복 해제·완료, 소멸한 아이템·소유자·목적지, 이미 부분 완료한 작업을 검사한다.
   - 완료 기준: 한 예약의 효과가 한 번만 정리되고 음수 수량·잔류 선점이 없다.
 
-- [ ] **Task 9.8: 작업 후보 구성 및 우선순위 선택 구현**
+- [ ] **Task 9.8: 작업 후보 구성 및 자동 선택 순서 적용**
   - 현재 진행(2026-10-12): **부분 구현** — [Decision 후보](../../Assets/Scripts/Systems/Drones/Decision/DroneTaskDecisionSystem.cs)와 [Reservation 선택](../../Assets/Scripts/Systems/Drones/Reservation/ConstructionSupplyReservationSystem.cs)이 적재품 우선, 공급 PlacementStamp→CreationSequence, 회수 CreationSequence 및 두 선두 비교를 수행한다.
-  - 남은 작업: 추가 유형의 우선순위, 배터리 자격 Producer와 네트워크는 미구현이다. 레거시 Emergency/거리 우선은 현재 관리 기능에 적용되어 있지 않다.
-  - 레거시 검토: Emergency → normal 1~10(작은 수가 우선, 입력 기본 5), 같은 우선순위는 거리 → 생성 순서였고 배터리로 불가능한 후보는 건너뛰었다. 현재 현장 공급의 PlacementStamp·CreationSequence와 적재품 우선 계약과 다르므로 현재 배정에 바로 넣지 않는다. 추가 유형에서 필요성을 확인하고 과거 network/priority/chunk/cell 검색 캐시를 자동 복제하지 않는다.
+  - 남은 작업: 추가 유형의 후보/기존 자동 순서와의 결합, 배터리 자격 Producer와 정거장 망 필터가 남는다. 플레이어 지정 숫자/수동 우선순위는 미구현 기능이 아니라 기획 제외 사항이다.
+  - 확정 선택 계약: 적재품 재배정을 신규 수집보다 먼저 선택하고 최초 OriginalTaskCreationSequence를 유지한다. 신규 공급 선두는 PlacementStamp→CreationSequence, 회수 선두는 CreationSequence, 두 선두 간 비교는 CreationSequence다. 실행 불가능한 오래된 후보가 다른 가능한 작업을 막지 않는다. 레거시 Emergency/숫자 등급과 별도 priority 검색 캐시를 복원하지 않는다.
   - 선행 조건: Task 9.5~9.7.
-  - 구현 범위·상태 소유자: 현재 Decision 후보·Reservation·Publish를 재사용하고 확정된 현장 설치 순서·작업 생성 순서·적재품 우선 계약으로 선택한다. 추가 작업 유형의 우선순위·거리·배터리 규칙은 레거시 검토를 거쳐 필요한 경우 별도로 결정한다. 후보 인덱스는 원본 상태를 소유하지 않는다.
+  - 구현 범위/상태 소유자: 현재 Decision 후보/Reservation/Publish와 확정 자동 선택 순서를 재사용한다. 공급원/목적지의 실제 이동거리 및 거리 동률 PlacementStamp 규칙도 유지하고, 실제 경로/배터리/망 입력의 Producer를 연결한다. 추가 작업 유형의 결합만 해당 Task에서 확정하며 수동 우선순위 요구로 바꾸지 않는다. 후보 인덱스는 원본 상태를 소유하지 않는다.
   - 후속 연결: 권위 있는 claim과 할당은 Task 9.9에서 수행한다.
   - 검증: 동률, 처리 불가능한 상위 후보, 취소·소멸된 후보, 후보 갱신 순서를 검사한다.
   - 완료 기준: 소비자가 별도 준비 API를 호출하지 않아도 최신 유효 후보를 선택할 수 있다.
 
 - [ ] **Task 9.9: 배차 확정 및 작업·드론 할당 구현**
   - 현재 진행(2026-10-12): **부분 구현** — [배정 Publish](../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskAssignmentPublishSystem.cs)가 후보를 최종 재검사하고 배정·개별 예약·수행자 연결을 같은 EndSimulation ECB에 기록한다. 공개 직전 무효화/감량과 재배정 revision을 처리한다.
-  - 남은 작업: 실제 수행자 생성/등록·정거장 Identity 전환·배터리/경로 자격의 제품 입력 연결이 남아 있다. 테스트의 직접 생성 수행자를 제품 구현으로 보지 않는다.
+  - 남은 작업: 지속 관측/CanAcceptTask, 배터리와 실제 경로의 배차 자격 Producer 및 추가 유형 연결이 남는다. 수행자 생성 초기화/등록과 명시적 Activate/Dock/Store는 9.3.1/9.3에서 구현했으며 이를 다시 미구현으로 분류하지 않는다.
   - 레거시 검토: 완충 여부만이 아니라 수집→납품→귀환 전체 경로의 필요 에너지로 배차를 판단했다. 성공 후보의 중복 획득을 막고 틱당 배차 수를 임의 제한하지 않았다. 현재 V2는 관측의 CanAcceptTask 등 공개 자격을 읽으므로 배터리·경로 자격 Producer는 실제 수행부에서 정하고 Publish 경계를 재사용한다.
   - 선행 조건: Task 9.3·9.7~9.8.
   - 구현 범위·상태 소유자: 배차 후보를 권위 있게 claim하고 할당 상태를 전이 계약에 따라 반영한다. 후보 선택과 실제 획득 성공을 구분한다.
@@ -742,7 +754,7 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 확정 규칙: 3A·4A에 따라 현재 위치에서 실행 가능한 다음 작업을 우선하고, 없거나 충전이 필요하면 같은 네트워크의 수용 가능한 가까운 정거장→다른 정거장→활성 대기로 연결한다. 드론 귀환을 화물의 현장 외부 안전 방출과 혼동하지 않는다.
   - 선행 조건: Task 9.1/9.2/9.3의 계약/정거장/역할 전환 기반과 미완료 Task 9.9~9.12를 연결한다. 충전/배터리 반영은 Task 9.14와 같은 계약이다.
   - 구현 범위·상태 소유자: 후속 귀환 판단/이동 도착 Producer가 Task 9.3의 정거장 Lifecycle 요청을 제출한다. 기존 정거장 소유자가 정박/수납과 같은 Entity/Owner 관계를 EndSimulation에 반영한다. 작업/배정·예약은 기존 관리 소유자가 반영한다.
-  - 수납 자격 확정: 1A에 따라 완충·활성 배정 없음·진행 중 동작 없음·적재품 없음·보관 공간 있음의 모든 조건을 요구한다. 충전 중/충전 대기 드론은 활성 상태를 유지한다. 조건 확정은 끝났지만 실제 연결/검증은 이 Task와 9.14에 남아 있다.
+  - 수납 자격 확정: Task 9.1의 완충/활성 배정 없음/진행 행동 없음/빈 화물/공간 조건은 Task 9.3이 구현했다. 충전 중/대기 중에는 수납하지 않는다. 실제 귀환 도착/충전 완료 상태로 정거장 요청을 제출하는 자동 흐름과 통합 검증만 9.13/9.14에 남는다.
   - 후속 연결: 충전은 Task 9.14, 정거장 파괴 중 재배치는 Task 9.19에서 연결한다.
   - 검증: 다음 작업 존재, 정거장 만석·소멸, 대체 정거장, 수용 가능한 곳이 없는 경우를 검사한다.
   - 완료 기준: 중복 보관·용량 초과 없이 재배차·귀환·대기 상태가 기존 규칙과 일치한다.
@@ -750,10 +762,10 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 - [ ] **Task 9.14: 전력 기반 충전 및 재배차 상태 구현**
   - 현재 진행(2026-10-22): **충전 기능 미구현 / 공통 전력 기반 준비** — Task 8.5~8.7의 수요·배분·공급·확정 소비는 구현됐다. DroneStation/MainFacility는 소비 역할과 공급 결과를 갖지만 충전 전용 수요는 현재 0이다. 배터리 최초량/최대 설정은 9.3에 있고 지속 소비/충전 Writer는 후속이다.
   - 남은 작업: 배터리 원본과 충전·배차 자격·수납 정책을 연결하고, 충전 후보/수요 근거를 Preparation에서 준비해 기존 전력 수요 Writer에 연결해야 한다. Power가 확정한 공급으로 Drone 단계에서 배터리를 갱신하는 처리가 남아 있다.
-  - 레거시 검토: 충전이 필요한 드론에서 정거장 전력 수요를 계산하고 실제 공급률로 충전했다. 충전 중에도 전체 작업/귀환 에너지가 충분하면 배차하고 부족하면 충전을 계속했다. 수요·공급·충전·보관·표시의 원본을 구분하고 충전 중 수납의 상충 규칙은 Task 9.1에서 확인한다.
+  - 레거시 검토/현재 계약: 수납 자격과 완충 전 재배차 정책은 Task 9.1에서 확정했고 Task 9.3이 수납 검사를 구현했다. 과거 충전 대기/분담 구현을 그대로 복제하지 않고 현재 Power의 공급 결과와 배정량 확정 소비를 사용한다. 충전 갱신/대기 종료/자동 배차/수납 연결은 이 Task의 남은 구현이다.
   - 선행 조건: 완료된 Task 9.1의 충전/보관·배차 계약과 미완료 Task 9.10의 이동 소비 및 Task 9.13의 귀환/보관 연결. 공통 전력 선행 Task 8.5~8.7은 완료돼 있으므로 재구현하지 않는다.
   - 구현 범위·상태 소유자: Preparation에서 충전 자격/수요 근거를 준비하고 기존 PowerDemand 작성 경로를 재사용한다. Power는 배분·확정 소비를 소유한다. 충전 계획은 배터리 단독 정산 소유자에 전달해 공개 공급률·AllocatedEnergy와 배터리 상한 내에서 반영하고 수행자 Lifecycle에 충전·보관·배차 자격을 연결한다. 1A·2A에 따라 충전 접속과 수납을 구분하고 완충 전 실행 가능 배차를 허용한다. 드론 처리 중 새 수요를 소급 배정하거나 미사용 배정량을 환급·재정산하지 않는다. 충전 수치·분담의 구체화는 이 Task에 남아 있다.
-  - 레거시 피드백에서 이관한 확인 항목: 배터리가 최대치에 도달한 뒤 충전 대기가 계속되는 사례와 충전이 필요한 드론의 조기 수납 사례를 함께 확인한다. 완충 시 충전 대기를 종료하고 보관 자격을 만족하면 보관으로 전환한다는 요구를 Task 9.13의 조건과 대조한다. 미완충 드론의 충전·대기 흐름을 유지하고 작업·이동 중인 드론을 완충만으로 보관하지 않도록 기존 의도를 확인한다. 이 요구의 이관은 V2 정책 확정이나 구현·검증 완료를 뜻하지 않는다.
+  - 기존 요구/검증 연결: 완충 후 충전 대기/표시가 잔류하지 않도록 실제 충전 상태 Writer와 자동 배차/수납 요청을 연결한다. 수납/완충 전 배차 정책을 새 미확정 사항으로 되돌리지 않으며 실제 충전 수치/분담의 미결정 사항은 착수 시 확인한다.
   - 후속 연결: 충전과 보관의 시각 표현은 Task 10B.4에서 연결한다.
   - 검증: 무전력·부분 공급·완충, 충전 중 배차, 공급 복구를 검사한다.
   - 완료 기준: 배터리와 배정 에너지 한도를 지키고 정상 운반→귀환→충전→재배차 루프가 완주한다.
@@ -806,7 +818,7 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 남은 작업: 전체 보관 드론의 수용 공간 선검사·귀환·철거 보류를 정거장 도메인에 연결해야 한다.
   - 선행 조건: 완료된 Task 7.7/9.2/9.3과 미완료 Task 9.13~9.17을 연결한다.
   - 구현 범위·상태 소유자: 건물 제거·정거장 수용량·드론 lifecycle 경계를 통해 기존 보관 드론 재배치와 철거 보류 규칙을 구현한다.
-  - 유지할 기존 규칙: 철거 전에 모든 보관 드론의 목적지와 누적 수용량을 확인한다. 같은 네트워크의 가까운 정거장을 우선하고 공간이 없으면 다른 네트워크의 정거장도 탐색한다. 모두 수용할 수 있을 때만 드론 Identity를 유지해 대체 정거장으로 귀환시키며 월드 아이템 변환이나 자동 회수 작업을 만들지 않는다. 일부 드론만 옮길 수 있으면 기존 보관 상태를 유지하고 전체 철거를 보류한다. 기존 건물·정거장·드론 소유자의 계약으로 연결하며 이전 구조의 해결 기록을 V2 완료로 표시하지 않는다.
+  - 후속 재배치 정책(현재 미구현): 철거 전에 모든 보관 드론의 목적지와 누적 수용량을 확인한다. 같은 네트워크의 가까운 정거장을 우선하고 공간이 없으면 다른 네트워크의 정거장도 탐색한다. 모두 수용할 수 있을 때만 드론 Identity를 유지해 대체 정거장으로 귀환시키며 월드 아이템 변환이나 자동 회수 작업을 만들지 않는다. 일부 드론만 옮길 수 있으면 기존 보관 상태를 유지하고 전체 철거를 보류한다. 기존 건물·정거장·드론 소유자의 계약으로 연결하며 이전 구조의 해결 기록을 V2 완료로 표시하지 않는다.
   - 후속 연결: 표시·사용자 피드백은 Task 10B.3~10B.4에서 연결한다.
   - 검증: 충분한 대체 수용량, 일부만 수용 가능, 대체 정거장 소멸, 충전 중 철거, 반복 요청을 검사한다.
   - 완료 기준: 재배치할 수 없는 드론이 있는 상태에서 정거장이 부당하게 제거되지 않고 드론 Identity·수용량이 보존된다.
@@ -905,7 +917,7 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 - [ ] **Task 10B.2: 건설·복사·취소·철거 입력 및 미리보기 연결**
   - 현재 진행(2026-10-12): **요청·Command 기반만 준비** — 현재 배치 요청 Utility·Command, 레시피/취소/철거 요청은 있으나 건설 입력 Controller·복사/설정 붙여넣기·미리보기/단축키 UI는 없다.
   - 남은 작업: 기존 ECS 공개 요청을 사용자 입력/미리보기에 연결해야 한다.
-  - 레거시 검토: 좌클릭/드래그 배치, 우클릭 철거·취소, Delete 뒤 inclusive 범위 철거·회수·현장 중복 없는 취소, R 묶음 회전, Ctrl+C 범위 복사, Shift+우/좌클릭 설정 복사/붙여넣기였다. 같은 버튼 재선택은 해제, 우선순위는 normal 1~10(기본 5)이었다. 복사는 선택 사각형 좌하단 로컬 pivot과 현재 world anchor를 구분하고 설정은 같은 종류의 요청으로 붙여넣었다. 현재 종류/티어·Strict/Partial 계약을 우선하며 과거 전역 예약/즉시 공간 갱신을 복제하지 않는다.
+  - 레거시 검토: 좌클릭/드래그 배치, 우클릭 철거·취소, Delete 뒤 inclusive 범위 철거·회수·현장 중복 없는 취소, R 묶음 회전, Ctrl+C 범위 복사, Shift+우/좌클릭 설정 복사/붙여넣기였다. 같은 건물 버튼 재선택은 해제로 처리한다. 사용자 수동 숫자 드론 작업 우선순위는 기획에서 제외하며 입력/UI에 추가하지 않는다. 복사는 선택 사각형 좌하단 로컬 pivot과 현재 world anchor를 구분하고 설정은 같은 종류의 요청으로 붙여넣었다. 현재 종류/티어·Strict/Partial 계약을 우선하며 과거 전역 예약/즉시 공간 갱신을 복제하지 않는다.
   - 선행 조건: Task 10B.1, Phase 7, Task 9.17~9.20 및 연구 해금 계약.
   - 구현 범위·상태 소유자: ① 배치·회전·미리보기 ② 복사·묶음 배치 ③ 공사 취소 ④ 범위 철거·회수의 하위 흐름을 나눠 기존 요청 경로에 연결한다. 프리뷰는 점유 원본을 소유하지 않는다.
   - 유지할 기존 규칙: 잠겨서 숨긴 건물 버튼을 제외하고 현재 화면 표시 순서에 숫자 단축키를 연속 배정한다. 1~9는 첫 번째~아홉 번째 버튼, 0은 열 번째 버튼이며 표시 목록이 바뀌는 같은 프레임에 매핑도 갱신한다. 마우스 클릭과 숫자 입력은 같은 건물 선택 동작을 사용한다. 예를 들어 벨트·채굴기·제작기만 보이면 1·2·3으로 선택한다. 기존 표시·해금 조회와 선택 경로를 재사용하며 이 규칙의 보존을 V2 UI 구현 완료로 해석하지 않는다.
@@ -914,22 +926,22 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 완료 기준: 모든 하위 흐름의 완료 증거가 있고 표시와 실제 예약·공사·철거 결과가 일치한다.
 
 - [ ] **Task 10B.3: 건물 정보·설정·아이템 작업 UI 연결**
-  - 현재 진행(2026-10-15): **ECS 조회·요청 기반 준비 / UI 미구현** — 저장/생산/레시피·공간 상태와 요청 경로에 더해 전력 수요·공급률·배정 에너지·발전 계획·연료 잔량이 준비됐다. 건물 정보·설정·아이템 작업 UI는 없다.
+  - 현재 진행(2026-10-24 소스 대조): **ECS 조회/요청 기반 준비 / UI 미구현** — 저장/생산/레시피/전력 조회, Task 9.2의 공개 정거장 망, Task 9.3의 전용/일반 슬롯/정박 관계/Activate-Dock-Store 요청과 결과가 구현되어 있다. 건물 정보/설정/아이템 작업 UI와 실제 이동/충전 상태 Producer는 없다.
   - 남은 작업: 선택·패널 표시·설정 요청과 UI 콜백 수명을 구현해야 한다. 전력 표시는 현재 공개 상태를 읽어 연결하며 UI에 망 집계나 전력 정산 상태를 따로 만들지 않는다.
   - 레거시 검토: 활성 비보관 드론을 반경으로 우선 선택한 뒤 현장→건물을 조회하고 완공 시 같은 셀의 건물로 선택을 넘겼다. 벨트 속도/셀 아이템·입출력·진행·전력·드론 할당은 ECS에서 표시했다. 잠긴 건물/레시피는 숨기고 권위 요청 검증도 유지했다. 필수 UI 요소 누락은 부분 바인딩으로 진행하지 않았고 행·슬롯·쿼리는 반복 갱신에서 재사용했다. 드론 전용 슬롯/선택 우선순위는 현재 정책과 대조하며 설정 변경·아이템 이동은 공개 요청만 발행한다.
-  - 선행 조건: Storage·Crafter 및 완료된 Task 8.1~8.7의 Power 조회 계약, 표시 대상 Drone 기능의 조회·명령 계약, Task 10B.1 및 보완 검증 F2. 드론 충전/상태 표시의 미구현 범위는 Task 9.14·10B.4와 구분한다.
-  - 구현 범위·상태 소유자: ① 정보·버퍼/전력 상태 표시 ② 레시피·설정 변경 ③ 아이템 반입·반출 명령을 구분하여 연결한다. UI는 원본 상태를 읽고 요청을 발행한다. 전력 표시는 PowerDemand·PowerSupplyResult·PowerGeneratorSupplyPlan·FuelEnergyState를 재사용하며 역할 활성과 준비 완료 0·미준비를 구분한다.
+  - 선행 조건: Storage/Crafter/완료된 Power 및 정거장/드론 보관 조회 계약, 일반 아이템 반입/반출 명령을 담당할 Task 9.4, Task 10B.1과 보완 검증 F2. 충전/이동 표시의 남은 범위는 9.14/10B.4와 구분한다.
+  - 구현 범위/상태 소유자: 연구건물의 재료 공급은 벨트 자동 투입만 허용하며 수동/드론 공급 요청을 연결하지 않는다. ① 정보·버퍼/전력 상태 표시 ② 레시피·설정 변경 ③ 아이템 반입·반출 명령을 구분하여 연결한다. UI는 원본 상태를 읽고 요청을 발행한다. 전력 표시는 PowerDemand·PowerSupplyResult·PowerGeneratorSupplyPlan·FuelEnergyState를 재사용하며 역할 활성과 준비 완료 0·미준비를 구분한다.
   - 후속 연결: 도메인 전체 플레이 흐름은 Task 10C.2에서 확인한다.
   - 검증: 선택 대상 제거, 패널 재활성화, 반복 명령, 콜백 등록·해제와 실제 표시·조작을 구분해 검사한다.
   - 완료 기준: 대상·표시·명령이 일치하고 UI에 별도 게임 상태나 중복 콜백이 남지 않는다.
 
 - [ ] **Task 10B.4: 연구 UI 및 작업·드론 상태 표시 연결**
-  - 현재 진행(2026-10-12): **작업·관측 데이터 기반만 준비** — 현재 드론 작업/행동 결과는 있어도 연구 UI, 공사 고스트·철거/회수 표시·실제 드론 상태 UI는 없다.
+  - 현재 진행(2026-10-24 소스 대조): **작업/관측/정박/보관 및 표시 전환 기반 준비 / UI 미구현** — Task 9.3.1의 생성 초기화와 9.3의 같은 Entity 역할/표시 전환, 정박/수납 관계와 배터리 최초 상태가 구현되어 있다. 연구 UI/공사/철거/회수 표시와 실제 이동/충전 상태 UI는 없으며 화면 표시도 검증하지 않았다.
   - 남은 작업: 원본 상태를 소비하는 표시·연구 UI와 정책 차이 확인이 남아 있다.
   - 레거시 검토: 전역 연구 조회 ID·그래프 루트·실제 활성 연구는 구분하고 개별 연구건물 UI는 상태만 표시했다. [연구 명세의 후속 확인](../Specifications/ResearchBuilding.md)에서 자동 배치/설정 좌표 차이와 재료 표시를 확인한다. 공사 고스트·작업 표시는 원본 작업/대상만 관찰하고 모드 종료에도 현장 표시 수명을 유지하며 공간 점유·입력 대상·소유권을 만들지 않는다. 철거/회수 표시는 완료·취소·대상 소멸·아이템 수납 때 제거하고 Footprint·회전·원본 위치를 사용한다. 과거 공용 X 메시/머티리얼은 구현 참고다. 과거 현장 고스트의 청색 반투명, 철거 범위 붉은 경계와 작업 X 표시는 표현 참고로 보존하며 현재 구현 완료나 확정 외형을 뜻하지 않는다.
-  - 선행 조건: Phase 9, Phase 10A 및 Task 10B.1.
+  - 선행 조건: 연구 UI는 Phase 10A, 공사/철거/회수 표시는 해당 작업 원본, 정박/보관 표시는 완료된 9.2/9.3.1/9.3을 소비한다. 실제 이동/충전 표시는 9.9~9.14의 Producer 연결이 선행하며 입력은 10B.1을 따른다.
   - 구현 범위·상태 소유자: ① 연구 선택·진척·해금 표시 ② 공사·철거·회수 작업 표시 ③ 드론 이동·충전·보관 표시를 독립 하위 흐름으로 연결한다. 표시 객체는 원본 상태의 관찰자다.
-  - 레거시 피드백에서 이관한 확인 항목: 정상 수납된 드론은 숨기고, 출고되어 작업 또는 충전을 시작한 드론은 다시 표시한다는 요구를 Task 9.13~9.14에서 확정한 원본 상태와 대조한다. 완충 후 충전 대기 표시가 남거나 수납 드론이 화면에 남는 사례를 별도로 확인한다. UI가 수납·충전 상태를 직접 바꾸지 않으며 이관만으로 표시 정책 확정이나 시각 검증 완료를 뜻하지 않는다.
+  - 기존 요구/표시 연결: 수납/출고의 표시 역할 전환은 Task 9.3을 재사용하고 화면 결과는 별도로 확인한다. 9.13~9.14에서 실제 귀환/충전 Producer와 표시를 연결한다. 완충 후 대기 표시/수납 드론 표시 잔류를 검사하되 UI가 원본 상태를 변경하지 않는다.
   - 후속 연결: 장면 전체의 실제 표시 결과는 Task 10C.2에서 확인한다.
   - 검증: 완료·취소·대상 소멸 시 표시 제거, 충전/보관 구분, 화면 재진입을 검사하고 시각 검증 결과를 별도 기록한다.
   - 완료 기준: 각 하위 흐름의 UI·표시가 원본 수명주기를 따르며 고아 표시·오래된 정보가 남지 않는다.
@@ -946,7 +958,7 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 
 - [ ] **Task 10B.6: 청크 바닥·바이옴 렌더링 연결**
   - 현재 진행(2026-10-12): **진단 기반만 준비** — [바닥 선택](../../Assets/Scripts/Chunks/FloorBiomeSampler.cs)과 [색상 미리보기](../../Assets/Scripts/Debug/V2FloorBiomePreview.cs)가 ECS 바닥 설정의 바이옴/전이 결과를 표시한다.
-  - 남은 작업: 실제 Sprite·청크 메시/머티리얼·렌더 자원 생성/해제는 미구현이다. 진단 색상 텍스처를 제품 바닥 렌더링 완료로 표시하지 않는다.
+  - 남은 작업: 제품 청크 바닥용 Sprite/메시/머티리얼 및 렌더 자원 생성/해제는 미구현이다. 진단 색상 텍스처를 제품 바닥 렌더링 완료로 표시하지 않는다.
   - 레거시 검토: 청크별 변형 submesh/material, 재사용 vertex/UV/triangle scratch, 변형 초기화의 Sprite UV/머티리얼은 렌더 구현 참고다. 현재 [바닥 선택 계약](../CodeMemory/Components/WorldAndResources.md#바닥-선택과-진단-표시-계약)과 생성 완료 데이터를 소비하고 점유 상태로 바이옴을 바꾸거나 매 프레임 전체 청크를 폴링하는 병렬 원본을 만들지 않는다. 표시 해제 때 렌더 자원도 해제하되 시뮬레이션 청크 제거를 새로 지원한다고 표시하지 않는다.
   - 선행 조건: Task 4.6·4.9 및 Task 10B.1·10B.5.
   - 구현 범위·상태 소유자: 생성된 청크와 바이옴 결과로 기존 바닥 메쉬·머티리얼·정렬·가시 범위를 연결하고 렌더 자원의 생성·해제를 관리한다. 표현용 가시성 처리와 시뮬레이션 청크 제거를 구분한다.
@@ -957,29 +969,29 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
 ### 10C: Integration / Performance
 
 - [ ] **Task 10C.1: 이식 대응 목록 및 기능별 완료 증거 대조**
-  - 현재 진행(2026-10-15): **문서 대조 일부 진행** — 기존 대조에 Task 8.1~8.7 완료, Preparation/Power 실행 경계와 Writer 기반 검사 범위, 직전 Unity 컴파일·관련 선택 EditMode 174/174 근거를 추가했다. Task 9.1의 상태 전이·Owner 문서 계약도 완료했으며 실행 기능의 완료와 구분한다. 기존 수치는 해당 코드 변경의 자동 검증이며 전체 이식·플레이 또는 이번 상태표의 실행 검증은 아니다.
+  - 현재 진행(2026-10-24 소스 대조): **문서 대조 일부 진행** — Phase 0~10의 Task 전체를 현재 소스/확정 정책과 대조했다. 전력 8.1~8.7, 9.1의 문서 계약, 9.2/9.3.1/9.3의 정거장/생성/Identity/수용량/설정 초기화 완료 범위를 반영했다. 기존 컴파일/EditMode/격리 Baker 기록은 해당 범위의 증거로 보존하며 이번 문서 대조의 새 실행/전체 제품 검증으로 취급하지 않는다.
   - 남은 작업: Phase 9~10B의 구현 누락·정책 결정·실제 실행 증거를 최종 대조해야 한다. 앞선 전체 품질 평가 종료와 별개이며 이번 문서 갱신만으로 완료하지 않는다.
-  - 선행 조건: 각 도메인의 범위 대응, Phase 0·1·3·4에 추가된 런타임 연결 Task와 Phase 6~10B 결과. 완료된 전력 8.1~8.7과 직전 검증 기록은 재사용하고 남은 드론·연구·입력/UI·시작 초기화의 증거를 구분한다.
+  - 선행 조건: 각 도메인의 대응 목록과 완료 근거를 재사용한다. 완료된 전력/정거장/드론 생성 및 전환 기반과 남은 실제 이동/경로/배차 자격/충전/추가 작업/연구/입력/UI/자동 시작의 증거를 구분한다.
   - 구현 범위·상태 소유자: 기존 기능과 담당 Task, 현재 코드, 검증 증거를 대조한다. 누락은 해당 도메인의 하위 Task로 배정하며 이 항목에 구현을 몰아넣지 않는다.
   - 후속 연결: 누락 작업과 증거 공백을 정리한 뒤 Task 10C.2의 실제 흐름을 확정한다.
   - 검증: 부트스트랩·Authoring·설정·월드/자원·입력/UI 등 실제 유지 대상이 명시적인 대응을 갖는지 확인한다.
   - 완료 기준: 미구현·검증 대기·완료가 구분되고 담당 없는 유지 대상이 없다. 의도적인 범위 제외는 사용자 확인을 기록한다.
 
 - [ ] **Task 10C.2: 실제 실행 환경의 전체 흐름 검증**
-  - 현재 진행(2026-10-15): **전체 실행 검증 미완료** — 전력·석탄·Miner/Crafter·건설 경계의 관련 선택 EditMode 174/174 근거는 확보됐으나 연구·드론 수행부·충전·UI·시작 초기화가 연결된 제품 전체 흐름은 없다.
+  - 현재 진행(2026-10-24 소스 대조): **전체 실행 검증 미완료** — 전력/생산/건설/정거장 망/드론 생성/Identity 전환의 자동 검증과 격리 Baker 기록은 있으나 실제 이동/충전/추가 작업/연구/UI/자동 시작이 연결된 전체 제품 흐름은 없다. 이번 대조에서는 실행하지 않았다.
   - 남은 작업: 자동 회귀 근거를 유지하며 전체 시작→건설→물류→전력→드론→연구의 사용자 검증과 증거를 확보해야 한다. 이번 문서 갱신에서는 실행하지 않았다.
-  - 선행 조건: Task 10C.1에서 확인한 제품 흐름의 구현 누락 해소, Task 9.22의 시작 초기화, 드론 수행/충전·연구·입력/UI의 담당 Task와 Task 10B.5~10B.6의 월드 표시 연결. 완료된 전력 코어와 관련 자동 검증은 선행 기반이며 전체 실행 검증을 대신하지 않는다.
+  - 선행 조건: 10C.1에서 확인한 제품 흐름의 구현 누락 해소, 9.22의 자동 시작, 실제 수행부/충전/연구/입력/UI와 10B.5~10B.6의 월드 표시 연결. 완료된 Power와 9.2/9.3.1/9.3 기반 및 자동 검증은 전체 실행 검증을 대신하지 않는다.
   - 구현 범위·상태 소유자: 시작 월드→건설→채굴·생산·물류→전력→드론→연구의 사용자 흐름과 필요한 장면·에셋 연결을 확인한다.
   - 후속 연결: 재현되는 성능 문제와 대표 부하는 Task 10C.3에서 측정한다.
   - 검증: 사용자 수동 플레이·입력·시각 결과와 자동 테스트 증거를 나누어 기록한다. 별도 실행 요청 없는 Play Mode 자동 검증은 수행하지 않는다.
   - 완료 기준: 실제 흐름의 검증 결과가 있으며 미수행 항목을 통과로 처리하지 않는다.
 
 - [ ] **Task 10C.3: 대표 부하 시나리오 및 Profiler 기준 측정**
-  - 현재 진행(2026-10-15): **대표 부하 측정 미완료** — Preparation/Power 분리·반복 검사 제거와 관련 EditMode 통과는 코드·자동 회귀 근거다. 과거 유휴 마커 표본이나 Lookup 수 감소는 대표 규모·반복 조건·ON/OFF 비교의 기준 측정이 아니다.
+  - 현재 진행(2026-10-15): **대표 부하 측정 미완료** — Preparation/Power 분리·반복 검사 제거와 관련 EditMode 통과는 코드·자동 회귀 근거다. 드론 Lifecycle의 Burst Job 분리, 과거 유휴 마커 표본이나 Lookup 수 감소도 대표 규모·반복 조건·ON/OFF 비교의 기준 측정이 아니다.
   - 남은 작업: 규모를 명시한 실제 측정과 병목 판정이 필요하다. 이번 문서 작업에서 Profiler를 실행하지 않았다.
   - 선행 조건: Task 10C.2의 실행 가능한 제품 흐름과 실제 측정 실행 범위 확인. 완료된 전력 코어·자동 회귀를 대표 부하 측정 완료로 취급하지 않는다.
   - 구현 범위·상태 소유자: 아이템·건물·드론 규모와 환경을 명시한 시나리오에서 프레임 시간, Preparation/Power Job 대기, EndPower를 포함한 네 ECB 경계·공간 동기화, 할당·메모리를 측정한다.
-  - 이관한 성능 검토: Belt/Building/Resource 공간 인덱스의 전체 재구축 비용, WorldInvariantValidationSystem의 Fence 완료 대기·검사 비용, Reservation/Apply의 직렬 Job 비용을 각각 측정한다. Item 공간 인덱스는 빈번한 이동을 고려해 정적 대상과 구분한다. 불변식 검사를 켠 경우와 끈 경우, 검사 간격, Development 검증 비용과 Release 측정 조건을 구분해 기록한다. 검사 옵션·간격은 현재 제공 여부를 먼저 확인하며 이 문서 정리로 옵션을 새로 구현하거나 검사를 제거하지 않는다.
+  - 이관한 성능 검토: Belt/Building/Resource 공간 인덱스와 PowerGridConnection/DroneStation 공개 인덱스의 전체 재구축 비용, WorldInvariantValidationSystem의 Fence 완료 대기·검사 비용, Reservation/Apply의 직렬 Job 비용을 각각 측정한다. Item 공간 인덱스는 빈번한 이동을 고려해 정적 대상과 구분한다. 불변식 검사를 켠 경우와 끈 경우, 검사 간격, Development 검증 비용과 Release 측정 조건을 구분해 기록한다. 현재 검증 시스템은 Editor/Development에서 컴파일되고 CheckIntervalFrames를 제공한다. 측정 시 실제 간격/활성 상태를 기록하며 설정 UI나 Release용 검사 제어 기능의 존재를 가정하지 않는다.
   - 후속 연결: 확인된 병목만 Task 10C.4의 개별 최적화 대상으로 선정한다.
   - 검증: 측정 환경·규모·반복 조건을 기록하고 추정 비용과 실제 관찰 결과를 구분한다.
   - 완료 기준: 재현 가능한 기준 결과와 우선순위가 있으며 V2 구조만으로 성능 향상을 가정하지 않는다.
@@ -993,6 +1005,10 @@ Task 4.1~4.4의 코어 검증과 실제 월드 생성 경로를 구분한다. �
   - 후속 연결: 변경된 도메인의 검증·문서에 결과를 반영한다. 추가 최적화는 새로운 근거가 있을 때만 확장한다.
   - 검증: 동일 조건의 전후 측정과 관련 회귀 테스트를 수행한다.
   - 완료 기준: 각 변경의 효과·비용·잔여 한계가 확인된다. 최적화 대상이 없으면 측정 근거와 함께 변경 불필요로 종료할 수 있다.
+
+## 구현 변경 이력 / 당시 검증 기록
+
+아래 집계/수치/후속 표현은 각 기록 시점의 범위다. 현재 완료 상태와 남은 작업은 위 Task 본문을 따르며 과거 실행을 합산하거나 새 구조의 검증으로 소급하지 않는다.
 
 ### 2026-10-15 준비/실행 결정 분리·공통 Fatal·Job 의존성 정리
 
@@ -1035,3 +1051,11 @@ Unity 컴파일 오류 없음, 관련 선택 EditMode 56/56(실패/생략/불확
 확정 정책에 따라 같은 Entity의 Activate/Dock/Store, 전용 5슬롯과 일반 공간 공유, 벨트 드론 입고/출고 제한 및 일반 FIFO, 공통 적재량/최대 배터리 초기화를 구현했다. EndSimulation 공개와 기존 작업/예약 소유자를 유지한다. 독립 6개 역할 검수와 초기화/guard/경계 집중 재검수 지적을 해소했다. 자세한 Writer/가시성/검증 근거는 [Identity/보관 명세](../Specifications/DroneIdentityAndStationStorage.md)를 따른다.
 
 최종 컴파일 오류 없음, 관련 선택 EditMode 340/340, 실제 저장 SubScene의 격리 Baker/제품 생성/동일 Entity 전환을 확인했다. 실제 귀환 목적지 선택/이동/충전/Player/성능은 후속이다. Task 9.3만 새로 완료 처리하여 총93개/완료60개/미완료33개다. 미완료 분류는 부분 구현12개/계약 및 진단 기반2개/문서 대조 일부1개/나머지18개이며 앞선 집계는 해당 시점 기록으로 보존한다.
+
+### 2026-10-24 Task 문서 전체 소스/정책 대조
+
+Phase 0~10의 최상위 93개 Task, 하위 작업과 보완 검증 기록을 읽고 현재 HEAD 5e8671f의 관련 소스/확정 명세와 대조했다. Preparation/Power와 네 공개 경계, 현재 State/Decision 필드와 Writer, 배치 접수 순번/부분 승인, 건설의 제거된 초기 구현, 전력 EndPower 공개, 완료된 드론 생성/정거장/전환/용량 초기화를 본문에 반영했다. 수동 숫자 드론 작업 우선순위는 기획 제외로 정리했고 UI 요구에서도 제거했다. Task 9.4의 미승인 권장안은 결정 필요 사항으로 유지했다.
+
+Task 9.3 초기 구현의 340/340과 후속 Job 분리의 119/119는 서로 다른 당시 실행 기록이다. 후속 Job 분리는 병렬 Burst Decision, 단일 Burst Reservation, 데이터 Job/관리형 표시 기록 분리와 EndSimulation 공개를 검증했다. 상세 범위/격리 Baker의 RenderMeshArray 한계/5개 역할 검수는 [Identity/정거장 보관 명세](../Specifications/DroneIdentityAndStationStorage.md#검증-상태)를 따른다.
+
+이번 변경은 Task 문서만 수정한 정적 대조다. 관련 소스/기존 테스트 정의를 확인했지만 모든 코드/과거 실행 로그를 재감사하거나 Unity 컴파일/테스트/Play Mode/Player/성능 검증을 재실행하지 않았다. 완료 체크는 총93개/완료60개/미완료33개로 보존했다. 현재 설명과 과거 구현/검증을 분리하고 링크/Task ID/집계/변경 범위를 검사했다.
