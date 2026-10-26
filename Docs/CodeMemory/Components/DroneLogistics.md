@@ -127,12 +127,20 @@ DroneStationSpatialSyncSystem이 같은 singleton의 Fence와 함께 생성한�
 - **Producer·제거:** DroneTaskLifecycleApplySystem은 DropCargo로 월드에 반환한 기존 실물에 표시 추가를 EndSimulation에 기록한다. RecoverWorldItem이 해당 실물을 실제로 수집하면 표시 제거를 같은 ECB에 기록한다. 실제 드론의 방출 행동 신호 생성은 후속이며 인계 시스템이 임의로 방출 신호를 만들지는 않는다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneRecoveryPending.cs), [회수 판단](../../../Assets/Scripts/Systems/Drones/Decision/DroneTaskDecisionSystem.cs), [회수 생성 실행](../../../Assets/Scripts/Systems/Drones/Execution/DroneTaskExecutionSystem.cs), [방출·회수 인계](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs).
 
+## DroneTaskRequest / DroneTaskRequestDecision / DroneTaskRequestExecution / DroneTaskRequestResult
+
+Task 9.4의 외부 생성/취소 요청이다. Submit은 시뮬레이션 전 메인 스레드에서 별도의 World 접수 순번을 부여한다. Decision은 자격/기존 작업/앞선 생성 요청을 판단하고 Execution만 생성 결과의 CreationRecorded를 작성한다. 생성 결과의 deferred Task는 생성과 같은 ECB에만 기록한다. Lifecycle은 Busy를 재검사해 유휴 root 취소와 차단 원본을 EndSimulation에 기록한다. 요청/두 scratch 제거와 결과 추가도 같은 경계이며 TryConsumeResult가 결과 Entity를 한 번 소비한다. 수동 우선순위/일시 중단/재개는 없고 활성 취소는 9.15 후속이다. [요청 명세](../../Specifications/DroneTaskRequests.md).
+
+## DroneTaskGenerationBlockElement / DroneTaskGenerationDecisionElement
+
+기존 후보 singleton에서 Block은 사용자 취소의 영속 원본, Decision은 매 틱 재작성하는 제어 의도다. 공급 키는 현장/품목, 회수 키는 실물 Entity다. Decision은 취소 예정 root를 이번 틱 생성/신규 후보/재배정 목적지에서 제외한다. Lifecycle만 성공한 생성/취소 순서로 Block을 EndSimulation에 게시하며 Busy/거부는 원본을 바꾸지 않는다. 유효한 명시적 생성이 차단을 해제하고 대상 소멸 시 회수한다. 별도의 재고/공간 예약이나 인덱스 캐시가 아니다.
+
 ## DroneTaskCreationDecisionElement
 
 - **종류·부착 대상·목적:** IBufferElementData. DroneTaskCandidateDecisionElement와 같은 공유 singleton에 있는 공급·회수 작업 생성 의도 버퍼다. 작업 필요 여부의 판단과 실제 생성 명령 실행을 분리한다.
 - **필드:** Kind는 ConstructionSupply/WorldItemRecovery, Target은 현장/회수 실물, ItemType은 품목, RecoveryReason은 None/SiteClearance/DroneDrop이다. 의도에는 작업 생성 번호나 실제 작업 엔티티가 없다.
 - **Producer:** DroneSchedulingUtility.GetOrCreateCandidates가 초기화한다. DroneTaskDecisionSystem의 생성 판단 메서드가 매 틱 Clear한 뒤 공급 필요량·현장 범위·월드 소유권·활성 Destroy·기존 작업을 확인하여 중복 없는 의도를 작성한다. 공급 현장은 PlacementStamp 순서이며 공급 의도 뒤에 회수 의도를 기록한다.
-- **Consumer·수명:** DroneTaskExecutionSystem이 순서대로 소비하며 대상 생존·타입과 기존/같은 틱 생성 명령의 중복을 다시 확인한다. 유효 의도에만 생성 번호를 발급하고 EndSimulation ECB에 작업 생성을 기록한 뒤 버퍼를 Clear한다. 의도의 수명은 Decision부터 Execution까지이며 작업 실체화는 EndSimulation다.
+- **Consumer·수명:** DroneTaskExecutionSystem이 순서대로 소비하며 대상 생존/타입과 같은 ECB에 기록한 생성 명령 중복을 확인한다. 기존 root 중복은 선행 Decision이 보장하며 중간 Reservation은 root를 생성/삭제하지 않는다. 유효 의도에만 생성 번호를 발급하고 EndSimulation ECB에 작업 생성을 기록한 뒤 버퍼를 Clear한다. 의도의 수명은 Decision부터 Execution까지이며 작업 실체화는 EndSimulation다.
 - **한계:** Execution 이후 상태 변경까지 의도가 보장하지 않는다. 이후 무효가 된 작업은 다음 Decision에서 배정 대상에서 제외한다. 실제 드론 생성·이동·자재 인계 명령도 아니다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneTaskCreationDecisionElement.cs), [작성](../../../Assets/Scripts/Systems/Drones/Decision/DroneTaskDecisionSystem.cs), [소비](../../../Assets/Scripts/Systems/Drones/Execution/DroneTaskExecutionSystem.cs), [초기화](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs).
 

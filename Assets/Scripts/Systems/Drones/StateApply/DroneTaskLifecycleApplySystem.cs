@@ -25,6 +25,7 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
     public void OnCreate(ref SystemState state)
     {
         _candidates = DroneSchedulingUtility.GetOrCreateCandidates(state.EntityManager);
+        _taskRequests = state.GetEntityQuery(typeof(DroneTaskRequest), typeof(DroneTaskRequestDecision));
         _tasks = state.GetEntityQuery(ComponentType.ReadWrite<DroneLogisticsTask>());
         _sites = state.GetEntityQuery(ComponentType.ReadOnly<ConstructionSite>(), ComponentType.ReadOnly<GridPosition>());
         _assignments = state.GetEntityQuery(ComponentType.ReadWrite<DroneTaskAssignment>());
@@ -53,6 +54,83 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         using var results = _actionResults.ToComponentDataArray<DroneItemTransferResult>(Allocator.Temp);
         ApplyInvalidationDecisions(manager, requests, results, ecb, sites);
         RetireClosedTasks(manager, tasks, assignments, ecb);
+        ApplyTaskRequests(manager, ecb, assignments);
+    }
+
+    private EntityQuery _taskRequests;
+
+    private void ApplyTaskRequests(EntityManager manager, EntityCommandBuffer ecb, NativeArray<Entity> assignments)
+    {
+        var original = manager.GetBuffer<DroneTaskGenerationBlockElement>(_candidates, true);
+        using var blocks = new NativeList<DroneTaskGenerationBlockElement>(Allocator.Temp);
+        bool changed = false;
+        foreach (var block in original)
+        {
+            if (manager.Exists(block.Key.Target))
+            {
+                blocks.Add(block);
+            }
+            else
+            {
+                changed = true;
+            }
+        }
+
+        using var requests = DroneTaskRequestDecisionUtility.ReadRequests(manager, _taskRequests);
+        foreach (var record in requests)
+        {
+            var request = record.Request;
+            var decision = manager.GetComponentData<DroneTaskRequestDecision>(record.Entity);
+            if (request.Operation == DroneTaskRequestOperationEnum.Create && manager.GetComponentData<DroneTaskRequestExecution>(record.Entity).CreationRecorded)
+            {
+                var key = DroneTaskGenerationKey.From(request.Kind, request.Target, request.ItemType);
+                for (int i = blocks.Length - 1; i >= 0; i--)
+                {
+                    if (blocks[i].Key.Equals(key))
+                    {
+                        blocks.RemoveAt(i);
+                        changed = true;
+                    }
+                }
+            }
+
+            if (request.Operation != DroneTaskRequestOperationEnum.Cancel)
+            {
+                continue;
+            }
+
+            var status = decision.Status;
+            if (status == DroneTaskRequestStatusEnum.Cancelled)
+            {
+                status = DroneTaskRequestDecisionUtility.ValidateCancellation(manager, _candidates, request.Task, assignments, false);
+            }
+
+            if (status == DroneTaskRequestStatusEnum.Cancelled)
+            {
+                var key = DroneTaskRequestDecisionUtility.Key(manager.GetComponentData<DroneLogisticsTask>(request.Task));
+                bool exists = false;
+                foreach (var block in blocks)
+                {
+                    exists |= block.Key.Equals(key);
+                }
+
+                if (!exists)
+                {
+                    blocks.Add(new DroneTaskGenerationBlockElement { Key = key });
+                    changed = true;
+                }
+
+                // 활성/미정산 참조가 없는 root만 기존 Lifecycle 소유자가 삭제한다.
+                ecb.DestroyEntity(request.Task);
+            }
+
+            DroneTaskRequestUtility.RecordResult(ecb, record.Entity, request.Operation, status, request.Task);
+        }
+
+        if (changed)
+        {
+            ecb.SetBuffer<DroneTaskGenerationBlockElement>(_candidates).AddRange(blocks.AsArray());
+        }
     }
 
     private void ApplyInvalidationDecisions(EntityManager manager,

@@ -22,11 +22,13 @@ public partial struct DroneTaskDecisionSystem : ISystem
     private EntityQuery _assignments;
     private EntityQuery _registry;
     private EntityQuery _capacity;
+    private EntityQuery _taskRequests;
     private uint _evaluationRevision;
 
     public void OnCreate(ref SystemState state)
     {
         _candidates = DroneSchedulingUtility.GetOrCreateCandidates(state.EntityManager);
+        _taskRequests = state.GetEntityQuery(typeof(DroneTaskRequest), typeof(DroneTaskRequestDecision));
         _tasks = state.GetEntityQuery(ComponentType.ReadOnly<DroneLogisticsTask>());
         _sites = state.GetEntityQuery(ComponentType.ReadOnly<ConstructionSite>(), ComponentType.ReadOnly<GridPosition>());
         _storages = state.GetEntityQuery(ComponentType.ReadOnly<BuildingType>(), ComponentType.ReadOnly<Storage>(),
@@ -48,7 +50,6 @@ public partial struct DroneTaskDecisionSystem : ISystem
         manager.GetBuffer<DroneTaskCandidateDecisionElement>(_candidates).Clear();
         var routeDecisions = manager.GetBuffer<DroneRouteDecisionElement>(_candidates);
         routeDecisions.Clear();
-        BuildCreationDecisions(ref state);
         var invalidationDecisions = manager.GetBuffer<DroneTaskInvalidationDecisionElement>(_candidates);
         invalidationDecisions.Clear();
         using var tasks = _tasks.ToEntityArray(Allocator.Temp);
@@ -57,6 +58,8 @@ public partial struct DroneTaskDecisionSystem : ISystem
         using var workers = _workers.ToEntityArray(Allocator.Temp);
         using var routes = _routes.ToEntityArray(Allocator.Temp);
         using var assignments = _assignments.ToEntityArray(Allocator.Temp);
+        DroneTaskRequestDecisionUtility.Prepare(manager, _candidates, _taskRequests, tasks, sites, assignments);
+        BuildCreationDecisions(ref state);
         using var busyWorkers = new NativeHashSet<Entity>(16, Allocator.Temp);
         using var claimedRecoveryItems = new NativeHashSet<Entity>(16, Allocator.Temp);
         using var removedRoutes = new NativeHashSet<Entity>(16, Allocator.Temp);
@@ -108,6 +111,10 @@ public partial struct DroneTaskDecisionSystem : ISystem
             for (int t = 0; t < tasks.Length; t++)
             {
                 var task = manager.GetComponentData<DroneLogisticsTask>(tasks[t]);
+                if (DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, tasks[t]))
+                {
+                    continue;
+                }
                 if (!DroneSchedulingUtility.IsTaskValid(manager, task, sites)) continue;
                 bool supply = task.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply;
                 if (supply && DroneSchedulingUtility.ProjectedRemaining(manager, task.Target, task.ItemType, assignments, sites, pendingPublications) <= 0) continue;
@@ -383,6 +390,11 @@ public partial struct DroneTaskDecisionSystem : ISystem
             if (supply)
             {
                 if (!DroneSchedulingUtility.IsSite(manager, destination)) continue;
+                if (DroneTaskRequestDecisionUtility.IsBlocked(manager, _candidates,
+                    DroneTaskGenerationKey.From(DroneLogisticsTaskKindEnum.ConstructionSupply, destination, assignment.ItemType)))
+                {
+                    continue;
+                }
                 if (DroneSchedulingUtility.ProjectedRemaining(manager, destination, assignment.ItemType,
                     assignments, sites, pendingPublications) <= 0) continue;
             }
@@ -408,10 +420,14 @@ public partial struct DroneTaskDecisionSystem : ISystem
         return bestDestination == Entity.Null ? CargoDestinationSelectionEnum.NoDestination : CargoDestinationSelectionEnum.Selected;
     }
 
-    private static Entity FindSupplyTask(EntityManager manager, NativeArray<Entity> tasks, Entity site, ItemTypeEnum type)
+    private Entity FindSupplyTask(EntityManager manager, NativeArray<Entity> tasks, Entity site, ItemTypeEnum type)
     {
         for (int i = 0; i < tasks.Length; i++)
         {
+            if (DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, tasks[i]))
+            {
+                continue;
+            }
             var task = manager.GetComponentData<DroneLogisticsTask>(tasks[i]);
             if (task.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply && task.State == DroneLogisticsTaskStateEnum.Open &&
                 task.Target == site && task.ItemType == type) return tasks[i];
@@ -443,9 +459,17 @@ public partial struct DroneTaskDecisionSystem : ISystem
         var manager = state.EntityManager;
         var decisions = manager.GetBuffer<DroneTaskCreationDecisionElement>(_candidates);
         decisions.Clear();
-        using var tasks = _creationTasks.ToComponentDataArray<DroneLogisticsTask>(Allocator.Temp);
-        BuildSupplyCreationDecisions(manager, tasks, decisions);
-        BuildRecoveryCreationDecisions(manager, tasks, decisions);
+        using var entities = _creationTasks.ToEntityArray(Allocator.Temp);
+        using var tasks = new NativeList<DroneLogisticsTask>(Allocator.Temp);
+        foreach (Entity entity in entities)
+        {
+            if (!DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, entity))
+            {
+                tasks.Add(manager.GetComponentData<DroneLogisticsTask>(entity));
+            }
+        }
+        BuildSupplyCreationDecisions(manager, tasks.AsArray(), decisions);
+        BuildRecoveryCreationDecisions(manager, tasks.AsArray(), decisions);
     }
 
     private void BuildSupplyCreationDecisions(EntityManager manager,
@@ -483,6 +507,11 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 }
 
                 if (HasCreationSupplyTask(existingTasks, site, requirement.ItemType))
+                {
+                    continue;
+                }
+                if (DroneTaskRequestDecisionUtility.IsBlocked(manager, _candidates,
+                    DroneTaskGenerationKey.From(DroneLogisticsTaskKindEnum.ConstructionSupply, site, requirement.ItemType)))
                 {
                     continue;
                 }
@@ -559,6 +588,11 @@ public partial struct DroneTaskDecisionSystem : ISystem
             }
 
             if (reason == DroneRecoveryReasonEnum.None)
+            {
+                continue;
+            }
+            if (DroneTaskRequestDecisionUtility.IsBlocked(manager, _candidates,
+                DroneTaskGenerationKey.From(DroneLogisticsTaskKindEnum.WorldItemRecovery, item, itemType)))
             {
                 continue;
             }

@@ -3,7 +3,7 @@ using Unity.Entities;
 
 /// <summary>
 /// 역할·목적: Execution에서 Decision의 작업 생성과 경로 Create/Retain/Remove 의도를 실행한다.
-/// 입력: 공통 후보 엔티티의 생성/경로 의도, 기존 작업과 의도가 참조하는 현재 대상·관측.
+/// 입력: 공통 후보 엔티티의 생성/경로 의도와 현재 대상/관측. 기존 root 중복은 Decision이 보장한다.
 /// 출력·소유권: World 작업 순번을 발급하고 작업·경로 요청 생성/삭제를 EndSimulation ECB에 기록한다.
 /// 적용 검사만 수행하며 작업 필요 여부나 경로 사용 여부를 다시 탐색하지 않고 실제 이동/행동도 수행하지 않는다.
 /// 정리·가시화: 소비한 의도 버퍼는 비우고 생성/삭제는 EndSimulation에서 확정한다.
@@ -14,14 +14,14 @@ public partial struct DroneTaskExecutionSystem : ISystem
 {
     private Entity _sequenceEntity;
     private Entity _candidates;
-    private EntityQuery _existingTasks;
     private EntityQuery _capacity;
+    private EntityQuery _taskRequests;
 
     public void OnCreate(ref SystemState state)
     {
         _sequenceEntity = DroneTaskCreationUtility.GetOrCreateSequence(state.EntityManager);
         _candidates = DroneSchedulingUtility.GetOrCreateCandidates(state.EntityManager);
-        _existingTasks = state.GetEntityQuery(ComponentType.ReadOnly<DroneLogisticsTask>());
+        _taskRequests = state.GetEntityQuery(typeof(DroneTaskRequest), typeof(DroneTaskRequestDecision));
         _capacity = state.GetEntityQuery(ComponentType.ReadOnly<DroneCapacityState>());
     }
 
@@ -63,9 +63,9 @@ public partial struct DroneTaskExecutionSystem : ISystem
     {
         var decisions = manager.GetBuffer<DroneTaskCreationDecisionElement>(_candidates);
         var sequence = manager.GetComponentData<DroneTaskSequence>(_sequenceEntity);
-        using var tasks = _existingTasks.ToComponentDataArray<DroneLogisticsTask>(Allocator.Temp);
         // ECB에 새로 기록한 작업은 아직 쿼리에 없으므로 로컬 기록으로 같은 틱 중복 생성도 막는다.
-        using var recorded = new NativeList<DroneTaskCreationDecisionElement>(Allocator.Temp);
+        using var recorded = new NativeList<RecordedCreation>(Allocator.Temp);
+        ExecuteCreationRequests(manager, ecb, ref sequence, recorded);
         for (int i = 0; i < decisions.Length; i++)
         {
             var decision = decisions[i];
@@ -74,27 +74,84 @@ public partial struct DroneTaskExecutionSystem : ISystem
                 continue;
             }
 
-            if (HasExistingCreation(tasks, decision) || HasRecordedCreation(recorded, decision))
+            if (HasRecordedCreation(recorded, decision))
             {
                 continue;
             }
 
             // 배정이 아니라 품목별 공급 root 또는 실물별 회수 root를 기록하고 실제 생성에만 순번을 사용한다.
-            if (decision.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply)
-            {
-                DroneTaskCreationUtility.CreateConstructionSupplyTask(ecb, decision.Target, decision.ItemType, ref sequence);
-            }
-            else
-            {
-                DroneTaskCreationUtility.CreateRecoveryTask(ecb, decision.Target, decision.ItemType,
-                    decision.RecoveryReason, ref sequence);
-            }
-
-            recorded.Add(decision);
+            Entity task = RecordCreation(ecb, decision, ref sequence);
+            recorded.Add(new RecordedCreation { Creation = decision, Task = task });
         }
 
         manager.SetComponentData(_sequenceEntity, sequence);
         decisions.Clear();
+    }
+
+    private struct RecordedCreation
+    {
+        public DroneTaskCreationDecisionElement Creation;
+        public Entity Request;
+        public Entity Task;
+    }
+
+    private static Entity RecordCreation(EntityCommandBuffer ecb, in DroneTaskCreationDecisionElement creation, ref DroneTaskSequence sequence) => creation.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply ? DroneTaskCreationUtility.CreateConstructionSupplyTask(ecb, creation.Target, creation.ItemType, ref sequence) : DroneTaskCreationUtility.CreateRecoveryTask(ecb, creation.Target, creation.ItemType, creation.RecoveryReason, ref sequence);
+
+    private void ExecuteCreationRequests(EntityManager manager, EntityCommandBuffer ecb, ref DroneTaskSequence sequence, NativeList<RecordedCreation> recorded)
+    {
+        using var requests = DroneTaskRequestDecisionUtility.ReadRequests(manager, _taskRequests);
+        foreach (var record in requests)
+        {
+            var request = record.Request;
+            if (request.Operation == DroneTaskRequestOperationEnum.Cancel)
+            {
+                continue;
+            }
+
+            var decision = manager.GetComponentData<DroneTaskRequestDecision>(record.Entity);
+            var status = decision.Status;
+            Entity task = decision.Task;
+            var creation = new DroneTaskCreationDecisionElement
+            {
+                Kind = request.Kind,
+                Target = request.Target,
+                ItemType = request.ItemType,
+                RecoveryReason = decision.RecoveryReason
+            };
+            bool accepted = status == DroneTaskRequestStatusEnum.Created || status == DroneTaskRequestStatusEnum.Existing;
+            if (accepted && !IsCreationTargetValid(manager, creation))
+            {
+                status = DroneTaskRequestStatusEnum.Rejected;
+                accepted = false;
+            }
+
+            if (accepted && status == DroneTaskRequestStatusEnum.Created)
+            {
+                task = RecordCreation(ecb, creation, ref sequence);
+                recorded.Add(new RecordedCreation { Creation = creation, Request = record.Entity, Task = task });
+            }
+            else if (accepted && task == Entity.Null)
+            {
+                foreach (var prior in recorded)
+                {
+                    if (prior.Request == decision.CreatingRequest)
+                    {
+                        task = prior.Task;
+                        break;
+                    }
+                }
+
+                if (task == Entity.Null)
+                {
+                    status = DroneTaskRequestStatusEnum.Rejected;
+                    accepted = false;
+                }
+            }
+
+            manager.SetComponentData(record.Entity, new DroneTaskRequestExecution { CreationRecorded = accepted });
+            // 새 Task의 deferred Entity는 생성과 같은 ECB의 결과에만 기록한다.
+            DroneTaskRequestUtility.RecordResult(ecb, record.Entity, request.Operation, status, task);
+        }
     }
 
     private static bool IsCreationTargetValid(EntityManager manager, in DroneTaskCreationDecisionElement decision)
@@ -118,37 +175,12 @@ public partial struct DroneTaskExecutionSystem : ISystem
         return false;
     }
 
-    private static bool HasExistingCreation(NativeArray<DroneLogisticsTask> tasks,
-        in DroneTaskCreationDecisionElement decision)
-    {
-        for (int i = 0; i < tasks.Length; i++)
-        {
-            var task = tasks[i];
-            if (task.Kind != decision.Kind || task.Target != decision.Target)
-            {
-                continue;
-            }
-
-            if (decision.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply && task.ItemType == decision.ItemType)
-            {
-                return true;
-            }
-
-            if (decision.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery && task.State == DroneLogisticsTaskStateEnum.Open)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool HasRecordedCreation(NativeList<DroneTaskCreationDecisionElement> recorded,
+    private static bool HasRecordedCreation(NativeList<RecordedCreation> recorded,
         in DroneTaskCreationDecisionElement decision)
     {
         for (int i = 0; i < recorded.Length; i++)
         {
-            var other = recorded[i];
+            var other = recorded[i].Creation;
             if (other.Kind == decision.Kind && other.Target == decision.Target &&
                 (decision.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery || other.ItemType == decision.ItemType))
             {

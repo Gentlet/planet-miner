@@ -114,6 +114,8 @@ DroneTaskCandidateDecisionElement는 Decision이 매 틱 Clear하고 다시 만�
 
 ## 핵심 데이터와 변경 규칙
 
+2026-10-24 Task 9.4의 [작업 요청 계약](Docs/Specifications/DroneTaskRequests.md)은 현재 공급/제한된 회수의 생성과 유휴 root 취소를 기존 Task Decision/Execution/Lifecycle에 연결한다. 생성 순번과 별도인 접수 순번으로 처리하며 중복은 기존 Task, 활성/미정산 참조는 Busy 결과다. Decision 제어 의도와 Lifecycle의 영속 자동 생성 차단을 구분하고 요청 소비/결과/차단 공개는 EndSimulation이다. 입력 요청은 Submit이 시뮬레이션 전에 게시한다. 생성 결과의 deferred Entity는 생성과 같은 ECB에서만 remap한다. 수동 우선순위/일시 중단/재개는 제외하고 활성 취소 정산은 9.15에 남긴다.
+
 2026-10-15 Preparation 이름을 유지하고 준비/실행 결정 컴포넌트를 분리했다. Preparation만 MinerWorkPreparation/CrafterWorkPreparation을 작성하며 enable은 준비 완료이고 작업 불가도 정상 준비 결과다. BuildingPowerDemandPreparationSystem은 이 자격으로 전력 요청을 작성한다. BuildingDecision만 MinerDecision/CrafterDecision/CrafterStateDecision을 작성하고 공급과 완료 출력/상태를 판단한다. Power는 연결/가용량·망/예산·연료 전환/배정 소비·공급을 소유한다. PowerFrameState는 제거하고 공통 SimulationFatalError.StopScope를 사용한다. Power는 RemainingDomains로 같은 틱 Building/Drone을, 기존 오류의 NextTick은 다음 게임 틱을 차단한다. 기초 우선·정격 분담/연료 한도·미사용 배정 소비와 환급/재배분 금지·새 입고/참가자의 다음 틱 참여를 유지한다. 실제 소비할 연료 조건을 모두 확인한 뒤 소비하며 EndPower에 연료 실물/망을 확정한다. 이번 준비/결정 분리·공통 Fatal·Job 의존성 변경은 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·Editor ready/비컴파일/비리로드·최신 runtime/Editor DLL과 관련 선택 EditMode 170/170(실패·생략·불확정 0)으로 확인했다. Play Mode·베이킹·Player 빌드·성능은 미수행이다. 이전 157/157은 이 분리 전의 실행 기록이다. [전력 명세](Docs/Specifications/PowerGrid.md)를 따른다.
 
 ### 공간과 작업 의존성

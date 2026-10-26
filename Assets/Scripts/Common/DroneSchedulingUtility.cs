@@ -33,11 +33,20 @@ public static class DroneSchedulingUtility
             {
                 manager.AddBuffer<DroneTaskInvalidationDecisionElement>(existing);
             }
+            if (!manager.HasBuffer<DroneTaskGenerationBlockElement>(existing))
+            {
+                manager.AddBuffer<DroneTaskGenerationBlockElement>(existing);
+            }
+            if (!manager.HasBuffer<DroneTaskGenerationDecisionElement>(existing))
+            {
+                manager.AddBuffer<DroneTaskGenerationDecisionElement>(existing);
+            }
             return existing;
         }
 
         return manager.CreateEntity(typeof(DroneTaskCandidateDecisionElement), typeof(DroneTaskPendingPublicationElement), typeof(DroneRouteDecisionElement),
-            typeof(DroneTaskCreationDecisionElement), typeof(DroneTaskInvalidationDecisionElement));
+            typeof(DroneTaskCreationDecisionElement), typeof(DroneTaskInvalidationDecisionElement),
+            typeof(DroneTaskGenerationBlockElement), typeof(DroneTaskGenerationDecisionElement));
     }
 
     /// <summary>초기 능력/연구 Writer가 게시한 공통 값을 읽는다. 미게시 상태에 임의 기본값을 만들지 않는다.</summary>

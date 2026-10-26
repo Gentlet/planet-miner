@@ -1,5 +1,4 @@
 {
-  "defaultTaskPriority": 5,
   "carryingCapacity": 3,
   "movementSpeed": 4.0,
   "emergencyMovementSpeed": 0.5,

@@ -13,6 +13,7 @@
 | 드론 Authoring·DB·생성 초기화 | [드론 생성 명세](Specifications/DroneCreation.md) | Task 9.3.1의 실제 Baker·4종 DB 준비·EndSimulation 생성 초기화. Identity/수용량은 아래 별도 명세를 따르며 실제 배차/이동/충전은 후속이다. |
 | 드론 Identity/정거장 수용량 | [Identity/정거장 보관 명세](Specifications/DroneIdentityAndStationStorage.md) | Task 9.3의 같은 Entity 전환/전용 및 일반 슬롯/요청 중재/벨트 정책/EndSimulation 공개. 귀환 경로/충전은 후속이다. |
 | 공통 적재량/최대 배터리 초기화 | [초기화 계약](Specifications/DroneCapacityInitializationPlan.md) | 6A에 따라 Task 9.3에서 한 번 게시하며 기존 유효 상태를 보존한다. 이동 소비/충전은 후속이다. |
+| 드론 작업 생성/취소 요청 | [작업 요청 명세](Specifications/DroneTaskRequests.md) | Task 9.4의 접수 순서/중복/유휴 취소/자동 재생성 차단/EndSimulation 결과. 진행 중 취소는 9.15 후속이며 수동 우선순위/일시 중단/재개는 제외한다. |
 | 연구의 합의된 게임 규칙 | [연구건물 명세](Specifications/ResearchBuilding.md) | 설계 규칙과 임시 데이터를 구분한다. 현재 V2 연구 진행 Writer의 구현 증거는 아니다. |
 | 개발 마일스톤·설계 배경 | [V2 작업 목록](architecture%20v2%20plan/Architecture%20V2%20Tasks.md), [V2 설계](architecture%20v2%20plan/Architecture%20V2%20Plan_0.2.md) | Phase 번호와 체크는 해당 개발 작업의 범위다. 현재 런타임 그룹 수/순서나 전체 기능 완료를 뜻하지 않는다. |
 | 아직 이식하지 않은 게임 동작·정책 차이 | [V2 작업 목록](architecture%20v2%20plan/Architecture%20V2%20Tasks.md)의 도메인별 레거시 검토 항목 | 이전 CodeMemory에서 필요한 동작만 보존했다. 현재 확정 계약과 충돌하는 내용은 후속 결정 사항이며 구현 승인이나 완료를 뜻하지 않는다. |

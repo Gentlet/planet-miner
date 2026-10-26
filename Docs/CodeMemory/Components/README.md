@@ -49,6 +49,8 @@ Task 9.1에서 확정한 귀환·충전·수납·재배차 정책과 Lifecycle O
 | [DroneActivityState](DroneLogistics.md#droneactivitystate) | 수행자 자체 활동 | [보관/활동 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneStationStorageComponents.cs) |
 | [DroneBatteryConfig](DroneLogistics.md#dronebatteryconfig) | 읽기 전용 최대 배터리 | [보관/활동 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneStationStorageComponents.cs) |
 | [DroneStationRequest](DroneLogistics.md#dronestationrequest) | 접수 순서 요청 | [요청 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneStationRequests.cs) |
+| [DroneTaskRequest / Decision / Execution / Result](DroneLogistics.md#dronetaskrequest--dronetaskrequestdecision--dronetaskrequestexecution--dronetaskrequestresult) | 작업 생성/유휴 취소와 외부 결과 | [요청 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneTaskRequests.cs) |
+| [DroneTaskGenerationBlockElement / DecisionElement](DroneLogistics.md#dronetaskgenerationblockelement--dronetaskgenerationdecisionelement) | 사용자 자동 생성 차단 원본/이번 틱 의도 | [제어 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneTaskRequests.cs) |
 | [DroneStationDecision](DroneLogistics.md#dronestationdecision) | 자격/슬롯 승인 | [요청 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneStationRequests.cs) |
 | [DroneStationResult](DroneLogistics.md#dronestationresult) | 외부 소비 결과 | [요청 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneStationRequests.cs) |
 | [DroneStationRequestSequence](DroneLogistics.md#dronestationrequestsequence) | World 접수 순번 | [요청 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneStationRequests.cs) |
