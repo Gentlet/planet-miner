@@ -8,7 +8,7 @@
 
 `Assets/Scenes/V2 Test Scene.unity`를 빌드와 평소 Editor 편집의 공통 진입 장면으로 사용한다. 전역 `ProjectSettings/EditorBuildSettings.asset`와 활성 Windows 빌드 프로필의 장면 목록은 모두 이 메인 장면 하나를 활성화한다. 메인 장면은 `Assets/Scenes/V2 Test Scene/sub.unity`를 자동 로드하며, 이 SubScene에 건물·아이템·자원 프리팹 DB Authoring이 있다. `V2FloorBiomePreview`의 진단용 색상 바닥은 유지한다. Editor에서는 이 메인 장면을 열어 작업하고 Play Mode Start Scene도 이 장면으로 지정한다. 이 시작 장면 지정은 Editor별 로컬 설정이므로 다른 Editor에서도 같은 기준을 적용한다. SampleScene 계열은 레거시 참고로 남아 있으며 현재 빌드 진입이 아니다.
 
-2026-09-29 F-037 검증에서 공사 완료의 완공 건물 생성과 제작기 입력·생산 연결을 확인했다. 주 시설 자동 부트스트랩, 전력망, 드론 운송, 연구 진행, 게임 입력·카메라 제어·UI Toolkit 컨트롤러, 실제 바닥 청크 렌더링 시스템은 이 지도의 기존 미구현 범위다. enum·요청 필드·프리팹·JSON·계획이 존재하는 것과 해당 기능이 구현된 것은 구분한다.
+2026-09-29 F-037 검증에서 공사 완료의 완공 건물 생성과 제작기 입력·생산 연결을 확인했다. 주 시설 자동 부트스트랩, 전력망, 드론 운송, 연구 진행, 제품 UI 화면, 실제 바닥 청크 렌더링 시스템은 이 지도의 기존 미구현 범위다. 입력/카메라 공통 기반의 현재 범위는 아래 월드 입력 절을 따른다. enum·요청 필드·프리팹·JSON·계획이 존재하는 것과 해당 기능이 구현된 것은 구분한다.
 
 현재 사용자 지시와 검증한 소스를 기억·문서보다 우선한다. `.agents/` 및 `Docs/architecture v2 plan/`의 계획은 설계 배경으로 참고하고, 현재 동작은 컴포넌트, 쿼리, 업데이트 순서, 실제 호출 관계로 확인한다. 코드 확인 결과와 실제 실행으로 검증한 결과를 구분해 보고한다.
 
@@ -212,6 +212,10 @@ BuildingConfig의 DroneStationStorageCapacity는 주 시설/정거장의 종류/
 - 사용자의 명시적 요청이 없으면 하나의 시스템을 여러 partial 소스 파일로 분리하지 않는다. Unity Entities 소스 생성에 필요한 partial 선언은 유지한다.
 - UI Toolkit을 추가할 때 콜백은 `OnEnable`에서 연결하고 `OnDisable`에서 해제하며, 월드 입력 차단 요소는 `blocking-ui` USS 클래스를 사용한다. 이는 현재 UI 구현이 존재한다는 뜻은 아니다.
 
+### 월드 입력과 카메라
+
+Task 10B.1의 [월드 입력/카메라 명세](Docs/Specifications/WorldInputAndCamera.md)는 키보드/마우스, WASD/방향키와 Shift 가속, 마우스 위치 기준 줌, 위치 제한 없는 직교 카메라를 따른다. V2 메인 장면의 Main Camera에 WorldInputController/CameraMovementController와 기존 InputSystem_Actions 참조를 연결한다. 입력 컨트롤러는 자기 Action 복제본을 소유하고 카메라 반영 후 좌표/버튼 프레임을 전달한다. 일반 blocking-ui는 포인터/휠만, 텍스트 포커스/보이는 modal-ui는 모든 월드 입력을 차단한다. 새 UIDocument는 WorldInputUiBlocker를 함께 등록/해제한다. 이벤트 병합 설정의 임시 복제/복원은 WorldInputEventScope가 공유 수명으로 관리한다. 입력 프레임과 World 문맥은 ECS 게임 상태/공간 인덱스/접수 순번을 대신하지 않는다. 실제 배치/철거/선택/연구/청크 요청은 후속 10B.2~10B.5의 기존 요청 경로로 연결하며 실제 조작/표시는 사용자 수동 검증으로 구분한다.
+
 ## 주요 실행 흐름과 구현 경계
 
 ### 초기화·월드 생성
@@ -287,6 +291,7 @@ BuildingConfig의 DroneStationStorageCapacity는 주 시설/정거장의 종류/
 | `Assets/Scripts/Phases/`, `Assets/Scripts/Systems/` | 위 실행 단계 및 각 단계의 시스템 |
 | `Assets/Scripts/Common/` | 상수, 요청 인터페이스, 방향·라우팅·배치 검증 |
 | `Assets/Scripts/Chunks/` | 청크 좌표 변환, 결정론적 자원 생성, 바닥 선택 |
+| `Assets/Scripts/Input/`, `Assets/Scripts/Camera/` | 공통 프레임 입력/버튼 수명/UI 입력 차단과 카메라 조작 |
 | `Assets/Scripts/Config/` | 건물·월드·레시피 설정 파싱/검증/게시 |
 | `Assets/Scripts/Debug/`, `Assets/Scripts/Validation/` | 바닥 진단 표시와 ECS 불변식 검사 |
 | `Assets/Scenes/`, `Assets/Resources/Prefabs/` | 장면/SubScene 및 도메인별 프리팹 |

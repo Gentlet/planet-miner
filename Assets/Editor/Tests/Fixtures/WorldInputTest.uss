@@ -1,0 +1,24 @@
+.input-test-panel {
+    width: 200px;
+    height: 100px;
+}
+
+.input-test-hidden {
+    display: none;
+}
+
+.input-test-clip {
+    width: 100px;
+    height: 100px;
+    overflow: hidden;
+}
+
+.input-test-clipped-region {
+    position: absolute;
+    width: 200px;
+    height: 100px;
+}
+
+.input-test-outside-clip {
+    left: 150px;
+}

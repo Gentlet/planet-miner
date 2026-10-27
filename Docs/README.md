@@ -15,6 +15,7 @@
 | 공통 적재량/최대 배터리 초기화 | [초기화 계약](Specifications/DroneCapacityInitializationPlan.md) | 6A에 따라 Task 9.3에서 한 번 게시하며 기존 유효 상태를 보존한다. 이동 소비/충전은 후속이다. |
 | 드론 작업 생성/취소 요청 | [작업 요청 명세](Specifications/DroneTaskRequests.md) | Task 9.4의 접수 순서/중복/유휴 취소/자동 재생성 차단/EndSimulation 결과. 진행 중 취소는 9.15 후속이며 수동 우선순위/일시 중단/재개는 제외한다. |
 | 연구의 합의된 게임 규칙 | [연구건물 명세](Specifications/ResearchBuilding.md) | 설계 규칙과 임시 데이터를 구분한다. 현재 V2 연구 진행 Writer의 구현 증거는 아니다. |
+| 공통 월드 입력/카메라/UI 차단 | [월드 입력/카메라 명세](Specifications/WorldInputAndCamera.md) | 키보드/마우스와 입력 프레임의 수명, UI 차단, 후속 요청 소비 계약. 실제 제품 명령/UI 화면과 수동 조작 검증은 별도다. |
 | 개발 마일스톤·설계 배경 | [V2 작업 목록](architecture%20v2%20plan/Architecture%20V2%20Tasks.md), [V2 설계](architecture%20v2%20plan/Architecture%20V2%20Plan_0.2.md) | Phase 번호와 체크는 해당 개발 작업의 범위다. 현재 런타임 그룹 수/순서나 전체 기능 완료를 뜻하지 않는다. |
 | 아직 이식하지 않은 게임 동작·정책 차이 | [V2 작업 목록](architecture%20v2%20plan/Architecture%20V2%20Tasks.md)의 도메인별 레거시 검토 항목 | 이전 CodeMemory에서 필요한 동작만 보존했다. 현재 확정 계약과 충돌하는 내용은 후속 결정 사항이며 구현 승인이나 완료를 뜻하지 않는다. |
 
