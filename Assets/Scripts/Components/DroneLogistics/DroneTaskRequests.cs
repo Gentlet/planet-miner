@@ -25,6 +25,7 @@ public struct DroneTaskRequest : IRequestComponent
     public DroneLogisticsTaskKindEnum Kind;
     public Entity Target;
     public ItemTypeEnum ItemType;
+    public int Quantity;
     public Entity Task;
     public ulong Sequence;
 }
@@ -57,7 +58,7 @@ public struct DroneTaskRequestSequence : IComponentData
     public ulong NextValue;
 }
 
-/// <summary>공급은 현장/품목, 회수는 실물 Entity가 키다. 회수 ItemType은 None으로 정규화한다.</summary>
+/// <summary>공급/일반 운반은 종류/대상/품목, 회수는 실물 Entity가 키다. 회수 ItemType은 None으로 정규화한다.</summary>
 public struct DroneTaskGenerationKey
 {
     public DroneLogisticsTaskKindEnum Kind;
@@ -68,7 +69,7 @@ public struct DroneTaskGenerationKey
     {
         Kind = kind,
         Target = target,
-        ItemType = kind == DroneLogisticsTaskKindEnum.ConstructionSupply ? itemType : ItemTypeEnum.None
+        ItemType = kind == DroneLogisticsTaskKindEnum.WorldItemRecovery ? ItemTypeEnum.None : itemType
     };
 }
 

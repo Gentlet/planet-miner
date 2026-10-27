@@ -13,6 +13,7 @@
 | 드론 Authoring·DB·생성 초기화 | [드론 생성 명세](Specifications/DroneCreation.md) | Task 9.3.1의 실제 Baker·4종 DB 준비·EndSimulation 생성 초기화. Identity/수용량은 아래 별도 명세를 따르며 실제 배차/이동/충전은 후속이다. |
 | 드론 Identity/정거장 수용량 | [Identity/정거장 보관 명세](Specifications/DroneIdentityAndStationStorage.md) | Task 9.3의 같은 Entity 전환/전용 및 일반 슬롯/요청 중재/벨트 정책/EndSimulation 공개. 귀환 경로/충전은 후속이다. |
 | 공통 적재량/최대 배터리 초기화 | [초기화 계약](Specifications/DroneCapacityInitializationPlan.md) | 6A에 따라 Task 9.3에서 한 번 게시하며 기존 유효 상태를 보존한다. 이동 소비/충전은 후속이다. |
+| 드론 작업 계획/망 필터 | [작업 계획 명세](Specifications/DroneTaskPlanning.md) | 일반 반입/반출의 일회성 요청/계획, 현재 위치 네트워크와 부분 footprint 포함. 실제 운반/경로 평가는 후속이다. |
 | 드론 작업 생성/취소 요청 | [작업 요청 명세](Specifications/DroneTaskRequests.md) | Task 9.4의 접수 순서/중복/유휴 취소/자동 재생성 차단/EndSimulation 결과. 진행 중 취소는 9.15 후속이며 수동 우선순위/일시 중단/재개는 제외한다. |
 | 연구의 합의된 게임 규칙 | [연구건물 명세](Specifications/ResearchBuilding.md) | 설계 규칙과 임시 데이터를 구분한다. 현재 V2 연구 진행 Writer의 구현 증거는 아니다. |
 | 공통 월드 입력/카메라/UI 차단 | [월드 입력/카메라 명세](Specifications/WorldInputAndCamera.md) | 키보드/마우스와 입력 프레임의 수명, UI 차단, 후속 요청 소비 계약. 실제 제품 명령/UI 화면과 수동 조작 검증은 별도다. |

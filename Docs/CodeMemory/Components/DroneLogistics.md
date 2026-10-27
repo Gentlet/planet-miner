@@ -2,7 +2,7 @@
 
 [전체 색인](README.md) · [배치와 공사](Construction.md) · [아이템과 저장](ItemsAndStorage.md)
 
-2026-10-06의 드론 ECS 타입 23개와 Task 9.2의 5개, 9.3.1의 1개, 9.3의 보관/활동/설정/요청 9개를 포함해 38개를 설명한다. 기존 작업/예약/인계/재배정과 정거장 연결/보관/Identity 공개 계약을 포함한다.
+드론 작업/예약/인계/재배정과 정거장 연결/보관/Identity/요청/계획의 데이터 계약을 설명한다. 일반 운반 계획은 별도 버퍼로 구분하며 실제 배차/운반과 경로 평가 Producer는 후속이다.
 
 2026-10-15 Task 9.1은 [상태 전이·Lifecycle Owner 계약](../../Specifications/DroneLifecycle.md)을 확정했다. 1A~6A의 수납·완충 전/연속 배차·귀환·비상 이동·중단 정산은 후속 수행부가 따라야 할 정책이다. Task 9.1 당시 23개 타입과 관리 계층을 유지했으며 실제 정거장·이동·배터리·충전·수납 Writer나 새 상태 enum을 추가하지 않았다. 이후 Task 9.2의 정거장 기반은 아래 별도 타입/명세로 구분한다. 작업/배정의 기존 상태와 수행자 자체의 후속 개념 상태를 구분한다.
 
@@ -90,7 +90,7 @@ Submit이 단독 생성/증가하는 World 접수 순번이다. 0/순환을 허�
 
 ## DroneStationNetworkDecision
 
-DroneStationNetworkDecisionSystem이 DroneDecision 앞단에서 매 틱 전체 결과를 초기화하고 활성 정거장에 대표 Entity와 enable을 작성한다. enable은 이번 틱 참가/연결 판단 완료다. 비활성·철거 승인 대상은 미준비로 남는다. 같은 틱 소비자는 이 값과 건물 원본을 읽으며 이전 공개 인덱스로 대체하지 않는다.
+DroneStationNetworkDecisionSystem이 DroneDecision 앞단에서 매 틱 전체 결과를 초기화하고 활성 정거장에 대표 Entity/ActivityBounds와 enable을 작성한다. enable은 이번 틱 참가/연결 판단 완료다. 비활성·철거 승인 대상은 미준비로 남는다. 같은 틱 소비자는 이 값과 건물 원본을 읽으며 이전 공개 인덱스로 대체하지 않는다.
 
 ## DroneStationNetwork
 
@@ -98,7 +98,7 @@ DroneStationNetworkApplySystem이 Decision의 대표 Entity를 EndSimulation에 
 
 ## DroneStationSpatialIndex
 
-DroneStationSpatialSyncSystem이 같은 singleton의 Fence와 함께 생성한다. Synchronization에서 공개 연결과 원본 건물로 정거장→대표/정사각형 영역을 Clear/Populate하며 0개일 때도 비운다. Contains는 영역의 합집합만 포함한다. 셀별 점유·망 외곽 사각형·위치의 별도 원본은 없다. 제품 작업 필터 Reader는 9.5 후속이다.
+DroneStationSpatialSyncSystem이 같은 singleton의 Fence와 함께 생성한다. Synchronization에서 공개 연결과 원본 건물로 정거장→대표/정사각형 영역을 Clear/Populate하며 0개일 때도 비운다. Contains는 영역의 합집합만 포함한다. 셀별 점유·망 외곽 사각형·위치의 별도 원본은 없다. 같은 틱 작업 필터는 이 이전 공개 맵 대신 준비된 NetworkDecision 대표/범위를 사용한다.
 
 ## DroneStationSpatialIndexFence
 
@@ -107,11 +107,15 @@ DroneStationSpatialSyncSystem이 같은 singleton의 Fence와 함께 생성한�
 ## DroneLogisticsTask
 
 - **종류·부착 대상·목적:** 일반 IComponentData. 독립 상위 작업 엔티티의 헤더다. 공급은 (현장, 품목), 회수는 월드 실물별 작업이다. 여러 하위 배정이 같은 공급 작업을 참조할 수 있다.
-- **필드:** Kind는 ConstructionSupply/WorldItemRecovery, State는 Open/Closed다. Target은 현장 또는 회수 실물, ItemType은 품목이다. 양수 CreationSequence는 작업 생성 순서이며 현장의 PlacementStamp와 별개다. RecoveryReason은 SiteClearance/DroneDrop을 구분한다.
+- **필드:** Kind는 ConstructionSupply/WorldItemRecovery/StorageImport/StorageExport, State는 Open/Closed다. Target은 현장/회수 실물/일반 운반의 고정 출발 또는 도착 건물, ItemType은 품목이다. 양수 CreationSequence는 작업 생성 순서이며 현장의 PlacementStamp와 별개다. RecoveryReason은 SiteClearance/DroneDrop을 구분한다.
 - **공급 판단·Producer:** DroneTaskDecisionSystem의 생성 판단 메서드가 유효 현장을 PlacementStamp 순서로 순회하여 RequiredQuantity > DeliveredQuantity인 품목의 생성 의도를 만든다. 같은 품목의 요구 행이 여러 개여도 의도는 하나다. 동일 현장·품목의 살아 있는 Open/Closed 작업이 있으면 생성하지 않는다. DroneTaskExecutionSystem이 의도에 순번을 부여하고 작업 생성을 기록한다. 배치 경로와 무관하게 현재 현장 데이터를 기준으로 판단한다.
 - **회수 판단·Producer:** 같은 Decision 시스템은 현재 ECS의 현장 footprint 아래 실물 또는 DroneRecoveryPending이 있는 실물의 생성 의도를 만든다. 현재 GridPosition·월드 소유권·회전 footprint를 사용하고 활성 Destroy를 제외한다. 일반 월드 실물 전체를 자동 회수하지 않는다. Open 회수 작업이 있는 실물에는 중복 생성하지 않는다. Execution이 Open 작업 생성을 기록하고 EndSimulation에 공개하여 다음 시뮬레이션의 Decision부터 후보로 조회한다.
 - **Reader·Writer·종료:** DroneTaskDecisionSystem은 소실·취소 현장, 수납·소멸 실물, 현장 밖으로 나간 SiteClearance 대상 등 무효 작업을 읽기 검사로 제외하고 CloseTask 의도를 남긴다. 유효 작업은 후보 생성과 Reservation 우선순위 비교에 사용한다. DroneTaskLifecycleApplySystem이 종료 의도를 최종 재검사하여 Closed로 바꾸고 연결된 배정이 없으면 EndSimulation에 삭제한다. 이전 틱부터 Closed인 작업도 연결 배정이 사라지면 삭제한다. 상위 작업 자체가 공급원 재고나 공간을 잠그지는 않는다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneTaskComponents.cs), [생성 판단](../../../Assets/Scripts/Systems/Drones/Decision/DroneTaskDecisionSystem.cs), [작업 생성 실행](../../../Assets/Scripts/Systems/Drones/Execution/DroneTaskExecutionSystem.cs), [수명주기 반영](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs), [Decision](../../../Assets/Scripts/Systems/Drones/Decision/DroneTaskDecisionSystem.cs).
+
+## DroneTransportRequirement / DroneTransportPlanDecisionElement
+
+[작업 계획 명세](../../Specifications/DroneTaskPlanning.md)를 따른다. Requirement.Quantity는 일반 반입/반출의 불변 일회성 목표량으로 Execution이 root와 같은 EndSimulation에 최초 게시한다. PlanDecisionElement는 Decision이 후보 singleton에 매 틱 Clear/작성하는 계획 버퍼이며 기존 Candidate 형식을 재사용한다. 기존 공급/회수 Reservation은 이 버퍼를 소비하지 않는다. 실제 배차/성공량 정산은 후속이며 계획으로 재고/공간/예약/Owner를 변경하지 않는다.
 
 ## DroneTaskSequence
 

@@ -2,7 +2,7 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 역할·목적: 현장·품목별 공급과 월드 실물별 회수의 상위 작업을 구분한다.
+/// 역할·목적: 현장/품목별 공급, 월드 실물별 회수와 일반 보관품의 일회성 반입/반출 상위 작업을 구분한다.
 /// 부착 엔티티: 열거형 자체는 부착하지 않으며 DroneLogisticsTask.Kind·생성 의도에 포함한다.
 /// 생성·이용: DroneTaskDecisionSystem(Decision)이 종류별 필요를 판단하고 DroneTaskExecutionSystem(Execution)이 작업을 생성한다. Reservation은 공급/회수 선두를 따로 비교한다.
 /// 제거: 값을 담은 컴포넌트·판단·결과의 갱신/삭제 수명을 따른다. 별도 엔티티 수명을 갖지 않는다.
@@ -12,6 +12,8 @@ public enum DroneLogisticsTaskKindEnum : byte
     None,
     ConstructionSupply,
     WorldItemRecovery,
+    StorageImport,
+    StorageExport,
     Count
 }
 

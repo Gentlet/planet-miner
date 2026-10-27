@@ -175,6 +175,9 @@ Preparation/Power 분리와 전신주/참가자 연결·망 수명주기·석탄
 
 ### 드론 작업 관리 계약
 
+일반 운반의 요청/계획과 부분 footprint 필터는 [작업 계획 명세](../../Specifications/DroneTaskPlanning.md)를 따른다. 실제 운반과 경로 평가 Producer는 후속이다.
+
+
 작업·후보·현장 예약·배정 경로와 실제 수행부·행동 인계의 미구현 범위를 각 항목에서 구분한다.
 
 | 컴포넌트 상세 | 종류 | 정의 파일 |
@@ -202,6 +205,7 @@ Preparation/Power 분리와 전신주/참가자 연결·망 수명주기·석탄
 | [DroneItemTransferSlotDecisionElement](DroneLogistics.md#droneitemtransferslotdecisionelement) | 기존 슬롯 계획 버퍼 | [DroneItemTransferDecisions.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneItemTransferDecisions.cs) |
 | [DroneActionReceiptSequence](DroneLogistics.md#droneactionreceiptsequence) | 접수 순번 상태 | [DroneActionReceiptSequence.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneActionReceiptSequence.cs) |
 | [DroneItemTransferResult](DroneLogistics.md#droneitemtransferresult) | 결과 | [DroneActionContracts.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneActionContracts.cs) |
+| [DroneTransportRequirement / DroneTransportPlanDecisionElement](DroneLogistics.md#dronetransportrequirement--dronetransportplandecisionelement) | 일회성 요구 / 판단 버퍼 | [DroneTransportPlanning.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneTransportPlanning.cs) |
 
 ### 아이템과 저장
 

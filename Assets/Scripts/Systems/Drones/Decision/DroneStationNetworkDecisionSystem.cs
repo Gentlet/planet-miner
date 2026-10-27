@@ -111,7 +111,11 @@ internal struct DecideDroneStationNetworkJob : IJob
         for (int i = 0; i < Stations.Length; i++)
         {
             Entity station = Stations[i];
-            DecisionLookup[station] = new DroneStationNetworkDecision { RepresentativeStation = Stations[FindRoot(i)] };
+            DecisionLookup[station] = new DroneStationNetworkDecision
+            {
+                RepresentativeStation = Stations[FindRoot(i)],
+                ActivityBounds = Bounds[i]
+            };
             DecisionLookup.SetComponentEnabled(station, true);
         }
     }

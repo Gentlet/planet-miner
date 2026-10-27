@@ -31,6 +31,7 @@ public class DroneLifecycleIntegrationTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
+        DroneTaskNetworkTestUtility.PrepareWideNetwork(_entityManager);
         CreateGameplayPrefabDatabases();
         ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
         Entity capacity = _entityManager.CreateEntity(typeof(DroneCapacityState));

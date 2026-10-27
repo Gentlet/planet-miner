@@ -30,6 +30,7 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
+        DroneTaskNetworkTestUtility.PrepareWideNetwork(_entityManager);
         CreateGameplayPrefabDatabases();
         ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
         _elapsedTime = 0;
@@ -804,6 +805,30 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         Assert.AreEqual(Entity.Null, _entityManager.GetComponentData<DroneWorkerAssignment>(worker).Assignment);
         Assert.AreEqual(0, _entityManager.GetBuffer<StoredItemElement>(worker).Length);
         AssertNoAssignments();
+    }
+
+    [Test]
+    public void NetworkLoss_BlocksNewPlanningWithoutCancellingPublishedTransport()
+    {
+        Entity site = CreateSite(new int2(2, 0), 1, ItemTypeEnum.Iron, 1);
+        Entity task = CreateSupplyTask(site, ItemTypeEnum.Iron, 1);
+        CreateStorage(new int2(1, 0), 1, ItemTypeEnum.Iron, 1);
+        Entity worker = CreateWorker(1);
+        Tick();
+        AnswerRoutes(route => 3f);
+        Tick();
+        Entity assignment = _entityManager.GetComponentData<DroneWorkerAssignment>(worker).Assignment;
+        Assert.AreNotEqual(Entity.Null, assignment);
+        using (var stations = _entityManager.CreateEntityQuery(typeof(DroneStation)))
+        {
+            _entityManager.DestroyEntity(stations);
+        }
+        Tick();
+        Assert.AreEqual(assignment, _entityManager.GetComponentData<DroneWorkerAssignment>(worker).Assignment);
+        Assert.AreEqual(task, SingleAssignment().Task);
+        Assert.AreEqual(DroneTaskAssignmentStateEnum.MovingToSource, SingleAssignment().State);
+        Assert.AreEqual(1, Requirement(site).ReservedQuantity);
+        Assert.AreEqual(DroneLogisticsTaskStateEnum.Open, _entityManager.GetComponentData<DroneLogisticsTask>(task).State);
     }
 
     private void Tick()

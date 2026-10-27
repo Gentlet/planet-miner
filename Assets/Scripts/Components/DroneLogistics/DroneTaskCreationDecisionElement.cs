@@ -15,4 +15,5 @@ public struct DroneTaskCreationDecisionElement : IBufferElementData
     public Entity Target;
     public ItemTypeEnum ItemType;
     public DroneRecoveryReasonEnum RecoveryReason;
+    public int Quantity;
 }

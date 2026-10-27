@@ -26,6 +26,7 @@ public class DroneRetargetingTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
+        DroneTaskNetworkTestUtility.PrepareWideNetwork(_entityManager);
         CreateGameplayPrefabDatabases();
         Entity registry = _entityManager.CreateEntity(typeof(ItemRegistry));
         var config = _entityManager.AddBuffer<ItemConfigElement>(registry);
@@ -457,6 +458,7 @@ public class DroneRetargetingTests : EcsWorldTestFixture
 
     [TestCase(DroneRouteEvaluationStatusEnum.None)]
     [TestCase(DroneRouteEvaluationStatusEnum.Unreachable)]
+    [TestCase(DroneRouteEvaluationStatusEnum.Reachable)]
     public void NoReachableOutsideDropPosition_KeepsCargoAndWaits(DroneRouteEvaluationStatusEnum status)
     {
         CreateSite(int2.zero, 1, 1);
@@ -465,7 +467,9 @@ public class DroneRetargetingTests : EcsWorldTestFixture
         Entity[] cargo = Stored(worker);
         Tick();
         Entity search = DropPositionSearch(assignment);
-        PublishDropPosition(search, status, new int2(1, 0));
+        // 평가 완료라도 현재 망 밖의 외부 셀이면 유효한 방출 위치가 아니다.
+        int2 evaluatedPosition = status == DroneRouteEvaluationStatusEnum.Reachable ? new int2(1025, 0) : new int2(1, 0);
+        PublishDropPosition(search, status, evaluatedPosition);
 
         Tick();
         Tick();
@@ -575,6 +579,8 @@ public class DroneRetargetingTests : EcsWorldTestFixture
         Entity storage = _entityManager.CreateEntity();
         _entityManager.AddComponentData(storage, new BuildingType(BuildingTypeEnum.Storage, 1));
         _entityManager.AddComponentData(storage, new GridPosition(position));
+        _entityManager.AddComponentData(storage, new BuildingFootprint(new int2(1, 1)));
+        _entityManager.AddComponentData(storage, new Direction(DirectionEnum.Up));
         _entityManager.AddComponentData(storage, new PlacementStamp(stamp, 0));
         _entityManager.AddComponentData(storage, new Storage(slots));
         _entityManager.AddComponentData(storage, new StorageFilter(StorageFilterMode.AllowAll));

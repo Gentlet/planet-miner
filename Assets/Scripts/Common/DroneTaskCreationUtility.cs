@@ -46,6 +46,14 @@ public static class DroneTaskCreationUtility
             reason, ref sequence);
     }
 
+    public static Entity CreateStorageTransportTask(EntityCommandBuffer ecb, Entity target, ItemTypeEnum itemType,
+        DroneLogisticsTaskKindEnum kind, int quantity, ref DroneTaskSequence sequence)
+    {
+        Entity task = CreateTask(ecb, target, itemType, kind, DroneRecoveryReasonEnum.None, ref sequence);
+        ecb.AddComponent(task, new DroneTransportRequirement { Quantity = quantity });
+        return task;
+    }
+
     private static Entity CreateTask(
         EntityCommandBuffer ecb,
         Entity target,

@@ -13,6 +13,7 @@ public struct DroneStation : IComponentData { }
 public struct DroneStationNetworkDecision : IComponentData, IEnableableComponent
 {
     public Entity RepresentativeStation;
+    public DroneStationActivityBounds ActivityBounds;
 }
 
 /// <summary>

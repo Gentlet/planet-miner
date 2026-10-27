@@ -1,6 +1,6 @@
 # 드론 정거장 등록·범위·네트워크
 
-2026-10-22 Task 9.2의 사용자 확정 1A·2A·3A·4A·5A와 단일 Range·정사각형 활동 영역 계약이다. 정거장 연결과 공개 조회를 구현하며 작업 필터(9.5), 수행자/수용량(9.3·9.3.1), 귀환(9.13), 충전(9.14), 정거장 철거의 드론 재배치(9.19)는 후속이다. [Lifecycle 계약](DroneLifecycle.md)의 작업·예약·화물 소유자와 공개 규칙은 유지한다.
+2026-10-22 Task 9.2의 사용자 확정 1A·2A·3A·4A·5A와 단일 Range·정사각형 활동 영역 계약이다. 정거장 연결과 공개 조회를 구현하며 작업 필터는 [작업 계획 명세](DroneTaskPlanning.md)에 연결했고 수행자/수용량은 9.3/9.3.1에서 연결했다. 귀환(9.13), 충전(9.14), 정거장 철거의 드론 재배치(9.19)는 후속이다. [Lifecycle 계약](DroneLifecycle.md)의 작업·예약·화물 소유자와 공개 규칙은 유지한다.
 
 ## 설정과 활동 영역
 
@@ -31,7 +31,7 @@
 | 종류·티어·위치·방향·footprint | 기존 건물 생성/수명주기 원본 | 이번 틱 EndBuilding 확정 상태를 사용 |
 | 범위 설정 | 기존 BuildingConfig 초기화/게시 | World 설정 수명; 실행 중 재로드 없음 |
 | DroneStation 역할/기본 구성 | 공통 건물 생성 → EndBuilding | 건물 삭제와 함께 제거 |
-| DroneStationNetworkDecision | DroneStationNetworkDecisionSystem / DroneDecision OrderFirst | 매 틱 전체 정거장을 초기화한 뒤 활성 참가자만 enable. 같은 틱 판단은 이 연결 결과와 건물 원본을 읽음 |
+| DroneStationNetworkDecision | DroneStationNetworkDecisionSystem / DroneDecision OrderFirst | 매 틱 전체 정거장을 초기화한 뒤 활성 참가자만 enable. 같은 틱 판단은 이 연결 결과의 대표/ActivityBounds를 읽음 |
 | DroneStationNetwork | DroneStationNetworkApplySystem / DroneStateApply → EndSimulation | 준비된 결과를 공개하고 비활성/철거 승인 참가자의 연결을 Null로 비움 |
 | DroneStationSpatialIndex / Fence | DroneStationSpatialSyncSystem / Synchronization | 최종 공개 연결과 건물 원본으로 Clear/Populate. World 종료 때 Fence 완료 후 Dispose |
 
@@ -39,7 +39,7 @@ Decision의 입력 Entity 목록은 비동기로 수집하고 deferred array로 
 
 공통 생성으로 보장된 종류·티어 설정 행을 읽을 수 없으면 Decision은 EndSimulation에 공통 Fatal을 기록하고 연결 결과를 준비하지 않는다. 전력 부족·정거장 부재는 오류가 아니다. 기존 NextTick Fatal과 현재 틱 rollback 부재는 유지한다.
 
-예: A와 C 사이를 연결하는 B가 이번 EndBuilding에서 생성되면 이번 DroneDecision의 연결 결과는 A·B·C를 같은 망으로 나타낸다. 공개 DroneStationNetwork는 EndSimulation 전까지 이전 값이다. 같은 틱 후속 판단은 이전 공개 인덱스를 사용하지 않는다. 새 작업/배정/경로는 기존 계약대로 다음 틱부터 사용한다. 실제 작업 후보에 범위 필터를 연결하는 것은 9.5다.
+예: A와 C 사이를 연결하는 B가 이번 EndBuilding에서 생성되면 이번 DroneDecision의 연결 결과는 A·B·C를 같은 망으로 나타낸다. 공개 DroneStationNetwork는 EndSimulation 전까지 이전 값이다. 같은 틱 후속 판단은 이전 공개 인덱스를 사용하지 않는다. 새 작업/배정/경로는 기존 계약대로 다음 틱부터 사용한다. 작업 후보는 [작업 계획 명세](DroneTaskPlanning.md)에 따라 이번 틱 대표/ActivityBounds로 부분 footprint 겹침을 검사한다. 공개 맵의 제품 Reader를 추가하지 않는다.
 
 ## 공개 범위 조회와 공유 자료 수명
 

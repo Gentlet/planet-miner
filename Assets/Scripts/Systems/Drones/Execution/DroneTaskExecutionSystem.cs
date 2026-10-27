@@ -95,7 +95,19 @@ public partial struct DroneTaskExecutionSystem : ISystem
         public Entity Task;
     }
 
-    private static Entity RecordCreation(EntityCommandBuffer ecb, in DroneTaskCreationDecisionElement creation, ref DroneTaskSequence sequence) => creation.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply ? DroneTaskCreationUtility.CreateConstructionSupplyTask(ecb, creation.Target, creation.ItemType, ref sequence) : DroneTaskCreationUtility.CreateRecoveryTask(ecb, creation.Target, creation.ItemType, creation.RecoveryReason, ref sequence);
+    private static Entity RecordCreation(EntityCommandBuffer ecb, in DroneTaskCreationDecisionElement creation, ref DroneTaskSequence sequence)
+    {
+        switch (creation.Kind)
+        {
+            case DroneLogisticsTaskKindEnum.ConstructionSupply:
+                return DroneTaskCreationUtility.CreateConstructionSupplyTask(ecb, creation.Target, creation.ItemType, ref sequence);
+            case DroneLogisticsTaskKindEnum.WorldItemRecovery:
+                return DroneTaskCreationUtility.CreateRecoveryTask(ecb, creation.Target, creation.ItemType, creation.RecoveryReason, ref sequence);
+            default:
+                return DroneTaskCreationUtility.CreateStorageTransportTask(ecb, creation.Target, creation.ItemType,
+                    creation.Kind, creation.Quantity, ref sequence);
+        }
+    }
 
     private void ExecuteCreationRequests(EntityManager manager, EntityCommandBuffer ecb, ref DroneTaskSequence sequence, NativeList<RecordedCreation> recorded)
     {
@@ -116,7 +128,8 @@ public partial struct DroneTaskExecutionSystem : ISystem
                 Kind = request.Kind,
                 Target = request.Target,
                 ItemType = request.ItemType,
-                RecoveryReason = decision.RecoveryReason
+                RecoveryReason = decision.RecoveryReason,
+                Quantity = request.Quantity
             };
             bool accepted = status == DroneTaskRequestStatusEnum.Created || status == DroneTaskRequestStatusEnum.Existing;
             if (accepted && !IsCreationTargetValid(manager, creation))
@@ -165,6 +178,11 @@ public partial struct DroneTaskExecutionSystem : ISystem
         if (decision.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply)
         {
             return DroneSchedulingUtility.IsSite(manager, decision.Target);
+        }
+
+        if (DroneSchedulingUtility.IsTransportKind(decision.Kind))
+        {
+            return DroneSchedulingUtility.IsStorage(manager, decision.Target);
         }
 
         if (decision.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery)

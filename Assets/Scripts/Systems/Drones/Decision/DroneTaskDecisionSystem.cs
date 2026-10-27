@@ -23,6 +23,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
     private EntityQuery _registry;
     private EntityQuery _capacity;
     private EntityQuery _taskRequests;
+    private EntityQuery _stations;
     private uint _evaluationRevision;
 
     public void OnCreate(ref SystemState state)
@@ -39,6 +40,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         _assignments = state.GetEntityQuery(ComponentType.ReadOnly<DroneTaskAssignment>());
         _registry = state.GetEntityQuery(ComponentType.ReadOnly<ItemRegistry>(), ComponentType.ReadOnly<ItemConfigElement>());
         _capacity = state.GetEntityQuery(ComponentType.ReadOnly<DroneCapacityState>());
+        _stations = state.GetEntityQuery(ComponentType.ReadOnly<DroneStation>(), ComponentType.ReadOnly<DroneStationNetworkDecision>());
         InitializeCreationQueries(ref state);
     }
 
@@ -58,6 +60,10 @@ public partial struct DroneTaskDecisionSystem : ISystem
         using var workers = _workers.ToEntityArray(Allocator.Temp);
         using var routes = _routes.ToEntityArray(Allocator.Temp);
         using var assignments = _assignments.ToEntityArray(Allocator.Temp);
+        // ToComponentDataArray는 같은 틱 정거장 Decision Writer 완료 뒤 준비된 결과만 읽는다.
+        using var networks = _stations.ToComponentDataArray<DroneStationNetworkDecision>(Allocator.Temp);
+        var transportPlans = manager.GetBuffer<DroneTransportPlanDecisionElement>(_candidates);
+        transportPlans.Clear();
         DroneTaskRequestDecisionUtility.Prepare(manager, _candidates, _taskRequests, tasks, sites, assignments);
         BuildCreationDecisions(ref state);
         using var busyWorkers = new NativeHashSet<Entity>(16, Allocator.Temp);
@@ -101,13 +107,18 @@ public partial struct DroneTaskDecisionSystem : ISystem
         var candidates = manager.GetBuffer<DroneTaskCandidateDecisionElement>(_candidates);
         var pendingPublications = manager.GetBuffer<DroneTaskPendingPublicationElement>(_candidates);
         // 이미 적재한 자재의 목적지를 먼저 판단한다. 최종 선택·수량 확보 순서는 Reservation이 정한다.
-        BuildRetargetCandidates(manager, assignments, tasks, sites, storages, registry, routes, pendingRoutes,
+        BuildRetargetCandidates(manager, networks, assignments, tasks, sites, storages, registry, routes, pendingRoutes,
             routeDecisions, removedRoutes, usedRoutes, candidates, pendingPublications, carryingCapacity);
         for (int w = 0; w < workers.Length; w++)
         {
             Entity worker = workers[w];
             if (busyWorkers.Contains(worker) || !DroneSchedulingUtility.IsIdleWorker(manager, worker, carryingCapacity)) continue;
             var observation = manager.GetComponentData<DroneWorkerObservation>(worker);
+            Entity network = DroneTaskNetworkUtility.FindWorkerNetwork(networks, observation.Position);
+            if (network == Entity.Null)
+            {
+                continue;
+            }
             for (int t = 0; t < tasks.Length; t++)
             {
                 var task = manager.GetComponentData<DroneLogisticsTask>(tasks[t]);
@@ -116,9 +127,23 @@ public partial struct DroneTaskDecisionSystem : ISystem
                     continue;
                 }
                 if (!DroneSchedulingUtility.IsTaskValid(manager, task, sites)) continue;
+                if (!DroneTaskNetworkUtility.IsTargetInNetwork(manager, networks, network, task.Target))
+                {
+                    continue;
+                }
+                bool transport = DroneSchedulingUtility.IsTransportKind(task.Kind);
                 bool supply = task.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply;
+                bool sourceIsStorage = supply || task.Kind == DroneLogisticsTaskKindEnum.StorageImport;
+                if (transport && !sourceIsStorage && DroneSchedulingUtility.CountInventory(manager, task.Target, task.ItemType) <= 0)
+                {
+                    continue;
+                }
+                if (transport && sourceIsStorage && !DroneSchedulingUtility.HasStorageSpace(manager, task.Target, task.ItemType, registry))
+                {
+                    continue;
+                }
                 if (supply && DroneSchedulingUtility.ProjectedRemaining(manager, task.Target, task.ItemType, assignments, sites, pendingPublications) <= 0) continue;
-                if (!supply && claimedRecoveryItems.Contains(task.Target)) continue;
+                if (!supply && !transport && claimedRecoveryItems.Contains(task.Target)) continue;
 
                 bool waitingForRoutes = false;
                 Entity bestStorage = Entity.Null;
@@ -129,7 +154,11 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 for (int s = 0; s < storages.Length; s++)
                 {
                     Entity storage = storages[s];
-                    if (supply)
+                    if (storage == task.Target || !DroneTaskNetworkUtility.IsTargetInNetwork(manager, networks, network, storage))
+                    {
+                        continue;
+                    }
+                    if (sourceIsStorage)
                     {
                         if (DroneSchedulingUtility.CountInventory(manager, storage, task.ItemType) <= 0) continue;
                     }
@@ -138,8 +167,8 @@ public partial struct DroneTaskDecisionSystem : ISystem
                         continue;
                     }
 
-                    Entity source = supply ? storage : task.Target;
-                    Entity destination = supply ? task.Target : storage;
+                    Entity source = sourceIsStorage ? storage : task.Target;
+                    Entity destination = sourceIsStorage ? task.Target : storage;
                     Entity route = FindOrRequestRoute(manager, worker, observation, source, destination,
                         routes, pendingRoutes, routeDecisions, removedRoutes, usedRoutes, carryingCapacity);
                     if (route == Entity.Null)
@@ -171,18 +200,35 @@ public partial struct DroneTaskDecisionSystem : ISystem
                         math.min(DroneSchedulingUtility.ProjectedRemaining(manager, task.Target, task.ItemType, assignments, sites, pendingPublications),
                             DroneSchedulingUtility.CountInventory(manager, bestStorage, task.ItemType)))
                     : 1;
+                Entity selectedSource = sourceIsStorage ? bestStorage : task.Target;
+                Entity selectedDestination = sourceIsStorage ? task.Target : bestStorage;
+                if (transport)
+                {
+                    quantity = math.min(carryingCapacity, manager.GetComponentData<DroneTransportRequirement>(tasks[t]).Quantity);
+                    quantity = math.min(quantity, DroneSchedulingUtility.CountInventory(manager, selectedSource, task.ItemType));
+                    quantity = DroneSchedulingUtility.CountStorageSpace(manager, selectedDestination, task.ItemType, registry, quantity);
+                }
                 if (quantity <= 0) continue;
-                candidates.Add(new DroneTaskCandidateDecisionElement
+                var candidate = new DroneTaskCandidateDecisionElement
                 {
                     Worker = worker,
                     Task = tasks[t],
-                    Source = supply ? bestStorage : task.Target,
-                    Destination = supply ? task.Target : bestStorage,
+                    Source = selectedSource,
+                    Destination = selectedDestination,
                     RouteRequest = bestRoute,
                     ItemType = task.ItemType,
                     WorkerObservationRevision = observation.Revision,
                     Quantity = quantity
-                });
+                };
+                if (transport)
+                {
+                    // 일반 운반은 후속 Reservation 연결 전까지 계획으로만 제공한다.
+                    transportPlans.Add(new DroneTransportPlanDecisionElement { Candidate = candidate });
+                }
+                else
+                {
+                    candidates.Add(candidate);
+                }
             }
         }
 
@@ -279,7 +325,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         Selected
     }
 
-    private void BuildRetargetCandidates(EntityManager manager, NativeArray<Entity> assignments,
+    private void BuildRetargetCandidates(EntityManager manager, NativeArray<DroneStationNetworkDecision> networks, NativeArray<Entity> assignments,
         NativeArray<Entity> tasks, NativeArray<Entity> sites, NativeArray<Entity> storages, Entity registry,
         NativeArray<Entity> routes, NativeList<DroneRouteEvaluationRequest> pending,
         DynamicBuffer<DroneRouteDecisionElement> routeDecisions, NativeHashSet<Entity> removedRoutes,
@@ -292,6 +338,12 @@ public partial struct DroneTaskDecisionSystem : ISystem
         {
             Entity entity = assignments[i];
             if (!DroneSchedulingUtility.IsRetargetingWorker(manager, entity, out var assignment, out int cargo)) continue;
+            Entity network = DroneTaskNetworkUtility.FindWorkerNetwork(networks,
+                manager.GetComponentData<DroneWorkerObservation>(assignment.Worker).Position);
+            if (network == Entity.Null)
+            {
+                continue;
+            }
             var origin = manager.GetComponentData<DroneCargoState>(assignment.Worker).Origin;
             var selection = CargoDestinationSelectionEnum.NoDestination;
             Entity destination = Entity.Null;
@@ -303,7 +355,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
             int quantity = cargo;
             if (origin == DroneCargoOriginEnum.Supply)
             {
-                selection = FindCargoDestination(manager, entity, assignment, sites, true, assignments, sites,
+                selection = FindCargoDestination(manager, networks, network, entity, assignment, sites, true, assignments, sites,
                     registry, routes, pending, routeDecisions, removedRoutes, usedRoutes, pendingPublications, capacity,
                     out destination, out route);
                 if (selection == CargoDestinationSelectionEnum.Waiting) continue;
@@ -319,13 +371,13 @@ public partial struct DroneTaskDecisionSystem : ISystem
             }
             if (selection == CargoDestinationSelectionEnum.NoDestination)
             {
-                selection = FindCargoDestination(manager, entity, assignment, storages, false, assignments, sites,
+                selection = FindCargoDestination(manager, networks, network, entity, assignment, storages, false, assignments, sites,
                     registry, routes, pending, routeDecisions, removedRoutes, usedRoutes, pendingPublications, capacity,
                     out destination, out route);
                 if (selection == CargoDestinationSelectionEnum.Waiting) continue;
                 if (selection == CargoDestinationSelectionEnum.Selected) action = DroneActionKindEnum.StoreCargo;
             }
-            if (action == DroneActionKindEnum.DropCargo && !TrySelectDropPosition(manager, entity, assignment,
+            if (action == DroneActionKindEnum.DropCargo && !TrySelectDropPosition(manager, networks, network, entity, assignment,
                 routes, pending, routeDecisions, removedRoutes, usedRoutes, capacity, out route, out dropPosition)) continue;
             if (quantity <= 0) continue;
             candidates.Add(new DroneTaskCandidateDecisionElement
@@ -345,7 +397,8 @@ public partial struct DroneTaskDecisionSystem : ISystem
         }
     }
 
-    private bool TrySelectDropPosition(EntityManager manager, Entity entity, in DroneTaskAssignment assignment,
+    private bool TrySelectDropPosition(EntityManager manager, NativeArray<DroneStationNetworkDecision> networks,
+        Entity network, Entity entity, in DroneTaskAssignment assignment,
         NativeArray<Entity> routes, NativeList<DroneRouteEvaluationRequest> pending,
         DynamicBuffer<DroneRouteDecisionElement> routeDecisions, NativeHashSet<Entity> removedRoutes,
         NativeHashSet<Entity> usedRoutes, int capacity, out Entity route, out int2 position)
@@ -364,12 +417,17 @@ public partial struct DroneTaskDecisionSystem : ISystem
         if (!reachable) return false;
         var result = manager.GetComponentData<DroneRouteEvaluationResult>(route);
         if (!result.HasDropPosition) return false;
+        // 현재 셀은 호출자의 네트워크 자격을 통과했다. 외부 평가 좌표도 같은 망 안이어야 한다.
+        if (!DroneTaskNetworkUtility.IsCellInNetwork(networks, network, result.DropPosition))
+        {
+            return false;
+        }
         if (!ConstructionSiteWorldItemUtility.IsWorldPositionAllowed(manager, result.DropPosition)) return false;
         position = result.DropPosition;
         return true;
     }
 
-    private CargoDestinationSelectionEnum FindCargoDestination(EntityManager manager, Entity entity,
+    private CargoDestinationSelectionEnum FindCargoDestination(EntityManager manager, NativeArray<DroneStationNetworkDecision> networks, Entity network, Entity entity,
         in DroneTaskAssignment assignment, NativeArray<Entity> destinations, bool supply,
         NativeArray<Entity> assignments, NativeArray<Entity> sites, Entity registry, NativeArray<Entity> routes,
         NativeList<DroneRouteEvaluationRequest> pending, DynamicBuffer<DroneRouteDecisionElement> routeDecisions,
@@ -387,6 +445,10 @@ public partial struct DroneTaskDecisionSystem : ISystem
         for (int i = 0; i < destinations.Length; i++)
         {
             Entity destination = destinations[i];
+            if (!DroneTaskNetworkUtility.IsTargetInNetwork(manager, networks, network, destination))
+            {
+                continue;
+            }
             if (supply)
             {
                 if (!DroneSchedulingUtility.IsSite(manager, destination)) continue;

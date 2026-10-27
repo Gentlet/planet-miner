@@ -153,7 +153,8 @@ internal static class DroneTaskRequestDecisionUtility
     private static DroneTaskRequestStatusEnum ValidateCreation(EntityManager manager, in DroneTaskRequest request, NativeArray<Entity> sites, out DroneRecoveryReasonEnum reason)
     {
         reason = DroneRecoveryReasonEnum.None;
-        if (request.Kind != DroneLogisticsTaskKindEnum.ConstructionSupply && request.Kind != DroneLogisticsTaskKindEnum.WorldItemRecovery)
+        if (request.Kind != DroneLogisticsTaskKindEnum.ConstructionSupply && request.Kind != DroneLogisticsTaskKindEnum.WorldItemRecovery &&
+            !DroneSchedulingUtility.IsTransportKind(request.Kind))
         {
             return DroneTaskRequestStatusEnum.Unsupported;
         }
@@ -161,6 +162,20 @@ internal static class DroneTaskRequestDecisionUtility
         if (request.ItemType == ItemTypeEnum.None)
         {
             return DroneTaskRequestStatusEnum.Rejected;
+        }
+
+        if (DroneSchedulingUtility.IsTransportKind(request.Kind))
+        {
+            if (!System.Enum.IsDefined(typeof(ItemTypeEnum), request.ItemType))
+            {
+                return DroneTaskRequestStatusEnum.Rejected;
+            }
+            if (request.Quantity <= 0)
+            {
+                return DroneTaskRequestStatusEnum.Rejected;
+            }
+            return DroneSchedulingUtility.IsStorage(manager, request.Target)
+                ? DroneTaskRequestStatusEnum.Created : DroneTaskRequestStatusEnum.Rejected;
         }
 
         if (request.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply)
@@ -216,7 +231,8 @@ internal static class DroneTaskRequestDecisionUtility
             return DroneTaskRequestStatusEnum.Rejected;
         }
 
-        if (task.Kind != DroneLogisticsTaskKindEnum.ConstructionSupply && task.Kind != DroneLogisticsTaskKindEnum.WorldItemRecovery)
+        if (task.Kind != DroneLogisticsTaskKindEnum.ConstructionSupply && task.Kind != DroneLogisticsTaskKindEnum.WorldItemRecovery &&
+            !DroneSchedulingUtility.IsTransportKind(task.Kind))
         {
             return DroneTaskRequestStatusEnum.Unsupported;
         }

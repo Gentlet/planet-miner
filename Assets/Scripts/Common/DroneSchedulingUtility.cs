@@ -41,12 +41,16 @@ public static class DroneSchedulingUtility
             {
                 manager.AddBuffer<DroneTaskGenerationDecisionElement>(existing);
             }
+            if (!manager.HasBuffer<DroneTransportPlanDecisionElement>(existing))
+            {
+                manager.AddBuffer<DroneTransportPlanDecisionElement>(existing);
+            }
             return existing;
         }
 
         return manager.CreateEntity(typeof(DroneTaskCandidateDecisionElement), typeof(DroneTaskPendingPublicationElement), typeof(DroneRouteDecisionElement),
             typeof(DroneTaskCreationDecisionElement), typeof(DroneTaskInvalidationDecisionElement),
-            typeof(DroneTaskGenerationBlockElement), typeof(DroneTaskGenerationDecisionElement));
+            typeof(DroneTaskGenerationBlockElement), typeof(DroneTaskGenerationDecisionElement), typeof(DroneTransportPlanDecisionElement));
     }
 
     /// <summary>초기 능력/연구 Writer가 게시한 공통 값을 읽는다. 미게시 상태에 임의 기본값을 만들지 않는다.</summary>
@@ -250,31 +254,49 @@ public static class DroneSchedulingUtility
         return slots > 0;
     }
 
-    private static bool SlotHasRoom(EntityManager manager, Entity storage, ItemTypeEnum type, int slot, int maxStack)
+    public static int CountStorageSpace(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry, int limit)
+    {
+        if (!TryReadStorageLimit(manager, storage, type, registry, out int slots, out int maxStack))
+        {
+            return 0;
+        }
+
+        int available = 0;
+        for (int slot = 0; slot < slots && available < limit; slot++)
+        {
+            available += math.min(limit - available, ReadSlotFreeQuantity(manager, storage, type, slot, maxStack));
+        }
+        return available;
+    }
+
+    private static bool SlotHasRoom(EntityManager manager, Entity storage, ItemTypeEnum type, int slot, int maxStack) =>
+        ReadSlotFreeQuantity(manager, storage, type, slot, maxStack) > 0;
+
+    private static int ReadSlotFreeQuantity(EntityManager manager, Entity storage, ItemTypeEnum type, int slot, int maxStack)
     {
         if (!StationStorageUtility.IsItemSlotAllowed(slot, manager.GetComponentData<Storage>(storage).SlotCount,
             StationStorageUtility.ReadDedicatedCount(manager, storage), type))
         {
-            return false;
+            return 0;
         }
         if (StationStorageUtility.IsDockOccupied(manager, storage, slot))
         {
-            return false;
+            return 0;
         }
         var items = manager.GetBuffer<StoredItemElement>(storage, true);
         if (manager.HasBuffer<BuildingInputSlotElement>(storage))
         {
             var inputs = manager.GetBuffer<BuildingInputSlotElement>(storage, true);
-            if (slot >= inputs.Length || inputs[slot].ItemType != type) return false;
+            if (slot >= inputs.Length || inputs[slot].ItemType != type) return 0;
         }
         int count = 0;
         for (int i = 0; i < items.Length; i++)
         {
             if (items[i].SlotIndex != slot) continue;
-            if (items[i].ItemType != type) return false;
+            if (items[i].ItemType != type) return 0;
             count++;
         }
-        return count < maxStack;
+        return math.max(0, maxStack - count);
     }
 
     public static bool IsUnderSite(EntityManager manager, Entity item, NativeArray<Entity> sites)
@@ -301,6 +323,9 @@ public static class DroneSchedulingUtility
         return false;
     }
 
+    public static bool IsTransportKind(DroneLogisticsTaskKindEnum kind) =>
+        kind == DroneLogisticsTaskKindEnum.StorageImport || kind == DroneLogisticsTaskKindEnum.StorageExport;
+
     public static bool IsTaskValid(EntityManager manager, in DroneLogisticsTask task, NativeArray<Entity> sites)
     {
         if (task.State != DroneLogisticsTaskStateEnum.Open || task.CreationSequence == 0 || task.ItemType == ItemTypeEnum.None)
@@ -311,6 +336,11 @@ public static class DroneSchedulingUtility
         if (task.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply)
         {
             return IsSite(manager, task.Target);
+        }
+
+        if (IsTransportKind(task.Kind))
+        {
+            return IsStorage(manager, task.Target);
         }
 
         if (task.Kind != DroneLogisticsTaskKindEnum.WorldItemRecovery || !IsWorldItem(manager, task.Target, task.ItemType))

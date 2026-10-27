@@ -20,6 +20,7 @@ public class DroneTaskRequestTests : EcsWorldTestFixture
     public override void SetUp()
     {
         base.SetUp();
+        DroneTaskNetworkTestUtility.PrepareWideNetwork(_entityManager);
         CreateGameplayPrefabDatabases();
         Entities.PrepareSimulationConfiguration();
         _candidates = DroneSchedulingUtility.GetOrCreateCandidates(_entityManager);
