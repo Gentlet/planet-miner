@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.Generic;
 using System.Reflection;
 using NUnit.Framework;
 using Unity.Entities;
@@ -274,6 +275,7 @@ public class WorldInputPipelineTests
         Invoke(blocker, "OnEnable");
         ConfigureUiRoot(document.rootVisualElement);
         yield return null;
+        PrepareRuntimeUiForInput(document.rootVisualElement);
 
         Vector2 uiPoint = new Vector2(50, Screen.height - 50);
         Vector2 worldPoint = new Vector2(Screen.width * 0.75f, Screen.height * 0.25f);
@@ -310,6 +312,7 @@ public class WorldInputPipelineTests
         Invoke(blocker, "OnEnable");
         ConfigureUiRoot(document.rootVisualElement);
         yield return null;
+        PrepareRuntimeUiForInput(document.rootVisualElement);
         QueueMouse(uiPoint, true);
         QueueMouse(worldPoint, true);
         InputSystem.Update();
@@ -337,6 +340,7 @@ public class WorldInputPipelineTests
 
         var textField = new TextField();
         document.rootVisualElement.Add(textField);
+        PrepareRuntimeUiForInput(document.rootVisualElement);
         textField.Focus();
         yield return null;
         Assert.IsTrue(blocker.ReadState(worldPoint).BlocksAllInput);
@@ -349,6 +353,7 @@ public class WorldInputPipelineTests
         modal.AddToClassList(WorldInputUiBlocker.ModalUiClass);
         modal.AddToClassList("input-test-panel");
         document.rootVisualElement.Add(modal);
+        PrepareRuntimeUiForInput(document.rootVisualElement);
         yield return null;
         Assert.IsTrue(blocker.ReadState(worldPoint).BlocksAllInput);
         Invoke(_input, "ProcessFrame", 0.25f);
@@ -452,6 +457,34 @@ public class WorldInputPipelineTests
         panel.AddToClassList("input-test-panel");
         panel.AddToClassList(WorldInputUiBlocker.BlockingUiClass);
         root.Add(panel);
+    }
+
+    private static void PrepareRuntimeUiForInput(VisualElement root)
+    {
+        Assert.IsNotNull(root.panel, "Runtime UI panel must be attached before preparing input.");
+
+        // worldClip은 렌더 데이터에서 읽으므로 EditMode에서도 이 패널의 Repaint 준비를 실행한다.
+        MethodInfo prepareRepaint = root.panel.GetType().GetMethod("UpdateForRepaint",
+            BindingFlags.Instance | BindingFlags.Public);
+        Assert.IsNotNull(prepareRepaint, "This Unity version must expose the panel repaint preparation method.");
+        prepareRepaint.Invoke(root.panel, null);
+
+        var pickedElements = new List<VisualElement>();
+        Vector2 uiPoint = new Vector2(50, 50);
+        root.panel.PickAll(uiPoint, pickedElements);
+        VisualElement blockingElement = root.Q<VisualElement>(className: WorldInputUiBlocker.BlockingUiClass);
+        Assert.IsNotNull(blockingElement);
+        Assert.AreEqual(200f, blockingElement.worldBound.width, 0.001f);
+        Assert.AreEqual(100f, blockingElement.worldBound.height, 0.001f);
+        Assert.That(pickedElements, Does.Contain(blockingElement), "The fixture UI point must hit its blocking region.");
+
+        PropertyInfo worldClip = typeof(VisualElement).GetProperty("worldClip",
+            BindingFlags.Instance | BindingFlags.NonPublic);
+        Assert.IsNotNull(worldClip);
+        Rect clip = (Rect)worldClip.GetValue(blockingElement);
+        Assert.IsTrue(math.all(math.isfinite(new float4(clip.x, clip.y, clip.width, clip.height))),
+            "Runtime UI clipping must be produced before checking input.");
+        Assert.IsTrue(clip.Contains(uiPoint), "The fixture UI point must be inside the produced clip.");
     }
 
     private static void Invoke(object target, string method, params object[] arguments)
