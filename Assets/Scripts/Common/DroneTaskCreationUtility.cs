@@ -51,6 +51,7 @@ public static class DroneTaskCreationUtility
     {
         Entity task = CreateTask(ecb, target, itemType, kind, DroneRecoveryReasonEnum.None, ref sequence);
         ecb.AddComponent(task, new DroneTransportRequirement { Quantity = quantity });
+        ecb.AddComponent(task, new DroneTransportProgress());
         return task;
     }
 

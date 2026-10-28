@@ -1,6 +1,6 @@
 # 드론 공급원/목적지 계획과 네트워크 필터
 
-2026-10-27 사용자 확정 정책을 따른다. 일반 반입/반출은 요청/작업/계획까지 구현하며 실제 배차/운반은 후속 9.6~9.12, 실제 경로 평가 Producer와 이동/배터리는 9.10, 진행 중 취소/수행 불가 정산은 9.15에 남긴다.
+2026-10-27 사용자 확정 정책을 따른다. 일반 반입/반출의 요청/작업/계획에 이어 2026-10-28에는 [작업 내 목표량 중재/정산 계약](DroneTransportReservations.md)을 연결했다. 실제 작업 간 선택/배차/운반은 9.8~9.12, 실제 경로 평가 Producer와 이동/배터리는 9.10, 진행 중 취소/수행 불가 정산은 9.15에 남긴다.
 
 ## 요청과 일회성 요구
 
@@ -8,7 +8,7 @@
 - 두 끝점은 Storage/MainFacility/DroneStation의 StoredItemElement 보관품/보관 공간만 지원한다. 같은 건물을 출발/도착으로 고르지 않는다. 제작기 입력/생산품, 발전기 연료 및 연구 재료 공급 계약은 확장하지 않는다.
 - SubmitCreate의 quantity는 일반 운반에 필수인 양수 일회성 수량이다. 목표 재고 유지가 아니다. 기존 공급/회수 호출은 quantity를 생략한다.
 - 중복 키는 (종류, 대상 Entity, 품목)이며 수량은 키에 포함하지 않는다. 중복은 기존 작업을 반환하며 목표량을 합산/수정하지 않는다. 수량 변경은 유휴 취소 후 다시 생성한다. 반입/반출과 다른 품목은 서로 다른 작업이다.
-- DroneTransportRequirement.Quantity는 최초 요청 목표량이며 Execution이 root와 같은 EndSimulation ECB에 최초 게시한다. 후속 실제 성공량 정산은 아직 연결하지 않는다. 계획 작성으로 목표량을 줄이지 않는다.
+- DroneTransportRequirement.Quantity는 최초 요청 목표량이며 Execution이 Progress와 함께 root와 같은 EndSimulation ECB에 최초 게시한다. [목표량 확보/정산 계약](DroneTransportReservations.md)에 따라 완료량/진행 중 확보량/반환 예정 승인을 구분한다. 계획 작성으로 목표량을 줄이지 않는다.
 - 요청/결과/생성 순번/deferred Entity와 유휴 취소/Busy/자동 생성 차단은 기존 작업 요청 계약을 재사용한다. 일반 운반은 명시적 생성만 지원하고 자동 재생성 Producer를 추가하지 않는다.
 
 ## 이번 틱 네트워크와 부분 footprint
@@ -27,8 +27,8 @@
 - 경로 입력이 없거나 아직 미평가이면 기다린다. 단순 직선거리로 도달 가능성을 만들지 않는다. 필요한 경로 중 미평가가 있으면 결과를 모두 기다린다.
 - 일반 운반은 요청량/공통 적재량/현재 출발 재고/도착 수용 공간의 최솟값으로 이번 판단의 수량 상한을 작성한다. 공간 판정은 기존 품목 필터/입력 슬롯/정박 점유/드론 전용 슬롯/MaxStack 규칙을 공유한다. 전체 요청량을 한 번에 수용해야 한다는 제한은 없다.
 - 재고/공간 변화와 대상 소멸을 매 판단에 반영한다. 재고/공간이 부족하면 목표량과 작업을 보존하고 기다린다. 계획만으로 실물/Owner/용량/예약량은 변경하지 않는다.
-- DroneTransportPlanDecisionElement는 일반 운반 전용 버퍼다. 기존 Candidate 형식을 재사용하되 ConstructionSupplyReservationSystem이 소비하는 후보 버퍼에는 넣지 않는다. 여러 드론의 계획 수량은 독립적인 상한이며 실제 획득/전체 목표량 중재는 후속 Reservation 연결에서 수행한다.
-- 일반 운반의 실제 배차, 성공량 누적/잔량, 픽업/납품 신호는 미구현이다. 계획을 운반 완료로 표시하지 않는다.
+- DroneTransportPlanDecisionElement는 일반 운반 전용 버퍼다. 기존 Candidate 형식을 재사용하되 ConstructionSupplyReservationSystem이 소비하는 후보 버퍼에는 넣지 않는다. 여러 드론의 계획 수량은 독립적인 상한이며 DroneTransportReservationSystem이 전체 목표량 안에서 별도 미공개 확보 기록을 작성한다. 실제 작업 간 선택/배차는 후속이다.
+- 실제 배차/픽업/납품 신호와 자동 성공량 정산은 후속이며 목표 잔량은 확보/정산 계약이 관리한다. 계획을 운반 완료로 표시하지 않는다.
 
 ## 소유자와 공개 경계
 
@@ -37,10 +37,12 @@
 | DroneStationNetworkDecision.ActivityBounds | 기존 정거장 Decision Job | 대표와 함께 매 틱 초기화/작성, 작업 Decision이 같은 틱 읽음 |
 | DroneTaskRequest.Quantity | 시뮬레이션 전 Submit | 불변 요청, EndSimulation에 소비 |
 | DroneTransportRequirement | Task Execution | 작업과 같은 EndSimulation에 최초 생성, 작업 수명 |
+| DroneTransportProgress | Task Execution 초기화 / Transport Reservation 확보 / 후속 납품 정산 | root의 완료량/미공개 및 진행 중 확보량, 작업 수명 |
 | DroneTransportPlanDecisionElement | Task Decision | 후보 singleton에 생성, 매 Decision Clear/재작성, 후속 운반 Reader용 |
+| DroneTransportPendingReservationElement | Transport Reservation | 다음 Reservation 반환 또는 후속 소비자 인계까지 보존, Decision은 읽기만 함 |
 | 작업/경로/결과 | 기존 Execution/Lifecycle | 기존 EndSimulation 공개, 다음 틱 이용 |
 
-현재 Task 파이프라인의 메인 스레드 ISystem 경로를 유지한다. 기존 정거장 Burst Job 체인과 EndBuilding/EndSimulation 경계를 변경하지 않는다. 실제 이동/배터리/충전 경유 경로 및 그 상태 변화에 따른 평가 무효화는 9.10의 Producer가 연결해야 한다.
+Task Decision/Execution의 기존 메인 스레드 ISystem 경로를 유지하며 일반 운반 목표량 중재는 단일 Burst Job으로 처리한다. 기존 정거장 Burst Job 체인과 EndBuilding/EndSimulation 경계를 변경하지 않는다. 실제 이동/배터리/충전 경유 경로 및 그 상태 변화에 따른 평가 무효화는 9.10의 Producer가 연결해야 한다.
 
 ## 검증 상태
 

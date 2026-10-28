@@ -16,9 +16,9 @@ public partial struct DroneStationLifecycleReservationSystem : ISystem
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        _requests = state.GetEntityQuery(ComponentType.ReadOnly<DroneStationRequest>(), ComponentType.ReadWrite<DroneStationDecision>());
-        _pending = state.GetEntityQuery(ComponentType.ReadOnly<DroneTaskPendingPublicationElement>());
-        _actions = state.GetEntityQuery(ComponentType.ReadOnly<DroneActionReadyRequest>());
+        _requests = SystemAPI.QueryBuilder().WithAll<DroneStationRequest>().WithAllRW<DroneStationDecision>().Build();
+        _pending = SystemAPI.QueryBuilder().WithAll<DroneTaskPendingPublicationElement>().Build();
+        _actions = SystemAPI.QueryBuilder().WithAll<DroneActionReadyRequest>().Build();
         state.RequireForUpdate(_requests);
         state.RequireForUpdate<ItemRegistry>();
     }

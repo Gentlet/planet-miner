@@ -115,7 +115,13 @@ DroneStationSpatialSyncSystem이 같은 singleton의 Fence와 함께 생성한�
 
 ## DroneTransportRequirement / DroneTransportPlanDecisionElement
 
-[작업 계획 명세](../../Specifications/DroneTaskPlanning.md)를 따른다. Requirement.Quantity는 일반 반입/반출의 불변 일회성 목표량으로 Execution이 root와 같은 EndSimulation에 최초 게시한다. PlanDecisionElement는 Decision이 후보 singleton에 매 틱 Clear/작성하는 계획 버퍼이며 기존 Candidate 형식을 재사용한다. 기존 공급/회수 Reservation은 이 버퍼를 소비하지 않는다. 실제 배차/성공량 정산은 후속이며 계획으로 재고/공간/예약/Owner를 변경하지 않는다.
+[작업 계획 명세](../../Specifications/DroneTaskPlanning.md)를 따른다. Requirement.Quantity는 일반 반입/반출의 불변 일회성 목표량으로 Execution이 root와 같은 EndSimulation에 최초 게시한다. PlanDecisionElement는 Decision이 후보 singleton에 매 틱 Clear/작성하는 계획 버퍼이며 기존 Candidate 형식을 재사용한다. 기존 공급/회수 Reservation은 이 버퍼를 소비하지 않는다. 일반 운반 Reservation이 별도 목표량 확보를 중재한다. 실제 배차/성공량 자동 정산은 후속이며 계획으로 재고/공간/Owner를 변경하지 않는다.
+
+## DroneTransportProgress / DroneTransportReservation / DroneTransportPendingReservationElement
+
+[일반 운반 확보/정산 명세](../../Specifications/DroneTransportReservations.md)를 따른다. Progress는 root에 부착하며 DeliveredQuantity는 실제 보관 완료량, ReservedQuantity는 미공개/진행 중 확보량 합계다. 기존 Execution이 같은 EndSimulation에 0으로 초기화한다. DroneTransportReservationSystem의 단일 Burst Job이 이전 미인계분을 반환한 뒤 일반 운반 계획을 목표 잔량 안에서 중재한다. 별도 Pending 버퍼의 Candidate/Reservation은 반환 근거이며 Decision이 Clear하지 않는다.
+
+Reservation은 Task/RemainingQuantity의 단일 소유 기록이다. 후속 배차가 Take로 인계받아 배정과 같은 EndSimulation에 부착하고, 기존 원본 기록은 0으로 만들어 이중 반환을 막는다. 실제 배차/납품 Writer는 아직 없으며 TryReduce/Release/TryRecordDelivery 계약만 제공한다. 실제 성공량은 해당 Task 하나에만 반영하며 재고/공간/Owner는 이 데이터가 소유하지 않는다. 후보/망 재검사와 행동 번호 중복 거부를 여기서 반복하지 않는다.
 
 ## DroneTaskSequence
 

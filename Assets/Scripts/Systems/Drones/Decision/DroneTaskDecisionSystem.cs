@@ -106,6 +106,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         using var pendingRoutes = new NativeList<DroneRouteEvaluationRequest>(Allocator.Temp);
         var candidates = manager.GetBuffer<DroneTaskCandidateDecisionElement>(_candidates);
         var pendingPublications = manager.GetBuffer<DroneTaskPendingPublicationElement>(_candidates);
+        var pendingTransport = manager.GetBuffer<DroneTransportPendingReservationElement>(_candidates, true);
         // 이미 적재한 자재의 목적지를 먼저 판단한다. 최종 선택·수량 확보 순서는 Reservation이 정한다.
         BuildRetargetCandidates(manager, networks, assignments, tasks, sites, storages, registry, routes, pendingRoutes,
             routeDecisions, removedRoutes, usedRoutes, candidates, pendingPublications, carryingCapacity);
@@ -204,7 +205,9 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 Entity selectedDestination = sourceIsStorage ? task.Target : bestStorage;
                 if (transport)
                 {
-                    quantity = math.min(carryingCapacity, manager.GetComponentData<DroneTransportRequirement>(tasks[t]).Quantity);
+                    quantity = math.min(carryingCapacity, DroneTransportReservationUtility.ProjectedRemaining(
+                        tasks[t], manager.GetComponentData<DroneTransportRequirement>(tasks[t]),
+                        manager.GetComponentData<DroneTransportProgress>(tasks[t]), pendingTransport));
                     quantity = math.min(quantity, DroneSchedulingUtility.CountInventory(manager, selectedSource, task.ItemType));
                     quantity = DroneSchedulingUtility.CountStorageSpace(manager, selectedDestination, task.ItemType, registry, quantity);
                 }
@@ -222,7 +225,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 };
                 if (transport)
                 {
-                    // 일반 운반은 후속 Reservation 연결 전까지 계획으로만 제공한다.
+                    // 일반 운반의 작업 내 수량 중재로 전달한다. 기존 공급/회수 배정 Publish와는 분리한다.
                     transportPlans.Add(new DroneTransportPlanDecisionElement { Candidate = candidate });
                 }
                 else

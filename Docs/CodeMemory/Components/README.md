@@ -206,6 +206,7 @@ Preparation/Power 분리와 전신주/참가자 연결·망 수명주기·석탄
 | [DroneActionReceiptSequence](DroneLogistics.md#droneactionreceiptsequence) | 접수 순번 상태 | [DroneActionReceiptSequence.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneActionReceiptSequence.cs) |
 | [DroneItemTransferResult](DroneLogistics.md#droneitemtransferresult) | 결과 | [DroneActionContracts.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneActionContracts.cs) |
 | [DroneTransportRequirement / DroneTransportPlanDecisionElement](DroneLogistics.md#dronetransportrequirement--dronetransportplandecisionelement) | 일회성 요구 / 판단 버퍼 | [DroneTransportPlanning.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneTransportPlanning.cs) |
+| [DroneTransportProgress / DroneTransportReservation / DroneTransportPendingReservationElement](DroneLogistics.md#dronetransportprogress--dronetransportreservation--dronetransportpendingreservationelement) | 작업별 완료/확보량 / 개별 확보 기록 / 미인계 승인 버퍼 | [DroneTransportPlanning.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneTransportPlanning.cs) |
 
 ### 아이템과 저장
 

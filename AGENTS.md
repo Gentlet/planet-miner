@@ -66,7 +66,7 @@ Command → EndCommand → Preparation
 | BuildingExecution / Systems/Buildings/Execution | 벨트와 생산 진행/재료 선소비를 처리한다. Miner/Crafter는 확정 공급률·에너지 한도 내에서 진행하고 무전력 신규 착수는 재료를 보존한다. 완료 결과 확정은 전력 때문에 막지 않는다. |
 | BuildingStateApply / Systems/Buildings/StateApply, Items/StateApply, Construction/StateApply | 기존 Storage/Routing/Ownership·일반 아이템/건물 수명주기를 적용한다. ConstructionLifecycleApplySystem은 마지막 완공을 담당하며 EndBuilding은 건물 도메인의 마지막 직접 자식이다. 전력망/연료 실물은 앞선 EndPower에서 확정한다. |
 | DroneDecision / Systems/Drones/Decision | DroneStationNetworkDecisionSystem은 앞단에서 이번 틱 정거장 망을 판단한다. DroneTaskDecisionSystem은 생성·무효화·경로 의도와 배정 후보를, DroneItemTransferDecisionSystem은 행동 자격을 작성한다. 작업 후보는 이번 틱 정거장 대표/범위로 망을 필터하고 부분 footprint 겹침을 허용한다. 일반 반입/반출은 별도 계획 버퍼에 작성한다. |
-| DroneReservation / Systems/Drones/Reservation | ConstructionSupplyReservationSystem은 미공개·무효 예약을 정산한 뒤 후보를 선택하고 현장 공급량을 예약한다. |
+| DroneReservation / Systems/Drones/Reservation | ConstructionSupplyReservationSystem은 미공개/무효 현장 예약을 정산한 뒤 후보를 선택한다. DroneTransportReservationSystem은 일반 운반의 미인계 승인량을 반환하고 작업 내 목표 잔량을 중재한다. 작업 간 선택/실제 배차는 후속이다. |
 | DroneExecution / Systems/Drones/Execution | DroneItemTransferExecutionSystem은 OrderFirst로 건물 종료 상태 기준 실물·수량·공간 계획을 준비한다. DroneTaskExecutionSystem은 생성·경로 명령과 순번 발급·최종 ECB 기록을 소유한다. |
 | DroneStateApply / Systems/Drones/StateApply | DroneTaskLifecycleApplySystem은 의도 최종 재검사·종료·연결·삭제 보류와 신호 인계·실제 성공량 정산을 담당한다. DroneTaskAssignmentPublishSystem은 OrderLast로 배정을 최종 검사하고 롤백하거나 공개를 기록한다. |
 | SimulationCommit / Systems/Commit | EndSimulationEntityCommandBufferSystem이 드론 작업·경로·배정·결과 및 종료 삭제를 확정한다. |
@@ -113,6 +113,8 @@ DroneTaskCandidateDecisionElement는 Decision이 매 틱 Clear하고 다시 만�
 2026-10-22 Task 9.2는 [정거장 네트워크 명세](Docs/Specifications/DroneStationNetwork.md)를 따른다. 공통 건물 생성은 주 시설·정거장에 역할/결정/공개 연결을 부착한다. BuildingConfig의 종류·티어별 단일 DroneStationRangeInChunks와 회전 footprint 긴 변으로 정사각형 활동 영역을 계산한다. 음수 Range는 0, 홀수 여백은 양의 축에 1셀을 더 두며 long 합산을 사용한다. 무전력 참가·공유 셀 연결·PlacementStamp 대표 Entity를 적용한다. DroneDecision의 이번 틱 결과를 DroneStationNetworkApplySystem이 EndSimulation에 공개한다. DroneStationSpatialSyncSystem은 공개 연결/건물 원본으로 맵을 재구축하고 같은 singleton의 Fence를 완료한 뒤 재할당/해제한다. 작업 망 필터는 현재 틱 NetworkDecision을 사용한다. 수용량은 기존 정거장 보관 계약을 따르며 귀환/충전/철거 시 수행자 재배치는 후속 Task다.
 
 ## 핵심 데이터와 변경 규칙
+
+2026-10-28 [일반 운반 확보/정산 계약](Docs/Specifications/DroneTransportReservations.md)은 최초 목표량/실제 보관 완료량/미공개 및 진행 중 확보량을 구분한다. DroneTransportReservationSystem은 단일 Burst Job에서 미인계 승인을 반환한 뒤 작업 내 여러 계획을 잔량 안에서 중재한다. 별도 미인계 버퍼는 Decision이 Clear하지 않고 다음 Reservation 또는 후속 소비자가 정산한다. 실제 배차/일반 운반 인계 Writer는 후속이며 새 공급원 재고/보관 공간 예약은 없다. Progress는 Task Execution이 root와 같은 EndSimulation에 최초 생성하며 이후 실제 납품 실적은 해당 작업 하나에만 귀속한다.
 
 2026-10-27 [작업 계획 계약](Docs/Specifications/DroneTaskPlanning.md)은 현재 위치 네트워크, 같은 망의 출발/도착과 회전 footprint 일부 겹침을 적용한다. 일반 반입/반출의 양수 일회성 요구는 작업과 같은 EndSimulation에 최초 게시하고 중복 요청으로 합산하지 않는다. Decision 전용 계획과 기존 공급/회수 배정 후보를 분리하며 실제 운반/경로 Producer는 후속이다.
 

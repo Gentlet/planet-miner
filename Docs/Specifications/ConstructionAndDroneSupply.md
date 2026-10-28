@@ -91,7 +91,7 @@ DroneWorker는 수행자 표시만 맡고 공통 적재량은 DroneCapacityState
 
 ## 공급원과 보관 장소
 
-공급/회수 및 일반 반입/반출 계획의 네트워크/부분 footprint 필터는 [작업 계획 명세](DroneTaskPlanning.md)를 따른다. 일반 운반은 요청/계획까지만 연결하며 실제 인계 정책을 새 작업에 자동 적용하지 않는다.
+공급/회수 및 일반 반입/반출 계획의 네트워크/부분 footprint 필터는 [작업 계획 명세](DroneTaskPlanning.md)를 따른다. 일반 운반은 요청/계획과 [작업 내 목표량 확보/정산 API](DroneTransportReservations.md)까지 연결하며 실제 배차/인계 정책을 새 작업에 자동 적용하지 않는다.
 
 
 - 건설 자재를 가져올 수 있는 건물은 `Storage`, `MainFacility`, `DroneStation`이다.
