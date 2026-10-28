@@ -52,6 +52,7 @@ internal static class DroneStationLifecycleUtility
     }
 
     public static void GatherBusyWorkers(NativeArray<Entity> pendingOwners, BufferLookup<DroneTaskPendingPublicationElement> pending,
+        BufferLookup<DroneTransportPendingReservationElement> transportPending,
         NativeArray<Entity> actionEntities, ComponentLookup<DroneActionReadyRequest> actions, NativeHashSet<Entity> busy)
     {
         foreach (Entity owner in pendingOwners)
@@ -59,6 +60,18 @@ internal static class DroneStationLifecycleUtility
             foreach (var entry in pending[owner])
             {
                 if (entry.Quantity > 0 || entry.PublicationQueued)
+                {
+                    busy.Add(entry.Candidate.Worker);
+                }
+            }
+            if (!transportPending.HasBuffer(owner))
+            {
+                continue;
+            }
+            foreach (var entry in transportPending[owner])
+            {
+                // Take는 원본 확보 기록을 비운다. ECB 기록 뒤에도 수행자 연결이 공개될 때까지 Busy를 유지한다.
+                if (entry.Reservation.RemainingQuantity > 0 || entry.PublicationQueued)
                 {
                     busy.Add(entry.Candidate.Worker);
                 }

@@ -660,6 +660,27 @@ public static class DroneSchedulingUtility
                     CountInventory(manager, candidate.Source, task.ItemType))));
         }
 
+        if (IsTransportKind(task.Kind))
+        {
+            Entity target = task.Kind == DroneLogisticsTaskKindEnum.StorageImport ? candidate.Destination : candidate.Source;
+            if (task.Target != target)
+            {
+                return 0;
+            }
+            if (!IsStorage(manager, candidate.Source))
+            {
+                return 0;
+            }
+            if (!IsStorage(manager, candidate.Destination))
+            {
+                return 0;
+            }
+            // 선행 행동이 재고/공간을 바꿀 수 있다. 승인 상한을 늘리지 않고 현재 가능한 양만 최종 배차한다.
+            int quantity = math.min(carryingCapacity, math.min(candidate.Quantity,
+                CountInventory(manager, candidate.Source, candidate.ItemType)));
+            return CountStorageSpace(manager, candidate.Destination, candidate.ItemType, registry, quantity);
+        }
+
         if (task.Kind != DroneLogisticsTaskKindEnum.WorldItemRecovery || task.Target != candidate.Source ||
             !IsWorldItem(manager, candidate.Source, task.ItemType) || !HasStorageSpace(manager, candidate.Destination, task.ItemType, registry))
         {

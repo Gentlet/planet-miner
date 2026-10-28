@@ -709,8 +709,12 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
             var pending = _entityManager.GetBuffer<DroneTransportPendingReservationElement>(candidates, true);
             Assert.AreEqual(1, pending.Length);
             Assert.AreEqual(otherTask, pending[0].Candidate.Task);
-            Assert.AreEqual(1, pending[0].Reservation.RemainingQuantity);
-            AssertNoAssignments();
+            Assert.AreEqual(0, pending[0].Reservation.RemainingQuantity);
+            Assert.IsTrue(pending[0].PublicationQueued);
+            var assignment = SingleAssignment();
+            Assert.AreEqual(otherTask, assignment.Task);
+            Assert.AreEqual(DroneActionKindEnum.CollectFromStorage, assignment.NextAction);
+            Assert.AreEqual(1, assignment.AssignedQuantity);
         }
         else
         {
@@ -752,9 +756,7 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         Assert.AreEqual(3, _entityManager.GetComponentData<DroneTransportProgress>(exportTask).ReservedQuantity);
         Assert.AreEqual(6, DroneSchedulingUtility.CountInventory(_entityManager, source, ItemTypeEnum.Iron));
         AssertNoAssignments();
-        ApplyDroneAndCommit();
-        Assert.AreEqual(1, QueryEntities<DroneTaskAssignment>().Length);
-
+        // 미공개 승인만 있는 시점의 유휴 취소다. 실제 배정 인계 후에는 Busy가 된다.
         Entity cancel = DroneTaskRequestUtility.SubmitCancel(_entityManager, importTask);
         Tick();
         Assert.IsTrue(DroneTaskRequestUtility.TryConsumeResult(_entityManager, cancel, out var result));
@@ -763,9 +765,138 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         pending = _entityManager.GetBuffer<DroneTransportPendingReservationElement>(candidates, true);
         Assert.AreEqual(1, pending.Length);
         Assert.AreEqual(exportTask, pending[0].Candidate.Task);
-        Assert.AreEqual(3, pending[0].Reservation.RemainingQuantity);
+        Assert.AreEqual(0, pending[0].Reservation.RemainingQuantity);
+        Assert.IsTrue(pending[0].PublicationQueued);
+        Assert.AreEqual(2, QueryEntities<DroneTaskAssignment>().Length);
         Assert.AreEqual(3, _entityManager.GetComponentData<DroneTransportProgress>(exportTask).ReservedQuantity);
         Assert.AreEqual(0, _entityManager.GetComponentData<DroneTransportProgress>(exportTask).DeliveredQuantity);
+    }
+
+    [TestCase(DroneLogisticsTaskKindEnum.StorageImport)]
+    [TestCase(DroneLogisticsTaskKindEnum.StorageExport)]
+    public void TransportAssignments_SplitOneGoal_AndKeepClaimsAcrossTheNextTick(DroneLogisticsTaskKindEnum kind)
+    {
+        Entity source = CreateStorage(new int2(1, 0), 1, ItemTypeEnum.Iron, 6);
+        Entity destination = CreateStorage(new int2(2, 0), 2, ItemTypeEnum.Iron, 0);
+        Entity target = kind == DroneLogisticsTaskKindEnum.StorageImport ? destination : source;
+        Entity task = CreateTransportTask(kind, target, 1, 5);
+        Entity firstWorker = CreateWorker(3);
+        Entity secondWorker = CreateWorker(3);
+        Tick();
+        AnswerRoutes(route => 10f);
+        Tick();
+        Entity firstAssignment = _entityManager.GetComponentData<DroneWorkerAssignment>(firstWorker).Assignment;
+        Entity secondAssignment = _entityManager.GetComponentData<DroneWorkerAssignment>(secondWorker).Assignment;
+        Assert.AreNotEqual(Entity.Null, firstAssignment);
+        Assert.AreNotEqual(Entity.Null, secondAssignment);
+        Assert.AreNotEqual(firstAssignment, secondAssignment);
+        Assert.AreEqual(task, _entityManager.GetComponentData<DroneTaskAssignment>(firstAssignment).Task);
+        Assert.AreEqual(task, _entityManager.GetComponentData<DroneTaskAssignment>(secondAssignment).Task);
+        Assert.AreEqual(3, _entityManager.GetComponentData<DroneTransportReservation>(firstAssignment).RemainingQuantity);
+        Assert.AreEqual(2, _entityManager.GetComponentData<DroneTransportReservation>(secondAssignment).RemainingQuantity);
+        Entity candidates = DroneSchedulingUtility.GetOrCreateCandidates(_entityManager);
+        var pending = _entityManager.GetBuffer<DroneTransportPendingReservationElement>(candidates, true);
+        Assert.AreEqual(2, pending.Length);
+        Assert.IsTrue(pending[0].PublicationQueued);
+        Assert.IsTrue(pending[1].PublicationQueued);
+        Assert.AreEqual(0, pending[0].Reservation.RemainingQuantity + pending[1].Reservation.RemainingQuantity);
+        Tick();
+        Assert.AreEqual(0, _entityManager.GetBuffer<DroneTransportPendingReservationElement>(candidates, true).Length);
+        Assert.AreEqual(5, _entityManager.GetComponentData<DroneTransportProgress>(task).ReservedQuantity);
+        Assert.AreEqual(0, _entityManager.GetComponentData<DroneTransportProgress>(task).DeliveredQuantity);
+        Assert.AreEqual(firstAssignment, _entityManager.GetComponentData<DroneWorkerAssignment>(firstWorker).Assignment);
+        Assert.AreEqual(secondAssignment, _entityManager.GetComponentData<DroneWorkerAssignment>(secondWorker).Assignment);
+        Assert.AreEqual(6, DroneSchedulingUtility.CountInventory(_entityManager, source, ItemTypeEnum.Iron));
+        Assert.AreEqual(0, DroneSchedulingUtility.CountInventory(_entityManager, destination, ItemTypeEnum.Iron));
+    }
+
+    [TestCase(DroneLogisticsTaskKindEnum.StorageImport, false, "space")]
+    [TestCase(DroneLogisticsTaskKindEnum.StorageExport, false, "space")]
+    [TestCase(DroneLogisticsTaskKindEnum.StorageImport, true, "space")]
+    [TestCase(DroneLogisticsTaskKindEnum.StorageExport, true, "space")]
+    [TestCase(DroneLogisticsTaskKindEnum.StorageImport, true, "target")]
+    [TestCase(DroneLogisticsTaskKindEnum.StorageExport, true, "target")]
+    public void TransportPublish_ShrinksOrRejectsLatestQuantity_AndRetriesOnlyOnTheNextTick(
+        DroneLogisticsTaskKindEnum kind, bool reject, string invalidation)
+    {
+        using var registry = _entityManager.CreateEntityQuery(typeof(ItemConfigElement));
+        int maximumStack = ItemRegistry.GetMaxStack(
+            _entityManager.GetBuffer<ItemConfigElement>(registry.GetSingletonEntity(), true), ItemTypeEnum.Iron);
+        Entity source = CreateStorage(new int2(1, 0), 1, ItemTypeEnum.Iron, 3);
+        Entity destination = CreateStorage(new int2(2, 0), 2, ItemTypeEnum.Iron, maximumStack - 3);
+        _entityManager.SetComponentData(destination, new Storage(1));
+        Entity alternativeDestination = CreateStorage(new int2(3, 0), 3, ItemTypeEnum.Iron, 0);
+        Entity target = kind == DroneLogisticsTaskKindEnum.StorageImport ? destination : source;
+        Entity task = CreateTransportTask(kind, target, 1, 3);
+        var alternativeKind = kind == DroneLogisticsTaskKindEnum.StorageImport
+            ? DroneLogisticsTaskKindEnum.StorageExport : DroneLogisticsTaskKindEnum.StorageImport;
+        Entity alternativeTarget = alternativeKind == DroneLogisticsTaskKindEnum.StorageImport ? alternativeDestination : source;
+        Entity alternativeTask = CreateTransportTask(alternativeKind, alternativeTarget, 2, 3);
+        Entity worker = CreateWorker(3);
+        Tick();
+        Entity preferredDestination = kind == DroneLogisticsTaskKindEnum.StorageImport ? alternativeDestination : destination;
+        AnswerRoutes(route => route.Destination == preferredDestination ? 1f : 10f);
+        _decision.Update();
+        _reservation.Update();
+        Entity candidates = DroneSchedulingUtility.GetOrCreateCandidates(_entityManager);
+        var approval = _entityManager.GetBuffer<DroneTransportPendingReservationElement>(candidates, true)[0];
+        Assert.AreEqual(task, approval.Candidate.Task);
+        Assert.AreEqual(3, approval.Reservation.RemainingQuantity);
+
+        if (invalidation == "target")
+        {
+            _entityManager.AddComponent<PendingBuildingDemolition>(target);
+        }
+        else
+        {
+            // 선행 행동으로 목적지 공간이 줄어든 상황을 최종 공개 경계에 제공한다.
+            int occupied = reject ? 3 : 2;
+            for (int i = 0; i < occupied; i++)
+            {
+                Entity item = CreateItem(ItemTypeEnum.Iron, destination, new int2(2, 0));
+                _entityManager.GetBuffer<StoredItemElement>(destination).Add(new StoredItemElement(item, ItemTypeEnum.Iron, 0));
+            }
+        }
+        _apply.Update();
+        AssertNoAssignments();
+        Assert.AreEqual(Entity.Null, _entityManager.GetComponentData<DroneWorkerAssignment>(worker).Assignment);
+        var consumed = _entityManager.GetBuffer<DroneTransportPendingReservationElement>(candidates, true)[0];
+        Assert.AreEqual(0, consumed.Reservation.RemainingQuantity);
+        Assert.AreEqual(!reject, consumed.PublicationQueued);
+        Assert.AreEqual(reject ? 0 : 1, _entityManager.GetComponentData<DroneTransportProgress>(task).ReservedQuantity);
+        Assert.AreEqual(0, _entityManager.GetComponentData<DroneTransportProgress>(task).DeliveredQuantity);
+        Assert.AreEqual(3, _entityManager.GetComponentData<DroneTransportRequirement>(task).Quantity);
+        Simulation.UpdateAndComplete(_world.GetOrCreateSystem<DroneTaskAssignmentPublishSystem>());
+        _commit.Update();
+        Assert.AreEqual(reject ? 0 : 1, QueryEntities<DroneTaskAssignment>().Length);
+        if (!reject)
+        {
+            Entity assignmentEntity = _entityManager.GetComponentData<DroneWorkerAssignment>(worker).Assignment;
+            var assignment = _entityManager.GetComponentData<DroneTaskAssignment>(assignmentEntity);
+            Assert.AreEqual(task, assignment.Task);
+            Assert.AreEqual(1, assignment.AssignedQuantity);
+            Assert.AreEqual(1u, assignment.Revision);
+            Assert.AreEqual(DroneTaskAssignmentStateEnum.MovingToSource, assignment.State);
+            Assert.AreEqual(DroneActionKindEnum.CollectFromStorage, assignment.NextAction);
+            Assert.AreEqual(1, _entityManager.GetComponentData<DroneTransportReservation>(assignmentEntity).RemainingQuantity);
+            Entity cancel = DroneTaskRequestUtility.SubmitCancel(_entityManager, task);
+            Tick();
+            Assert.IsTrue(DroneTaskRequestUtility.TryConsumeResult(_entityManager, cancel, out var result));
+            Assert.AreEqual(DroneTaskRequestStatusEnum.Busy, result.Status);
+            Assert.AreEqual(1, _entityManager.GetComponentData<DroneTransportProgress>(task).ReservedQuantity);
+        }
+        else
+        {
+            // 선택 단계는 끝났다. 이번 틱에는 대체 작업을 공개하지 않고 다음 Decision에서만 다시 선택한다.
+            Assert.AreEqual(0, _entityManager.GetComponentData<DroneTransportProgress>(alternativeTask).ReservedQuantity);
+            Tick();
+            Entity expectedTask = invalidation == "target" || kind == DroneLogisticsTaskKindEnum.StorageImport
+                ? alternativeTask : task;
+            Assert.AreEqual(expectedTask, SingleAssignment().Task);
+            Assert.AreEqual(alternativeDestination, SingleAssignment().Destination);
+            Assert.AreEqual(3, SingleAssignment().AssignedQuantity);
+        }
+        Assert.AreEqual(3, _entityManager.GetBuffer<StoredItemElement>(source, true).Length);
     }
 
     [Test]

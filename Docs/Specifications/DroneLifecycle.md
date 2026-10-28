@@ -84,11 +84,11 @@
 | --- | --- | --- | --- |
 | 작업 생성/무효화/목표 달성 필요, 경로/배정 후보 | DroneTaskDecisionSystem. 판단 의도만 작성 | DroneDecision | 구현 |
 | 현장 예약과 공개 대기 예약 | DroneTaskReservationSystem의 메인 스레드. 통합 후보 선택/현장 미공개 정산/예약 해제 | DroneReservation. 최종 Publish 축소/실패와 실제 인계 정산은 기존 공통 예약 API 사용 | 구현 |
-| 일반 운반 목표 확보/미인계 승인/무효 인계 정산 | DroneTaskReservationSystem의 단일 Burst Job. Decision 의도/고아 확보분/이전 미인계분 반환 후 통합 선택된 일반 운반만 승인 | DroneReservation의 단일 Burst Job. 최초 Progress는 Task Execution과 같은 EndSimulation에 생성 | 구현. 실제 배차/납품 Writer는 9.9/9.11~9.12 후속 |
+| 일반 운반 목표 확보/미인계 승인/무효 인계 정산 | DroneTaskReservationSystem의 단일 Burst Job. Decision 의도/고아 확보분/이전 미인계분 반환 후 통합 선택된 일반 운반만 승인 | DroneReservation의 단일 Burst Job. 최초 Progress는 Task Execution과 같은 EndSimulation에 생성 | 구현. 배정 Publish의 최종 감량/반환/Take가 연결되며 실제 납품 Writer는 9.12 후속 |
 | 작업·경로 요청 생성 순번/ECB 기록 | DroneTaskExecutionSystem. 전달 의도를 적용하고 필요를 다시 탐색하지 않음 | DroneExecution → EndSimulation | 구현 |
 | 실제 인계할 실물/공간 계획 | DroneItemTransferDecisionSystem / DroneItemTransferExecutionSystem. 원본 소유권·수량을 변경하지 않음 | DroneDecision / DroneExecution OrderFirst | 구현 |
 | 상위 작업 종료, 배정 행동 결과·취소·완료·재배정 필요 | DroneTaskLifecycleApplySystem. 최신 의도/버전과 실제 성공분 반영 | DroneStateApply 직접 반영. 요청 제거·결과 추가·종료 삭제는 EndSimulation | 구현 |
-| 배정 생성/재배정 공개, 수행자 연결 설정 | DroneTaskAssignmentPublishSystem. 최종 수량 검사/축소 롤백/Revision 갱신과 정산된 이전 운반 확보 기록 분리 | DroneStateApply OrderLast → 새 배정과 같은 EndSimulation | 구현 |
+| 배정 생성/재배정 공개, 수행자 연결 설정 | DroneTaskAssignmentPublishSystem. 최종 수량 검사/감량 및 거부 반환/일반 운반 Take/Revision 갱신과 정산된 이전 운반 확보 기록 분리 | DroneStateApply OrderLast → 새 배정과 같은 EndSimulation | 구현 |
 | 수행자 연결 해제, 잔여 예약/요청/결과에 따른 삭제 보류 | DroneTaskLifecycleApplySystem. 해제와 배정 삭제를 분리 | DroneStateApply / EndSimulation | 구현 |
 | 실물 Owner·출발/도착 버퍼·위치·렌더 | ItemOwnershipApplySystem의 공통 TryTransferItem. Drone Lifecycle이 실제 성공분 사용 | 일반 건물 반영 이후 DroneStateApply, 필요한 렌더 기록은 EndSimulation | 구현 |
 | 외부 행동 결과 소비 | DroneActionRequestUtility.TryConsumeResult의 외부 Consumer | EndSimulation 공개 이후. 예약·실물 성공량 재정산 금지 | API만 구현, 실제 수행부 Consumer 후속 |

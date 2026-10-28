@@ -10,7 +10,7 @@ public struct DroneTransportRequirement : IComponentData
 }
 
 /// <summary>
-/// 작업별 실제 납품 완료량과 미공개 승인/진행 중 확보량이다. 생성은 Execution, 확보는 Reservation이 맡는다.
+/// 작업별 실제 납품 완료량과 미공개 승인/진행 중 확보량이다. 생성은 Execution, 확보는 Reservation, 공개 직전 감량/반환은 Publish가 맡는다.
 /// 납품 소유자는 실제 보관 성공분만 정산하며 픽업은 완료량을 늘리지 않는다. 재고/공간 예약이 아니다.
 /// </summary>
 public struct DroneTransportProgress : IComponentData
@@ -21,7 +21,7 @@ public struct DroneTransportProgress : IComponentData
 
 /// <summary>
 /// 한 승인 또는 후속 배정이 소유하는 목표량 확보 기록이다. Task 하나에만 귀속하며 잔량을 한 번만 반환한다.
-/// 후속 배차는 Take로 미공개 기록에서 인계받아 배정과 같은 EndSimulation에 부착한다.
+/// Publish는 Take로 미공개 기록에서 인계받아 배정과 같은 EndSimulation에 부착한다.
 /// </summary>
 public struct DroneTransportReservation : IComponentData
 {
@@ -31,13 +31,15 @@ public struct DroneTransportReservation : IComponentData
 
 /// <summary>
 /// 통합 Reservation이 선택한 일반 운반 수량과 반환 근거다. 후보 singleton에 보관하며 다음 Reservation이 미인계분을 반환한다.
-/// 수행자당 한 후보를 통합 선택한 뒤 단일 Burst Job이 작성한다. 실제 배차는 후속 소비자가 맡는다.
+/// 단일 Burst Reservation Job이 승인하고 Publish가 Take/감량/반환과 PublicationQueued를 기록한다.
+/// PublicationQueued는 ECB 기록 완료다. 인계 후 잔량 0이어도 EndSimulation 전 정거장 전환을 막는다.
 /// </summary>
 [InternalBufferCapacity(0)]
 public struct DroneTransportPendingReservationElement : IBufferElementData
 {
     public DroneTaskCandidateDecisionElement Candidate;
     public DroneTransportReservation Reservation;
+    public bool PublicationQueued;
 }
 
 /// <summary>

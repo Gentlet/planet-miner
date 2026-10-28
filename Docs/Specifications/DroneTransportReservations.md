@@ -1,6 +1,6 @@
 # 일반 운반 목표량 확보와 정산 계약
 
-2026-10-28 사용자 확정 1A/2A/3A/4A를 따른다. 일반 반입/반출의 작업 내 수량 중재/후속 정산 API와 종료/무효화 연결을 구현한다. 작업 간 자동 선택은 확정한 1A 순서로 통합했고 실제 배정 확정은 9.9, 실제 수집/납품 연결은 9.11~9.12, 진행 중 취소/중단 정산은 9.15에 남긴다.
+2026-10-28 사용자 확정 1A/2A/3A/4A를 따른다. 일반 반입/반출의 작업 내 수량 중재/후속 정산 API와 종료/무효화 연결을 구현한다. 작업 간 자동 선택은 확정한 1A 순서로 통합했고 배정 확정은 기존 Publish에 연결했고 실제 수집/납품 연결은 9.11~9.12, 진행 중 취소/중단 정산은 9.15에 남긴다.
 
 ## 목표량과 실적
 
@@ -15,24 +15,32 @@
 | 자료 | 생성/Writer | Reader/소비 |
 | --- | --- | --- |
 | Requirement/Progress | 기존 Task Execution이 같은 EndSimulation ECB에 생성, Progress 초기값 0 | Decision의 계획 잔량과 Reservation의 최종 작업 내 수량 중재 |
-| Progress.ReservedQuantity | DroneTaskReservationSystem의 단일 Burst Job이 선택된 일반 운반 확보/무효 인계분/미인계분 반환 | 후속 배차/인계 소유자는 같은 utility로 인계/부분 반환/완료를 정산 |
+| Progress.ReservedQuantity | Task Reservation의 단일 Burst Job이 확보/무효 인계/미인계 반환, Assignment Publish가 최종 감량/거부 반환 | 후속 픽업/납품 소유자는 같은 utility로 부분 반환/완료를 정산 |
 | Progress.DeliveredQuantity | 후속 납품 소유자가 실제 성공량으로 TryRecordDelivery 호출 | 현재 자동 Writer는 없으며 계획/승인/픽업은 증가시키지 않음 |
-| DroneTransportPendingReservationElement | 후보 singleton의 별도 버퍼, Reservation만 새 승인/반환 기록 작성 | Decision은 다음 Reservation의 반환 예정량을 읽음. 후속 선택/배차가 소비하지 않은 기록은 다음 Reservation에서 반환 후 Clear |
-| DroneTransportReservation | 승인 기록 안에 보관하는 Task/RemainingQuantity. 후속 배차가 Take로 인계 | 후속 9.9에서 배정과 같은 EndSimulation에 부착. 현재 제품 경로는 배정을 생성하지 않음 |
+| DroneTransportPendingReservationElement | Reservation이 새 승인/옛 기록 정리, Publish가 Take/PublicationQueued 작성 | Decision은 반환 예정량을 읽음. 미인계 기록은 다음 Reservation에서 반환, 인계 기록은 0이므로 재반환하지 않음 |
+| DroneTransportReservation | 승인 기록 안의 Task/RemainingQuantity를 Assignment Publish가 Take로 인계 | 배정/수행자 연결과 같은 EndSimulation에 부착. 최초 Revision=1/MovingToSource/CollectFromStorage |
 
 DroneTaskReservationSystem은 적재 재배정을 먼저 선택한다. 신규 공급 선두는 PlacementStamp→CreationSequence, 회수/반입/반출 선두는 CreationSequence로 고르고 두 선두를 CreationSequence로 비교한다. 수행자당 하나만 선택하며 실행 불가능하거나 남은 목표량이 0인 후보는 건너뛴다. 공급/회수/재배정은 기존 공개 대기 버퍼에, 일반 운반 선택은 아래 단일 Job의 임시 입력에 전달한다.
 
-일반 운반의 메인 스레드 로컬 예산은 기존 미인계분/무효 인계분의 반환 예정량과 이번 틱 선택분을 반영한다. 선택하지 않은 대안에는 새 확보량을 만들지 않으므로 다른 수행자가 같은 틱에 그 잔량을 선택할 수 있다. 반환 예정량을 원본에 미리 더하거나 Decision 계획 버퍼를 수정하지 않는다. 별도의 영속 선택 컴포넌트/인덱스는 추가하지 않는다. 실제 수행자 claim은 9.9 후속이다.
+일반 운반의 메인 스레드 로컬 예산은 기존 미인계분/무효 인계분의 반환 예정량과 이번 틱 선택분을 반영한다. 선택하지 않은 대안에는 새 확보량을 만들지 않으므로 다른 수행자가 같은 틱에 그 잔량을 선택할 수 있다. 반환 예정량을 원본에 미리 더하거나 Decision 계획 버퍼를 수정하지 않는다. 별도의 영속 선택 컴포넌트/인덱스는 추가하지 않는다. 수행자 claim은 최종 자격 검사 뒤 기존 Publish의 일회성 승인 소비와 같은 ECB의 수행자 연결로 확정한다. 새 claim 원본 컴포넌트나 공유 캐시는 추가하지 않는다.
 
 ## 같은 틱과 다음 틱
 
 1. Decision은 기존 미인계 승인량과 이번 무효화 의도로 반환할 인계분을 계획에 다시 포함한다. 정상 진행 중 확보량과 완료량은 계속 제외한다.
 2. Reservation 메인 스레드는 현장 예약 반환/적재 재배정 뒤 모든 유형을 함께 선택한다. 일반 운반 선택은 TempJob 목록으로 단일 Job에 넘긴다. Job은 무효/고아 인계분과 이전 미인계분을 반환하고 버퍼를 비운 뒤 선택된 계획의 상한 안에서만 새 확보량을 기록한다. Decision 이후 바뀌지 않는 재고/공간/경로/망을 반복 검증하지 않는다.
-3. 후속 배차가 최종 자격/수량을 검사한 뒤 `Take(ref pending)`로 확보 기록의 소유권을 넘겨받는다. 원래 기록은 0이 되어 다음 Reservation에서 이중 반환되지 않는다. 인계 직후 공개를 거부하면 넘겨받은 기록을 Release해야 한다.
-4. 실제 배정/수행자 연결/확보 기록의 공개는 후속 9.9의 같은 EndSimulation이다. 현재 예약 시스템은 ECB를 기록하지 않으며 공급/회수 Publish 버퍼에 일반 운반을 넣지 않는다.
+3. Assignment Publish가 최종 자격/수량을 검사한 뒤 `Take(ref pending)`로 확보 기록의 소유권을 넘겨받는다. 원래 기록은 0이 되어 다음 Reservation에서 이중 반환되지 않는다. 인계 직후 공개를 거부하면 넘겨받은 기록을 Release해야 한다.
+4. 실제 배정/수행자 연결/확보 기록은 기존 Publish가 같은 EndSimulation ECB에 기록한다. Take로 비워진 승인에는 PublicationQueued=true를 남겨 반복 Publish와 Playback 전 정거장 전환을 막는다. Reservation은 ECB를 기록하지 않으며 일반 운반을 기존 공급/회수 공개 대기 버퍼에 섞지 않는다.
 5. 이미 삭제된 작업의 이전 미인계 기록은 반환할 Progress가 없으므로 기록만 제거한다. 과거 Task Entity와 새 Task Entity를 합산하지 않는다.
 
 Job은 Requirement/선택된 후보 배열/무효화 의도/배정 존재 RO와 Progress/확보 기록/승인 버퍼 RW를 사용한다. 확보 기록 소유자 배열은 메인 스레드의 반환 예정량 판단에도 쓰고 같은 배열을 Job에 전달한다. 선택 목록과 소유자 배열은 마지막 Job 접근 뒤 Dispose하며 해당 핸들을 state.Dependency에 등록한다. 기존 선택의 메인 스레드 경계는 유지하며 공유 NativeContainer/Fence나 컴포넌트별 수동 Complete는 추가하지 않는다. ECS 조회가 이전 Writer와 동기화한다.
+
+## 배차 최종 공개의 확정 정책
+
+- 1A: 최종 수량은 승인량/현재 공통 적재량/출발 재고/목적지 공간 안에서 정한다. 양수이면 감량분만 TryReduce로 즉시 반환하고 나머지를 배정한다. 0 또는 대상/수행자/관측/경로의 최종 자격 실패이면 전량 Release하고 배정/연결을 기록하지 않는다. 최초 목표량과 완료량은 바꾸지 않는다.
+- 2A: 공개 실패 뒤 같은 틱에 새 후보를 찾거나 반환량을 재배분하지 않는다. 다음 Decision부터 다시 선택한다. 9.8의 Reservation 내 대체 선택은 유지하며 최종 공개 뒤의 재선택과 구분한다.
+- 순수 후보/계획은 Decision, 통합 선택/목표량 승인은 Reservation, 최종 자격/확보 인계/배정 기록은 Publish, 실제 공개는 EndSimulation이 소유한다. 유형별 승인 버퍼와 기존 수행자 연결을 재사용하며 수동 우선순위/일시 중단/재개를 추가하지 않는다.
+- 일반 운반 승인 잔량이 양수이거나 PublicationQueued이면 정거장 Reservation/최종 Apply의 Busy에 포함한다. Take 후 잔량이 0이어도 같은 EndSimulation 이전에는 수납/정박으로 배정 연결을 덮어쓰지 않는다.
+- 기존 CanAcceptTask와 현재 revision의 평가 완료 경로를 최종 소비한다. 배차 시 완충이나 전체 왕복 에너지의 임의 기준을 추가하지 않는다. 실제 경로/배터리/지속 관측 Producer는 9.10, 일반 운반 수집/납품은 9.11~9.12, 진행 중 취소는 9.15다.
 
 ## 후속 소비자 API
 
@@ -56,7 +64,7 @@ Job은 Requirement/선택된 후보 배열/무효화 의도/배정 존재 RO와 
 - 정상 경로 평가 대기/계획된 충전 경유와 공간 부족만으로 확보량을 반환하지 않는다. 실제 중단을 알리는 Producer는 9.15에서 연결한다.
 - 유휴 취소의 Busy 판정은 확보 합계에서 아직 미인계인 승인량을 빼서 인계분을 구분한다. 미인계 승인만으로 Busy를 만들지 않으며 인계된 미정산분이나 기존 배정 참조가 있으면 취소를 거부한다.
 
-실제 일반 운반 배정 Producer는 9.9에 남기고 정상 수집/납품 성공량 Writer는 9.11~9.12에 남긴다. 이번 연결을 해당 기능의 완료로 해석하지 않는다.
+일반 운반 배정 Producer는 Assignment Publish에 연결했다. 정상 수집/납품 성공량 Writer는 9.11~9.12에 남기며 배정 공개를 실제 이동/수집/납품의 완료로 해석하지 않는다.
 
 ## 목표량 중재 검증 (Task 9.6)
 

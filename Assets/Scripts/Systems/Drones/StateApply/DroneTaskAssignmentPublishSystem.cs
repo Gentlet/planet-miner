@@ -2,10 +2,11 @@ using Unity.Entities;
 
 /// <summary>
 /// 역할·목적: StateApply 마지막에 DroneTaskReservationSystem의 공개 대기 기록을 재검사하고 수행자가 이용할 배정을 공개한다.
-/// 입력: 후보 관리 엔티티의 DroneTaskPendingPublicationElement와 최신 작업·수행자·적재·현장·경로·공통 적재량을 읽는다.
-/// 생성·이용: 신규 배정 엔티티 또는 기존 적재 배정에 DroneTaskAssignment/ConstructionSupplyReservation을 기록하고,
+/// 입력: 기존 공개 대기/일반 운반 승인 버퍼와 최신 작업/수행자/적재/현장/경로/공통 적재량을 읽는다.
+/// 생성/이용: 신규 배정 또는 기존 적재 배정과 유형별 현장/일반 운반 확보 기록을 기록하고,
 /// 수행자 엔티티의 DroneWorkerAssignment를 연결한다. 수행자가 보는 새 배정은 EndSimulation 재생 후부터 유효하다.
-/// 소유권·정리: Reservation이 먼저 올린 현장 합계 중 무효/축소된 미공개 예약을 되돌리고 PublicationQueued를 기록한다.
+/// 소유권/정리: 승인량 안에서 감량하고 차액/거부 확보량을 즉시 반환한다. 실패한 후보는 여기서 다시 선택하지 않는다.
+/// Take 후 원본 기록을 비우고 PublicationQueued로 중복 공개/Playback 전 정거장 전환을 막는다.
 /// 실물/적재 출처와 수행자의 관측 상태는 바꾸지 않으며, 공개 대기 버퍼는 다음 Reservation에서 정리한다.
 /// </summary>
 [UpdateInGroup(typeof(DroneStateApplyGroup), OrderLast = true)]
@@ -30,6 +31,14 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
         var ecb = state.World.GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>().CreateCommandBuffer();
         var pendingPublications = manager.GetBuffer<DroneTaskPendingPublicationElement>(_candidates);
         Entity registry = _registry.IsEmptyIgnoreFilter ? Entity.Null : _registry.GetSingletonEntity();
+        PublishExistingAssignments(manager, registry, carryingCapacity, ecb, pendingPublications);
+        var transportPending = manager.GetBuffer<DroneTransportPendingReservationElement>(_candidates);
+        PublishTransportAssignments(manager, registry, carryingCapacity, ecb, transportPending);
+    }
+
+    private static void PublishExistingAssignments(EntityManager manager, Entity registry, int carryingCapacity,
+        EntityCommandBuffer ecb, DynamicBuffer<DroneTaskPendingPublicationElement> pendingPublications)
+    {
         for (int i = 0; i < pendingPublications.Length; i++)
         {
             var pending = pendingPublications[i];
@@ -75,21 +84,8 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
                 continue;
             }
 
-            // 배정·개별 예약·수행자 연결을 같은 ECB에 기록해 재생 전에는 수행자가 일부 구성만 읽지 못하게 한다.
-            Entity assignment = ecb.CreateEntity();
-            ecb.AddComponent(assignment, new DroneTaskAssignment
-            {
-                Worker = candidate.Worker,
-                Task = candidate.Task,
-                OriginalTaskCreationSequence = manager.GetComponentData<DroneLogisticsTask>(candidate.Task).CreationSequence,
-                Source = candidate.Source,
-                Destination = candidate.Destination,
-                ItemType = candidate.ItemType,
-                AssignedQuantity = quantity,
-                Revision = 1,
-                State = DroneTaskAssignmentStateEnum.MovingToSource,
-                NextAction = supply ? DroneActionKindEnum.CollectFromStorage : DroneActionKindEnum.RecoverWorldItem
-            });
+            Entity assignment = RecordNewAssignment(manager, candidate, quantity,
+                supply ? DroneActionKindEnum.CollectFromStorage : DroneActionKindEnum.RecoverWorldItem, ecb);
             ecb.AddComponent(assignment, new ConstructionSupplyReservation
             {
                 Site = supply ? candidate.Destination : Entity.Null,
@@ -97,12 +93,84 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
                 AssignmentRevision = 1,
                 RemainingQuantity = supply ? quantity : 0
             });
-            ecb.SetComponent(candidate.Worker, new DroneWorkerAssignment { Assignment = assignment });
             // PublicationQueued는 ECB 기록 완료 표시다. Playback 전 반복 실행과 다음 틱 미공개 예약 롤백을 구분한다.
             pending.Quantity = quantity;
             pending.PublicationQueued = true;
             pendingPublications[i] = pending;
         }
+    }
+
+    private static void PublishTransportAssignments(EntityManager manager, Entity registry, int carryingCapacity,
+        EntityCommandBuffer ecb, DynamicBuffer<DroneTransportPendingReservationElement> pendingReservations)
+    {
+        for (int i = 0; i < pendingReservations.Length; i++)
+        {
+            var pending = pendingReservations[i];
+            if (pending.PublicationQueued)
+            {
+                continue;
+            }
+            if (pending.Reservation.RemainingQuantity <= 0)
+            {
+                continue;
+            }
+            var candidate = pending.Candidate;
+            candidate.Quantity = pending.Reservation.RemainingQuantity;
+            int quantity = DroneSchedulingUtility.CandidateQuantity(manager, candidate, registry, carryingCapacity);
+            var reservation = DroneTransportReservationUtility.Take(ref pending);
+            if (quantity <= 0)
+            {
+                ReleaseTransportReservation(manager, ref reservation);
+                pendingReservations[i] = pending;
+                continue;
+            }
+            if (quantity < reservation.RemainingQuantity)
+            {
+                // quantity는 승인 상한 안의 양수다. 감량분만 반환하고 최초 목표량/실적은 바꾸지 않는다.
+                var progress = manager.GetComponentData<DroneTransportProgress>(reservation.Task);
+                DroneTransportReservationUtility.TryReduce(ref progress, ref reservation, quantity);
+                manager.SetComponentData(reservation.Task, progress);
+            }
+
+            Entity assignment = RecordNewAssignment(manager, candidate, quantity, DroneActionKindEnum.CollectFromStorage, ecb);
+            ecb.AddComponent(assignment, reservation);
+            pending.PublicationQueued = true;
+            pendingReservations[i] = pending;
+        }
+    }
+
+    private static void ReleaseTransportReservation(EntityManager manager, ref DroneTransportReservation reservation)
+    {
+        if (!manager.HasComponent<DroneTransportProgress>(reservation.Task))
+        {
+            reservation.RemainingQuantity = 0;
+            return;
+        }
+        var progress = manager.GetComponentData<DroneTransportProgress>(reservation.Task);
+        DroneTransportReservationUtility.Release(ref progress, ref reservation);
+        manager.SetComponentData(reservation.Task, progress);
+    }
+
+    private static Entity RecordNewAssignment(EntityManager manager, in DroneTaskCandidateDecisionElement candidate,
+        int quantity, DroneActionKindEnum nextAction, EntityCommandBuffer ecb)
+    {
+        // 배정/유형별 확보 기록/수행자 연결은 같은 ECB에서만 공개한다. 그 전에는 pending이 인계 근거다.
+        Entity assignment = ecb.CreateEntity();
+        ecb.AddComponent(assignment, new DroneTaskAssignment
+        {
+            Worker = candidate.Worker,
+            Task = candidate.Task,
+            OriginalTaskCreationSequence = manager.GetComponentData<DroneLogisticsTask>(candidate.Task).CreationSequence,
+            Source = candidate.Source,
+            Destination = candidate.Destination,
+            ItemType = candidate.ItemType,
+            AssignedQuantity = quantity,
+            Revision = 1,
+            State = DroneTaskAssignmentStateEnum.MovingToSource,
+            NextAction = nextAction
+        });
+        ecb.SetComponent(candidate.Worker, new DroneWorkerAssignment { Assignment = assignment });
+        return assignment;
     }
 
     private static bool PublishRetarget(EntityManager manager, in DroneTaskCandidateDecisionElement candidate,

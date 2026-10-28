@@ -1,6 +1,6 @@
 # 드론 공급원/목적지 계획과 네트워크 필터
 
-2026-10-27 사용자 확정 정책을 따른다. 일반 반입/반출의 요청/작업/계획에 이어 2026-10-28에는 [작업 내 목표량 중재/정산 계약](DroneTransportReservations.md)을 연결했다. 작업 간 선택은 1A 순서로 통합했고 실제 배차/운반은 9.9~9.12, 실제 경로 평가 Producer와 이동/배터리는 9.10, 진행 중 취소/수행 불가 정산은 9.15에 남긴다.
+2026-10-27 사용자 확정 정책을 따른다. 일반 반입/반출의 요청/작업/계획에 이어 2026-10-28에는 [작업 내 목표량 중재/정산 계약](DroneTransportReservations.md)을 연결했다. 작업 간 선택은 1A 순서로 통합했고 배정 공개를 기존 Publish에 연결했고 실제 운반은 9.10~9.12, 실제 경로 평가 Producer와 이동/배터리는 9.10, 진행 중 취소/수행 불가 정산은 9.15에 남긴다.
 
 ## 요청과 일회성 요구
 
@@ -27,8 +27,8 @@
 - 경로 입력이 없거나 아직 미평가이면 기다린다. 단순 직선거리로 도달 가능성을 만들지 않는다. 필요한 경로 중 미평가가 있으면 결과를 모두 기다린다.
 - 일반 운반은 요청량/공통 적재량/현재 출발 재고/도착 수용 공간의 최솟값으로 이번 판단의 수량 상한을 작성한다. 공간 판정은 기존 품목 필터/입력 슬롯/정박 점유/드론 전용 슬롯/MaxStack 규칙을 공유한다. 전체 요청량을 한 번에 수용해야 한다는 제한은 없다.
 - 재고/공간 변화와 대상 소멸을 매 판단에 반영한다. 재고/공간이 부족하면 목표량과 작업을 보존하고 기다린다. 계획만으로 실물/Owner/용량/예약량은 변경하지 않는다.
-- DroneTransportPlanDecisionElement는 일반 운반 전용 버퍼다. 기존 Candidate 형식을 재사용하며 공급/회수/적재 재배정의 Decision 후보 버퍼와 분리한다. DroneTaskReservationSystem은 두 버퍼를 함께 읽어 수행자당 하나 선택한다. 일반 운반은 선택분만 전체 목표량 안에서 별도 미공개 확보 기록으로 작성한다. 실제 배차는 후속이다.
-- 실제 배차/픽업/납품 신호와 자동 성공량 정산은 후속이며 목표 잔량은 확보/정산 계약이 관리한다. 계획을 운반 완료로 표시하지 않는다.
+- DroneTransportPlanDecisionElement는 일반 운반 전용 버퍼다. 기존 Candidate 형식을 재사용하며 공급/회수/적재 재배정의 Decision 후보 버퍼와 분리한다. DroneTaskReservationSystem은 두 버퍼를 함께 읽어 수행자당 하나 선택한다. 일반 운반은 선택분만 전체 목표량 안에서 별도 미공개 확보 기록으로 작성한다. 선택된 승인은 기존 Assignment Publish가 최종 검사 후 EndSimulation에 배정으로 공개한다.
+- 배정 공개와 확보 인계는 구현되어 있으며 실제 픽업/납품 신호와 자동 성공량 정산은 후속이다.  목표 잔량은 확보/정산 계약이 관리한다. 계획을 운반 완료로 표시하지 않는다.
 
 ## 소유자와 공개 경계
 
@@ -68,10 +68,24 @@ Task Decision/Execution과 기존 작업 후보 선택의 메인 스레드 ISyst
 
 ### 통합 자동 선택 검증 (2026-10-28)
 
-확정 1A 순서로 공급 선두(PlacementStamp→CreationSequence)와 회수/반입/반출 선두(CreationSequence)를 생성 순번으로 비교한다. 적재 재배정은 이 신규 선택보다 먼저 수행한다. 같은 수행자의 미선택 운반 대안은 목표량을 선점하지 않고, 앞선 수행자의 선택으로 잔량이 소진된 작업은 다음 가능한 후보로 건너뛴다. 일반 운반은 선택된 승인만 보관하며 실제 배정은 후속이다.
+확정 1A 순서로 공급 선두(PlacementStamp→CreationSequence)와 회수/반입/반출 선두(CreationSequence)를 생성 순번으로 비교한다. 적재 재배정은 이 신규 선택보다 먼저 수행한다. 같은 수행자의 미선택 운반 대안은 목표량을 선점하지 않고, 앞선 수행자의 선택으로 잔량이 소진된 작업은 다음 가능한 후보로 건너뛴다. 일반 운반은 선택된 승인만 보관하며 배정 공개는 아래 후속 검증의 일반 운반 Publish가 담당한다.
 
 Unity 6000.4.11f1/CLI 1.0.0-beta.14의 원본 architecture-v2에서 C# 컴파일 completed/failed false/errors 없음/compilationFailed false, Editor ready와 최신 runtime/Editor DLL을 확인했다. 관련 선택 EditMode는 151/151(실패/생략/불확정 0)이다. Scheduling 44/Planning 14/StationLifecycle 18/Request 18/Retargeting 18/ItemTransfer 33/LifecycleIntegration 6이며 이전 실행과 합산하지 않는다. 기존 혼합 사례를 회수/반입/반출/미도달 후보로 확장하고 같은 틱 세 드론의 공급/반입/반출 선택, 미선택 목표량 보존, 목표량 소진 뒤 다음 작업 선택, 유휴 취소 후 갱신을 확인한다.
 
 초기 C# 로컬 NativeHashMap 수명 선언 오류는 수정 후 재컴파일했으며 오류 어셈블리로 테스트하지 않았다. 기존 검증 래퍼의 인자 처리 실패는 컴파일 실패와 구분하고 현재 grouped CLI 명령으로 실행했다. 실행 원본은 ignored Logs/Task98에 보관한다. Play Mode/Player/Burst AOT 전체/성능은 수행하지 않았으며 실제 경로/이동/납품 Producer를 실행한 증거가 아니다.
 
 Reservation/컴포넌트/guard/경계/가독성/주석 6역할의 독립 검수에서 확인한 범위의 필수 수정 지적은 없다. 최종 Editor 콘솔 오류는 0건이며 격리 테스트의 그룹 순서 관련 경고 등을 포함해 221건이 남았다. 누적 Pipeline 로그 개수와 현재 Editor 콘솔 개수는 구분한다. Editor는 ready/비컴파일/비리로드/Play stopped 상태로 열어 두었다.
+
+### 일반 운반 배정 공개 검증 (2026-10-28)
+
+확정 1A/2A에 따라 Assignment Publish가 최신 자격/수량을 확인하고 승인량 안의 양수분만 배정한다. 감량 차액/거부분은 즉시 반환하고 실패한 후보는 다음 Decision부터 재선택한다. Take 후 원본 승인은 0이며 PublicationQueued는 ECB 기록 완료다. 배정/유형별 확보 기록/수행자 연결은 같은 EndSimulation에 공개한다. 정거장 Reservation/Apply는 일반 운반 승인과 기록 완료 표시를 모두 Busy로 읽는다.
+
+원본 architecture-v2/기준 bb876fa의 후속 변경을 Unity 6000.4.11f1/CLI 1.0.0-beta.14에서 검증했다. C# 컴파일 completed/failed false/errors 없음/compilationFailed false, 최신 runtime/Editor 어셈블리와 Editor ready/비컴파일/비리로드를 확인했다. 관련 선택 EditMode는 161/161(실패/생략/불확정 0)이며 Scheduling 52/Planning 14/StationLifecycle 20/Request 18/Retargeting 18/ItemTransfer 33/LifecycleIntegration 6이다. 앞선 151개나 중간 실행과 합산하지 않는다.
+
+새 자동 배정 흐름은 Scheduling fixture의 실제 그룹/ECB로 검증한다. 계획/정산 fixture는 의도적으로 Publish 전까지 진행해 승인/반환 API와 수명 경계를 따로 검사하며, 적재 재배정 회귀는 Publish를 포함한다. 기존 혼합 선택 사례의 일반 운반 기대값을 실제 배정 공개로 갱신했고 반입/반출 3+2 인계와 다음 틱 보존, 감량/0 및 대상 무효 반환, 반복 공개, 다음 틱 재선택, 인계 후 유휴 취소 Busy와 수납 차단을 확인했다.
+
+초기 Scheduling 50개 중 반출 실패 뒤 다음 틱에 반드시 다른 root를 선택해야 한다는 기대값 1건이 실패했다. 기존 정책상 반출 root가 새 목적지를 선택할 수 있으므로 기대값을 바로잡았고, 대상 무효 사례까지 보완한 최신 선택 161개를 재실행했다. 게임 정책을 바꾸거나 실패 테스트를 제외해 통과시키지 않았다. 최종 Editor 콘솔 오류는 0건/경고 243건이며 격리 World의 UpdateAfter 대상 부재 경고 등이 남았다. 누적 Pipeline 로그 개수와 현재 Editor 콘솔 개수는 구분한다. 원본 실행 기록은 ignored Logs/Task99에 보관한다.
+
+Play Mode/Player/Burst AOT 전체/성능은 수행하지 않았다. 실제 경로/배터리/지속 관측은 9.10, 일반 운반 수집/납품은 9.11~9.12 후속이다. 최초 관측 CanAcceptTask=false를 임의로 열거나 실제 이동/도착/실적을 자동 성공으로 만들지 않는다.
+
+배정 반영/컴포넌트/guard/경계/가독성/주석의 6역할 독립 검수에서 코드의 필수 수정 지적은 없었다. 주석 검수에서 일반 반입/반출의 최초 CollectFromStorage 설명 누락 P3를 보완했으며 Source/Destination의 출발/도착 의미와 root Target 방향을 구분했다. 코드는 위 컴파일/161개 테스트 이후 변경하지 않았다.

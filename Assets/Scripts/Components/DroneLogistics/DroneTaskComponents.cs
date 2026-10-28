@@ -86,7 +86,7 @@ public struct DroneLogisticsTask : IComponentData
 
 /// <summary>
 /// 역할·목적: 수행자에게 배정한 개별 수집·공급·보관·방출의 대상·수량·행동 상태를 관리한다.
-/// 부착 엔티티: 현장·상위 작업·수행자와 별도인 하위 배정 엔티티다. ConstructionSupplyReservation도 같은 엔티티에 붙는다.
+/// 부착 엔티티: 현장·상위 작업·수행자와 별도인 하위 배정 엔티티다. 현장 공급/회수는 ConstructionSupplyReservation, 일반 운반은 DroneTransportReservation을 같은 엔티티에 붙인다.
 /// 생성: StateApply의 DroneTaskAssignmentPublishSystem이 승인 후보를 Revision=1/MovingToSource로 EndSimulation에 생성하고 수행자를 연결한다.
 /// 이용: DroneTaskDecisionSystem(Decision), DroneTaskReservationSystem(Reservation), DroneTaskAssignmentPublishSystem(StateApply)이 배정 유효성과 적재 재배정 후보를 검사한다.
 /// DroneItemTransferDecisionSystem(Decision)·DroneItemTransferExecutionSystem(Execution)은 행동 인계 계획에, DroneTaskLifecycleApplySystem(StateApply)은 인계 성공분·예약·종료 상태 반영에 사용한다.

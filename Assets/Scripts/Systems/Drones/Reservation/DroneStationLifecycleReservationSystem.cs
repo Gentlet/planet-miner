@@ -36,6 +36,7 @@ public partial struct DroneStationLifecycleReservationSystem : ISystem
             RequestLookup = state.GetComponentLookup<DroneStationRequest>(true),
             Decisions = state.GetComponentLookup<DroneStationDecision>(false),
             PendingLookup = state.GetBufferLookup<DroneTaskPendingPublicationElement>(true),
+            TransportPendingLookup = state.GetBufferLookup<DroneTransportPendingReservationElement>(true),
             ActionLookup = state.GetComponentLookup<DroneActionReadyRequest>(true),
             Storages = state.GetComponentLookup<Storage>(true), Dedicated = state.GetComponentLookup<DroneStationStorage>(true),
             Items = state.GetBufferLookup<StoredItemElement>(true), Docked = state.GetBufferLookup<DockedDroneElement>(true),
@@ -55,6 +56,7 @@ internal struct DroneStationLifecycleReservationJob : IJob
     [ReadOnly] public ComponentLookup<DroneStationRequest> RequestLookup;
     public ComponentLookup<DroneStationDecision> Decisions;
     [ReadOnly] public BufferLookup<DroneTaskPendingPublicationElement> PendingLookup;
+    [ReadOnly] public BufferLookup<DroneTransportPendingReservationElement> TransportPendingLookup;
     [ReadOnly] public ComponentLookup<DroneActionReadyRequest> ActionLookup;
     [ReadOnly] public ComponentLookup<Storage> Storages;
     [ReadOnly] public ComponentLookup<DroneStationStorage> Dedicated;
@@ -69,7 +71,7 @@ internal struct DroneStationLifecycleReservationJob : IJob
         DroneStationLifecycleUtility.ReadSortedRequests(Requests, RequestLookup, Decisions, records);
         using var chosen = new NativeHashSet<Entity>(16, Allocator.Temp);
         using var busy = new NativeHashSet<Entity>(16, Allocator.Temp);
-        DroneStationLifecycleUtility.GatherBusyWorkers(PendingOwners, PendingLookup, Actions, ActionLookup, busy);
+        DroneStationLifecycleUtility.GatherBusyWorkers(PendingOwners, PendingLookup, TransportPendingLookup, Actions, ActionLookup, busy);
         using var ranges = new NativeParallelHashMap<Entity, DroneStationSlotRange>(math.max(1, Requests.Length), Allocator.Temp);
         using var slots = new NativeList<DroneStationSlot>(Allocator.Temp);
         foreach (var record in records)

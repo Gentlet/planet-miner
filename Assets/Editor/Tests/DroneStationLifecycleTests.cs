@@ -183,6 +183,8 @@ public class DroneStationLifecycleTests : EcsWorldTestFixture
     [TestCase("waiting")]
     [TestCase("position")]
     [TestCase("demolition")]
+    [TestCase("transport-selection")]
+    [TestCase("transport-publication")]
     public void StoreRejectsUnqualifiedWorker_AndPreservesOriginal(string condition)
     {
         Entity drone = CreateWorker();
@@ -196,6 +198,18 @@ public class DroneStationLifecycleTests : EcsWorldTestFixture
         }
         if (condition == "position") _entityManager.SetComponentData(drone, LocalTransform.FromPosition(new float3(10, 10, 0)));
         if (condition == "demolition") _entityManager.AddComponent<PendingBuildingDemolition>(_station);
+        if (condition == "transport-selection" || condition == "transport-publication")
+        {
+            Entity candidates = DroneSchedulingUtility.GetOrCreateCandidates(_entityManager);
+            bool publicationQueued = condition == "transport-publication";
+            _entityManager.GetBuffer<DroneTransportPendingReservationElement>(candidates).Add(
+                new DroneTransportPendingReservationElement
+                {
+                    Candidate = new DroneTaskCandidateDecisionElement { Worker = drone },
+                    Reservation = new DroneTransportReservation { RemainingQuantity = publicationQueued ? 0 : 3 },
+                    PublicationQueued = publicationQueued
+                });
+        }
         Entity request = Submit(drone, DroneStationOperation.Store);
         RunStages();
         Assert.AreNotEqual(DroneStationRequestStatus.Applied, Result(request));

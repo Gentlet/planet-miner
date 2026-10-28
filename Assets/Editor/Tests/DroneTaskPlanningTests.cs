@@ -7,6 +7,7 @@ using Unity.Mathematics;
 /// <summary>
 /// 기존 배정 fixture가 다루지 않는 일반 운반 요청/계획 전용 경계와 이번 틱 네트워크 필터를 검증한다.
 /// 실제 경로 평가/이동 대신 명시적인 결과를 제공하며 목표량 확보와 실물/완료량 변경을 구분한다.
+/// 계획/정산 단독 검사는 Publish 전에 멈추고 실제 자동 배정 공개는 Scheduling fixture가 검증한다.
 /// </summary>
 public class DroneTaskPlanningTests : EcsWorldTestFixture
 {
@@ -485,16 +486,16 @@ public class DroneTaskPlanningTests : EcsWorldTestFixture
         {
             Assert.AreEqual(2, _entityManager.GetBuffer<StoredItemElement>(worker, true).Length);
             Assert.AreEqual(DroneTaskAssignmentStateEnum.Retargeting, _entityManager.GetComponentData<DroneTaskAssignment>(assignmentEntity).State);
-            Tick();
+            Tick(publishAssignments: true);
             Assert.AreEqual(0, _entityManager.GetComponentData<DroneTransportProgress>(task).ReservedQuantity);
             EvaluateRoutes();
-            Tick();
+            Tick(publishAssignments: true);
             var retargeted = _entityManager.GetComponentData<DroneTaskAssignment>(assignmentEntity);
             Assert.AreEqual(DroneTaskAssignmentStateEnum.MovingToDestination, retargeted.State);
             Assert.AreEqual(DroneActionKindEnum.StoreCargo, retargeted.NextAction);
             Assert.AreEqual(source, retargeted.Destination);
             Assert.Greater(retargeted.Revision, 1u);
-            Tick();
+            Tick(publishAssignments: true);
             var nextTick = _entityManager.GetComponentData<DroneTaskAssignment>(assignmentEntity);
             Assert.AreEqual(DroneTaskAssignmentStateEnum.MovingToDestination, nextTick.State);
             Assert.AreEqual(retargeted.Revision, nextTick.Revision);
@@ -505,7 +506,7 @@ public class DroneTaskPlanningTests : EcsWorldTestFixture
         else
         {
             Assert.IsFalse(_entityManager.Exists(assignmentEntity));
-            Tick();
+            Tick(publishAssignments: true);
             Assert.IsFalse(_entityManager.Exists(task));
         }
     }
@@ -626,13 +627,16 @@ public class DroneTaskPlanningTests : EcsWorldTestFixture
         return worker;
     }
 
-    private void Tick()
+    private void Tick(bool publishAssignments = false)
     {
         Simulation.UpdateAndComplete(_decision);
         Simulation.UpdateAndComplete(_reservation);
         Simulation.UpdateAndComplete(_execution);
         Simulation.UpdateAndComplete(_lifecycle);
-        Simulation.UpdateAndComplete(_publish);
+        if (publishAssignments)
+        {
+            Simulation.UpdateAndComplete(_publish);
+        }
         _end.Update();
     }
 
