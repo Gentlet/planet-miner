@@ -35,7 +35,7 @@ Reader는 Fence의 마지막 Writer를 자신의 Job 의존성에 결합하고 �
 | BeltSpatialIndex | `BeltInfo` | BeltComponent + GridPosition + Direction | Decision, Reservation, Execution, StateApply |
 | BuildingSpatialIndex | `BuildingInfo` | BuildingType + BuildingFootprint + GridPosition + Direction | 배치 Command, 입고 Decision |
 | ItemSpatialIndex | `Entity` 여러 개 | ItemIdentity + GridPosition + ItemOwnership, Owner가 Null | 배치 Command, 물류 Decision/Reservation |
-| ResourceSpatialIndex | `Entity` 한 개 | ResourceNode + GridPosition | 배치 Command, 채굴 Decision |
+| ResourceSpatialIndex | `Entity` 한 개 | ResourceNode + GridPosition | 배치 Command, 채굴 Preparation |
 
 SynchronizationGroup은 GameSimulationGroup의 OrderLast이며 최종 EndSimulation 이후 실행한다. 동일 그룹 안에서 네 SpatialSync 시스템의 나열 순서가 실행 순서를 뜻하지 않는다. 각 맵은 자기 Fence로 연결된다. 개발용 `WorldInvariantValidationSystem`은 Synchronization의 OrderLast에서 Fence를 완료한 뒤 현재 구현된 불변식 검사를 수행한다. 건물 종료 뒤 드론이 읽는 원본 ECS 상태와 마지막 Synchronization까지 갱신되지 않은 공간 맵의 시점을 구분한다.
 
@@ -98,7 +98,7 @@ SynchronizationGroup은 GameSimulationGroup의 OrderLast이며 최종 EndSimulat
 - **종류와 부착:** 일반 `IComponentData`, ResourceSpatialSyncSystem이 만든 싱글톤에 ResourceSpatialIndexFence와 함께 부착된다.
 - **목적과 필드:** `NativeParallelHashMap<int2, Entity> Map`으로 자원 셀에서 ResourceNode 엔티티를 찾는다. 자원 종류와 잔량은 엔티티 컴포넌트에서 읽는다.
 - **생성·갱신:** OnCreate에서 용량 1024로 생성한다. Synchronization에서 ResourceNode/GridPosition을 가진 엔티티를 셀당 TryAdd한다. 맵 쿼리 자체에는 잔량 양수 조건이 없다.
-- **Reader와 단계:** 배치 Command/BuildingPlacementValidationUtility가 채굴기 하부 자원을 확인한다. MinerWorkPreparationSystem이 채굴 대상을 고르며, Validator가 자원 엔티티와 맵의 일치를 검사한다.
+- **Reader와 단계:** BuildingPlacementCommandSystem(Command)이 BuildingPlacementValidationUtility에 맵을 전달해 채굴기 하부 자원을 확인한다. MinerWorkPreparationSystem(Preparation)이 채굴 대상을 고르며, Validator가 자원 엔티티와 맵의 일치를 검사한다.
 - **수명과 결합:** 자원 생성은 EndCommand에서 실체화되고 해당 프레임 Synchronization에서 등록된다. 그 인덱스를 이용한 채굴 판단은 다음 프레임부터 가능하다. 고갈 자원 삭제도 EndBuilding 후 재구축에서 반영된다. OnDestroy에서 Fence 완료 후 Dispose한다.
 - **근거:** [정의](../../../Assets/Scripts/Components/Resources/ResourceSpatialIndex.cs#L13), [소유 시스템](../../../Assets/Scripts/Systems/Synchronization/ResourceSpatialSyncSystem.cs), [채굴 조회](../../../Assets/Scripts/Systems/Buildings/Preparation/MinerWorkPreparationSystem.cs), [자원 생성 Command](../../../Assets/Scripts/Systems/Command/ResourceGenerationCommandSystem.cs).
 

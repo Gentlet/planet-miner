@@ -1,10 +1,11 @@
 using Unity.Entities;
 
 /// <summary>
-/// 역할·목적: Unity SimulationSystemGroup 안에서 Command→Building→Drone→Commit→Synchronization을 실행한다.
+/// 역할/목적: Unity SimulationSystemGroup 안에서 Command→Preparation→PowerSimulation→BuildingSimulation→DroneSimulation→SimulationCommit→Synchronization을 실행한다.
 /// 입력·생성자: 프리팹 DB Ready, 각 설정 소유자의 게시 엔티티/버퍼와 초기화/실행 경계의 SimulationFatalError.
 /// 실행 조건: 틱 시작에 DB와 필수 설정이 준비되고 중단 오류가 없어야 전체 그룹을 한 번 실행한다.
-/// 출력·정리: Command/Building/Simulation 종료 ECB를 재생한다. 중간 오류도 현재 틱을 마치고 다음 틱부터 차단한다.
+/// 출력/정리: EndCommand/EndPower/EndBuilding/EndSimulation에서 ECB를 재생한다. 실행 중 NextTick 오류는 현재 틱을 마친 뒤 다음 틱부터 차단한다.
+/// Power 검증 오류는 EndPower에서 RemainingDomains로 공개되어 같은 틱의 Building/Drone 실행을 건너뛴다.
 /// </summary>
 [UpdateInGroup(typeof(SimulationSystemGroup))]
 public partial class GameSimulationGroup : ComponentSystemGroup

@@ -48,7 +48,7 @@ public struct ItemPrefabDatabase : IComponentData
 /// 역할·목적: 품목별 아이템 프리팹 매핑을 제공한다. Prefab은 실제 런타임 인스턴스와 구분한다.
 /// 부착 엔티티: ItemPrefabDatabase 태그가 있는 DB 엔티티의 버퍼다.
 /// 생성: ItemPrefabDatabaseAuthoring.Baker가 각 항목의 Prefab 참조를 등록한다.
-/// 이용: PrefabDatabaseInitializationSystem(Initialization)이 항목 중복·타입·Prefab/LocalTransform 등을 검증하고 ItemLifecycleApplySystem(StateApply)의 Spawn·생산과 BuildingLifecycleApplySystem(StateApply)의 철거 환급이 종류·티어로 조회하여 인스턴스화한다.
+/// 이용: PrefabDatabaseInitializationSystem(Initialization)이 항목 중복/타입/Prefab/LocalTransform 등을 검증하고 ItemLifecycleApplySystem(StateApply)의 Spawn/생산과 BuildingLifecycleApplySystem(StateApply)의 철거 환급이 품목 타입(Type)으로 조회하여 인스턴스화한다.
 /// 제거: 인스턴스 생성/삭제 때 매핑을 소비하지 않는다. 검증 후 변경하지 않으며 DB 엔티티/World 수명을 따른다.
 /// </summary>
 [InternalBufferCapacity(16)]
@@ -79,7 +79,7 @@ public struct ResourcePrefabDatabase : IComponentData
 /// 역할·목적: 자원 품목별 노드 프리팹 매핑을 제공한다. Prefab은 실제 런타임 인스턴스와 구분한다.
 /// 부착 엔티티: ResourcePrefabDatabase 태그가 있는 DB 엔티티의 버퍼다.
 /// 생성: ResourcePrefabDatabaseAuthoring.Baker가 각 항목의 Prefab 참조를 등록한다.
-/// 이용: PrefabDatabaseInitializationSystem(Initialization)이 항목 중복·타입·Prefab/LocalTransform 등을 검증하고 ResourceGenerationCommandSystem(Command)의 자원 생성이 종류·티어로 조회하여 인스턴스화한다.
+/// 이용: PrefabDatabaseInitializationSystem(Initialization)이 항목 중복/타입/Prefab/LocalTransform 등을 검증하고 ResourceGenerationCommandSystem(Command)의 자원 생성이 자원 품목(ResourceType)으로 조회하여 인스턴스화한다.
 /// 제거: 인스턴스 생성/삭제 때 매핑을 소비하지 않는다. 검증 후 변경하지 않으며 DB 엔티티/World 수명을 따른다.
 /// </summary>
 [InternalBufferCapacity(8)]

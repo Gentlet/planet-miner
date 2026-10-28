@@ -7,9 +7,9 @@ using Unity.Mathematics;
 /// 역할·목적: 셀별 자원 노드 엔티티를 조회하는 파생 공간 인덱스다. ECS 좌표/소유권 원본을 대체하지 않는다.
 /// 부착 엔티티: ResourceSpatialIndexFence와 함께 있는 World 단일 인덱스 엔티티다.
 /// 생성: ResourceSpatialSyncSystem.OnCreate가 Persistent Native 맵을 생성하여 붙인다.
-/// 이용: ResourceSpatialSyncSystem(Synchronization)이 매 틱 Clear 후 현재 ECS 원본을 재등록하고 ResourceGenerationCommandSystem/BuildingPlacementCommandSystem(Command)의 자원·배치 검사와 MinerDecisionSystem(Decision)이 읽는다.
+/// 이용: ResourceSpatialSyncSystem(Synchronization)이 매 틱 Clear 후 현재 ECS 원본을 재등록한다. MinerWorkPreparationSystem(Preparation)의 채굴 대상 준비와 BuildingPlacementCommandSystem(Command)의 배치 검사가 읽는다.
 /// 제거: 엔티티 개별 삭제를 즉시 맵에서 반영하지 않고 다음 Synchronization에 재구축한다. SyncSystem.OnDestroy가 Fence 완료 후 Native 맵을 Dispose한다.
-/// 동일 틱 구조 변경은 아직 이 맵에 없을 수 있으며 Reader는 ResourceSpatialIndexFence 의존성을 등록해야 한다.
+/// 동일 틱 구조 변경은 아직 이 맵에 없을 수 있다. Job Reader는 ResourceSpatialIndexFence에 핸들을 등록하고 메인 스레드 직접 조회는 선행 Writer 완료를 기다린다.
 /// </summary>
 public struct ResourceSpatialIndex : IComponentData
 {

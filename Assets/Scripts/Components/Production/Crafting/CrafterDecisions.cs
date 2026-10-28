@@ -4,12 +4,13 @@ using Unity.Entities;
 /// 역할·목적: 제작 착수·진행·생산 결과 기록 자격과 레시피 참조를 전달하는 이번 틱 실행 판단이다.
 /// 부착 엔티티: CrafterState를 가진 완공 제작기 건물이다.
 /// 생성: BuildingLifecycleUtility가 비활성으로 준비하고 CrafterDecisionSystem(Decision)이 현재 재료·출력 조건으로 값과 enable 상태를 작성한다.
-/// 이용: CrafterExecutionSystem(Execution)이 활성 결정을 읽어 재료 선소비·진행·ProductResult를 기록한다. 표시 상태 전이는 CrafterStateDecision과 분리한다.
+/// 이용: CrafterExecutionSystem(BuildingExecution)은 활성 결정의 CanStartCraft/CanAdvance/CanProduceOutput으로 재료 선소비/진행/ProductResult 기록을 분기한다.
+/// CanCraft는 완료 출력까지 포함하는 승인 요약이며 현재 Execution의 직접 분기 조건이 아니다. 표시 상태 전이는 CrafterStateDecision과 분리한다.
 /// 제거: 다음 Decision이 값을 재작성/비활성화한다. Execution이 읽었다고 컴포넌트를 삭제하지 않으며 건물 삭제 시 함께 제거한다.
 /// </summary>
 public struct CrafterDecision : IComponentData, IEnableableComponent
 {
-    public bool CanCraft;           // 제작 활성화 여부 (CanStartCraft || CanAdvance)
+    public bool CanCraft;           // 착수/진행/완료 출력 중 승인된 동작이 있는지 나타내는 요약값
     public bool CanStartCraft;      // 재료 완비되어 이번 프레임에 재료 선소비 및 제작 착수 가능
     public bool CanAdvance;         // 진행도 누적 가능
     public bool CanProduceOutput;   // 1.0f 완료 후 출력 버퍼에 여유가 있어 배출 가능

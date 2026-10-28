@@ -4,7 +4,7 @@
 
 최초 조사 2026-10-03, 2026-10-06 도메인 분리의 자원 생성·채굴·삭제 경계를 현재 소스와 대조했다. 테스트 코드는 별도로 표시하며 이번 문서 감사에서 컴파일·테스트·Play Mode는 실행하지 않았다. 공간 인덱스와 Fence는 전체 색인의 공간 인덱스 문서에서 다룬다.
 
-현재 연결은 `월드 설정 게시 → 초기 청크 요청 → Pending/Ready → EndCommand 자원 생성·완료 알림 → 다음 Command 완료 확정`이다. 생성된 자원은 `Synchronization 인덱스 등록 → 다음 Decision 채굴 판단 → Execution 매장량 변경 → EndBuilding 고갈 엔티티 삭제`를 거친다. 바닥 설정의 현재 소비자는 진단용 미리보기다.
+현재 연결은 `월드 설정 게시 → 초기 청크 요청 → Pending/Ready → EndCommand 자원 생성/완료 알림 → 다음 Command 완료 확정`이다. 생성된 자원은 `Synchronization 인덱스 등록 → 다음 Preparation의 채굴 대상/자격 준비 → BuildingDecision의 실행 판단 → BuildingExecution의 매장량 변경 → EndBuilding의 고갈 엔티티 삭제`를 거친다. 바닥 설정의 현재 소비자는 진단용 미리보기다.
 
 ## ResourceGenerationSettings
 
@@ -107,7 +107,7 @@
 
 - **목적·필드:** 매장 자원의 품목 `ResourceType`과 현재 잔량 `Amount`를 가진 `IComponentData`다. 바닥 자원 엔티티에 `GridPosition`·`LocalTransform`과 함께 부착된다. 물류 아이템의 `ItemIdentity`/`ItemOwnership`과 별개다.
 - **생성·초기화:** `ResourceGenerationCommandSystem`이 호출한 `ResourceGenerationUtility`가 등록된 자원 프리팹을 Instantiate하고 셀 좌표·Transform·품목/매장량을 EndCommand ECB에 기록한다. 현재 제품 소스에서 ResourceNode 전용 Baker는 없고 런타임 생성 유틸리티가 값을 주입한다.
-- **Reader·단계:** Synchronization의 `ResourceSpatialSyncSystem`이 `ResourceNode + GridPosition`을 인덱스에 등록한다. 다음 Decision의 `MinerWorkPreparationSystem`이 회전된 채굴기 영역을 순회해 `Amount > 0`인 첫 자원을 대상으로 고른다. 개발용 `WorldInvariantValidationSystem`은 Synchronization 마지막에 자원과 공간 인덱스의 대응을 검증한다.
+- **Reader/단계:** Synchronization의 `ResourceSpatialSyncSystem`이 `ResourceNode + GridPosition`을 인덱스에 등록한다. 다음 Preparation의 `MinerWorkPreparationSystem`이 회전된 채굴기 영역을 순회해 `Amount > 0`인 첫 자원을 대상으로 고른다. BuildingDecision의 `MinerDecisionSystem`은 이 준비 결과와 전력 공급을 읽어 실행을 판단하며 자원 탐색을 반복하지 않는다. 개발용 `WorldInvariantValidationSystem`은 Synchronization 마지막에 자원과 공간 인덱스의 대응을 검증한다.
 - **Writer·처리:** Execution의 `MinerExecutionSystem`은 단일 워커 Job에서 대상 존재·양수 잔량·생산 대기 상태를 재검사한다. 채굴 진행 완료 시 `ProductResult` 1개를 기록하고 유한 모드이면 `Amount`를 1 감소시킨다. 실제 물류 아이템은 StateApply의 Item Lifecycle이 생산 결과에서 생성한다.
 - **종료·ECB:** 유한 모드에서 0 이하가 되면 같은 Job이 EndBuilding ECB에 `DestroyEntity`를 기록한다. 잔량 변경은 BuildingExecution에 먼저 반영되고 엔티티 삭제는 건물 그룹 종료의 EndBuilding, 인덱스 제거는 최종 EndSimulation 뒤 Synchronization이다. 무한 모드도 최초 대상의 `Amount > 0` 조건을 우회하지 않는다.
 - **소스:** [정의](../../../Assets/Scripts/Components/Resources/ResourceComponents.cs), [생성](../../../Assets/Scripts/Chunks/ResourceGenerationUtility.cs), [대상 선택](../../../Assets/Scripts/Systems/Buildings/Preparation/MinerWorkPreparationSystem.cs), [차감·삭제](../../../Assets/Scripts/Systems/Buildings/Execution/MinerExecutionSystem.cs), [동기화](../../../Assets/Scripts/Systems/Synchronization/ResourceSpatialSyncSystem.cs), [개발용 검증](../../../Assets/Scripts/Validation/WorldInvariantValidationSystem.cs).

@@ -98,11 +98,12 @@ ECB 재생으로 구조가 변경되는 경계 전후에 기존 DynamicBuffer �
 
 ## StoredItemElement
 
-- **종류·부착 대상:** `IBufferElementData`, `InternalBufferCapacity(16)`. Storage·DroneStation·MainFacility·Crafter·ConstructionSite와 드론 수행자의 실물 보관 버퍼다. 원소의 `ItemEntity`는 실물, `ItemType`은 품목 캐시, `SlotIndex`는 슬롯이다. 버퍼 길이는 슬롯 수가 아니라 보관한 실물 수다. 실제 수행자 생성 Producer는 후속이며 현재 테스트/외부 구성에서 드론 보관 버퍼를 준비한다.
-- **생성:** 완공 건물은 공통 생성에서 빈 버퍼를 EndBuilding에 만든다. 현장은 `BuildingPlacementCommandSystem`이 빈 버퍼를 EndCommand에 만든다. `SpawnItemRequest(Storage)`는 Item Lifecycle이 버퍼 append를 EndBuilding ECB에 기록한다.
+- **종류/부착 대상:** `IBufferElementData`, `InternalBufferCapacity(16)`. Storage/DroneStation/MainFacility/Crafter/ConstructionSite와 드론 수행자의 실물 보관 버퍼다. 원소의 `ItemEntity`는 실물, `ItemType`은 품목 캐시, `SlotIndex`는 슬롯이다. 버퍼 길이는 슬롯 수가 아니라 보관한 실물 수다.
+- **생성:** 완공 건물은 공통 생성에서 빈 버퍼를 EndBuilding에 만든다. 현장은 `BuildingPlacementCommandSystem`이 빈 버퍼를 EndCommand에 만든다. 드론 수행자 역할 등록은 `DroneSpawnUtility.RecordWorkerRole`이 빈 버퍼를 기록하며 정거장 활성화 경로에서는 EndSimulation에 공개한다. `SpawnItemRequest(Storage)`는 Item Lifecycle이 버퍼 append를 EndBuilding ECB에 기록한다.
 - **일반 입출고:** 입고 예약은 읽기만 하고, Storage Apply가 입고 append 및 출고 대상 제거를 직접 수행한다. `StorageItemOutputDecisionSystem`은 Product 버퍼 없는 건물의 첫 원소를 출고 후보로 선택한다. Owner는 후속 Transfer 경로가 맞춘다.
 - **제작·드론 Writer:** `CrafterExecutionSystem`은 제작 착수 재료를 RemoveAt한 뒤 Destroy 요청을 켠다. `CrafterRecipeCommandSystem`은 잔여 재료를 같은 엔티티의 Product 버퍼로 옮긴 뒤 Clear한다. 드론 수집·현장 공급·보관·방출은 `DroneTaskLifecycleApplySystem`이 공통 `TryTransferItem`에 위임하며 성공 실물의 출발 참조 제거/도착 참조 추가를 직접 반영한다. 현장 도착량과 예약 정산은 실물 성공분으로 후속 처리한다.
 - **Reader·종료:** `CrafterDecisionSystem`은 재료량, 입력 예약은 슬롯 점유를 읽는다. 철거·공사 취소는 남은 실물을 월드로 반환하고 소유 건물/현장을 삭제한다. 완공 성공은 현장 자재 실물까지 삭제한다. Spawn 실패 시 현장과 자재를 보존한다. 공사 시스템은 이 취소/완공 처리에서 현장 보관 버퍼를 읽는다.
+- **드론 역할 전환:** 정거장 수납은 같은 엔티티를 아이템 역할로 전환하며 `DroneStationLifecycleApplySystem`이 EndSimulation에 수행자 보관 버퍼를 제거한다. 다시 수행자로 활성화하면 빈 버퍼를 기록한다. [역할 등록](../../../Assets/Scripts/Common/DroneSpawnUtility.cs), [정거장 반영](../../../Assets/Scripts/Systems/Drones/StateApply/DroneStationLifecycleApplySystem.cs).
 - **결합·근거:** 버퍼 참조와 아이템 Owner/Identity가 일치해야 한다. 같은 틱 입고·철거는 본 문서의 Ownership/Transfer 계약을 따른다. [선언](../../../Assets/Scripts/Components/Storage/StorageComponents.cs), [일반 반영](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingItemStorageApplySystem.cs), [제작](../../../Assets/Scripts/Systems/Buildings/Execution/CrafterExecutionSystem.cs), [레시피 변경](../../../Assets/Scripts/Systems/Command/CrafterRecipeCommandSystem.cs), [공사](../../../Assets/Scripts/Systems/Construction/StateApply/ConstructionLifecycleApplySystem.cs), [철거](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingLifecycleApplySystem.cs).
 
 ## StorageFilter
