@@ -1,6 +1,6 @@
 # 드론 공급원/목적지 계획과 네트워크 필터
 
-2026-10-27 사용자 확정 정책을 따른다. 일반 반입/반출의 요청/작업/계획에 이어 2026-10-28에는 [작업 내 목표량 중재/정산 계약](DroneTransportReservations.md)을 연결했다. 실제 작업 간 선택/배차/운반은 9.8~9.12, 실제 경로 평가 Producer와 이동/배터리는 9.10, 진행 중 취소/수행 불가 정산은 9.15에 남긴다.
+2026-10-27 사용자 확정 정책을 따른다. 일반 반입/반출의 요청/작업/계획에 이어 2026-10-28에는 [작업 내 목표량 중재/정산 계약](DroneTransportReservations.md)을 연결했다. 작업 간 선택은 1A 순서로 통합했고 실제 배차/운반은 9.9~9.12, 실제 경로 평가 Producer와 이동/배터리는 9.10, 진행 중 취소/수행 불가 정산은 9.15에 남긴다.
 
 ## 요청과 일회성 요구
 
@@ -27,7 +27,7 @@
 - 경로 입력이 없거나 아직 미평가이면 기다린다. 단순 직선거리로 도달 가능성을 만들지 않는다. 필요한 경로 중 미평가가 있으면 결과를 모두 기다린다.
 - 일반 운반은 요청량/공통 적재량/현재 출발 재고/도착 수용 공간의 최솟값으로 이번 판단의 수량 상한을 작성한다. 공간 판정은 기존 품목 필터/입력 슬롯/정박 점유/드론 전용 슬롯/MaxStack 규칙을 공유한다. 전체 요청량을 한 번에 수용해야 한다는 제한은 없다.
 - 재고/공간 변화와 대상 소멸을 매 판단에 반영한다. 재고/공간이 부족하면 목표량과 작업을 보존하고 기다린다. 계획만으로 실물/Owner/용량/예약량은 변경하지 않는다.
-- DroneTransportPlanDecisionElement는 일반 운반 전용 버퍼다. 기존 Candidate 형식을 재사용하되 ConstructionSupplyReservationSystem이 소비하는 후보 버퍼에는 넣지 않는다. 여러 드론의 계획 수량은 독립적인 상한이며 DroneTransportReservationSystem이 전체 목표량 안에서 별도 미공개 확보 기록을 작성한다. 실제 작업 간 선택/배차는 후속이다.
+- DroneTransportPlanDecisionElement는 일반 운반 전용 버퍼다. 기존 Candidate 형식을 재사용하며 공급/회수/적재 재배정의 Decision 후보 버퍼와 분리한다. DroneTaskReservationSystem은 두 버퍼를 함께 읽어 수행자당 하나 선택한다. 일반 운반은 선택분만 전체 목표량 안에서 별도 미공개 확보 기록으로 작성한다. 실제 배차는 후속이다.
 - 실제 배차/픽업/납품 신호와 자동 성공량 정산은 후속이며 목표 잔량은 확보/정산 계약이 관리한다. 계획을 운반 완료로 표시하지 않는다.
 
 ## 소유자와 공개 경계
@@ -37,12 +37,12 @@
 | DroneStationNetworkDecision.ActivityBounds | 기존 정거장 Decision Job | 대표와 함께 매 틱 초기화/작성, 작업 Decision이 같은 틱 읽음 |
 | DroneTaskRequest.Quantity | 시뮬레이션 전 Submit | 불변 요청, EndSimulation에 소비 |
 | DroneTransportRequirement | Task Execution | 작업과 같은 EndSimulation에 최초 생성, 작업 수명 |
-| DroneTransportProgress | Task Execution 초기화 / Transport Reservation 확보 / 후속 납품 정산 | root의 완료량/미공개 및 진행 중 확보량, 작업 수명 |
-| DroneTransportPlanDecisionElement | Task Decision | 후보 singleton에 생성, 매 Decision Clear/재작성, 후속 운반 Reader용 |
-| DroneTransportPendingReservationElement | Transport Reservation | 다음 Reservation 반환 또는 후속 소비자 인계까지 보존, Decision은 읽기만 함 |
+| DroneTransportProgress | Task Execution 초기화 / Task Reservation 확보 / 후속 납품 정산 | root의 완료량/미공개 및 진행 중 확보량, 작업 수명 |
+| DroneTransportPlanDecisionElement | Task Decision | 후보 singleton에 생성, 매 Decision Clear/재작성, 통합 Reservation 선택 입력 |
+| DroneTransportPendingReservationElement | Task Reservation의 단일 Burst Job | 선택된 일반 운반만 보관하며 다음 Reservation 반환 또는 후속 소비자 인계까지 보존, Decision은 읽기만 함 |
 | 작업/경로/결과 | 기존 Execution/Lifecycle | 기존 EndSimulation 공개, 다음 틱 이용 |
 
-Task Decision/Execution의 기존 메인 스레드 ISystem 경로를 유지하며 일반 운반 목표량 중재는 단일 Burst Job으로 처리한다. 기존 정거장 Burst Job 체인과 EndBuilding/EndSimulation 경계를 변경하지 않는다. 실제 이동/배터리/충전 경유 경로 및 그 상태 변화에 따른 평가 무효화는 9.10의 Producer가 연결해야 한다.
+Task Decision/Execution과 기존 작업 후보 선택의 메인 스레드 ISystem 경로를 유지하며 일반 운반 목표량 반환/승인은 선택 뒤 단일 Burst Job으로 처리한다. 기존 정거장 Burst Job 체인과 EndBuilding/EndSimulation 경계를 변경하지 않는다. 실제 이동/배터리/충전 경유 경로 및 그 상태 변화에 따른 평가 무효화는 9.10의 Producer가 연결해야 한다.
 
 ## 검증 상태
 
@@ -65,3 +65,13 @@ Task Decision/Execution의 기존 메인 스레드 ISystem 경로를 유지하�
 - 현재 저장고 설정은 1x1이다. 일부 footprint 포함/회전/미겹침/망 밖 셀 거부는 실제 정거장 Decision을 읽는 일시 geometry 프로브로 별도 확인했다. 해당 엔티티는 같은 eval 안에서 제거했으며 공사 생성/운반 전체 흐름으로 확대하지 않는다.
 - 실행/종료 구간의 오류와 공통 Fatal은 0건이다. Lookup을 OnUpdate에서 생성한다는 성능 권고 경고 7건(Power 4/Drone 3)을 기록했다. 성능 측정이나 경고 수정은 수행하지 않았다.
 - 검증 후 Play를 정상 종료했고 장면 dirty=false/원래 카메라 위치 복원을 확인했다. 게임 코드/장면 에셋은 수정하지 않았다. 결과 JSON과 카메라 렌더 캡처는 ignored Logs/Task95/PlayMode에 보관한다. 이는 NUnit PlayMode 테스트 건수가 아니며 EditMode 135/135와 합산하지 않는다.
+
+### 통합 자동 선택 검증 (2026-10-28)
+
+확정 1A 순서로 공급 선두(PlacementStamp→CreationSequence)와 회수/반입/반출 선두(CreationSequence)를 생성 순번으로 비교한다. 적재 재배정은 이 신규 선택보다 먼저 수행한다. 같은 수행자의 미선택 운반 대안은 목표량을 선점하지 않고, 앞선 수행자의 선택으로 잔량이 소진된 작업은 다음 가능한 후보로 건너뛴다. 일반 운반은 선택된 승인만 보관하며 실제 배정은 후속이다.
+
+Unity 6000.4.11f1/CLI 1.0.0-beta.14의 원본 architecture-v2에서 C# 컴파일 completed/failed false/errors 없음/compilationFailed false, Editor ready와 최신 runtime/Editor DLL을 확인했다. 관련 선택 EditMode는 151/151(실패/생략/불확정 0)이다. Scheduling 44/Planning 14/StationLifecycle 18/Request 18/Retargeting 18/ItemTransfer 33/LifecycleIntegration 6이며 이전 실행과 합산하지 않는다. 기존 혼합 사례를 회수/반입/반출/미도달 후보로 확장하고 같은 틱 세 드론의 공급/반입/반출 선택, 미선택 목표량 보존, 목표량 소진 뒤 다음 작업 선택, 유휴 취소 후 갱신을 확인한다.
+
+초기 C# 로컬 NativeHashMap 수명 선언 오류는 수정 후 재컴파일했으며 오류 어셈블리로 테스트하지 않았다. 기존 검증 래퍼의 인자 처리 실패는 컴파일 실패와 구분하고 현재 grouped CLI 명령으로 실행했다. 실행 원본은 ignored Logs/Task98에 보관한다. Play Mode/Player/Burst AOT 전체/성능은 수행하지 않았으며 실제 경로/이동/납품 Producer를 실행한 증거가 아니다.
+
+Reservation/컴포넌트/guard/경계/가독성/주석 6역할의 독립 검수에서 확인한 범위의 필수 수정 지적은 없다. 최종 Editor 콘솔 오류는 0건이며 격리 테스트의 그룹 순서 관련 경고 등을 포함해 221건이 남았다. 누적 Pipeline 로그 개수와 현재 Editor 콘솔 개수는 구분한다. Editor는 ready/비컴파일/비리로드/Play stopped 상태로 열어 두었다.

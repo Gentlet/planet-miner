@@ -30,8 +30,8 @@ public struct DroneTransportReservation : IComponentData
 }
 
 /// <summary>
-/// Reservation이 선택한 작업 내 수량과 반환 근거다. 후보 singleton에 보관하며 다음 Reservation이 미인계분을 반환한다.
-/// 작업 간 선택/배차는 후속 소비자가 맡는다. 같은 수행자의 서로 다른 작업 계획은 아직 배차 대안이다.
+/// 통합 Reservation이 선택한 일반 운반 수량과 반환 근거다. 후보 singleton에 보관하며 다음 Reservation이 미인계분을 반환한다.
+/// 수행자당 한 후보를 통합 선택한 뒤 단일 Burst Job이 작성한다. 실제 배차는 후속 소비자가 맡는다.
 /// </summary>
 [InternalBufferCapacity(0)]
 public struct DroneTransportPendingReservationElement : IBufferElementData
@@ -42,7 +42,7 @@ public struct DroneTransportPendingReservationElement : IBufferElementData
 
 /// <summary>
 /// Decision이 매 틱 재작성하는 일반 운반 계획. 현재 재고/공간/네트워크와 평가 완료 경로를 반영한다.
-/// 기존 배정 후보와 분리하며 Reservation이 작업 내 목표량만 중재한다. 계획 자체는 실물을 변경하지 않는다.
+/// 기존 배정 후보와 분리하며 Reservation은 두 입력을 함께 선택한 뒤 일반 운반 목표량을 중재한다. 계획 자체는 실물을 변경하지 않는다.
 /// 후보 singleton과 함께 생성되며 다음 Decision에서 Clear한다. 자체 ECB 공개나 영속 예약은 없다.
 /// </summary>
 [InternalBufferCapacity(0)]

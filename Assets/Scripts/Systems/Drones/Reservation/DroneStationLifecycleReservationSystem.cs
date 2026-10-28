@@ -6,7 +6,7 @@ using Unity.Mathematics;
 
 /// <summary>접수 순서와 공유 슬롯 예산을 단일 Burst Job에서 중재한다. 새 출고 공간을 같은 계획에 재사용하지 않는다.</summary>
 [UpdateInGroup(typeof(DroneReservationGroup))]
-[UpdateAfter(typeof(ConstructionSupplyReservationSystem))]
+[UpdateAfter(typeof(DroneTaskReservationSystem))]
 public partial struct DroneStationLifecycleReservationSystem : ISystem
 {
     private EntityQuery _requests;

@@ -1,7 +1,7 @@
 using Unity.Entities;
 
 /// <summary>
-/// 역할·목적: StateApply 마지막에 ConstructionSupplyReservationSystem의 공개 대기 기록을 재검사하고 수행자가 이용할 배정을 공개한다.
+/// 역할·목적: StateApply 마지막에 DroneTaskReservationSystem의 공개 대기 기록을 재검사하고 수행자가 이용할 배정을 공개한다.
 /// 입력: 후보 관리 엔티티의 DroneTaskPendingPublicationElement와 최신 작업·수행자·적재·현장·경로·공통 적재량을 읽는다.
 /// 생성·이용: 신규 배정 엔티티 또는 기존 적재 배정에 DroneTaskAssignment/ConstructionSupplyReservation을 기록하고,
 /// 수행자 엔티티의 DroneWorkerAssignment를 연결한다. 수행자가 보는 새 배정은 EndSimulation 재생 후부터 유효하다.

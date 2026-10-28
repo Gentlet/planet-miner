@@ -129,8 +129,8 @@
 | `Assets/Scripts/Systems/Drones/Execution/DroneTaskExecutionSystem.cs` | Execution에서 Decision의 작업 생성과 경로 Create/Retain/Remove 의도를 실행한다. |
 | `Assets/Scripts/Systems/Drones/Decision/DroneTaskDecisionSystem.cs` | 한 본체에서 생성·신규/적재 후보·ViaSource/Direct 경로·무효화를 판단한다. 적재품은 현장/보관/방출 우선순위와 거리/Stamp를 적용하며 None은 대기한다. 원본을 쓰지 않는다. |
 | `Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs` | StateApply에서 행동 신호와 작업/배정 무효화 의도를 반영하고 실제 인계량을 정산한다. |
-| `Assets/Scripts/Systems/Drones/Reservation/ConstructionSupplyReservationSystem.cs` | Reservation에서 수행자별 실행 가능한 후보를 선택하고 현장 공급 수량 경합을 중재한다. |
-| `Assets/Scripts/Systems/Drones/StateApply/DroneTaskAssignmentPublishSystem.cs` | StateApply 마지막에 ConstructionSupplyReservationSystem의 공개 대기 기록을 재검사하고 수행자가 이용할 배정을 공개한다. |
+| `Assets/Scripts/Systems/Drones/Reservation/DroneTaskReservationSystem.cs` | 적재 재배정/공급/회수/일반 운반을 수행자당 하나 선택하고 현장 예약과 일반 운반의 단일 Burst 확보 Job을 소유한다. |
+| `Assets/Scripts/Systems/Drones/StateApply/DroneTaskAssignmentPublishSystem.cs` | StateApply 마지막에 DroneTaskReservationSystem의 공개 대기 기록을 재검사하고 수행자가 이용할 배정을 공개한다. |
 | `Assets/Scripts/Systems/Drones/Decision/DroneItemTransferDecisionSystem.cs` | 외부 행동 요청의 초기 자격을 읽기 검사해 CanExecute만 판단한다. 원본 실물·예약·배정·행동 번호를 쓰지 않는다. |
 | `Assets/Scripts/Systems/Drones/Execution/DroneItemTransferExecutionSystem.cs` | DroneExecution 시작에 건물 종료 확정 상태와 Command 차단으로 드론 인계 계획을 준비한다. |
 

@@ -59,7 +59,7 @@ public struct ConstructionSite : IComponentData
 /// 역할·목적: 품목별 완공 요구량과 실제 도착량, 공급이 약속된 예약량을 구분해 중복 공급을 막는다.
 /// 부착 엔티티: 공사 현장의 버퍼. 실물 엔티티 참조와 Owner는 StoredItemElement/ItemOwnership이 별도로 보관한다.
 /// 생성: BuildingPlacementCommandSystem이 건물 설정의 자재 요구량을 복사하며 도착/예약량은 0으로 시작한다.
-/// 이용: DroneTaskDecisionSystem(Decision)은 남은 수량을 읽고 ConstructionSupplyReservationSystem(Reservation)은 예약을 확보/해제한다.
+/// 이용: DroneTaskDecisionSystem(Decision)은 남은 수량을 읽고 DroneTaskReservationSystem(Reservation)은 예약을 확보/해제한다.
 /// DroneTaskAssignmentPublishSystem(StateApply)은 미공개 예약을 롤백하고 DroneTaskLifecycleApplySystem은 인계 성공분의 도착/예약량을 정산한다.
 /// ConstructionLifecycleApplySystem(StateApply)은 IsSatisfied를 읽는다. 예약만으로 자재가 도착하거나 완공한 것으로 판단하지 않는다.
 /// 제거: 취소/완공으로 현장이 삭제될 때 버퍼도 함께 제거한다. 수량 갱신만으로 실물 엔티티를 소비하지 않는다.

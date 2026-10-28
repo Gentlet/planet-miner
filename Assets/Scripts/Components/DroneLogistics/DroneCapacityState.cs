@@ -4,7 +4,7 @@ using Unity.Entities;
 /// 역할·목적: 모든 드론의 현재 공통 최대 적재량을 소유한다. 수행자마다 동일 값을 복제하지 않는다.
 /// 부착 엔티티: 드론·배정과 별도인 World 단일 능력 상태 엔티티다.
 /// 생성: DroneConfigInitializationSystem이 검증된 명시적 carryingCapacity를 한 번 게시하고 기존 유효 상태를 보존한다.
-/// 이용: Decision의 DroneTaskDecisionSystem, Reservation의 ConstructionSupplyReservationSystem, StateApply의 DroneTaskAssignmentPublishSystem이 신규 배정에 읽는다.
+/// 이용: Decision의 DroneTaskDecisionSystem, Reservation의 DroneTaskReservationSystem, StateApply의 DroneTaskAssignmentPublishSystem이 신규 배정에 읽는다.
 /// Execution의 DroneTaskExecutionSystem도 경로 명령 적용 검사에 읽는다. 부재/0 이하는 빈 수행자의 신규 배정을 허용하지 않는다.
 /// 제거: 개별 작업/배정 종료로 소비하지 않는다. World가 소유하며 연구 변경 Writer는 후속이다.
 /// CarryingCapacity는 한 품목의 최대 실물 개수이며 Storage.SlotCount/품목 MaxStack과 독립적이다.

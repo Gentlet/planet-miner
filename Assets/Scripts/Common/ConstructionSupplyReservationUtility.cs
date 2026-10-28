@@ -4,7 +4,7 @@ using Unity.Mathematics;
 /// <summary>
 /// 역할·목적: 현장 자재 요구 버퍼의 예약 가능량 계산과 ReservedQuantity 확보/해제를 공유한다.
 /// 입력·출력: 품목별 요구·도착·예약 행을 읽으며 Reserve는 실제 확보량을 반환한다. RemainingIncludingOwn은 자신의 예약을 제외해 수령 가능한 잔여량을 계산한다.
-/// 이용: ConstructionSupplyReservationSystem, DroneTaskAssignmentPublishSystem, DroneTaskLifecycleApplySystem의 수량 정산 경계가 호출한다.
+/// 이용: DroneTaskReservationSystem, DroneTaskAssignmentPublishSystem, DroneTaskLifecycleApplySystem의 수량 정산 경계가 호출한다.
 /// 수명·소유권: 현장 수량만 변경한다. 개별 배정/미공개 후보 기록과의 대응은 호출자가 유지하며 공급원 재고·보관 공간·실물은 예약하지 않는다.
 /// </summary>
 public static class ConstructionSupplyReservationUtility

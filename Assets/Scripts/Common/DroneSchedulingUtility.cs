@@ -5,7 +5,7 @@ using Unity.Mathematics;
 /// <summary>
 /// 역할·목적: 드론 후보/경로/배정의 현재성과 현장·공급원·보관처·실물 자격을 같은 규칙으로 조회한다.
 /// 입력·출력: ECS 원본과 외부 관측/경로 결과를 읽고 수량·유효성·우선순위를 계산한다. 공급원 재고/보관 공간을 예약하거나 실물을 옮기지 않는다.
-/// 이용: DroneTaskDecisionSystem, ConstructionSupplyReservationSystem, DroneTaskExecutionSystem 및 Publish/Lifecycle의 적용 검사가 공유한다.
+/// 이용: DroneTaskDecisionSystem, DroneTaskReservationSystem, DroneTaskExecutionSystem 및 Publish/Lifecycle의 적용 검사가 공유한다.
 /// 수명·소유권: GetOrCreateCandidates만 World 단일 의도/후보 버퍼 엔티티를 준비한다. 나머지 조회는 원본 쓰기 없이 적용 가능성을 반환한다.
 /// 실제 위치 원본·경로 평가 Producer는 후속이다. 관측/평가 결과와 revision을 확인하는 것이 실제 비행 구현을 뜻하지 않는다.
 /// </summary>

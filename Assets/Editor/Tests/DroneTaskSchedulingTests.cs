@@ -61,7 +61,7 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         _command.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingPlacementCommandSystem>());
         _command.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>());
         _decision.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskDecisionSystem>());
-        _reservation.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionSupplyReservationSystem>());
+        _reservation.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskReservationSystem>());
         _execution.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskExecutionSystem>());
         _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskLifecycleApplySystem>());
         _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskAssignmentPublishSystem>());
@@ -651,36 +651,121 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         Assert.AreEqual(0, Requirement(supplySite).ReservedQuantity);
     }
 
-    [Test]
-    public void MixedWorkPriority_ComparesRecoveryAgainstTheSupplyHeadChosenByPlacementStamp()
+    [TestCase(DroneLogisticsTaskKindEnum.WorldItemRecovery, true)]
+    [TestCase(DroneLogisticsTaskKindEnum.StorageImport, true)]
+    [TestCase(DroneLogisticsTaskKindEnum.StorageExport, true)]
+    [TestCase(DroneLogisticsTaskKindEnum.StorageImport, false)]
+    public void MixedWorkSelection_UsesSupplyHeadAndOtherKinds_AndSkipsUnreachableWork(
+        DroneLogisticsTaskKindEnum otherKind, bool otherReachable)
     {
-        // 공급 A(seq 1, stamp 20)는 공급 B(seq 3, stamp 10)보다 뒤다.
-        // 따라서 공급 선두 B와 회수(seq 2)를 비교하여 회수가 먼저 배정된다.
+        // 공급 A(seq 1, stamp 20) 대신 공급 B(seq 3, stamp 10)가 공급 선두다.
+        // 다른 유형(seq 2)이 실행 가능하면 B보다 먼저 선택하며 불가능하면 B를 선택한다.
         Entity laterPlacedSite = CreateSite(new int2(20, 0), 20, ItemTypeEnum.Iron, 1);
         CreateSupplyTask(laterPlacedSite, ItemTypeEnum.Iron, 1);
         Entity earlierPlacedSite = CreateSite(new int2(30, 0), 10, ItemTypeEnum.Iron, 1);
-        CreateSupplyTask(earlierPlacedSite, ItemTypeEnum.Iron, 3);
-        CreateSite(new int2(4, 4), 30, ItemTypeEnum.Copper, 1);
-        Entity item = CreateItem(ItemTypeEnum.Copper, Entity.Null, new int2(4, 4));
-        Entity recoveryTask = CreateTask(new DroneLogisticsTask
+        Entity supplyTask = CreateSupplyTask(earlierPlacedSite, ItemTypeEnum.Iron, 3);
+        Entity source = CreateStorage(new int2(1, 0), 1, ItemTypeEnum.Iron, 2);
+        Entity destination = CreateStorage(new int2(2, 0), 1, ItemTypeEnum.Iron, 0);
+        Entity otherTask;
+        Entity otherTarget;
+        if (otherKind == DroneLogisticsTaskKindEnum.WorldItemRecovery)
         {
-            Kind = DroneLogisticsTaskKindEnum.WorldItemRecovery,
-            State = DroneLogisticsTaskStateEnum.Open,
-            Target = item,
-            ItemType = ItemTypeEnum.Copper,
-            CreationSequence = 2,
-            RecoveryReason = DroneRecoveryReasonEnum.SiteClearance
-        });
-        CreateStorage(new int2(1, 0), 1, ItemTypeEnum.Iron, 2);
+            CreateSite(new int2(4, 4), 30, ItemTypeEnum.Copper, 1);
+            otherTarget = CreateItem(ItemTypeEnum.Copper, Entity.Null, new int2(4, 4));
+            otherTask = CreateTask(new DroneLogisticsTask
+            {
+                Kind = otherKind,
+                State = DroneLogisticsTaskStateEnum.Open,
+                Target = otherTarget,
+                ItemType = ItemTypeEnum.Copper,
+                CreationSequence = 2,
+                RecoveryReason = DroneRecoveryReasonEnum.SiteClearance
+            });
+        }
+        else
+        {
+            otherTarget = otherKind == DroneLogisticsTaskKindEnum.StorageImport ? destination : source;
+            otherTask = CreateTransportTask(otherKind, otherTarget, 2, 1);
+        }
         CreateWorker(1);
         Tick();
-        AnswerRoutes(route => route.Source == item ? 40f : 20f);
-
+        AnswerRoutes(route => 20f);
+        if (!otherReachable)
+        {
+            foreach (Entity route in QueryEntities<DroneRouteEvaluationRequest>())
+            {
+                var request = _entityManager.GetComponentData<DroneRouteEvaluationRequest>(route);
+                if (request.Destination == otherTarget)
+                {
+                    PublishRoute(route, DroneRouteEvaluationStatusEnum.Unreachable, 0);
+                }
+            }
+        }
         Tick();
 
-        Assert.AreEqual(recoveryTask, SingleAssignment().Task);
+        if (otherReachable && DroneSchedulingUtility.IsTransportKind(otherKind))
+        {
+            Entity candidates = DroneSchedulingUtility.GetOrCreateCandidates(_entityManager);
+            var pending = _entityManager.GetBuffer<DroneTransportPendingReservationElement>(candidates, true);
+            Assert.AreEqual(1, pending.Length);
+            Assert.AreEqual(otherTask, pending[0].Candidate.Task);
+            Assert.AreEqual(1, pending[0].Reservation.RemainingQuantity);
+            AssertNoAssignments();
+        }
+        else
+        {
+            Assert.AreEqual(otherReachable ? otherTask : supplyTask, SingleAssignment().Task);
+        }
         Assert.AreEqual(0, Requirement(laterPlacedSite).ReservedQuantity);
-        Assert.AreEqual(0, Requirement(earlierPlacedSite).ReservedQuantity);
+        Assert.AreEqual(otherReachable ? 0 : 1, Requirement(earlierPlacedSite).ReservedQuantity);
+    }
+
+    [Test]
+    public void MixedSelection_LeavesUnselectedGoalsAvailable_AndFallsBackWithinTheSameTick()
+    {
+        Entity site = CreateSite(new int2(20, 0), 1, ItemTypeEnum.Iron, 1);
+        CreateSupplyTask(site, ItemTypeEnum.Iron, 1);
+        Entity source = CreateStorage(new int2(1, 0), 1, ItemTypeEnum.Iron, 6);
+        Entity destination = CreateStorage(new int2(2, 0), 1, ItemTypeEnum.Iron, 0);
+        Entity importTask = CreateTransportTask(DroneLogisticsTaskKindEnum.StorageImport, destination, 2, 3);
+        Entity exportTask = CreateTransportTask(DroneLogisticsTaskKindEnum.StorageExport, source, 3, 3);
+        CreateWorker(3);
+        CreateWorker(3);
+        CreateWorker(3);
+        Tick();
+        AnswerRoutes(route => 10f);
+        _decision.Update();
+        _reservation.Update();
+        Entity candidates = DroneSchedulingUtility.GetOrCreateCandidates(_entityManager);
+        var pending = _entityManager.GetBuffer<DroneTransportPendingReservationElement>(candidates, true);
+        var legacy = _entityManager.GetBuffer<DroneTaskPendingPublicationElement>(candidates, true);
+        Assert.AreEqual(1, legacy.Length);
+        Assert.AreEqual(2, pending.Length);
+        Assert.AreEqual(importTask, pending[0].Candidate.Task);
+        Assert.AreEqual(exportTask, pending[1].Candidate.Task);
+        Assert.AreNotEqual(legacy[0].Candidate.Worker, pending[0].Candidate.Worker);
+        Assert.AreNotEqual(legacy[0].Candidate.Worker, pending[1].Candidate.Worker);
+        Assert.AreNotEqual(pending[0].Candidate.Worker, pending[1].Candidate.Worker);
+        Assert.AreEqual(3, pending[0].Reservation.RemainingQuantity);
+        Assert.AreEqual(3, pending[1].Reservation.RemainingQuantity);
+        Assert.AreEqual(3, _entityManager.GetComponentData<DroneTransportProgress>(importTask).ReservedQuantity);
+        Assert.AreEqual(3, _entityManager.GetComponentData<DroneTransportProgress>(exportTask).ReservedQuantity);
+        Assert.AreEqual(6, DroneSchedulingUtility.CountInventory(_entityManager, source, ItemTypeEnum.Iron));
+        AssertNoAssignments();
+        ApplyDroneAndCommit();
+        Assert.AreEqual(1, QueryEntities<DroneTaskAssignment>().Length);
+
+        Entity cancel = DroneTaskRequestUtility.SubmitCancel(_entityManager, importTask);
+        Tick();
+        Assert.IsTrue(DroneTaskRequestUtility.TryConsumeResult(_entityManager, cancel, out var result));
+        Assert.AreEqual(DroneTaskRequestStatusEnum.Cancelled, result.Status);
+        Assert.IsFalse(_entityManager.Exists(importTask));
+        pending = _entityManager.GetBuffer<DroneTransportPendingReservationElement>(candidates, true);
+        Assert.AreEqual(1, pending.Length);
+        Assert.AreEqual(exportTask, pending[0].Candidate.Task);
+        Assert.AreEqual(3, pending[0].Reservation.RemainingQuantity);
+        Assert.AreEqual(3, _entityManager.GetComponentData<DroneTransportProgress>(exportTask).ReservedQuantity);
+        Assert.AreEqual(0, _entityManager.GetComponentData<DroneTransportProgress>(exportTask).DeliveredQuantity);
     }
 
     [Test]
@@ -958,6 +1043,18 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
         Entity entity = _entityManager.CreateEntity(typeof(DroneLogisticsTask));
         _entityManager.SetComponentData(entity, task);
         return entity;
+    }
+
+    private Entity CreateTransportTask(DroneLogisticsTaskKindEnum kind, Entity target, ulong sequence, int quantity)
+    {
+        Entity task = CreateTask(new DroneLogisticsTask
+        {
+            Kind = kind, State = DroneLogisticsTaskStateEnum.Open, Target = target,
+            ItemType = ItemTypeEnum.Iron, CreationSequence = sequence
+        });
+        _entityManager.AddComponentData(task, new DroneTransportRequirement { Quantity = quantity });
+        _entityManager.AddComponent<DroneTransportProgress>(task);
+        return task;
     }
 
     private Entity CreateStorage(int2 position, ulong stamp, ItemTypeEnum type, int quantity)

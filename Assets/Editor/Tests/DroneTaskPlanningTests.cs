@@ -12,7 +12,6 @@ public class DroneTaskPlanningTests : EcsWorldTestFixture
 {
     private SystemHandle _decision;
     private SystemHandle _reservation;
-    private SystemHandle _transportReservation;
     private SystemHandle _execution;
     private SystemHandle _lifecycle;
     private SystemHandle _publish;
@@ -37,8 +36,7 @@ public class DroneTaskPlanningTests : EcsWorldTestFixture
         _entityManager.SetComponentData(capacity, new DroneCapacityState { CarryingCapacity = 3 });
         _station = PreparedStation(-20, -20, 20, 20);
         _decision = _world.GetOrCreateSystem<DroneTaskDecisionSystem>();
-        _reservation = _world.GetOrCreateSystem<ConstructionSupplyReservationSystem>();
-        _transportReservation = _world.GetOrCreateSystem<DroneTransportReservationSystem>();
+        _reservation = _world.GetOrCreateSystem<DroneTaskReservationSystem>();
         _execution = _world.GetOrCreateSystem<DroneTaskExecutionSystem>();
         _lifecycle = _world.GetOrCreateSystem<DroneTaskLifecycleApplySystem>();
         _publish = _world.GetOrCreateSystem<DroneTaskAssignmentPublishSystem>();
@@ -314,7 +312,9 @@ public class DroneTaskPlanningTests : EcsWorldTestFixture
         EvaluateRoutes();
         Tick();
         var pending = _entityManager.GetBuffer<DroneTransportPendingReservationElement>(_candidates);
-        int importIndex = pending[0].Candidate.Task == importTask ? 0 : 1;
+        Assert.AreEqual(1, pending.Length, "동일 수행자는 먼저 생성된 반입만 선택한다.");
+        Assert.AreEqual(importTask, pending[0].Candidate.Task);
+        int importIndex = 0;
         var approval = pending[importIndex];
         var reservation = DroneTransportReservationUtility.Take(ref approval);
         pending[importIndex] = approval;
@@ -339,7 +339,7 @@ public class DroneTaskPlanningTests : EcsWorldTestFixture
         _entityManager.SetComponentData(importTask, progress);
         var otherProgress = _entityManager.GetComponentData<DroneTransportProgress>(exportTask);
         Assert.AreEqual(0, otherProgress.DeliveredQuantity);
-        Assert.AreEqual(3, otherProgress.ReservedQuantity);
+        Assert.AreEqual(0, otherProgress.ReservedQuantity, "미선택 반출은 목표량을 확보하지 않는다.");
         Assert.AreEqual(1, _entityManager.GetBuffer<StoredItemElement>(worker, true).Length);
         Assert.AreEqual(3, DroneSchedulingUtility.CountInventory(_entityManager, destination, ItemTypeEnum.Iron));
         Assert.AreEqual(5, _entityManager.GetComponentData<DroneTransportRequirement>(importTask).Quantity);
@@ -355,7 +355,6 @@ public class DroneTaskPlanningTests : EcsWorldTestFixture
         Entity assignmentEntity = PublishReservation(task);
         Simulation.UpdateAndComplete(_decision);
         Simulation.UpdateAndComplete(_reservation);
-        Simulation.UpdateAndComplete(_transportReservation);
         Simulation.UpdateAndComplete(_execution);
 
         // 후속 납품 소유자를 대역으로 호출해 실물 보관 성공량을 정산한다. 자동 도착 신호는 만들지 않는다.
@@ -631,7 +630,6 @@ public class DroneTaskPlanningTests : EcsWorldTestFixture
     {
         Simulation.UpdateAndComplete(_decision);
         Simulation.UpdateAndComplete(_reservation);
-        Simulation.UpdateAndComplete(_transportReservation);
         Simulation.UpdateAndComplete(_execution);
         Simulation.UpdateAndComplete(_lifecycle);
         Simulation.UpdateAndComplete(_publish);

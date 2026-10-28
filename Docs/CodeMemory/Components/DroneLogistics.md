@@ -115,11 +115,11 @@ DroneStationSpatialSyncSystem이 같은 singleton의 Fence와 함께 생성한�
 
 ## DroneTransportRequirement / DroneTransportPlanDecisionElement
 
-[작업 계획 명세](../../Specifications/DroneTaskPlanning.md)를 따른다. Requirement.Quantity는 일반 반입/반출의 불변 일회성 목표량으로 Execution이 root와 같은 EndSimulation에 최초 게시한다. PlanDecisionElement는 Decision이 후보 singleton에 매 틱 Clear/작성하는 계획 버퍼이며 기존 Candidate 형식을 재사용한다. 기존 공급/회수 Reservation은 이 버퍼를 소비하지 않는다. 일반 운반 Reservation이 별도 목표량 확보를 중재한다. 실제 배차/성공량 자동 정산은 후속이며 계획으로 재고/공간/Owner를 변경하지 않는다.
+[작업 계획 명세](../../Specifications/DroneTaskPlanning.md)를 따른다. Requirement.Quantity는 일반 반입/반출의 불변 일회성 목표량으로 Execution이 root와 같은 EndSimulation에 최초 게시한다. PlanDecisionElement는 Decision이 후보 singleton에 매 틱 Clear/작성하는 계획 버퍼이며 기존 Candidate 형식을 재사용한다. 통합 DroneTaskReservationSystem이 기존 후보와 이 계획을 함께 읽어 수행자당 하나 선택한다. 선택된 일반 운반만 단일 Burst Job이 별도 목표량 확보로 중재한다. 실제 배차/성공량 자동 정산은 후속이며 계획으로 재고/공간/Owner를 변경하지 않는다.
 
 ## DroneTransportProgress / DroneTransportReservation / DroneTransportPendingReservationElement
 
-[일반 운반 확보/정산 명세](../../Specifications/DroneTransportReservations.md)를 따른다. Progress는 root에 부착하며 DeliveredQuantity는 실제 보관 완료량, ReservedQuantity는 미공개/진행 중 확보량 합계다. 기존 Execution이 같은 EndSimulation에 0으로 초기화한다. DroneTransportReservationSystem의 단일 Burst Job이 무효/고아 인계분과 이전 미인계분을 반환한 뒤 일반 운반 계획을 목표 잔량 안에서 중재한다. 별도 Pending 버퍼의 Candidate/Reservation은 반환 근거이며 Decision이 Clear하지 않는다.
+[일반 운반 확보/정산 명세](../../Specifications/DroneTransportReservations.md)를 따른다. Progress는 root에 부착하며 DeliveredQuantity는 실제 보관 완료량, ReservedQuantity는 미공개/진행 중 확보량 합계다. 기존 Execution이 같은 EndSimulation에 0으로 초기화한다. DroneTaskReservationSystem은 메인 스레드에서 적재품 우선/공급 선두와 회수/반입/반출 선두 비교로 수행자당 하나 선택한다. 일반 운반은 로컬 반환 예정량/선택 예산으로 상한을 정하고 선택분만 단일 Burst Job에 넘긴다. Job은 무효/고아 인계분과 이전 미인계분을 반환한 뒤 목표 잔량 안에서 승인한다. 미선택 계획은 원본 확보량을 증가시키지 않으며 다른 드론의 같은 틱 선택을 막지 않는다. 별도 Pending 버퍼의 Candidate/Reservation은 반환 근거이며 Decision이 Clear하지 않는다.
 
 Reservation은 Task/RemainingQuantity의 단일 소유 기록이다. 후속 배차가 Take로 인계받아 배정과 같은 EndSimulation에 부착하고, 기존 원본 기록은 0으로 만들어 이중 반환을 막는다. 현재 Reservation은 무효화 의도/고아 소유자의 인계분을 반환하고 0으로 정산한다. 기존 재배정 Publish는 0 기록을 새 배정과 같은 EndSimulation에 제거한다. 원래 Task/생성 순번 이력은 유지하되 정산된 기록의 유효성 검사를 새 보관/방출에 소급하지 않는다. 실제 배차/납품 Writer는 아직 없으며 TryReduce/Release/TryRecordDelivery 계약을 제공한다. 실제 성공량은 해당 Task 하나에만 반영하며 재고/공간/Owner는 이 데이터가 소유하지 않는다. 후보/망 재검사와 행동 번호 중복 거부를 여기서 반복하지 않는다.
 
@@ -168,19 +168,19 @@ Task 9.4의 외부 생성/취소 요청이다. Submit은 시뮬레이션 전 메
 - **종류·부착 대상·목적:** IBufferElementData. World의 단일 후보 관리 엔티티에서 이번 틱 Decision 후보를 보관한다. 수행자별로 작업·공급원·목적지 조합의 여러 제안이 생길 수 있다. 선택·예약·공개 상태는 이 버퍼에 쓰지 않는다.
 - **필드:** Worker/Task·Source/Destination·ItemType·RouteRequest는 작업 조합이다. Assignment=Null은 신규, 그 외는 적재 재배정이고 AssignmentRevision은 기존 버전이다. NextAction/DropPosition은 다음 행동/선택 목표이며 WorkerObservationRevision은 관측 버전이다. Quantity는 판단 당시 수량 상한이다.
 - **Writer·Consumer·수명:** Decision이 시작할 때 Clear하고 유효한 신규·적재 재배정 후보를 작성한다. Reservation은 읽기 검사 후 수행자당 한 후보를 선택해 DroneTaskPendingPublicationElement에 복사한다. 후보 제거가 실제 예약량을 변경하지 않는다.
-- **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneTaskCandidateDecisionElement.cs), [Decision](../../../Assets/Scripts/Systems/Drones/Decision/DroneTaskDecisionSystem.cs), [선택·예약](../../../Assets/Scripts/Systems/Drones/Reservation/ConstructionSupplyReservationSystem.cs).
+- **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneTaskCandidateDecisionElement.cs), [Decision](../../../Assets/Scripts/Systems/Drones/Decision/DroneTaskDecisionSystem.cs), [선택·예약](../../../Assets/Scripts/Systems/Drones/Reservation/DroneTaskReservationSystem.cs).
 
 ## DroneTaskPendingPublicationElement
 
 - **종류·부착 대상·목적:** IBufferElementData. 순수 후보와 같은 World 관리 엔티티에서 선택된 배정과 공개 전 예약을 보관한다. Decision 후보와 수명을 분리한다.
 - **추가 이유:** 기존 후보 버퍼에 섞여 있던 한 틱 판단 결과와 공개 대기 상태의 수명을 분리했다. Reservation에서 현장 합계를 먼저 올리고 배정은 나중에 ECB로 공개하므로, 그 사이에는 최종 공개 입력과 실패 시 되돌릴 확보량이 필요하다. 별도 ECS 타입 자체가 필수인 것은 아니지만, 현재 구현은 후보를 매 틱 비워도 정산 근거가 사라지지 않도록 별도 버퍼를 사용한다. 공급 외의 회수·보관·방출 선택도 이 버퍼를 Publish 입력으로 사용한다.
 - **필드:** Candidate는 선택 당시 후보 스냅샷이며 Candidate.Quantity는 Decision의 상한이다. Quantity는 Reservation 승인량으로 시작해 Publish의 재검사 상한으로 쓰인다. Publish 성공 시 최종 양수 수량으로 갱신하고 공개 불가/실패 시 0으로 만든다. 실제 배정의 AssignedQuantity는 그 최종 수량을 ECB에 기록해 EndSimulation에서 공개한다. CommittedQuantity는 현장 합계에 먼저 더한 공급 예약의 인계/롤백 근거이며 Publish가 축소분을 해제하면 함께 줄인다. 회수·보관·방출은 Quantity가 양수여도 CommittedQuantity=0이다. PublicationQueued는 Publish의 최종 ECB 기록 완료이며 실제 공개 완료를 뜻하지 않는다.
-- **Producer·선택:** Reservation은 기존 미공개·무효 예약을 정산하고 적재 그룹을 최초 작업 순서로 먼저 선택한 뒤 신규 우선순위를 적용한다. 수행자당 한 선택을 기록하며 공급 현장만 예약한다. 공급원 재고·보관 공간은 예약하지 않는다.
+- **Producer·선택:** Reservation은 기존 미공개·무효 예약을 정산하고 적재 그룹을 최초 작업 순서로 먼저 선택한 뒤 신규 우선순위를 적용한다. 일반 운반 선택과도 수행자 중복을 막되 이 버퍼에는 기존 공급/회수/적재 재배정만 기록하며 공급 현장만 예약한다. 공급원 재고·보관 공간은 예약하지 않는다.
 - **Publish·인계:** 최신 수행자·배정 revision·경로·대상·수량을 재검사해 무효/축소 예약을 롤백한다. 신규 배정 또는 기존 배정 revision 변경과 수행자 연결·개별 예약을 EndSimulation에 함께 기록하고 PublicationQueued를 설정한다.
 - **소비·수명:** 다음 Reservation에서 공개 기록은 제거한다. 미공개 CommittedQuantity는 먼저 현장 합계에서 해제하고 기록을 제거한다. Decision은 Clear하지 않고 ProjectedRemaining에서 해제 예정량만 읽는다. 공개되어 개별 예약으로 인계한 수량은 다시 해제하지 않는다.
 - **공개 후 합계:** PublicationQueued=true가 되어도 이 행의 CommittedQuantity 숫자는 다음 Reservation까지 남을 수 있다. EndSimulation 이후에는 같은 수량을 개별 ConstructionSupplyReservation이 담당하므로, 현장 합계를 계산할 때 공개 기록의 숫자를 다시 더하지 않는다. 이 표시는 ECB 재생의 성공을 별도로 확인하는 상태가 아니며, 최종 ECB를 재생한 뒤 다음 틱을 시작하는 실행 경계를 전제로 한다.
 - **수량 예:** 부족량 8·공통 용량 5에서 후보 두 개의 상한이 각각 5여도 첫 pending은 5, 두 번째는 3만 승인한다. 순수 후보를 Clear해도 공개 대기 예약의 정산 근거는 남는다.
-- **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneTaskPendingPublicationElement.cs), [선택·정산](../../../Assets/Scripts/Systems/Drones/Reservation/ConstructionSupplyReservationSystem.cs), [공개](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskAssignmentPublishSystem.cs), [예상 부족량](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs).
+- **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneTaskPendingPublicationElement.cs), [선택·정산](../../../Assets/Scripts/Systems/Drones/Reservation/DroneTaskReservationSystem.cs), [공개](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskAssignmentPublishSystem.cs), [예상 부족량](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs).
 
 ## DroneTaskAssignment
 
@@ -199,10 +199,10 @@ Task 9.4의 외부 생성/취소 요청이다. Submit은 시뮬레이션 전 메
 
 - **종류·부착 대상·목적:** 일반 IComponentData. 하위 배정과 같은 엔티티의 현장 공급량 예약이다. 공급원 재고·보관 슬롯 잠금이 아니다.
 - **필드:** Site, ItemType, AssignmentRevision, RemainingQuantity다. 배정 Revision과 예약 Revision은 일치해야 하며 0은 예약 없음/정산 완료다. 회수 배정에도 부착하지만 Site=Null, RemainingQuantity=0이다.
-- **생성·합계:** ConstructionSupplyReservationSystem이 ConstructionSupplyReservationUtility.Reserve로 요구 버퍼 ReservedQuantity를 증가시키고 공개 전까지 DroneTaskPendingPublicationElement의 CommittedQuantity에 근거를 보관한다. Publish가 EndSimulation에 배정과 개별 기록을 함께 생성한다. 현장 합계에는 공개된 개별 기록과 미공개 공개 대기 기록이 모두 포함된다. Publish의 잔여량 검사에서는 해당 공개 대기 기록 자신의 CommittedQuantity를 다시 더해 자기 예약 때문에 승인량이 줄지 않도록 한다.
+- **생성·합계:** DroneTaskReservationSystem이 ConstructionSupplyReservationUtility.Reserve로 요구 버퍼 ReservedQuantity를 증가시키고 공개 전까지 DroneTaskPendingPublicationElement의 CommittedQuantity에 근거를 보관한다. Publish가 EndSimulation에 배정과 개별 기록을 함께 생성한다. 현장 합계에는 공개된 개별 기록과 미공개 공개 대기 기록이 모두 포함된다. Publish의 잔여량 검사에서는 해당 공개 대기 기록 자신의 CommittedQuantity를 다시 더해 자기 예약 때문에 승인량이 줄지 않도록 한다.
 - **현재 해제:** Reservation이 신규 예약 전에 미공개 공개 대기 기록과 무효/종료 배정의 잔여량을 해제한다. Publish는 이후 최종 축소·무효 수량만 되돌린다. Decision은 해제 예정량을 읽어 예상 부족량을 계산할 뿐 현장 합계와 개별 예약을 수정하지 않는다. 현장이 사라졌으면 버퍼에 접근하지 않고 개별 RemainingQuantity는 0으로 정리한다. 같은 품목의 여러 요구 행은 유틸리티가 순서대로 나누어 예약·해제한다.
 - **실물 인계·재배정 정산:** Lifecycle은 부분 수집량만 예약에 남기고 부족분을 해제하며 0개는 모두 해제한다. 현장 공급은 실제 인계량만 도착량에 더하고 해당 배정 잔여 예약을 정리한다. 재배정 전 Reservation이 기존 예약을 0으로 정산하고 새 공급 현장에만 예약한다. Publish는 증가한 배정 revision과 새 예약을 함께 공개한다. 초과 실물은 보존하며 다른 배정의 예약을 해제하지 않는다.
-- **근거:** [정의](../../../Assets/Scripts/Components/Construction/ConstructionSupplyReservation.cs), [선택·예약](../../../Assets/Scripts/Systems/Drones/Reservation/ConstructionSupplyReservationSystem.cs), [예약 유틸리티](../../../Assets/Scripts/Common/ConstructionSupplyReservationUtility.cs), [실물 정산](../../../Assets/Scripts/Common/DroneItemTransferUtility.cs), [인계](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs), [공개](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskAssignmentPublishSystem.cs), [현장 요구](../../../Assets/Scripts/Components/Construction/ConstructionComponents.cs).
+- **근거:** [정의](../../../Assets/Scripts/Components/Construction/ConstructionSupplyReservation.cs), [선택·예약](../../../Assets/Scripts/Systems/Drones/Reservation/DroneTaskReservationSystem.cs), [예약 유틸리티](../../../Assets/Scripts/Common/ConstructionSupplyReservationUtility.cs), [실물 정산](../../../Assets/Scripts/Common/DroneItemTransferUtility.cs), [인계](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs), [공개](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskAssignmentPublishSystem.cs), [현장 요구](../../../Assets/Scripts/Components/Construction/ConstructionComponents.cs).
 
 ## DroneWorker
 
@@ -217,7 +217,7 @@ Task 9.4의 외부 생성/취소 요청이다. Submit은 시뮬레이션 전 메
 - **현재 Reader:** 빈 수행자 신규 후보·Reservation 승인·ViaSource 경로 검사·Publish 공개는 공통 값으로 제한한다. 부재/0 이하면 신규 배정은 대기하고 singleton을 자동 생성하거나 기본값으로 대체하지 않는다. 이미 적재한 수행자의 Direct 경로·재배정 수량에는 이 제한을 소급 적용하지 않는다.
 - **Producer/Writer:** DroneConfigInitializationSystem이 Resources의 명시적 carryingCapacity를 한 번 게시하고 유효한 기존 값을 보존한다. 중복/무효/설정 실패는 공통 Fatal이며 기본값 대체/자동 재시도는 없다. 연구 갱신 Writer는 후속이다.
 - **변경 적용·수명:** World 수명 동안 공통 값을 유지한다. 연구로 한도가 증가하면 이후 새로 배정하는 작업부터 적용하며 기존 AssignedQuantity·ConstructionSupplyReservation·StoredItemElement를 다시 늘리거나 정산하지 않는다. 후보는 공개 전까지 현재 값을 재검사한다. 실제 수집은 이미 공개한 AssignedQuantity와 해당 예약·현재 현장 잔여량을 상한으로 삼아 공통 값 변경을 소급 적용하지 않는다.
-- **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneCapacityState.cs), [공통 값·후보 검사](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs), [예약](../../../Assets/Scripts/Systems/Drones/Reservation/ConstructionSupplyReservationSystem.cs), [경로 적용 검사](../../../Assets/Scripts/Systems/Drones/Execution/DroneTaskExecutionSystem.cs), [최종 공개](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskAssignmentPublishSystem.cs).
+- **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneCapacityState.cs), [공통 값·후보 검사](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs), [예약](../../../Assets/Scripts/Systems/Drones/Reservation/DroneTaskReservationSystem.cs), [경로 적용 검사](../../../Assets/Scripts/Systems/Drones/Execution/DroneTaskExecutionSystem.cs), [최종 공개](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskAssignmentPublishSystem.cs).
 
 ## DroneWorkerObservation
 

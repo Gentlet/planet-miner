@@ -20,7 +20,7 @@ public enum DroneCargoOriginEnum : byte
 /// 부착 엔티티: DroneWorkerObservation·DroneWorkerAssignment·DroneCargoState·StoredItemElement를 갖춘 드론 수행자 엔티티다.
 /// 생성: DroneSpawnUtility가 초기 구성을 기록하고 DroneStationLifecycleApplySystem이 출고/수납 역할 전환을 EndSimulation에 공개한다.
 /// 이용: Decision의 DroneTaskDecisionSystem이 수행자를 조회하고 DroneItemTransferDecisionSystem이 행동 자격을 검사한다.
-/// ConstructionSupplyReservationSystem(Reservation), DroneTaskExecutionSystem/DroneItemTransferExecutionSystem(Execution), DroneTaskAssignmentPublishSystem/DroneTaskLifecycleApplySystem(StateApply)도 공통 검증 Utility로 수행자 자격을 검사한다.
+/// DroneTaskReservationSystem(Reservation), DroneTaskExecutionSystem/DroneItemTransferExecutionSystem(Execution), DroneTaskAssignmentPublishSystem/DroneTaskLifecycleApplySystem(StateApply)도 공통 검증 Utility로 수행자 자격을 검사한다.
 /// 제거: 작업·배정 종료로 제거하지 않는다. 수행자 등록 해제·삭제의 수명주기는 후속이며 엔티티 삭제 시 함께 사라진다.
 /// 공통 최대 적재량은 World의 DroneCapacityState, 실제 적재 실물은 StoredItemElement와 ItemOwnership이 소유한다.
 /// </summary>
@@ -33,7 +33,7 @@ public struct DroneWorker : IComponentData
 /// 부착 엔티티: DroneWorker가 있는 드론 수행자 엔티티다.
 /// 생성: DroneSpawnUtility가 입력 위치, Revision=1, CanAcceptTask=false로 초기화한다. 위치 원본의 지속 관측 갱신과 실제 이동 시스템은 후속이다.
 /// 이용: Decision의 DroneTaskDecisionSystem은 경로 출발점·후보 revision에, DroneItemTransferDecisionSystem은 행동 자격 검사에 사용한다.
-/// ConstructionSupplyReservationSystem(Reservation), DroneTaskExecutionSystem/DroneItemTransferExecutionSystem(Execution), DroneTaskAssignmentPublishSystem/DroneTaskLifecycleApplySystem(StateApply)도 관측·경로·행동의 현재성을 재검사한다.
+/// DroneTaskReservationSystem(Reservation), DroneTaskExecutionSystem/DroneItemTransferExecutionSystem(Execution), DroneTaskAssignmentPublishSystem/DroneTaskLifecycleApplySystem(StateApply)도 관측·경로·행동의 현재성을 재검사한다.
 /// 제거: 배정 종료로 제거하지 않는 수행자 관측이다. 실제 Producer의 수명주기는 후속이며 엔티티 삭제 시 함께 사라진다.
 /// Position은 월드 좌표다. 관련 관측 변경 시 양수 Revision을 갱신하고 Revision=0/CanAcceptTask=false는 신규 작업 가능 상태로 해석하지 않는다.
 /// TODO(SoT 연결): 실제 드론 위치의 원본/Writer를 확정하고 이 관측을 원본에서 갱신하는 경계를 연결해야 한다.
@@ -50,7 +50,7 @@ public struct DroneWorkerObservation : IComponentData
 /// 역할·목적: 관리 측이 수행자와 활성 배정을 연결하는 상태다. Null은 배정 없음이며 수행부 관측과 구분한다.
 /// 부착 엔티티: DroneWorker가 있는 드론 수행자 엔티티다.
 /// 생성: DroneSpawnUtility가 호출자의 EndSimulation ECB에 Assignment=Null인 초기 구성을 기록한다.
-/// 이용: Decision의 DroneTaskDecisionSystem과 Reservation의 ConstructionSupplyReservationSystem이 유휴·현재 배정 여부를 검사한다.
+/// 이용: Decision의 DroneTaskDecisionSystem과 Reservation의 DroneTaskReservationSystem이 유휴·현재 배정 여부를 검사한다.
 /// StateApply의 DroneTaskAssignmentPublishSystem이 EndSimulation에 연결하고 DroneTaskLifecycleApplySystem은 행동·무효화 처리 중 필요 시 Null로 해제한다.
 /// 제거: 연결 해제는 Assignment를 Null로 설정하는 것이며 컴포넌트는 유지한다. 수행자 엔티티 삭제 시 함께 사라진다.
 /// </summary>

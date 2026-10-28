@@ -57,7 +57,7 @@ public class DroneItemTransferTests : EcsWorldTestFixture
         _execution.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneItemTransferExecutionSystem>());
         _execution.SortSystems();
         _reservation = _world.GetOrCreateSystemManaged<DroneReservationGroup>();
-        _reservation.AddSystemToUpdateList(_world.GetOrCreateSystem<ConstructionSupplyReservationSystem>());
+        _reservation.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskReservationSystem>());
         _reservation.SortSystems();
     }
 
