@@ -1,3 +1,4 @@
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 
@@ -8,9 +9,10 @@ using Unity.Mathematics;
 public static class DroneTransportReservationUtility
 {
     public static int ProjectedRemaining(Entity task, in DroneTransportRequirement requirement,
-        in DroneTransportProgress progress, DynamicBuffer<DroneTransportPendingReservationElement> pending)
+        in DroneTransportProgress progress, DynamicBuffer<DroneTransportPendingReservationElement> pending,
+        int releasingQuantity = 0)
     {
-        long remaining = (long)requirement.Quantity - progress.DeliveredQuantity - progress.ReservedQuantity;
+        long remaining = (long)requirement.Quantity - progress.DeliveredQuantity - progress.ReservedQuantity + releasingQuantity;
         for (int i = 0; i < pending.Length; i++)
         {
             if (pending[i].Reservation.Task == task)
@@ -20,6 +22,57 @@ public static class DroneTransportReservationUtility
             }
         }
         return (int)math.max(0L, remaining);
+    }
+
+    public static bool IsCompleted(in DroneTransportRequirement requirement, in DroneTransportProgress progress)
+    {
+        return progress.DeliveredQuantity == requirement.Quantity && progress.ReservedQuantity == 0;
+    }
+
+    public static bool ShouldRelease(Entity owner, bool hasAssignment,
+        DynamicBuffer<DroneTaskInvalidationDecisionElement> decisions)
+    {
+        if (!hasAssignment)
+        {
+            return true;
+        }
+        for (int i = 0; i < decisions.Length; i++)
+        {
+            if (decisions[i].Kind == DroneTaskInvalidationDecisionKindEnum.InvalidateAssignment && decisions[i].Target == owner)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    public static int ReadReleasingQuantity(EntityManager manager, Entity task, NativeArray<Entity> owners,
+        DynamicBuffer<DroneTaskInvalidationDecisionElement> decisions)
+    {
+        int quantity = 0;
+        for (int i = 0; i < owners.Length; i++)
+        {
+            var reservation = manager.GetComponentData<DroneTransportReservation>(owners[i]);
+            if (reservation.Task == task && ShouldRelease(owners[i], manager.HasComponent<DroneTaskAssignment>(owners[i]), decisions))
+            {
+                quantity += reservation.RemainingQuantity;
+            }
+        }
+        return quantity;
+    }
+
+    public static int ReadInFlightQuantity(Entity task, in DroneTransportProgress progress,
+        DynamicBuffer<DroneTransportPendingReservationElement> pending)
+    {
+        int quantity = progress.ReservedQuantity;
+        for (int i = 0; i < pending.Length; i++)
+        {
+            if (pending[i].Reservation.Task == task)
+            {
+                quantity -= pending[i].Reservation.RemainingQuantity;
+            }
+        }
+        return quantity;
     }
 
     public static bool TryReserve(Entity task, in DroneTransportRequirement requirement,

@@ -125,6 +125,15 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
         assignment.DropPosition = candidate.DropPosition;
         assignment.State = DroneTaskAssignmentStateEnum.MovingToDestination;
         ecb.SetComponent(candidate.Assignment, assignment);
+        if (manager.HasComponent<DroneTransportReservation>(candidate.Assignment))
+        {
+            var previousReservation = manager.GetComponentData<DroneTransportReservation>(candidate.Assignment);
+            if (previousReservation.RemainingQuantity == 0)
+            {
+                // 정산된 원래 목표의 기록을 새 배정과 함께 분리한다. 새 보관/방출에 이전 root의 유효성을 강제하지 않는다.
+                ecb.RemoveComponent<DroneTransportReservation>(candidate.Assignment);
+            }
+        }
         var reservation = new ConstructionSupplyReservation
         {
             Site = supply ? candidate.Destination : Entity.Null,

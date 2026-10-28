@@ -39,6 +39,7 @@
 | --- | --- | --- | --- | --- |
 | 상위 작업 없음 | Decision이 공급/회수 필요를 판단 | 생성 의도를 기록하고 양수 생성 순번의 Open 작업을 생성 | TaskExecution이 EndSimulation 기록. 다음 틱부터 후보화 | 현재 구현 |
 | Open | Decision의 종료 의도와 현재 필요/대상 무효가 일치 | Closed. 연결 배정과 화물의 정리를 별도로 진행 | TaskLifecycle이 상태 반영 | 현재 구현 |
+| 일반 운반 Open | 완료량==최초 목표량이고 확보량0을 다음 Decision에서 확인 | CompleteTransportTask 의도 후 Lifecycle이 최신 수량을 재검사해 Closed. 배정/확보/행동 참조 정리 뒤 EndSimulation 삭제 | Decision/TaskLifecycle/기존 EndSimulation | 현재 종료 연결, 실제 납품 Writer는 9.12 후속 |
 | 배정 없음 | 후보 선택·수량 예약 후 최종 공개 검사 성공 | MovingToSource, Revision=1, 개별 예약과 수행자 연결 | AssignmentPublish가 같은 EndSimulation ECB에 기록 | 현재 구현 |
 | MovingToSource / AwaitingCollection | 현재 버전의 수집 요청으로 실제 양수 수집 | 실제 수집량으로 AssignedQuantity/화물 출처를 갱신하고 MovingToDestination. 미수집분 현장 예약 해제 | TaskLifecycle의 행동 반영 | 현재 구현 |
 | MovingToSource / AwaitingCollection | 실제 수집량 0 | Cancelled, 현장 예약 정산, 수행자 연결 해제 | TaskLifecycle의 행동 반영 | 현재 구현 |
@@ -81,12 +82,13 @@
 
 | 원본/부수 효과 | 소유자와 책임 | 페이즈·공개 경계 | 상태 |
 | --- | --- | --- | --- |
-| 작업 생성·무효화 필요, 경로/배정 후보 | DroneTaskDecisionSystem. 판단 의도만 작성 | DroneDecision | 구현 |
+| 작업 생성/무효화/목표 달성 필요, 경로/배정 후보 | DroneTaskDecisionSystem. 판단 의도만 작성 | DroneDecision | 구현 |
 | 현장 예약과 공개 대기 예약 | ConstructionSupplyReservationSystem. 선택·미공개 정산·예약 해제 | DroneReservation. 최종 Publish 축소/실패와 실제 인계 정산은 기존 공통 예약 API 사용 | 구현 |
+| 일반 운반 목표 확보/미인계 승인/무효 인계 정산 | DroneTransportReservationSystem. Decision 의도와 고아 소유자의 확보분 반환 후 신규 중재 | DroneReservation의 단일 Burst Job. 최초 Progress는 Task Execution과 같은 EndSimulation에 생성 | 구현. 실제 배차/납품 Writer는 9.9/9.11~9.12 후속 |
 | 작업·경로 요청 생성 순번/ECB 기록 | DroneTaskExecutionSystem. 전달 의도를 적용하고 필요를 다시 탐색하지 않음 | DroneExecution → EndSimulation | 구현 |
 | 실제 인계할 실물/공간 계획 | DroneItemTransferDecisionSystem / DroneItemTransferExecutionSystem. 원본 소유권·수량을 변경하지 않음 | DroneDecision / DroneExecution OrderFirst | 구현 |
 | 상위 작업 종료, 배정 행동 결과·취소·완료·재배정 필요 | DroneTaskLifecycleApplySystem. 최신 의도/버전과 실제 성공분 반영 | DroneStateApply 직접 반영. 요청 제거·결과 추가·종료 삭제는 EndSimulation | 구현 |
-| 배정 생성·재배정 공개, 수행자 연결 설정 | DroneTaskAssignmentPublishSystem. 최종 수량 검사·축소 롤백·Revision 갱신 | DroneStateApply OrderLast → EndSimulation | 구현 |
+| 배정 생성/재배정 공개, 수행자 연결 설정 | DroneTaskAssignmentPublishSystem. 최종 수량 검사/축소 롤백/Revision 갱신과 정산된 이전 운반 확보 기록 분리 | DroneStateApply OrderLast → 새 배정과 같은 EndSimulation | 구현 |
 | 수행자 연결 해제, 잔여 예약/요청/결과에 따른 삭제 보류 | DroneTaskLifecycleApplySystem. 해제와 배정 삭제를 분리 | DroneStateApply / EndSimulation | 구현 |
 | 실물 Owner·출발/도착 버퍼·위치·렌더 | ItemOwnershipApplySystem의 공통 TryTransferItem. Drone Lifecycle이 실제 성공분 사용 | 일반 건물 반영 이후 DroneStateApply, 필요한 렌더 기록은 EndSimulation | 구현 |
 | 외부 행동 결과 소비 | DroneActionRequestUtility.TryConsumeResult의 외부 Consumer | EndSimulation 공개 이후. 예약·실물 성공량 재정산 금지 | API만 구현, 실제 수행부 Consumer 후속 |

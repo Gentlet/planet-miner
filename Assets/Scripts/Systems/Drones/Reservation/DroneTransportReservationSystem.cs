@@ -3,7 +3,7 @@ using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
 
-/// <summary>일반 운반의 작업 내 목표량을 단일 Job에서 중재한다. 작업 간 선택과 배정/실물 변경은 수행하지 않는다.</summary>
+/// <summary>일반 운반의 무효 확보량 반환과 작업 내 목표량을 단일 Job에서 중재한다. 작업 간 선택과 배정/실물 변경은 수행하지 않는다.</summary>
 [UpdateInGroup(typeof(DroneReservationGroup))]
 public partial struct DroneTransportReservationSystem : ISystem
 {
@@ -12,6 +12,10 @@ public partial struct DroneTransportReservationSystem : ISystem
     private ComponentLookup<DroneTransportProgress> _progress;
     private BufferLookup<DroneTransportPlanDecisionElement> _plans;
     private BufferLookup<DroneTransportPendingReservationElement> _pending;
+    private EntityQuery _reservationOwners;
+    private ComponentLookup<DroneTransportReservation> _reservations;
+    private ComponentLookup<DroneTaskAssignment> _assignments;
+    private BufferLookup<DroneTaskInvalidationDecisionElement> _decisions;
 
     public void OnCreate(ref SystemState state)
     {
@@ -20,6 +24,10 @@ public partial struct DroneTransportReservationSystem : ISystem
         _progress = state.GetComponentLookup<DroneTransportProgress>(false);
         _plans = state.GetBufferLookup<DroneTransportPlanDecisionElement>(true);
         _pending = state.GetBufferLookup<DroneTransportPendingReservationElement>(false);
+        _reservationOwners = state.GetEntityQuery(ComponentType.ReadWrite<DroneTransportReservation>());
+        _reservations = state.GetComponentLookup<DroneTransportReservation>(false);
+        _assignments = state.GetComponentLookup<DroneTaskAssignment>(true);
+        _decisions = state.GetBufferLookup<DroneTaskInvalidationDecisionElement>(true);
     }
 
     [BurstCompile]
@@ -29,14 +37,23 @@ public partial struct DroneTransportReservationSystem : ISystem
         _progress.Update(ref state);
         _plans.Update(ref state);
         _pending.Update(ref state);
-        state.Dependency = new ReserveTransportQuantityJob
+        _reservations.Update(ref state);
+        _assignments.Update(ref state);
+        _decisions.Update(ref state);
+        var owners = _reservationOwners.ToEntityListAsync(Allocator.TempJob, state.Dependency, out var ownersReady);
+        var handle = new ReserveTransportQuantityJob
         {
             Candidates = _candidates,
             Requirements = _requirements,
             Progress = _progress,
             Plans = _plans,
-            Pending = _pending
-        }.Schedule(state.Dependency);
+            Pending = _pending,
+            Owners = owners.AsDeferredJobArray(),
+            Reservations = _reservations,
+            Assignments = _assignments,
+            Decisions = _decisions
+        }.Schedule(JobHandle.CombineDependencies(state.Dependency, ownersReady));
+        state.Dependency = owners.Dispose(handle);
     }
 
     [BurstCompile]
@@ -47,9 +64,39 @@ public partial struct DroneTransportReservationSystem : ISystem
         public ComponentLookup<DroneTransportProgress> Progress;
         [ReadOnly] public BufferLookup<DroneTransportPlanDecisionElement> Plans;
         public BufferLookup<DroneTransportPendingReservationElement> Pending;
+        [ReadOnly] public NativeArray<Entity> Owners;
+        public ComponentLookup<DroneTransportReservation> Reservations;
+        [ReadOnly] public ComponentLookup<DroneTaskAssignment> Assignments;
+        [ReadOnly] public BufferLookup<DroneTaskInvalidationDecisionElement> Decisions;
 
         public void Execute()
         {
+            var decisions = Decisions[Candidates];
+            for (int i = 0; i < Owners.Length; i++)
+            {
+                var reservation = Reservations[Owners[i]];
+                if (reservation.RemainingQuantity <= 0)
+                {
+                    continue;
+                }
+                // 같은 틱 Decision의 무효화 의도를 사용한다. 원본 배정/경로/실물을 여기서 다시 판단하지 않는다.
+                if (!DroneTransportReservationUtility.ShouldRelease(Owners[i], Assignments.HasComponent(Owners[i]), decisions))
+                {
+                    continue;
+                }
+                if (Progress.HasComponent(reservation.Task))
+                {
+                    var progress = Progress[reservation.Task];
+                    DroneTransportReservationUtility.Release(ref progress, ref reservation);
+                    Progress[reservation.Task] = progress;
+                }
+                else
+                {
+                    reservation.RemainingQuantity = 0;
+                }
+                Reservations[Owners[i]] = reservation;
+            }
+
             var pending = Pending[Candidates];
             for (int i = 0; i < pending.Length; i++)
             {

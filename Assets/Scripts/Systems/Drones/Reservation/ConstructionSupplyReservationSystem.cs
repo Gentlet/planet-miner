@@ -45,7 +45,7 @@ public partial struct ConstructionSupplyReservationSystem : ISystem
         {
             Entity entity = assignments[i];
             var assignment = manager.GetComponentData<DroneTaskAssignment>(entity);
-            if (DroneSchedulingUtility.AssignmentNeedsCleanup(manager, assignment, sites))
+            if (DroneSchedulingUtility.AssignmentNeedsCleanup(manager, entity, assignment, sites))
             {
                 if (manager.HasComponent<ConstructionSupplyReservation>(entity))
                 {

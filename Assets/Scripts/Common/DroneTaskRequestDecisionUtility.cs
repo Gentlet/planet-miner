@@ -258,6 +258,16 @@ internal static class DroneTaskRequestDecisionUtility
             }
         }
 
+        if (DroneSchedulingUtility.IsTransportKind(task.Kind))
+        {
+            var progress = manager.GetComponentData<DroneTransportProgress>(taskEntity);
+            var pending = manager.GetBuffer<DroneTransportPendingReservationElement>(candidates, true);
+            if (DroneTransportReservationUtility.ReadInFlightQuantity(taskEntity, progress, pending) > 0)
+            {
+                return DroneTaskRequestStatusEnum.Busy;
+            }
+        }
+
         if (task.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply && DroneSchedulingUtility.IsSite(manager, task.Target))
         {
             foreach (var requirement in manager.GetBuffer<ConstructionMaterialRequirementElement>(task.Target, true))

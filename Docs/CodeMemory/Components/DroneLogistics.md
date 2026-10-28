@@ -119,9 +119,9 @@ DroneStationSpatialSyncSystem이 같은 singleton의 Fence와 함께 생성한�
 
 ## DroneTransportProgress / DroneTransportReservation / DroneTransportPendingReservationElement
 
-[일반 운반 확보/정산 명세](../../Specifications/DroneTransportReservations.md)를 따른다. Progress는 root에 부착하며 DeliveredQuantity는 실제 보관 완료량, ReservedQuantity는 미공개/진행 중 확보량 합계다. 기존 Execution이 같은 EndSimulation에 0으로 초기화한다. DroneTransportReservationSystem의 단일 Burst Job이 이전 미인계분을 반환한 뒤 일반 운반 계획을 목표 잔량 안에서 중재한다. 별도 Pending 버퍼의 Candidate/Reservation은 반환 근거이며 Decision이 Clear하지 않는다.
+[일반 운반 확보/정산 명세](../../Specifications/DroneTransportReservations.md)를 따른다. Progress는 root에 부착하며 DeliveredQuantity는 실제 보관 완료량, ReservedQuantity는 미공개/진행 중 확보량 합계다. 기존 Execution이 같은 EndSimulation에 0으로 초기화한다. DroneTransportReservationSystem의 단일 Burst Job이 무효/고아 인계분과 이전 미인계분을 반환한 뒤 일반 운반 계획을 목표 잔량 안에서 중재한다. 별도 Pending 버퍼의 Candidate/Reservation은 반환 근거이며 Decision이 Clear하지 않는다.
 
-Reservation은 Task/RemainingQuantity의 단일 소유 기록이다. 후속 배차가 Take로 인계받아 배정과 같은 EndSimulation에 부착하고, 기존 원본 기록은 0으로 만들어 이중 반환을 막는다. 실제 배차/납품 Writer는 아직 없으며 TryReduce/Release/TryRecordDelivery 계약만 제공한다. 실제 성공량은 해당 Task 하나에만 반영하며 재고/공간/Owner는 이 데이터가 소유하지 않는다. 후보/망 재검사와 행동 번호 중복 거부를 여기서 반복하지 않는다.
+Reservation은 Task/RemainingQuantity의 단일 소유 기록이다. 후속 배차가 Take로 인계받아 배정과 같은 EndSimulation에 부착하고, 기존 원본 기록은 0으로 만들어 이중 반환을 막는다. 현재 Reservation은 무효화 의도/고아 소유자의 인계분을 반환하고 0으로 정산한다. 기존 재배정 Publish는 0 기록을 새 배정과 같은 EndSimulation에 제거한다. 원래 Task/생성 순번 이력은 유지하되 정산된 기록의 유효성 검사를 새 보관/방출에 소급하지 않는다. 실제 배차/납품 Writer는 아직 없으며 TryReduce/Release/TryRecordDelivery 계약을 제공한다. 실제 성공량은 해당 Task 하나에만 반영하며 재고/공간/Owner는 이 데이터가 소유하지 않는다. 후보/망 재검사와 행동 번호 중복 거부를 여기서 반복하지 않는다.
 
 ## DroneTaskSequence
 
@@ -157,7 +157,7 @@ Task 9.4의 외부 생성/취소 요청이다. Submit은 시뮬레이션 전 메
 ## DroneTaskInvalidationDecisionElement
 
 - **종류·부착 대상·목적:** IBufferElementData. 후보와 같은 공유 singleton에서 작업·배정이 더 이상 유효하지 않다는 판단 결과를 StateApply로 전달한다. 판단은 Decision 시스템이 수행하며 이 버퍼가 판단 결과를 보관한다. 생성 시 DroneSchedulingUtility.GetOrCreateCandidates가 부착한다. 기존 DroneTaskLifecycleDecisionElement를 이 이름으로 변경했다.
-- **필드:** Kind는 DroneTaskInvalidationDecisionKindEnum의 CloseTask/InvalidateAssignment, Target은 상위 작업 또는 하위 배정, AssignmentRevision은 판단한 배정 버전이다. CloseTask는 배정 버전을 사용하지 않는다. 무효 배정은 적재품이 있으면 재배정 상태로 보존하므로 모든 행이 즉시 종료를 뜻하지는 않는다.
+- **필드:** Kind는 DroneTaskInvalidationDecisionKindEnum의 CloseTask/InvalidateAssignment/CompleteTransportTask, Target은 상위 작업 또는 하위 배정, AssignmentRevision은 판단한 배정 버전이다. 상위 작업 닫기는 배정 버전을 사용하지 않는다. CompleteTransportTask는 완료량==목표량/확보량0의 다음 Decision 의도이며 Lifecycle이 최신 값을 재검사한다. 무효 배정은 적재품이 있으면 재배정 상태로 보존하므로 모든 행이 즉시 종료를 뜻하지는 않는다.
 - **Producer:** DroneTaskDecisionSystem이 매 틱 비운 뒤 Open 작업의 유효성과 배정의 정리 필요성을 읽기 검사하여 의도를 작성한다. 무효 대상은 같은 Decision의 후보 계산에서도 제외한다. 이때 작업·배정 상태나 수행자 연결은 변경하지 않는다.
 - **Consumer·수명:** DroneTaskLifecycleApplySystem이 Target의 생존·컴포넌트, 배정 버전과 현재 무효 여부를 재검사한다. 종료 작업은 Closed로, 무효 배정은 적재가 있으면 Retargeting/없으면 Cancelled로 반영한다. 빈 적재의 수행자 연결은 같은 배정을 가리킬 때만 해제한다. 이후 의도 버퍼를 Clear한다.
 - **삭제 보류:** Apply는 미정산 예약과 행동 요청·결과 참조가 남은 배정을 삭제하지 않는다. 보류된 배정은 다음 Decision이 다시 검사한다. 이미 Closed인 상위 작업은 의도 존재 여부와 별도로 연결 배정이 사라진 후 EndSimulation에 삭제한다. 의도 기록만으로 예약 해제나 실물 반환이 일어나지는 않는다.

@@ -152,6 +152,30 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
                 task.State = DroneLogisticsTaskStateEnum.Closed;
                 manager.SetComponentData(decision.Target, task);
             }
+            else if (decision.Kind == DroneTaskInvalidationDecisionKindEnum.CompleteTransportTask)
+            {
+                if (!manager.HasComponent<DroneLogisticsTask>(decision.Target))
+                {
+                    continue;
+                }
+                var task = manager.GetComponentData<DroneLogisticsTask>(decision.Target);
+                if (task.State != DroneLogisticsTaskStateEnum.Open)
+                {
+                    continue;
+                }
+                if (!DroneSchedulingUtility.IsTransportKind(task.Kind))
+                {
+                    continue;
+                }
+                if (!DroneTransportReservationUtility.IsCompleted(
+                    manager.GetComponentData<DroneTransportRequirement>(decision.Target),
+                    manager.GetComponentData<DroneTransportProgress>(decision.Target)))
+                {
+                    continue;
+                }
+                task.State = DroneLogisticsTaskStateEnum.Closed;
+                manager.SetComponentData(decision.Target, task);
+            }
             else if (decision.Kind == DroneTaskInvalidationDecisionKindEnum.InvalidateAssignment)
             {
                 ApplyAssignmentInvalidation(manager, decision, requests, results, ecb, sites);
@@ -169,7 +193,7 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         var assignment = manager.GetComponentData<DroneTaskAssignment>(entity);
         // 같은 엔티티의 재배정 revision이 바뀌었거나 행동 반영으로 다시 유효해졌으면 과거 종료 의도를 적용하지 않는다.
         if (assignment.Revision != decision.AssignmentRevision ||
-            !DroneSchedulingUtility.AssignmentNeedsCleanup(manager, assignment, sites)) return;
+            !DroneSchedulingUtility.AssignmentNeedsCleanup(manager, entity, assignment, sites)) return;
 
         bool workerExists = DroneSchedulingUtility.IsActiveEntity(manager, assignment.Worker);
         bool ownsWorker = workerExists && manager.HasComponent<DroneWorkerAssignment>(assignment.Worker) &&
@@ -192,6 +216,8 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         for (int r = 0; r < results.Length; r++) hasResult |= results[r].Action.Assignment == entity;
         bool hasReservation = manager.HasComponent<ConstructionSupplyReservation>(entity) &&
             manager.GetComponentData<ConstructionSupplyReservation>(entity).RemainingQuantity > 0;
+        hasReservation |= manager.HasComponent<DroneTransportReservation>(entity) &&
+            manager.GetComponentData<DroneTransportReservation>(entity).RemainingQuantity > 0;
         // 결과 소비와 예약 정산이 배정을 식별할 수 있어야 한다. 연결 해제와 배정 엔티티 삭제의 시점은 다를 수 있다.
         if (!hasResult && !hasReservation) ecb.DestroyEntity(entity);
     }
@@ -201,7 +227,16 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         // Closed는 작업의 신규 이용 종료다. 살아 있는 배정이 참조하는 동안에는 작업 엔티티까지 삭제하지 않는다.
         for (int t = 0; t < tasks.Length; t++)
         {
-            if (manager.GetComponentData<DroneLogisticsTask>(tasks[t]).State != DroneLogisticsTaskStateEnum.Closed) continue;
+            var task = manager.GetComponentData<DroneLogisticsTask>(tasks[t]);
+            if (task.State != DroneLogisticsTaskStateEnum.Closed)
+            {
+                continue;
+            }
+            if (DroneSchedulingUtility.IsTransportKind(task.Kind) &&
+                manager.GetComponentData<DroneTransportProgress>(tasks[t]).ReservedQuantity > 0)
+            {
+                continue;
+            }
             bool referenced = false;
             for (int a = 0; a < assignments.Length; a++)
                 referenced |= manager.GetComponentData<DroneTaskAssignment>(assignments[a]).Task == tasks[t];

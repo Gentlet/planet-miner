@@ -20,6 +20,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
     private EntityQuery _workers;
     private EntityQuery _routes;
     private EntityQuery _assignments;
+    private EntityQuery _transportReservations;
     private EntityQuery _registry;
     private EntityQuery _capacity;
     private EntityQuery _taskRequests;
@@ -38,6 +39,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
             ComponentType.ReadOnly<DroneWorkerAssignment>(), ComponentType.ReadOnly<DroneCargoState>(), ComponentType.ReadOnly<StoredItemElement>());
         _routes = state.GetEntityQuery(ComponentType.ReadOnly<DroneRouteEvaluationRequest>());
         _assignments = state.GetEntityQuery(ComponentType.ReadOnly<DroneTaskAssignment>());
+        _transportReservations = state.GetEntityQuery(ComponentType.ReadOnly<DroneTransportReservation>());
         _registry = state.GetEntityQuery(ComponentType.ReadOnly<ItemRegistry>(), ComponentType.ReadOnly<ItemConfigElement>());
         _capacity = state.GetEntityQuery(ComponentType.ReadOnly<DroneCapacityState>());
         _stations = state.GetEntityQuery(ComponentType.ReadOnly<DroneStation>(), ComponentType.ReadOnly<DroneStationNetworkDecision>());
@@ -60,6 +62,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         using var workers = _workers.ToEntityArray(Allocator.Temp);
         using var routes = _routes.ToEntityArray(Allocator.Temp);
         using var assignments = _assignments.ToEntityArray(Allocator.Temp);
+        using var transportReservations = _transportReservations.ToEntityArray(Allocator.Temp);
         // ToComponentDataArray는 같은 틱 정거장 Decision Writer 완료 뒤 준비된 결과만 읽는다.
         using var networks = _stations.ToComponentDataArray<DroneStationNetworkDecision>(Allocator.Temp);
         var transportPlans = manager.GetBuffer<DroneTransportPlanDecisionElement>(_candidates);
@@ -77,17 +80,29 @@ public partial struct DroneTaskDecisionSystem : ISystem
         {
             var task = manager.GetComponentData<DroneLogisticsTask>(tasks[t]);
             if (task.State == DroneLogisticsTaskStateEnum.Open && !DroneSchedulingUtility.IsTaskValid(manager, task, sites))
+            {
                 invalidationDecisions.Add(new DroneTaskInvalidationDecisionElement
                 {
                     Kind = DroneTaskInvalidationDecisionKindEnum.CloseTask,
                     Target = tasks[t]
                 });
+            }
+            else if (task.State == DroneLogisticsTaskStateEnum.Open && DroneSchedulingUtility.IsTransportKind(task.Kind) &&
+                DroneTransportReservationUtility.IsCompleted(manager.GetComponentData<DroneTransportRequirement>(tasks[t]),
+                    manager.GetComponentData<DroneTransportProgress>(tasks[t])))
+            {
+                invalidationDecisions.Add(new DroneTaskInvalidationDecisionElement
+                {
+                    Kind = DroneTaskInvalidationDecisionKindEnum.CompleteTransportTask,
+                    Target = tasks[t]
+                });
+            }
         }
 
         for (int a = 0; a < assignments.Length; a++)
         {
             var assignment = manager.GetComponentData<DroneTaskAssignment>(assignments[a]);
-            if (DroneSchedulingUtility.AssignmentNeedsCleanup(manager, assignment, sites))
+            if (DroneSchedulingUtility.AssignmentNeedsCleanup(manager, assignments[a], assignment, sites))
             {
                 invalidationDecisions.Add(new DroneTaskInvalidationDecisionElement
                 {
@@ -207,7 +222,8 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 {
                     quantity = math.min(carryingCapacity, DroneTransportReservationUtility.ProjectedRemaining(
                         tasks[t], manager.GetComponentData<DroneTransportRequirement>(tasks[t]),
-                        manager.GetComponentData<DroneTransportProgress>(tasks[t]), pendingTransport));
+                        manager.GetComponentData<DroneTransportProgress>(tasks[t]), pendingTransport,
+                        DroneTransportReservationUtility.ReadReleasingQuantity(manager, tasks[t], transportReservations, invalidationDecisions)));
                     quantity = math.min(quantity, DroneSchedulingUtility.CountInventory(manager, selectedSource, task.ItemType));
                     quantity = DroneSchedulingUtility.CountStorageSpace(manager, selectedDestination, task.ItemType, registry, quantity);
                 }
