@@ -114,7 +114,7 @@ flowchart TD
 | 배치 승인과 현장 생성 | [BuildingPlacementCommandSystem.cs](https://github.com/Gentlet/planet-miner/blob/architecture-v2/Assets/Scripts/Systems/Command/BuildingPlacementCommandSystem.cs) |
 | 자재 도착과 완공 | [ConstructionLifecycleApplySystem.cs](https://github.com/Gentlet/planet-miner/blob/architecture-v2/Assets/Scripts/Systems/Construction/StateApply/ConstructionLifecycleApplySystem.cs) |
 | 전력 계획과 공급 | [Assets/Scripts/Systems/Power](https://github.com/Gentlet/planet-miner/tree/architecture-v2/Assets/Scripts/Systems/Power) |
-| 드론 작업/예약/이동/인계 | [Assets/Scripts/Systems/Drones](https://github.com/Gentlet/planet-miner/tree/architecture-v2/Assets/Scripts/Systems/Drones) |
+| 드론 작업/예약/이동/자동 픽업/인계 | [Assets/Scripts/Systems/Drones](https://github.com/Gentlet/planet-miner/tree/architecture-v2/Assets/Scripts/Systems/Drones) |
 | 공간 인덱스 동기화 | [Assets/Scripts/Systems/Synchronization](https://github.com/Gentlet/planet-miner/tree/architecture-v2/Assets/Scripts/Systems/Synchronization) |
 | EditMode 테스트 | [Assets/Editor/Tests](https://github.com/Gentlet/planet-miner/tree/architecture-v2/Assets/Editor/Tests) |
 
@@ -129,3 +129,5 @@ flowchart TD
 - [드론 이동/배터리/도착 계약](https://github.com/Gentlet/planet-miner/blob/architecture-v2/Docs/Specifications/DroneMovement.md)
 
 테스트 코드는 개별 시스템과 핵심 흐름, 결함 회귀를 확인하기 위한 자료입니다. 컴파일/선택 EditMode 테스트 결과와 실제 플레이, 시각 결과, Player 빌드, 성능 검증은 각각 구분해 관리합니다.
+
+자동 픽업의 공개 도착/요청 수명/일반 운반 확보량 정산은 [픽업 계약](Docs/Specifications/DronePickup.md)을 따른다.

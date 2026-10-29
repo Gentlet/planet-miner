@@ -126,12 +126,7 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
     private static int PrepareCollection(EntityManager manager, Entity entity, in DroneTaskAssignment assignment,
         DynamicBuffer<DroneItemTransferItemDecisionElement> items)
     {
-        if (!DroneSchedulingUtility.IsSite(manager, assignment.Destination)) return 0;
-        if (!DroneSchedulingUtility.IsStorage(manager, assignment.Source)) return 0;
-        var reservation = manager.GetComponentData<ConstructionSupplyReservation>(entity);
-        int limit = math.min(assignment.AssignedQuantity, reservation.RemainingQuantity);
-        limit = math.min(limit, ConstructionSupplyReservationUtility.RemainingIncludingOwn(manager,
-            assignment.Destination, assignment.ItemType, reservation.RemainingQuantity));
+        int limit = DroneItemTransferUtility.CollectionLimit(manager, entity, assignment);
         // 모든 기존 실물을 남겨 선행 드론이 일부를 가져간 뒤에도 다른 기존 실물을 선택할 수 있다.
         SelectStoredItems(manager, assignment.Source, assignment.ItemType, items);
         return math.min(limit, items.Length);

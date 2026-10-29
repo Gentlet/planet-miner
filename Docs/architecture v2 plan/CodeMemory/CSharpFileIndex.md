@@ -131,6 +131,8 @@
 | `Assets/Scripts/Components/DroneLogistics/DroneMovementComponents.cs` | 이동 설정/상태/판단/도착 결과와 내부 경로 평가 판단을 구분한다. |
 | `Assets/Scripts/Common/DroneFlightPlanningUtility.cs` | 직선 구간과 충전 경유 거리/에너지, 비상 귀환 정거장과 현장 외부 셀을 평가한다. |
 | `Assets/Scripts/Systems/Drones/Preparation/DroneWorkerObservationPreparationSystem.cs` | 마지막 확정 위치/배터리/수행자 상태로 다음 판단의 관측을 준비한다. |
+| `Assets/Scripts/Components/DroneLogistics/DroneAutomaticPickupRequest.cs` | 자동 픽업 Producer가 생성한 요청/결과의 수명 표식이다. |
+| `Assets/Scripts/Systems/Drones/Decision/DronePickupDecisionSystem.cs` | 공개 도착의 픽업 의도를 Burst Job으로 판단하고 기존 API로 요청을 접수하며 자기 결과만 소비한다. |
 | `Assets/Scripts/Systems/Drones/Decision/DroneFlightDecisionSystem.cs` | 정거장/현장 입력을 준비하고 병렬 Burst Job으로 이번 틱 경로와 이동 구간을 판단한다. |
 | `Assets/Scripts/Systems/Drones/Execution/DroneMovementExecutionSystem.cs` | 실제 거리만 이동/소비하며 위치/격자/렌더/활동/도착 또는 중단 결과를 작성한다. |
 | `Assets/Scripts/Systems/Drones/StateApply/DroneMovementApplySystem.cs` | Lifecycle 뒤 같은 배정/revision/action의 도착 상태만 EndSimulation에 기록한다. |

@@ -239,10 +239,26 @@ public partial struct DroneFlightDecisionSystem : ISystem
                 if (assignment.State == DroneTaskAssignmentStateEnum.AwaitingCollection ||
                     assignment.State == DroneTaskAssignmentStateEnum.AwaitingDelivery)
                 {
-                    // 이미 확정된 도착은 추가 이동이 필요 없다. 0 배터리만으로 기존 행동 대기를 실패로 되돌리지 않는다.
                     decision.Assignment = link.Assignment;
                     decision.AssignmentRevision = assignment.Revision;
                     decision.Action = assignment.NextAction;
+                    if (assignment.State == DroneTaskAssignmentStateEnum.AwaitingCollection)
+                    {
+                        // 도착의 공개와 픽업 시작은 다르다. 0 배터리는 새 픽업 대신 기존 중단/귀환 정산으로 보낸다.
+                        if (battery.CurrentCharge <= 0f)
+                        {
+                            decision.Failure = DroneMovementFailureEnum.EnergyUnavailable;
+                            PrepareReturn(transform.Position.xy, battery.CurrentCharge, link.Assignment, assignment, previous, ref decision);
+                            return;
+                        }
+                        if (!TryPoint(assignment.Source, Positions, Footprints, Directions, out var source) ||
+                            math.any(transform.Position.xy != source))
+                        {
+                            decision.Failure = DroneMovementFailureEnum.InvalidGoal;
+                            PrepareReturn(transform.Position.xy, battery.CurrentCharge, link.Assignment, assignment, previous, ref decision);
+                            return;
+                        }
+                    }
                     decision.Purpose = DroneFlightPurposeEnum.AwaitingAction;
                     return;
                 }
@@ -379,16 +395,6 @@ public partial struct DroneFlightDecisionSystem : ISystem
     private static bool TryPoint(Entity entity, ComponentLookup<GridPosition> positions,
         ComponentLookup<BuildingFootprint> footprints, ComponentLookup<Direction> directions, out float2 point)
     {
-        point = default;
-        if (!positions.HasComponent(entity))
-        {
-            return false;
-        }
-        point = positions[entity].Value;
-        if (footprints.HasComponent(entity) && directions.HasComponent(entity))
-        {
-            point += (float2)footprints[entity].GetEffectiveSize(directions[entity].dir) * 0.5f;
-        }
-        return math.all(math.isfinite(point));
+        return DroneFlightPlanningUtility.TryGetTargetPoint(entity, positions, footprints, directions, out point);
     }
 }

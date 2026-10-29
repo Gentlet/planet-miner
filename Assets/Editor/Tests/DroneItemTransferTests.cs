@@ -124,6 +124,46 @@ public class DroneItemTransferTests : EcsWorldTestFixture
         Assert.AreEqual(0, Stored(secondStorage).Length);
     }
 
+    [TestCase(0, TestName = "PickupRequest_RejectsMovingBeforeArrival")]
+    [TestCase(1, TestName = "PickupRequest_RejectsActualPositionAwayFromSource")]
+    [TestCase(2, TestName = "PickupRequest_RejectsObservationNotMatchingActualPosition")]
+    [TestCase(3, TestName = "PickupRequest_RejectsZeroBattery")]
+    public void PickupRequest_RequiresPublishedArrivalActualPositionObservationAndPositiveBattery(int invalidCondition)
+    {
+        Entity source = CreateStorage(3);
+        Entity site = CreateSite(3);
+        Entity worker = CreateWorker();
+        Entity assignmentEntity = CreateAssignment(worker, source, site, 3, DroneActionKindEnum.CollectFromStorage);
+        if (invalidCondition == 0)
+        {
+            var assignment = Assignment(assignmentEntity);
+            assignment.State = DroneTaskAssignmentStateEnum.MovingToSource;
+            _entityManager.SetComponentData(assignmentEntity, assignment);
+        }
+        else if (invalidCondition == 1)
+        {
+            _entityManager.SetComponentData(worker, LocalTransform.FromPosition(new float3(2f, 0f, 0f)));
+        }
+        else if (invalidCondition == 2)
+        {
+            var observation = _entityManager.GetComponentData<DroneWorkerObservation>(worker);
+            observation.Position = new float3(2f, 0f, 0f);
+            _entityManager.SetComponentData(worker, observation);
+        }
+        else
+        {
+            _entityManager.SetComponentData(worker, new DroneBatteryState { CurrentCharge = 0f });
+        }
+        Entity request = Submit(assignmentEntity);
+        TransferTick();
+        AssertResult(request, DroneItemTransferStatusEnum.Rejected, 0);
+        Assert.AreEqual(3, Stored(source).Length);
+        Assert.IsEmpty(Stored(worker));
+        Assert.AreEqual(3, Reservation(assignmentEntity).RemainingQuantity);
+        Assert.AreEqual(3, Requirement(site).ReservedQuantity);
+        Assert.AreEqual(0UL, Assignment(assignmentEntity).LastAppliedActionSequence);
+    }
+
     [Test]
     public void CollectThenSupply_PreservesItemEntities_AndSettlesDeliveredAndReservedQuantities()
     {
@@ -761,14 +801,16 @@ public class DroneItemTransferTests : EcsWorldTestFixture
 
         TransferTick();
 
-        AssertResult(request, DroneItemTransferStatusEnum.Unavailable, 0);
+        AssertResult(request, DroneItemTransferStatusEnum.Rejected, 0);
         Assert.IsTrue(_entityManager.GetComponentData<ItemOwnership>(item).IsWorldItem);
         Assert.AreEqual(new int2(40, 40), _entityManager.GetComponentData<GridPosition>(item).Value);
         Assert.IsFalse(_entityManager.HasComponent<DisableRendering>(item));
         Assert.AreEqual(0, Stored(worker).Length);
         Assert.AreEqual(0, Stored(storage).Length);
-        Assert.AreEqual(DroneTaskAssignmentStateEnum.Cancelled, Assignment(assignment).State);
-        Assert.AreEqual(Entity.Null, _entityManager.GetComponentData<DroneWorkerAssignment>(worker).Assignment);
+        // 이 격리 fixture는 인계 Consumer만 실행한다. 낡은 도착은 거절하고 배정 중단은 이동/작업 소유자에게 남긴다.
+        Assert.AreEqual(DroneTaskAssignmentStateEnum.AwaitingCollection, Assignment(assignment).State);
+        Assert.AreEqual(assignment, _entityManager.GetComponentData<DroneWorkerAssignment>(worker).Assignment);
+        Assert.AreEqual(0UL, Assignment(assignment).LastAppliedActionSequence);
     }
 
     [Test]
@@ -899,6 +941,8 @@ public class DroneItemTransferTests : EcsWorldTestFixture
         ItemTypeEnum itemType = ItemTypeEnum.Iron)
     {
         Entity worker = _entityManager.CreateEntity(typeof(DroneWorker));
+        _entityManager.AddComponentData(worker, LocalTransform.Identity);
+        _entityManager.AddComponentData(worker, new DroneBatteryState { CurrentCharge = 100f });
         _entityManager.AddComponentData(worker, new DroneWorkerObservation
         {
             Position = float3.zero,

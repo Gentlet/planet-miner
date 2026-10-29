@@ -401,12 +401,7 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
     private static int CollectStorage(EntityManager manager, Entity entity, in DroneTaskAssignment assignment,
         DynamicBuffer<DroneItemTransferItemDecisionElement> eligible, int maximum, EntityCommandBuffer ecb)
     {
-        var reservation = manager.GetComponentData<ConstructionSupplyReservation>(entity);
-        int limit = math.min(maximum, reservation.RemainingQuantity);
-        if (!DroneSchedulingUtility.IsSite(manager, assignment.Destination) ||
-            !DroneSchedulingUtility.IsStorage(manager, assignment.Source)) return 0;
-        limit = math.min(limit, ConstructionSupplyReservationUtility.RemainingIncludingOwn(manager,
-            assignment.Destination, assignment.ItemType, reservation.RemainingQuantity));
+        int limit = math.min(maximum, DroneItemTransferUtility.CollectionLimit(manager, entity, assignment));
         var source = manager.GetBuffer<StoredItemElement>(assignment.Source);
         int2 position = (int2)math.floor(manager.GetComponentData<DroneWorkerObservation>(assignment.Worker).Position.xy);
         int moved = 0;
@@ -580,6 +575,14 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
             // 공급원에서 못 수집한 부족분은 현장 예약에서 해제하고 실제 적재량만 도착 예정으로 남긴다.
             DroneItemTransferUtility.ReduceReservation(manager, entity, ref reservation, moved);
         }
+        if (manager.HasComponent<DroneTransportReservation>(entity))
+        {
+            var reservation = manager.GetComponentData<DroneTransportReservation>(entity);
+            var progress = manager.GetComponentData<DroneTransportProgress>(reservation.Task);
+            DroneTransportReservationUtility.TryReduce(ref progress, ref reservation, moved);
+            manager.SetComponentData(reservation.Task, progress);
+            manager.SetComponentData(entity, reservation);
+        }
         assignment.AssignedQuantity = moved;
         if (moved > 0)
         {
@@ -589,7 +592,8 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
                 Origin = recovery ? DroneCargoOriginEnum.Recovery : DroneCargoOriginEnum.Supply
             });
             assignment.State = DroneTaskAssignmentStateEnum.MovingToDestination;
-            assignment.NextAction = recovery ? DroneActionKindEnum.StoreCargo : DroneActionKindEnum.SupplyConstructionSite;
+            assignment.NextAction = recovery || manager.HasComponent<DroneTransportReservation>(entity)
+                ? DroneActionKindEnum.StoreCargo : DroneActionKindEnum.SupplyConstructionSite;
         }
         else
         {

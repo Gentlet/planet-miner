@@ -1,5 +1,6 @@
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Transforms;
 
 /// <summary>
 /// 역할·목적: 드론 행동의 식별번호·배정 revision·수행자 관측·출처/목적지 자격을 공통으로 검사한다.
@@ -32,8 +33,6 @@ public static class DroneItemTransferValidationUtility
         var observation = manager.GetComponentData<DroneWorkerObservation>(action.Worker);
         if (request.WorkerObservationRevision == 0 || observation.Revision != request.WorkerObservationRevision ||
             !math.all(math.isfinite(observation.Position))) return false;
-        // TODO(SoT 연결): 실제 위치 원본을 연결할 때 관측 갱신 경계와 행동 도착 조건도 검증한다.
-        // 현재 관측 revision 대조는 실제 이동/도착 검증을 대신하지 않는다.
         if (!DroneItemTransferUtility.CargoHasSingleType(manager, action.Worker, assignment.ItemType)) return false;
         var cargo = manager.GetBuffer<StoredItemElement>(action.Worker, true);
         var cargoOrigin = manager.GetComponentData<DroneCargoState>(action.Worker).Origin;
@@ -49,7 +48,7 @@ public static class DroneItemTransferValidationUtility
         if (collection)
         {
             if (action.Target != assignment.Source) return false;
-            if (assignment.State != DroneTaskAssignmentStateEnum.MovingToSource && assignment.State != DroneTaskAssignmentStateEnum.AwaitingCollection) return false;
+            if (!IsAtCollectionPoint(manager, assignment)) return false;
             if (!manager.GetBuffer<StoredItemElement>(action.Worker, true).IsEmpty) return false;
             if (manager.GetComponentData<DroneCargoState>(action.Worker).Origin != DroneCargoOriginEnum.None) return false;
             if (!manager.HasComponent<DroneLogisticsTask>(assignment.Task)) return false;
@@ -57,8 +56,22 @@ public static class DroneItemTransferValidationUtility
             if (task.State != DroneLogisticsTaskStateEnum.Open || task.ItemType != assignment.ItemType) return false;
             if (action.Kind == DroneActionKindEnum.CollectFromStorage)
             {
-                if (task.Kind != DroneLogisticsTaskKindEnum.ConstructionSupply || task.Target != assignment.Destination) return false;
-                if (!ReservationMatches(manager, action.Assignment, assignment)) return false;
+                if (task.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply)
+                {
+                    if (task.Target != assignment.Destination || !ReservationMatches(manager, action.Assignment, assignment)) return false;
+                }
+                else
+                {
+                    if (!DroneSchedulingUtility.IsTransportKind(task.Kind)) return false;
+                    if (!manager.HasComponent<DroneTransportReservation>(action.Assignment)) return false;
+                    if (!manager.HasComponent<DroneTransportRequirement>(assignment.Task) ||
+                        !manager.HasComponent<DroneTransportProgress>(assignment.Task)) return false;
+                    var reservation = manager.GetComponentData<DroneTransportReservation>(action.Assignment);
+                    if (reservation.Task != assignment.Task || reservation.RemainingQuantity < 0) return false;
+                    Entity target = task.Kind == DroneLogisticsTaskKindEnum.StorageImport ? assignment.Destination : assignment.Source;
+                    if (task.Target != target || !DroneSchedulingUtility.IsStorage(manager, assignment.Source) ||
+                        !DroneSchedulingUtility.IsStorage(manager, assignment.Destination)) return false;
+                }
             }
             else if (task.Kind != DroneLogisticsTaskKindEnum.WorldItemRecovery || task.Target != assignment.Source) return false;
         }
@@ -74,6 +87,11 @@ public static class DroneItemTransferValidationUtility
         }
         else
         {
+            if (action.Kind == DroneActionKindEnum.StoreCargo && manager.HasComponent<DroneTransportReservation>(action.Assignment))
+            {
+                // 일반 운반의 실제 납품/완료량 정산을 연결하기 전에는 기존 보관 경로로 확보량을 우회하지 않는다.
+                return false;
+            }
             if (action.Target != assignment.Destination) return false;
             if (assignment.State != DroneTaskAssignmentStateEnum.MovingToDestination && assignment.State != DroneTaskAssignmentStateEnum.AwaitingDelivery) return false;
             if (action.Kind == DroneActionKindEnum.SupplyConstructionSite)
@@ -83,6 +101,33 @@ public static class DroneItemTransferValidationUtility
             }
         }
         return true;
+    }
+
+    public static bool IsAtCollectionPoint(EntityManager manager, in DroneTaskAssignment assignment)
+    {
+        if (assignment.State != DroneTaskAssignmentStateEnum.AwaitingCollection)
+        {
+            return false;
+        }
+        if (!manager.HasComponent<LocalTransform>(assignment.Worker))
+        {
+            return false;
+        }
+        if (!manager.HasComponent<DroneBatteryState>(assignment.Worker))
+        {
+            return false;
+        }
+        if (!(manager.GetComponentData<DroneBatteryState>(assignment.Worker).CurrentCharge > 0f))
+        {
+            return false;
+        }
+        if (!DroneFlightPlanningUtility.TryGetTargetPoint(manager, assignment.Source, out var target))
+        {
+            return false;
+        }
+        var actual = manager.GetComponentData<LocalTransform>(assignment.Worker).Position;
+        var observation = manager.GetComponentData<DroneWorkerObservation>(assignment.Worker);
+        return math.all(actual.xy == target) && math.all(observation.Position == actual);
     }
 
     private static bool ReservationMatches(EntityManager manager, Entity entity, in DroneTaskAssignment assignment)

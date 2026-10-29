@@ -2,11 +2,11 @@
 
 [전체 색인](README.md) · [배치와 공사](Construction.md) · [아이템과 저장](ItemsAndStorage.md)
 
-드론 작업/예약/인계/재배정과 정거장 연결/보관/Identity/요청/계획의 데이터 계약을 설명한다. 일반 운반 계획은 별도 버퍼로 구분하며 배정 공개는 기존 Publish에 연결했고 실제 경로/이동/관측/도착은 [이동 명세](../../Specifications/DroneMovement.md)를 따르며 픽업/납품/정상 귀환/충전은 후속이다.
+드론 작업/예약/인계/재배정과 정거장 연결/보관/Identity/요청/계획의 데이터 계약을 설명한다. 일반 운반 계획은 별도 버퍼로 구분하며 배정 공개는 기존 Publish에 연결했고 실제 경로/이동/관측/도착은 [이동 명세](../../Specifications/DroneMovement.md)를 따르며 자동 픽업은 [픽업 명세](../../Specifications/DronePickup.md)에 연결했고 자동 납품/정상 귀환/충전은 후속이다.
 
 2026-10-15 Task 9.1은 [상태 전이·Lifecycle Owner 계약](../../Specifications/DroneLifecycle.md)을 확정했다. 1A~6A의 수납·완충 전/연속 배차·귀환·비상 이동·중단 정산은 후속 수행부가 따라야 할 정책이다. Task 9.1 당시 23개 타입과 관리 계층을 유지했으며 실제 정거장·이동·배터리·충전·수납 Writer나 새 상태 enum을 추가하지 않았다. 이후 Task 9.2의 정거장 기반은 아래 별도 타입/명세로 구분한다. 작업/배정의 기존 상태와 수행자 자체의 후속 개념 상태를 구분한다.
 
-기존 142사례와 기존 통합 4사례는 이전 구조의 별도 실행이며 합산하지 않는다. Task 9.3.1은 생성 초기화, 9.3은 [명시적 출고/정박/수납과 용량](../../Specifications/DroneIdentityAndStationStorage.md), [공통 설정 초기화](../../Specifications/DroneCapacityInitializationPlan.md)를 연결한다. 경로/이동/관측/도착과 최소 비상 귀환은 구현되어 있다. 정상 귀환/충전/픽업과 납품 행동 Producer 및 연구 Writer는 후속이다. DropPosition은 실제 위치 원본이 아니다.
+기존 142사례와 기존 통합 4사례는 이전 구조의 별도 실행이며 합산하지 않는다. Task 9.3.1은 생성 초기화, 9.3은 [명시적 출고/정박/수납과 용량](../../Specifications/DroneIdentityAndStationStorage.md), [공통 설정 초기화](../../Specifications/DroneCapacityInitializationPlan.md)를 연결한다. 경로/이동/관측/도착과 최소 비상 귀환은 구현되어 있다. 자동 픽업은 공개 도착 다음 틱 기존 인계 경로를 사용한다. 정상 귀환/충전/자동 납품과 연구 Writer는 후속이다. DropPosition은 실제 위치 원본이 아니다.
 
 ```text
 Command / EndCommand: 현장·자재 요구와 취소 반환·삭제 공개
@@ -186,10 +186,10 @@ Task 9.4의 외부 생성/취소 요청이다. Submit은 시뮬레이션 전 메
 
 - **종류·부착 대상·목적:** 일반 IComponentData. 상위 작업·현장·수행자와 분리된 하위 작업 엔티티다. 현장 취소 이후에도 적재 실물을 처리할 수 있도록 독립시킨다.
 - **필드:** Worker/Task·Source/Destination은 배정 대상이다. OriginalTaskCreationSequence는 최초 순서, Revision/LastAppliedActionSequence는 버전/소비 번호, State/NextAction은 진행/행동이다. ItemType/AssignedQuantity는 배정량이며 실제 적재 원본은 StoredItemElement다. DropPosition은 선택한 방출 도착 목표이고 GridPosition/관측 위치를 대신하지 않는다.
-- **Producer·공개:** DroneTaskAssignmentPublishSystem이 유효 후보를 Revision=1, LastAppliedActionSequence=0, MovingToSource로 기록한다. 현장 공급과 일반 반입/반출은 CollectFromStorage, 월드 회수는 RecoverWorldItem을 다음 행동으로 둔다. Source/Destination은 항상 출발/도착 대상이며 일반 반입 root의 Target은 도착, 반출 root의 Target은 출발 건물이다. EndSimulation에 유형별 확보 기록/수행자 연결과 함께 공개하며 생성만으로 드론이 움직이지 않는다. 공개된 배정은 다음 틱부터 Movement가 비행하며 일반 운반의 실제 수집/납품은 후속 수행부 범위다.
+- **Producer·공개:** DroneTaskAssignmentPublishSystem이 유효 후보를 Revision=1, LastAppliedActionSequence=0, MovingToSource로 기록한다. 현장 공급과 일반 반입/반출은 CollectFromStorage, 월드 회수는 RecoverWorldItem을 다음 행동으로 둔다. Source/Destination은 항상 출발/도착 대상이며 일반 반입 root의 Target은 도착, 반출 root의 Target은 출발 건물이다. EndSimulation에 유형별 확보 기록/수행자 연결과 함께 공개하며 생성만으로 드론이 움직이지 않는다. 공개된 배정은 다음 틱부터 Movement가 비행하며 일반 운반의 실제 픽업/미수집분 반환은 기존 Lifecycle에 연결했고 실제 납품/완료량 정산은 후속이다.
 - **재배정 공개:** 적재품은 새 배정 엔티티를 만들지 않고 기존 엔티티의 Revision을 증가시킨다. 최초 순서·적재 실물·출처·기존 행동 결과 참조를 보존하고 LastAppliedActionSequence=0, Source=Null, 새 Task/Destination/NextAction·예약 revision을 기록한다. revision이 uint.MaxValue이면 증가하지 않는다. 이전 revision 신호는 공통 인계 검사가 거절한다.
 - **공통 적재량 변경:** 빈 수행자의 새 배정 수량은 현재 공통 한도를 넘지 않는다. 이미 공개한 수량·예약·적재와 적재품 재배정량을 공통 한도 변경만으로 줄이지 않는다. 기존 적재 재배정은 현재 실물 수량과 현장 필요량을 사용한다.
-- **기존 현장 공급/회수의 인계 후 진행:** 수집 양수는 Origin=Supply/Recovery와 다음 공급/보관 행동을 설정하고 MovingToDestination이 된다. 0개는 예약을 해제하고 Cancelled/연결 해제로 끝난다. 공급·보관·방출 후 빈 적재는 Completed/연결 해제, 잔여품은 Retargeting/NextAction=None이다. 다음 Decision이 Direct 경로로 새 목적지를 선택하고 Reservation/Publish가 같은 배정을 갱신한다. 실제 이동/도착은 Movement가 처리하며 수집/납품 행동 신호 생성은 후속이다.
+- **기존 현장 공급/회수의 인계 후 진행:** 수집 양수는 Origin=Supply/Recovery와 다음 공급/보관 행동을 설정하고 MovingToDestination이 된다. 0개는 예약을 해제하고 Cancelled/연결 해제로 끝난다. 공급·보관·방출 후 빈 적재는 Completed/연결 해제, 잔여품은 Retargeting/NextAction=None이다. 다음 Decision이 Direct 경로로 새 목적지를 선택하고 Reservation/Publish가 같은 배정을 갱신한다. 실제 이동/도착은 Movement가 처리하며 자동 픽업 신호는 Pickup Decision이 만든다. 자동 납품은 후속이다.
 - **무효화·수명:** Reservation은 무효 대상·종료 상태의 개별 현장 예약을 해제한다. Decision은 무효 배정을 후보 경합에서 제외하고 InvalidateAssignment 의도를 기록한다. DroneTaskLifecycleApplySystem은 의도의 배정 버전과 현재 무효 여부를 재검사하여 적재가 없으면 Cancelled로 바꾸고 같은 배정을 가리키는 수행자 연결을 해제한다. 행동 요청·결과의 참조와 잔여 예약이 없을 때 EndSimulation에 삭제한다. 적재가 있으면 Retargeting으로 보존한다.
 - **수집한 회수품의 보관 예외:** 회수 실물이 수행자에 들어오면 원래 월드 회수 작업은 무효·Closed가 될 수 있다. 원래 실물이 수행자 소유이고 Origin=Recovery, NextAction=StoreCargo이며 보관 목적지가 유효하면 보관 이동 배정은 계속 유효하다. 상위 회수 작업이 Closed라는 이유만으로 수집한 실물의 보관을 막지 않는다.
 - **식별 검사:** Decision·Execution·StateApply가 DroneItemTransferValidationUtility.TryValidate의 읽기 검사를 공유한다. 배정 Revision과 양수 Action.Sequence, LastAppliedActionSequence·수행자 연결·행동·대상·관측 버전을 대조하며 StateApply에서만 유효 요청의 행동 번호를 반영한다. 수량이 0인 유효 요청도 번호를 소비하므로 같은 번호를 다시 인계하지 않는다. 이 배정 내부 번호는 World ReceiptSequence와 목적이 다르다.
@@ -270,11 +270,11 @@ Task 9.4의 외부 생성/취소 요청이다. Submit은 시뮬레이션 전 메
 
 ## DroneActionReadyRequest
 
-- **종류·부착 대상·목적:** 일반 IRequestComponent. 외부 수행부가 도착·행동 완료 때 독립 엔티티에 게시할 실물 인계 시도 신호다. 외부에서 성공 수량을 확정하지 않는다. 실제 수행부의 행동 신호 생성은 후속이며 제출 API와 내부 Consumer는 연결했다.
+- **종류·부착 대상·목적:** 일반 IRequestComponent. 외부 수행부 또는 자동 픽업 Producer가 독립 Entity에 게시하는 실물 인계 시도다. 성공 수량은 입력하지 않는다. 자동 납품 신호는 후속이다.
 - **필드·계약:** ReceiptSequence는 World의 접수 순서다. Action은 배정·버전·행동 번호·수행자·행동·대상의 DroneActionIdentity다. WorkerObservationRevision은 관측 버전, WorldPosition은 DropCargo 격자 위치다. CollectFromStorage, RecoverWorldItem, SupplyConstructionSite, StoreCargo, DropCargo를 구분한다.
-- **Producer·접수:** 시뮬레이션 전 주 스레드의 외부 입력 경계에서 DroneActionRequestUtility.Submit이 World 접수 순번을 발급하고 새 요청 엔티티를 즉시 게시한다. 전달된 ReceiptSequence는 발급값으로 덮어쓰며 DroneItemTransferDecision과 실물·슬롯 계획 버퍼도 부착한다. 실물·예약을 바꾸거나 행동 성공을 만들지는 않는다.
+- **Producer·접수:** 외부 입력은 시뮬레이션 전, 자동 픽업은 관측 준비/Task Decision 뒤 같은 DroneDecision에서 DroneActionRequestUtility.Submit으로 World 접수 번호와 요청 Entity를 게시한다. 전달된 ReceiptSequence는 발급값으로 덮어쓰며 DroneItemTransferDecision과 실물·슬롯 계획 버퍼도 부착한다. 실물·예약을 바꾸거나 행동 성공을 만들지는 않는다.
 - **Decision·Execution:** DroneItemTransferDecisionSystem은 요청의 초기 자격만 기록한다. Execution의 OrderFirst 인계 계획 시스템은 이번 드론 물류 쓰기 전의 실물 전체 ID·요구량/수량 상한·기존 슬롯 품목/개수를 확정한다. 이번 틱 수집 이후에만 가능한 Supply 신호를 미리 함께 넣으면 Decision 시점의 NextAction 불일치로 거절한다. 공급하려면 다음 틱에 새 행동 신호를 제출해야 한다.
-- **StateApply 검사:** DroneTaskLifecycleApplySystem은 접수 순서로 초기 자격·계획 준비 여부와 공통 TryValidate 검사를 다시 확인한다. 계획 안의 실물만 현재 버퍼·생존·품목·유효 Transfer 소유권·Destroy·현장 footprint로 검사한다. 같은 틱 건물 종료의 입고품·출고 여유는 계획에 포함할 수 있다. 드론 적용 중 새 수집품·새 공간은 추가하지 않는다. 이동/도착과 관측 원본 Writer는 연결되어 있다. 실제 픽업/납품 행동 신호 Producer는 후속이며 도착만으로 실물 인계를 성공 처리하지 않는다.
+- **StateApply 검사:** DroneTaskLifecycleApplySystem은 접수 순서로 초기 자격·계획 준비 여부와 공통 TryValidate 검사를 다시 확인한다. 계획 안의 실물만 현재 버퍼·생존·품목·유효 Transfer 소유권·Destroy·현장 footprint로 검사한다. 같은 틱 건물 종료의 입고품·출고 여유는 계획에 포함할 수 있다. 드론 적용 중 새 수집품·새 공간은 추가하지 않는다. 이동/도착과 관측 원본 Writer는 연결되어 있다. 자동 픽업은 도착 공개 다음 틱 실제 도착/배터리 자격을 거쳐 요청한다. 자동 납품 신호는 후속이며 도착만으로 인계 성공을 만들지 않는다.
 - **수명·결과 공개:** 처리한 요청과 세 판단/계획 컴포넌트 제거, 같은 엔티티의 DroneItemTransferResult 추가를 EndSimulation에 기록한다. 내부 pending 집합으로 ECB 재생 전 시스템 반복 호출의 중복 적용을 막는다. Lifecycle은 남은 요청 참조가 있는 배정의 삭제를 보류한다. 미소비 결과가 있는 엔티티에 새 요청을 부착해도 기존 결과를 덮어쓰거나 다시 인계하지 않는다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneActionContracts.cs), [접수·외부 소비 API](../../../Assets/Scripts/Common/DroneActionRequestUtility.cs), [초기 자격](../../../Assets/Scripts/Systems/Drones/Decision/DroneItemTransferDecisionSystem.cs), [계획 준비](../../../Assets/Scripts/Systems/Drones/Execution/DroneItemTransferExecutionSystem.cs), [공통 자격 검사](../../../Assets/Scripts/Common/DroneItemTransferValidationUtility.cs), [인계·결과](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs), [유효 소유권](../../../Assets/Scripts/Common/DroneItemTransferUtility.cs), [삭제 보류](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs).
 
@@ -353,3 +353,11 @@ DroneActionIdentity는 요청/결과 안의 일반 구조체다. 인계가 revis
 - **종류/부착 대상/목적:** 경로 요청 Entity의 이번 틱 내부 IComponentData다. Ready/Result로 공개 DroneRouteEvaluationResult와 수명을 구분한다.
 - **Writer/Reader/공개:** Flight Decision이 작성하고 Task Decision이 같은 틱에 우선 읽는다. Task Execution은 유지되는 결과만 EndSimulation에 게시하며 요청 삭제 때 함께 제거한다.
 - **에너지 계약:** WaitingForEnergy는 기하 도달 불가와 구분하고 적재품 안전 방출 근거로 쓰지 않는다. 충전 경유 거리와 계획 최대 배터리는 경로 계산에만 쓰며 실제 배터리를 채우지 않는다.
+
+## DroneAutomaticPickupRequest
+
+- **종류/부착 대상/목적:** 자동 Producer가 소유하는 요청 Entity의 IComponentData 표식이다. 수행자 역할이나 작업 진행 상태를 복제하지 않는다.
+- **Writer/수명:** DronePickupDecisionSystem이 Submit으로 만든 요청에 붙이고 EndSimulation의 결과 공개 뒤 다음 Decision에서 TryConsumeResult로 해당 Entity를 제거한다. 외부 요청에는 붙이지 않고 외부 결과를 소비하지 않는다.
+- **흐름:** 공개된 AwaitingCollection/빈 화물/양수 배터리/현재 실제 수집점과 관측을 요구한다. 같은 배정/revision/행동의 미처리 요청이 있으면 새 자동 요청을 만들지 않는다. 번호 발급과 결과 정산은 기존 소유자를 재사용한다.
+- **일반 운반:** 실제 수집량으로 확보 기록을 줄여 미수집분을 반환하고 완료량은 유지한다. 일반 운반의 StoreCargo는 실제 납품 정산 후속까지 거절한다.
+- **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneAutomaticPickupRequest.cs), [Producer](../../../Assets/Scripts/Systems/Drones/Decision/DronePickupDecisionSystem.cs), [픽업 계약](../../Specifications/DronePickup.md).

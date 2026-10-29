@@ -9,6 +9,31 @@ using Unity.Mathematics;
 /// </summary>
 public static class DroneItemTransferUtility
 {
+    public static int CollectionLimit(EntityManager manager, Entity entity, in DroneTaskAssignment assignment)
+    {
+        if (!DroneSchedulingUtility.IsStorage(manager, assignment.Source))
+        {
+            return 0;
+        }
+        if (manager.HasComponent<DroneTransportReservation>(entity))
+        {
+            if (!DroneSchedulingUtility.IsStorage(manager, assignment.Destination))
+            {
+                return 0;
+            }
+            return math.min(assignment.AssignedQuantity,
+                manager.GetComponentData<DroneTransportReservation>(entity).RemainingQuantity);
+        }
+        if (!DroneSchedulingUtility.IsSite(manager, assignment.Destination))
+        {
+            return 0;
+        }
+        var reservation = manager.GetComponentData<ConstructionSupplyReservation>(entity);
+        int limit = math.min(assignment.AssignedQuantity, reservation.RemainingQuantity);
+        return math.min(limit, ConstructionSupplyReservationUtility.RemainingIncludingOwn(manager,
+            assignment.Destination, assignment.ItemType, reservation.RemainingQuantity));
+    }
+
     public static Entity EffectiveOwner(EntityManager manager, Entity item)
     {
         return ItemOwnershipApplySystem.EffectiveOwner(manager, item);

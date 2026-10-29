@@ -445,6 +445,20 @@ public class DroneLifecycleIntegrationTests : EcsWorldTestFixture
         var observation = _entityManager.GetComponentData<DroneWorkerObservation>(assignment.Worker);
         observation.Position = new float3(cell.x + 0.25f, cell.y + 0.25f, 0f);
         observation.Revision++;
+        if (collection)
+        {
+            // 이 fixture는 도착 입력을 명시한다. 실제 이동/도착 Producer 검증은 이동 통합 fixture가 담당한다.
+            float2 point = cell;
+            if (_entityManager.HasComponent<BuildingFootprint>(target) && _entityManager.HasComponent<Direction>(target))
+            {
+                point += (float2)_entityManager.GetComponentData<BuildingFootprint>(target)
+                    .GetEffectiveSize(_entityManager.GetComponentData<Direction>(target).dir) * 0.5f;
+            }
+            observation.Position = new float3(point, 0f);
+            _entityManager.SetComponentData(assignment.Worker, LocalTransform.FromPosition(observation.Position));
+            assignment.State = DroneTaskAssignmentStateEnum.AwaitingCollection;
+            _entityManager.SetComponentData(entity, assignment);
+        }
         _entityManager.SetComponentData(assignment.Worker, observation);
         Entity request = DroneActionRequestUtility.Submit(_entityManager, new DroneActionReadyRequest
         {
@@ -504,6 +518,8 @@ public class DroneLifecycleIntegrationTests : EcsWorldTestFixture
     private Entity CreateWorker()
     {
         Entity worker = _entityManager.CreateEntity(typeof(DroneWorker));
+        _entityManager.AddComponentData(worker, LocalTransform.Identity);
+        _entityManager.AddComponentData(worker, new DroneBatteryState { CurrentCharge = 100f });
         _entityManager.AddComponentData(worker, new DroneWorkerObservation
         {
             Position = float3.zero,

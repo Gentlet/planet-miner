@@ -32,6 +32,38 @@ internal struct DroneFlightPlan
 /// <summary>직선 자유 비행/충전 경유 거리와 필요 에너지를 같은 규칙으로 계획한다. 계획의 최대 충전량을 실물 배터리에 쓰지 않는다.</summary>
 internal static class DroneFlightPlanningUtility
 {
+    public static bool TryGetTargetPoint(EntityManager manager, Entity entity, out float2 point)
+    {
+        point = default;
+        if (!manager.HasComponent<GridPosition>(entity))
+        {
+            return false;
+        }
+        point = manager.GetComponentData<GridPosition>(entity).Value;
+        if (manager.HasComponent<BuildingFootprint>(entity) && manager.HasComponent<Direction>(entity))
+        {
+            point += (float2)manager.GetComponentData<BuildingFootprint>(entity)
+                .GetEffectiveSize(manager.GetComponentData<Direction>(entity).dir) * 0.5f;
+        }
+        return math.all(math.isfinite(point));
+    }
+
+    public static bool TryGetTargetPoint(Entity entity, ComponentLookup<GridPosition> positions,
+        ComponentLookup<BuildingFootprint> footprints, ComponentLookup<Direction> directions, out float2 point)
+    {
+        point = default;
+        if (!positions.HasComponent(entity))
+        {
+            return false;
+        }
+        point = positions[entity].Value;
+        if (footprints.HasComponent(entity) && directions.HasComponent(entity))
+        {
+            point += (float2)footprints[entity].GetEffectiveSize(directions[entity].dir) * 0.5f;
+        }
+        return math.all(math.isfinite(point));
+    }
+
     public static DroneFlightPlan Plan(float2 origin, float2 goal, float charge, float maximum,
         float rate, NativeList<DroneFlightStation> stations)
     {
