@@ -39,11 +39,13 @@ internal struct DroneStationEligibility
         using var items = new EntityQueryBuilder(Allocator.Temp)
             .WithAll<ItemIdentity, ItemOwnership, LocalTransform>()
             .WithNone<Disabled, Prefab, DroneWorker, DroneWorkerObservation, DroneWorkerAssignment>()
-            .WithNone<DroneCargoState, DroneActivityState, DroneDocked, StoredItemElement>();
+            .WithNone<DroneCargoState, DroneActivityState, DroneDocked, StoredItemElement>()
+            .WithNone<DroneMovementState, DroneMovementDecision, DroneMovementResult>();
         item = items.Build(ref state).GetEntityQueryMask();
         using var workers = new EntityQueryBuilder(Allocator.Temp)
             .WithAll<DroneWorker, DroneWorkerObservation, DroneWorkerAssignment, DroneCargoState>()
             .WithAll<DroneActivityState, DroneBatteryState, StoredItemElement, LocalTransform>()
+            .WithAll<DroneMovementState, DroneMovementDecision, DroneMovementResult>()
             .WithNone<Disabled, Prefab, ItemIdentity>();
         worker = workers.Build(ref state).GetEntityQueryMask();
     }

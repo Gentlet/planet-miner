@@ -48,7 +48,7 @@ public enum DroneRecoveryReasonEnum : byte
 /// <summary>
 /// 역할·목적: 배정의 이동·수집/공급 대기·재배정·완료/취소 상태를 구분한다.
 /// 부착 엔티티: 열거형 자체는 부착하지 않으며 DroneTaskAssignment.State에 포함한다.
-/// 생성·이용: DroneTaskAssignmentPublishSystem(StateApply)이 초기/재배정 상태를 기록하고 DroneTaskLifecycleApplySystem이 행동 결과·무효화로 갱신한다. 실제 이동 수행부는 후속이다.
+/// 생성/이용: DroneTaskAssignmentPublishSystem이 초기/재배정을, DroneTaskLifecycleApplySystem이 행동 결과/무효화를 기록한다. DroneMovementApplySystem은 실제 도착 상태를 EndSimulation에 기록한다.
 /// 제거: 값을 담은 컴포넌트·판단·결과의 갱신/삭제 수명을 따른다. 별도 엔티티 수명을 갖지 않는다.
 /// </summary>
 public enum DroneTaskAssignmentStateEnum : byte
@@ -90,7 +90,7 @@ public struct DroneLogisticsTask : IComponentData
 /// 생성: StateApply의 DroneTaskAssignmentPublishSystem이 승인 후보를 Revision=1/MovingToSource로 EndSimulation에 생성하고 수행자를 연결한다.
 /// 이용: DroneTaskDecisionSystem(Decision), DroneTaskReservationSystem(Reservation), DroneTaskAssignmentPublishSystem(StateApply)이 배정 유효성과 적재 재배정 후보를 검사한다.
 /// DroneItemTransferDecisionSystem(Decision)·DroneItemTransferExecutionSystem(Execution)은 행동 인계 계획에, DroneTaskLifecycleApplySystem(StateApply)은 인계 성공분·예약·종료 상태 반영에 사용한다.
-/// 후속 외부 수행부는 배정을 읽고 행동 신호를 제출하며 직접 성공 상태를 쓰지 않는다. 실제 이동·행동 신호 생성은 미구현이다.
+/// 이동 Decision/Execution은 배정 목표로 비행하고 Movement Apply가 도착 상태만 기록한다. 후속 행동 수행부는 신호를 제출하며 실물 인계 성공 상태를 직접 쓰지 않는다.
 /// 제거: Lifecycle이 적재품 없음·예약 정산·수행자 연결 해제·미소비 요청/결과 참조 없음 이후 EndSimulation에 삭제를 기록한다.
 /// 적재품이 남으면 Retargeting으로 유지한다. 재배정은 같은 엔티티의 revision을 늘리고 최초 작업 생성 순서를 보존한다.
 /// LastAppliedActionSequence는 내부 인계가 소비한 행동 번호이며 0은 미처리다. 실제 적재 품목·수량은 Worker의 StoredItemElement가 원본이다.

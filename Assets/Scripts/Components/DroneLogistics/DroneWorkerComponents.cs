@@ -31,13 +31,12 @@ public struct DroneWorker : IComponentData
 /// <summary>
 /// 역할·목적: 관리 측에 위치·작업 가능 상태와 관측 revision을 전달하는 스냅샷이며 위치 원본을 대체하지 않는다.
 /// 부착 엔티티: DroneWorker가 있는 드론 수행자 엔티티다.
-/// 생성: DroneSpawnUtility가 입력 위치, Revision=1, CanAcceptTask=false로 초기화한다. 위치 원본의 지속 관측 갱신과 실제 이동 시스템은 후속이다.
+/// 생성: DroneSpawnUtility가 입력 위치, Revision=1, CanAcceptTask=false로 초기화한다. 지속 관측은 DroneWorkerObservationPreparationSystem이 마지막 확정 이동 결과로 준비한다.
 /// 이용: Decision의 DroneTaskDecisionSystem은 경로 출발점·후보 revision에, DroneItemTransferDecisionSystem은 행동 자격 검사에 사용한다.
 /// DroneTaskReservationSystem(Reservation), DroneTaskExecutionSystem/DroneItemTransferExecutionSystem(Execution), DroneTaskAssignmentPublishSystem/DroneTaskLifecycleApplySystem(StateApply)도 관측·경로·행동의 현재성을 재검사한다.
-/// 제거: 배정 종료로 제거하지 않는 수행자 관측이다. 실제 Producer의 수명주기는 후속이며 엔티티 삭제 시 함께 사라진다.
+/// 제거: 배정 종료로 제거하지 않는 수행자 관측이다. 관측 Producer는 Preparation에서 값이 바뀔 때만 Revision을 증가시킨다. 엔티티 삭제 시 함께 사라진다.
 /// Position은 월드 좌표다. 관련 관측 변경 시 양수 Revision을 갱신하고 Revision=0/CanAcceptTask=false는 신규 작업 가능 상태로 해석하지 않는다.
-/// TODO(SoT 연결): 실제 드론 위치의 원본/Writer를 확정하고 이 관측을 원본에서 갱신하는 경계를 연결해야 한다.
-/// 현재는 실행 중 SoT 위반을 재현한 것이 아니라, 위치 원본과 관측의 연결이 미완성인 상태다.
+/// 위치 연결: 이동 Execution은 LocalTransform/GridPosition을 함께 갱신하고 다음 Preparation이 이 관측을 준비한다.
 /// </summary>
 public struct DroneWorkerObservation : IComponentData
 {

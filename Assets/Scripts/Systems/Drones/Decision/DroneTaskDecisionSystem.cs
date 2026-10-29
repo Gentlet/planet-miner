@@ -4,7 +4,7 @@ using Unity.Mathematics;
 
 /// <summary>
 /// 역할·목적: Decision에서 필요한 공급/회수 작업, 무효화, 경로 평가와 배정 후보를 판단한다.
-/// 입력: Command 반영 뒤의 현장 요구량, 보관품/공간, 기존 작업·배정, 수행자 관측과 외부 경로 평가 결과.
+/// 입력: Command 반영 뒤의 현장 요구량, 보관품/공간, 기존 작업/배정과 수행자 관측. 경로는 이번 틱 내부 판단을 우선 읽고 없으면 기존 공개 결과를 읽는다.
 /// 출력·소유권: 공통 후보 엔티티의 생성/무효화/경로/후보 버퍼만 작성한다. 작업·실물·예약 원본은 쓰지 않는다.
 /// 이용: Reservation이 후보와 현장 수량을 중재하고 Execution이 생성/경로 의도를 소비한다.
 /// 정리·가시화: 후보는 매 틱 Clear한다. 별도 공개 대기 예약은 읽기만 하며 Reservation의 정산까지 보존한다.
@@ -273,7 +273,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
             bool invalid = !DroneSchedulingUtility.RouteIsCurrent(manager, request, carryingCapacity);
             if (!invalid && manager.HasComponent<DroneRouteEvaluationResult>(routes[i]))
             {
-                var result = manager.GetComponentData<DroneRouteEvaluationResult>(routes[i]);
+                var result = DroneSchedulingUtility.ReadCurrentRouteResult(manager, routes[i]);
                 invalid = result.EvaluationRevision != request.EvaluationRevision ||
                           (result.Status != DroneRouteEvaluationStatusEnum.None &&
                            !DroneSchedulingUtility.TryReadRoute(manager, routes[i], carryingCapacity, out _, out _));
@@ -434,7 +434,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         if (route == Entity.Null) return false;
         if (!DroneSchedulingUtility.TryReadRoute(manager, route, capacity, out bool reachable, out _)) return false;
         if (!reachable) return false;
-        var result = manager.GetComponentData<DroneRouteEvaluationResult>(route);
+        var result = DroneSchedulingUtility.ReadCurrentRouteResult(manager, route);
         if (!result.HasDropPosition) return false;
         // 현재 셀은 호출자의 네트워크 자격을 통과했다. 외부 평가 좌표도 같은 망 안이어야 한다.
         if (!DroneTaskNetworkUtility.IsCellInNetwork(networks, network, result.DropPosition))
@@ -458,6 +458,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         bestRoute = Entity.Null;
         float bestDistance = float.MaxValue;
         bool waiting = false;
+        bool waitingForEnergy = false;
         var observation = manager.GetComponentData<DroneWorkerObservation>(assignment.Worker);
         // 적재품은 공급원을 다시 거치지 않는 Direct 경로를 비교한다.
         // 경로 평가가 남으면 보관/방출로 우회하지 않고 기다리며, 완료 결과의 거리 동률은 PlacementStamp로 푼다.
@@ -488,7 +489,12 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 waiting = true;
                 continue;
             }
-            if (!reachable) continue;
+            if (!reachable)
+            {
+                waitingForEnergy |= DroneSchedulingUtility.ReadCurrentRouteResult(manager, route).Status ==
+                    DroneRouteEvaluationStatusEnum.WaitingForEnergy;
+                continue;
+            }
             if (bestDestination == Entity.Null || distance < bestDistance ||
                 (distance == bestDistance && DroneSchedulingUtility.ComparePlacement(manager, destination, bestDestination) < 0))
             {
@@ -498,6 +504,10 @@ public partial struct DroneTaskDecisionSystem : ISystem
             }
         }
         if (waiting) return CargoDestinationSelectionEnum.Waiting;
+        if (bestDestination == Entity.Null && waitingForEnergy)
+        {
+            return CargoDestinationSelectionEnum.Waiting;
+        }
         return bestDestination == Entity.Null ? CargoDestinationSelectionEnum.NoDestination : CargoDestinationSelectionEnum.Selected;
     }
 

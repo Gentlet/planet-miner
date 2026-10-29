@@ -7,7 +7,7 @@ using Unity.Mathematics;
 /// 입력·출력: ECS 원본과 외부 관측/경로 결과를 읽고 수량·유효성·우선순위를 계산한다. 공급원 재고/보관 공간을 예약하거나 실물을 옮기지 않는다.
 /// 이용: DroneTaskDecisionSystem, DroneTaskReservationSystem, DroneTaskExecutionSystem 및 Publish/Lifecycle의 적용 검사가 공유한다.
 /// 수명·소유권: GetOrCreateCandidates만 World 단일 의도/후보 버퍼 엔티티를 준비한다. 나머지 조회는 원본 쓰기 없이 적용 가능성을 반환한다.
-/// 실제 위치 원본·경로 평가 Producer는 후속이다. 관측/평가 결과와 revision을 확인하는 것이 실제 비행 구현을 뜻하지 않는다.
+/// 위치/관측/경로 Producer와 관리층 사이의 읽기 계약이다. 실제 이동은 Movement Execution이 단독 소유한다.
 /// </summary>
 public static class DroneSchedulingUtility
 {
@@ -367,6 +367,15 @@ public static class DroneSchedulingUtility
     public static bool AssignmentNeedsCleanup(EntityManager manager, Entity assignmentEntity, in DroneTaskAssignment assignment,
         NativeArray<Entity> sites)
     {
+        if (manager.HasComponent<DroneMovementResult>(assignment.Worker))
+        {
+            var movement = manager.GetComponentData<DroneMovementResult>(assignment.Worker);
+            if (movement.Assignment == assignmentEntity && movement.AssignmentRevision == assignment.Revision &&
+                movement.Failure != DroneMovementFailureEnum.None)
+            {
+                return true;
+            }
+        }
         DroneLogisticsTask task = default;
         bool taskValidated = false;
         if (manager.HasComponent<DroneTransportReservation>(assignmentEntity))
@@ -440,6 +449,15 @@ public static class DroneSchedulingUtility
         if (!manager.HasComponent<DroneWorkerObservation>(assignment.Worker)) return false;
         if (!manager.HasComponent<DroneWorkerAssignment>(assignment.Worker)) return false;
         if (manager.GetComponentData<DroneWorkerAssignment>(assignment.Worker).Assignment != assignmentEntity) return false;
+        if (manager.HasComponent<DroneMovementState>(assignment.Worker))
+        {
+            var movement = manager.GetComponentData<DroneMovementState>(assignment.Worker);
+            if (movement.ChargingStation != Entity.Null || movement.ReturnStation != Entity.Null ||
+                manager.GetComponentData<DroneBatteryState>(assignment.Worker).CurrentCharge <= 0f)
+            {
+                return false;
+            }
+        }
         var observation = manager.GetComponentData<DroneWorkerObservation>(assignment.Worker);
         if (observation.Revision == 0 || !math.all(math.isfinite(observation.Position))) return false;
         if (AssignmentCreationSequence(manager, assignment) == 0) return false;
@@ -554,8 +572,7 @@ public static class DroneSchedulingUtility
             return false;
         }
 
-        // TODO(SoT 연결): 아래 검사는 요청과 관측의 일치만 확인한다. 실제 드론 위치 원본과의 연결/검사는 아직 없다.
-        // 이동/관측 Producer 연결 시 완성할 계약이며, 현재 실행에서 위치 불일치를 재현했다는 의미는 아니다.
+        // Preparation이 마지막 확정 위치를 관측에 연결한다. 여기서는 그 입력과 요청 스냅샷의 일치만 확인한다.
         var observation = manager.GetComponentData<DroneWorkerObservation>(request.Worker);
         if (request.WorkerObservationRevision != observation.Revision ||
             !math.all(request.OriginPosition == observation.Position))
@@ -581,7 +598,7 @@ public static class DroneSchedulingUtility
         if (request.Source != Entity.Null || request.EvaluationRevision == 0) return false;
         if (assignment.Worker != request.Worker || assignment.Revision != request.AssignmentRevision) return false;
         var observation = manager.GetComponentData<DroneWorkerObservation>(request.Worker);
-        // TODO(SoT 연결): 실제 위치 원본 연결 전에는 관측/요청 revision 일치까지만 검증한다.
+        // Preparation이 준비한 위치/관측 revision과 요청을 비교하며 실제 이동 원본을 중복 갱신하지 않는다.
         if (observation.Revision != request.WorkerObservationRevision ||
             !math.all(observation.Position == request.OriginPosition)) return false;
         if (request.IsDropPositionSearch) return request.Destination == Entity.Null;
@@ -589,6 +606,20 @@ public static class DroneSchedulingUtility
         if (manager.HasComponent<PendingBuildingDemolition>(request.Destination)) return false;
         if (!manager.HasComponent<GridPosition>(request.Destination)) return false;
         return math.all(manager.GetComponentData<GridPosition>(request.Destination).Value == request.DestinationPosition);
+    }
+
+    /// <summary>도메인 내부는 이번 틱 판단을 읽는다. 외부 공개 Result는 기존 EndSimulation까지 보존한다.</summary>
+    public static DroneRouteEvaluationResult ReadCurrentRouteResult(EntityManager manager, Entity request)
+    {
+        if (manager.HasComponent<DroneRouteEvaluationDecision>(request))
+        {
+            var decision = manager.GetComponentData<DroneRouteEvaluationDecision>(request);
+            if (decision.Ready)
+            {
+                return decision.Result;
+            }
+        }
+        return manager.GetComponentData<DroneRouteEvaluationResult>(request);
     }
 
     public static bool TryReadRoute(EntityManager manager, Entity requestEntity, int carryingCapacity,
@@ -603,13 +634,14 @@ public static class DroneSchedulingUtility
         }
 
         var request = manager.GetComponentData<DroneRouteEvaluationRequest>(requestEntity);
-        var result = manager.GetComponentData<DroneRouteEvaluationResult>(requestEntity);
+        var result = ReadCurrentRouteResult(manager, requestEntity);
         if (!RouteIsCurrent(manager, request, carryingCapacity) || result.EvaluationRevision != request.EvaluationRevision)
         {
             return false;
         }
 
-        if (result.Status == DroneRouteEvaluationStatusEnum.Unreachable)
+        if (result.Status == DroneRouteEvaluationStatusEnum.Unreachable ||
+            result.Status == DroneRouteEvaluationStatusEnum.WaitingForEnergy)
         {
             return true;
         }
@@ -709,7 +741,7 @@ public static class DroneSchedulingUtility
             if (!TryReadRoute(manager, candidate.RouteRequest, carryingCapacity, out bool dropReachable, out _) ||
                 !dropReachable) return 0;
             var dropRequest = manager.GetComponentData<DroneRouteEvaluationRequest>(candidate.RouteRequest);
-            var dropResult = manager.GetComponentData<DroneRouteEvaluationResult>(candidate.RouteRequest);
+            var dropResult = ReadCurrentRouteResult(manager, candidate.RouteRequest);
             if (!dropRequest.IsDropPositionSearch || dropRequest.Assignment != candidate.Assignment) return 0;
             return math.all(dropResult.DropPosition == candidate.DropPosition) ? quantity : 0;
         }

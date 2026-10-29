@@ -23,13 +23,16 @@ public partial class DroneConfigInitializationSystem : SystemBase
     {
         Entity createdCapacity = Entity.Null;
         Entity createdBattery = Entity.Null;
+        Entity createdMovement = Entity.Null;
         try
         {
             using var capacities = manager.CreateEntityQuery(typeof(DroneCapacityState));
             using var batteries = manager.CreateEntityQuery(typeof(DroneBatteryConfig));
+            using var movements = manager.CreateEntityQuery(typeof(DroneMovementConfig));
+            int movementCount = movements.CalculateEntityCount();
             int capacityCount = capacities.CalculateEntityCount();
             int batteryCount = batteries.CalculateEntityCount();
-            if (capacityCount > 1 || batteryCount > 1)
+            if (capacityCount > 1 || batteryCount > 1 || movementCount > 1)
             {
                 throw new InvalidOperationException("Drone configuration has duplicate singleton state.");
             }
@@ -45,7 +48,17 @@ public partial class DroneConfigInitializationSystem : SystemBase
                     throw new InvalidOperationException("Existing drone maximum battery must be finite and positive.");
                 }
             }
-            if (capacityCount == 1 && batteryCount == 1)
+            if (movementCount == 1)
+            {
+                var movement = movements.GetSingleton<DroneMovementConfig>();
+                if (!math.isfinite(movement.Speed) || movement.Speed <= 0f ||
+                    !math.isfinite(movement.EmergencySpeed) || movement.EmergencySpeed <= 0f ||
+                    !math.isfinite(movement.EnergyPerDistance) || movement.EnergyPerDistance <= 0f)
+                {
+                    throw new InvalidOperationException("Existing drone movement configuration must be finite and positive.");
+                }
+            }
+            if (capacityCount == 1 && batteryCount == 1 && movementCount == 1)
             {
                 return true;
             }
@@ -82,6 +95,13 @@ public partial class DroneConfigInitializationSystem : SystemBase
                 throw new InvalidOperationException("maximumBattery must be finite and positive.");
             }
 
+            var movementConfig = new DroneMovementConfig
+            {
+                Speed = ReadPositiveNumber(input, "movementSpeed"),
+                EmergencySpeed = ReadPositiveNumber(input, "emergencyMovementSpeed"),
+                EnergyPerDistance = ReadPositiveNumber(input, "batteryConsumptionPerDistance")
+            };
+
             // 모든 입력/기존 상태 검사가 끝나기 전에는 기존 원본이나 새 엔티티를 변경하지 않는다.
             if (capacityCount == 0)
             {
@@ -92,6 +112,11 @@ public partial class DroneConfigInitializationSystem : SystemBase
             {
                 createdBattery = manager.CreateEntity(typeof(DroneBatteryConfig));
                 manager.SetComponentData(createdBattery, new DroneBatteryConfig { MaximumCharge = maximumBattery });
+            }
+            if (movementCount == 0)
+            {
+                createdMovement = manager.CreateEntity(typeof(DroneMovementConfig));
+                manager.SetComponentData(createdMovement, movementConfig);
             }
             return true;
         }
@@ -105,9 +130,32 @@ public partial class DroneConfigInitializationSystem : SystemBase
             {
                 manager.DestroyEntity(createdBattery);
             }
+            if (createdMovement != Entity.Null && manager.Exists(createdMovement))
+            {
+                manager.DestroyEntity(createdMovement);
+            }
             SimulationFailureUtility.RecordInitializationFailure(manager,
                 $"[DroneConfigInitializationSystem] {exception.Message}", "Drone configuration initialization failed.");
             return false;
         }
+    }
+
+    private static float ReadPositiveNumber(JObject input, string name)
+    {
+        var token = input[name];
+        if (token == null)
+        {
+            throw new InvalidOperationException($"{name} must be explicit.");
+        }
+        if (token.Type != JTokenType.Float && token.Type != JTokenType.Integer)
+        {
+            throw new InvalidOperationException($"{name} must be a number.");
+        }
+        float value = token.Value<float>();
+        if (!math.isfinite(value) || value <= 0f)
+        {
+            throw new InvalidOperationException($"{name} must be finite and positive.");
+        }
+        return value;
     }
 }

@@ -7,7 +7,7 @@ using Unity.Entities;
 /// 출력·소유권: World 작업 순번을 발급하고 작업·경로 요청 생성/삭제를 EndSimulation ECB에 기록한다.
 /// 적용 검사만 수행하며 작업 필요 여부나 경로 사용 여부를 다시 탐색하지 않고 실제 이동/행동도 수행하지 않는다.
 /// 정리·가시화: 소비한 의도 버퍼는 비우고 생성/삭제는 EndSimulation에서 확정한다.
-/// 생성된 작업과 경로 요청은 다음 시뮬레이션의 Decision 및 외부 경로 평가자가 이용한다.
+/// 생성된 작업과 경로 요청은 다음 Decision부터 이용한다. 유지되는 요청의 경로 판단도 같은 EndSimulation에 공개한다.
 /// </summary>
 [UpdateInGroup(typeof(DroneExecutionGroup))]
 public partial struct DroneTaskExecutionSystem : ISystem
@@ -47,6 +47,8 @@ public partial struct DroneTaskExecutionSystem : ISystem
                 if (!DroneSchedulingUtility.RouteIsCurrent(manager, decision.Request, carryingCapacity)) continue;
                 Entity request = ecb.CreateEntity();
                 ecb.AddComponent(request, decision.Request);
+                ecb.AddComponent(request, new DroneRouteEvaluationResult { EvaluationRevision = decision.Request.EvaluationRevision });
+                ecb.AddComponent<DroneRouteEvaluationDecision>(request);
             }
             else if (decision.Kind == DroneRouteDecisionKindEnum.Remove)
             {
@@ -54,7 +56,18 @@ public partial struct DroneTaskExecutionSystem : ISystem
                 if (!manager.HasComponent<DroneRouteEvaluationRequest>(decision.ExistingRequest)) continue;
                 ecb.DestroyEntity(decision.ExistingRequest);
             }
-            // Retain은 실제 ECS/ECB 변경 없이 유지한다.
+            else if (decision.Kind == DroneRouteDecisionKindEnum.Retain)
+            {
+                if (manager.HasComponent<DroneRouteEvaluationDecision>(decision.ExistingRequest))
+                {
+                    var evaluation = manager.GetComponentData<DroneRouteEvaluationDecision>(decision.ExistingRequest);
+                    if (evaluation.Ready)
+                    {
+                        // 삭제 의도와 같은 ECB에서 분기하므로 삭제 뒤 결과 SetComponent를 기록하지 않는다.
+                        ecb.SetComponent(decision.ExistingRequest, evaluation.Result);
+                    }
+                }
+            }
         }
         decisions.Clear();
     }

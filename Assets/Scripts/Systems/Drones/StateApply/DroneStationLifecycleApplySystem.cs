@@ -205,6 +205,9 @@ internal struct DroneStationLifecycleApplyJob : IJob
         ECB.RemoveComponent<DroneWorkerAssignment>(drone);
         ECB.RemoveComponent<DroneCargoState>(drone);
         ECB.RemoveComponent<DroneActivityState>(drone);
+        ECB.RemoveComponent<DroneMovementState>(drone);
+        ECB.RemoveComponent<DroneMovementDecision>(drone);
+        ECB.RemoveComponent<DroneMovementResult>(drone);
         ECB.RemoveComponent<StoredItemElement>(drone);
         ItemLifecycleUtility.InitializeItemRole(ref ECB, drone, ItemTypeEnum.Drone, stationPosition, itemPosition, ItemOwnership.Stored(request.Station));
         RecordNativeAppearance(drone, ItemPrefab, itemPosition);

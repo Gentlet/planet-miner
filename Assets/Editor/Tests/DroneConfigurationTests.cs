@@ -85,7 +85,7 @@ public class DroneConfigurationTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void ProductConfigPublishesOnce_AndPreservesExistingResearchCapacity()
+    public void DroneConfigPublishesOnce_AndPreservesExistingCapacity()
     {
         Entity capacity = _entityManager.CreateEntity(typeof(DroneCapacityState));
         _entityManager.SetComponentData(capacity, new DroneCapacityState { CarryingCapacity = 8 });
@@ -95,9 +95,49 @@ public class DroneConfigurationTests : EcsWorldTestFixture
         Assert.AreEqual(8, _entityManager.GetComponentData<DroneCapacityState>(capacity).CarryingCapacity);
         using var batteries = _entityManager.CreateEntityQuery(typeof(DroneBatteryConfig));
         Assert.AreEqual(100f, batteries.GetSingleton<DroneBatteryConfig>().MaximumCharge);
+        using var movement=_entityManager.CreateEntityQuery(typeof(DroneMovementConfig));
+        var settings=movement.GetSingleton<DroneMovementConfig>();
+        Assert.AreEqual(4f,settings.Speed);
+        Assert.AreEqual(0.5f,settings.EmergencySpeed);
+        Assert.AreEqual(1f,settings.EnergyPerDistance);
         Assert.IsTrue(DroneConfigInitializationSystem.Initialize(_entityManager, "invalid ignored after valid publication"));
         using var capacities = _entityManager.CreateEntityQuery(typeof(DroneCapacityState));
         Assert.AreEqual(1, capacities.CalculateEntityCount());
+    }
+
+    [TestCase("movementSpeed", "missing")]
+    [TestCase("movementSpeed", "zero")]
+    [TestCase("movementSpeed", "string")]
+    [TestCase("emergencyMovementSpeed", "missing")]
+    [TestCase("emergencyMovementSpeed", "zero")]
+    [TestCase("emergencyMovementSpeed", "string")]
+    [TestCase("batteryConsumptionPerDistance", "missing")]
+    [TestCase("batteryConsumptionPerDistance", "zero")]
+    [TestCase("batteryConsumptionPerDistance", "string")]
+    public void InvalidMovementInput_DoesNotPublishPartialConfiguration(string field, string fault)
+    {
+        var json = JObject.Parse(Resources.Load<TextAsset>(DroneConfigInitializationSystem.ResourcePath).text);
+        if (fault == "missing")
+        {
+            json.Remove(field);
+        }
+        if (fault == "zero")
+        {
+            json[field] = 0;
+        }
+        if (fault == "string")
+        {
+            json[field] = "1";
+        }
+        LogAssert.Expect(LogType.Error, new Regex("DroneConfigInitializationSystem"));
+        Assert.IsFalse(DroneConfigInitializationSystem.Initialize(_entityManager, json.ToString()));
+        using var capacities = _entityManager.CreateEntityQuery(typeof(DroneCapacityState));
+        using var batteries = _entityManager.CreateEntityQuery(typeof(DroneBatteryConfig));
+        using var movements = _entityManager.CreateEntityQuery(typeof(DroneMovementConfig));
+        Assert.AreEqual(0, capacities.CalculateEntityCount());
+        Assert.AreEqual(0, batteries.CalculateEntityCount());
+        Assert.AreEqual(0, movements.CalculateEntityCount());
+        Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
     }
 
     [TestCase("{}")]

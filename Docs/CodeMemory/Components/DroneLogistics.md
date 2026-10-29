@@ -2,11 +2,11 @@
 
 [전체 색인](README.md) · [배치와 공사](Construction.md) · [아이템과 저장](ItemsAndStorage.md)
 
-드론 작업/예약/인계/재배정과 정거장 연결/보관/Identity/요청/계획의 데이터 계약을 설명한다. 일반 운반 계획은 별도 버퍼로 구분하며 배정 공개는 기존 Publish에 연결했고 실제 운반과 경로 평가 Producer는 후속이다.
+드론 작업/예약/인계/재배정과 정거장 연결/보관/Identity/요청/계획의 데이터 계약을 설명한다. 일반 운반 계획은 별도 버퍼로 구분하며 배정 공개는 기존 Publish에 연결했고 실제 경로/이동/관측/도착은 [이동 명세](../../Specifications/DroneMovement.md)를 따르며 픽업/납품/정상 귀환/충전은 후속이다.
 
 2026-10-15 Task 9.1은 [상태 전이·Lifecycle Owner 계약](../../Specifications/DroneLifecycle.md)을 확정했다. 1A~6A의 수납·완충 전/연속 배차·귀환·비상 이동·중단 정산은 후속 수행부가 따라야 할 정책이다. Task 9.1 당시 23개 타입과 관리 계층을 유지했으며 실제 정거장·이동·배터리·충전·수납 Writer나 새 상태 enum을 추가하지 않았다. 이후 Task 9.2의 정거장 기반은 아래 별도 타입/명세로 구분한다. 작업/배정의 기존 상태와 수행자 자체의 후속 개념 상태를 구분한다.
 
-기존 142사례와 기존 통합 4사례는 이전 구조의 별도 실행이며 합산하지 않는다. Task 9.3.1은 생성 초기화, 9.3은 [명시적 출고/정박/수납과 용량](../../Specifications/DroneIdentityAndStationStorage.md), [공통 설정 초기화](../../Specifications/DroneCapacityInitializationPlan.md)를 연결한다. 이동/귀환 선택/경로 계산/지속 관측/행동 신호와 연구 Writer는 후속이다. DropPosition은 실제 위치 원본이 아니다.
+기존 142사례와 기존 통합 4사례는 이전 구조의 별도 실행이며 합산하지 않는다. Task 9.3.1은 생성 초기화, 9.3은 [명시적 출고/정박/수납과 용량](../../Specifications/DroneIdentityAndStationStorage.md), [공통 설정 초기화](../../Specifications/DroneCapacityInitializationPlan.md)를 연결한다. 경로/이동/관측/도착과 최소 비상 귀환은 구현되어 있다. 정상 귀환/충전/픽업과 납품 행동 Producer 및 연구 Writer는 후속이다. DropPosition은 실제 위치 원본이 아니다.
 
 ```text
 Command / EndCommand: 현장·자재 요구와 취소 반환·삭제 공개
@@ -35,16 +35,16 @@ Placement는 현장·자재 요구만 생성한다. Decision은 생성·무효�
 
 Construction은 BuildingStateApply 마지막에서 현재 Owner=Null/GridPosition·활성 Destroy와 기존 도착량으로 완공을 판단한다. 이번 틱 드론 납품·마지막 방해물 회수는 다음 틱에 반영된다. 예정 월드 위치 기록은 없고 활성·비취소 현장 내부 World Spawn/드론 방출은 공통 helper로 금지한다.
 
-최초 배정은 수행자별 공급 대표 PlacementStamp→CreationSequence, 회수 대표 CreationSequence를 선택한 뒤 두 대표 CreationSequence를 비교한다. 적재품 재배정은 신규보다 먼저 최초 OriginalTaskCreationSequence 순서다. Supply는 필요 현장→보관처, Recovery는 보관처만 Direct 실제 거리/동률 PlacementStamp로 고른다. 관련 결과 None은 대기하며 목적지가 없으면 안전 방출 위치를 평가한다. 현재 셀이 현장 내부이면 외부 평가자의 가장 가까운 실제 도달 가능한 외부 셀을 기다리고 None/Unreachable은 적재 대기다.
+최초 배정은 수행자별 공급 대표 PlacementStamp→CreationSequence, 회수 대표 CreationSequence를 선택한 뒤 두 대표 CreationSequence를 비교한다. 적재품 재배정은 신규보다 먼저 최초 OriginalTaskCreationSequence 순서다. Supply는 필요 현장→보관처, Recovery는 보관처만 Direct 실제 거리/동률 PlacementStamp로 고른다. 관련 결과 None은 대기하며 목적지가 없으면 안전 방출 위치를 평가한다. 현재 셀이 현장 내부이면 Flight Decision의 가장 가까운 실제 도달 가능한 외부 셀 결과를 기다리고 None/Unreachable은 적재 대기다.
 
-재배정은 같은 배정 revision을 증가시키고 행동 번호를 0으로 초기화하며 실물·출처·최초 순서·기존 결과 참조를 보존한다. 기존 적재량에 공통 용량을 소급 적용하지 않는다. 최종 Drop은 배정 목표==요청 위치==관측 셀과 현장 외부를 검사하고 새 현장이 막으면 Retargeting으로 돌려 실물을 보존한다. 관측 원본과 이동 Producer는 후속이다.
+재배정은 같은 배정 revision을 증가시키고 행동 번호를 0으로 초기화하며 실물·출처·최초 순서·기존 결과 참조를 보존한다. 기존 적재량에 공통 용량을 소급 적용하지 않는다. 최종 Drop은 배정 목표==요청 위치==관측 셀과 현장 외부를 검사하고 새 현장이 막으면 Retargeting으로 돌려 실물을 보존한다. 이동 Execution이 위치 원본을 쓰고 다음 Observation Preparation이 관측을 갱신한다.
 
 생성 판단·배정/행동 정산·공통 실물 API는 각 시스템 본체 한 파일에서 유지하며 Unity Entities 소스 생성용 partial 선언을 파일 분리 근거로 사용하지 않는다.
 2026-10-22 Task 9.2의 Unity 컴파일 오류 없음과 관련 선택 EditMode 99/99(신규 정거장 14/14 포함)를 확인했다. 기존 건설 통합 fixture의 그룹/준비·격리 공급 누락 보완과 검수 결과는 [정거장 명세](../../Specifications/DroneStationNetwork.md#검증)에 기록했다. 실제 드론 수행자·수용량·귀환·충전과 작업 후보의 망 필터는 후속이다.
 
 ## DroneBatteryState
 
-현재 배터리량 CurrentCharge만 소유한다. DroneSpawnUtility가 호출자의 명시적 최대치로 새 개체를 초기화하고 기존 값은 역할 초기화로 충전하지 않는다. 최대치 설정과 Identity 전환은 Task 9.3에서 연결했고 이동 소비/충전은 9.10/9.14 후속이다. 생성 초기 구성과 EndSimulation 공개·Ready 전제는 [드론 생성 명세](../../Specifications/DroneCreation.md)를 따른다.
+현재 배터리량 CurrentCharge만 소유한다. DroneSpawnUtility가 호출자의 명시적 최대치로 새 개체를 초기화하고 기존 값은 역할 초기화로 충전하지 않는다. 최대치 설정과 Identity 전환은 Task 9.3에서 연결했고 이동 소비는 9.10에 연결했고 실제 충전은 9.14 후속이다. 생성 초기 구성과 EndSimulation 공개·Ready 전제는 [드론 생성 명세](../../Specifications/DroneCreation.md)를 따른다.
 
 ## DroneStationStorage
 
@@ -60,7 +60,7 @@ Construction은 BuildingStateApply 마지막에서 현재 Owner=Null/GridPositio
 
 ## DroneActivityState
 
-수행자 자체의 Idle/Moving/Acting/Charging/WaitingForCharge 활동이다. 생성이 Idle을 기록하고 Store/Dock 자격 검사가 읽는다. 작업/배정 상태를 복제하지 않는다. 실제 이동/충전 갱신 Writer는 후속이며 수납 전환에서 제거한다.
+수행자 자체의 Idle/Moving/Acting/Charging/WaitingForCharge 활동이다. 생성이 Idle을 기록하고 Store/Dock 자격 검사가 읽는다. 작업/배정 상태를 복제하지 않는다. 실제 이동/대기는 Movement Execution이 작성하고 충전 입력은 후속이며 수납 전환에서 제거한다.
 
 ## DroneBatteryConfig
 
@@ -186,10 +186,10 @@ Task 9.4의 외부 생성/취소 요청이다. Submit은 시뮬레이션 전 메
 
 - **종류·부착 대상·목적:** 일반 IComponentData. 상위 작업·현장·수행자와 분리된 하위 작업 엔티티다. 현장 취소 이후에도 적재 실물을 처리할 수 있도록 독립시킨다.
 - **필드:** Worker/Task·Source/Destination은 배정 대상이다. OriginalTaskCreationSequence는 최초 순서, Revision/LastAppliedActionSequence는 버전/소비 번호, State/NextAction은 진행/행동이다. ItemType/AssignedQuantity는 배정량이며 실제 적재 원본은 StoredItemElement다. DropPosition은 선택한 방출 도착 목표이고 GridPosition/관측 위치를 대신하지 않는다.
-- **Producer·공개:** DroneTaskAssignmentPublishSystem이 유효 후보를 Revision=1, LastAppliedActionSequence=0, MovingToSource로 기록한다. 현장 공급과 일반 반입/반출은 CollectFromStorage, 월드 회수는 RecoverWorldItem을 다음 행동으로 둔다. Source/Destination은 항상 출발/도착 대상이며 일반 반입 root의 Target은 도착, 반출 root의 Target은 출발 건물이다. EndSimulation에 유형별 확보 기록/수행자 연결과 함께 공개하며 생성만으로 드론이 움직이지 않는다. 일반 운반의 실제 수집/납품은 후속 수행부 범위다.
+- **Producer·공개:** DroneTaskAssignmentPublishSystem이 유효 후보를 Revision=1, LastAppliedActionSequence=0, MovingToSource로 기록한다. 현장 공급과 일반 반입/반출은 CollectFromStorage, 월드 회수는 RecoverWorldItem을 다음 행동으로 둔다. Source/Destination은 항상 출발/도착 대상이며 일반 반입 root의 Target은 도착, 반출 root의 Target은 출발 건물이다. EndSimulation에 유형별 확보 기록/수행자 연결과 함께 공개하며 생성만으로 드론이 움직이지 않는다. 공개된 배정은 다음 틱부터 Movement가 비행하며 일반 운반의 실제 수집/납품은 후속 수행부 범위다.
 - **재배정 공개:** 적재품은 새 배정 엔티티를 만들지 않고 기존 엔티티의 Revision을 증가시킨다. 최초 순서·적재 실물·출처·기존 행동 결과 참조를 보존하고 LastAppliedActionSequence=0, Source=Null, 새 Task/Destination/NextAction·예약 revision을 기록한다. revision이 uint.MaxValue이면 증가하지 않는다. 이전 revision 신호는 공통 인계 검사가 거절한다.
 - **공통 적재량 변경:** 빈 수행자의 새 배정 수량은 현재 공통 한도를 넘지 않는다. 이미 공개한 수량·예약·적재와 적재품 재배정량을 공통 한도 변경만으로 줄이지 않는다. 기존 적재 재배정은 현재 실물 수량과 현장 필요량을 사용한다.
-- **기존 현장 공급/회수의 인계 후 진행:** 수집 양수는 Origin=Supply/Recovery와 다음 공급/보관 행동을 설정하고 MovingToDestination이 된다. 0개는 예약을 해제하고 Cancelled/연결 해제로 끝난다. 공급·보관·방출 후 빈 적재는 Completed/연결 해제, 잔여품은 Retargeting/NextAction=None이다. 다음 Decision이 Direct 경로로 새 목적지를 선택하고 Reservation/Publish가 같은 배정을 갱신한다. 실제 이동·행동 신호 생성은 후속이다.
+- **기존 현장 공급/회수의 인계 후 진행:** 수집 양수는 Origin=Supply/Recovery와 다음 공급/보관 행동을 설정하고 MovingToDestination이 된다. 0개는 예약을 해제하고 Cancelled/연결 해제로 끝난다. 공급·보관·방출 후 빈 적재는 Completed/연결 해제, 잔여품은 Retargeting/NextAction=None이다. 다음 Decision이 Direct 경로로 새 목적지를 선택하고 Reservation/Publish가 같은 배정을 갱신한다. 실제 이동/도착은 Movement가 처리하며 수집/납품 행동 신호 생성은 후속이다.
 - **무효화·수명:** Reservation은 무효 대상·종료 상태의 개별 현장 예약을 해제한다. Decision은 무효 배정을 후보 경합에서 제외하고 InvalidateAssignment 의도를 기록한다. DroneTaskLifecycleApplySystem은 의도의 배정 버전과 현재 무효 여부를 재검사하여 적재가 없으면 Cancelled로 바꾸고 같은 배정을 가리키는 수행자 연결을 해제한다. 행동 요청·결과의 참조와 잔여 예약이 없을 때 EndSimulation에 삭제한다. 적재가 있으면 Retargeting으로 보존한다.
 - **수집한 회수품의 보관 예외:** 회수 실물이 수행자에 들어오면 원래 월드 회수 작업은 무효·Closed가 될 수 있다. 원래 실물이 수행자 소유이고 Origin=Recovery, NextAction=StoreCargo이며 보관 목적지가 유효하면 보관 이동 배정은 계속 유효하다. 상위 회수 작업이 Closed라는 이유만으로 수집한 실물의 보관을 막지 않는다.
 - **식별 검사:** Decision·Execution·StateApply가 DroneItemTransferValidationUtility.TryValidate의 읽기 검사를 공유한다. 배정 Revision과 양수 Action.Sequence, LastAppliedActionSequence·수행자 연결·행동·대상·관측 버전을 대조하며 StateApply에서만 유효 요청의 행동 번호를 반영한다. 수량이 0인 유효 요청도 번호를 소비하므로 같은 번호를 다시 인계하지 않는다. 이 배정 내부 번호는 World ReceiptSequence와 목적이 다르다.
@@ -223,9 +223,9 @@ Task 9.4의 외부 생성/취소 요청이다. Submit은 시뮬레이션 전 메
 
 - **종류·부착 대상·목적:** 일반 IComponentData. 외부 수행부가 수행자에 게시할 위치·신규 작업 가능 상태의 스냅샷이다. 관리 측의 배정 상태와 작성 책임을 분리한다.
 - **필드·검사:** Position은 출발 월드 좌표, Revision은 양수 관측 버전, CanAcceptTask는 신규 작업 가능 여부다. 후보에는 유한한 위치·양수 버전·작업 가능 상태가 필요하며 경로 결과와 후보 공개 시 요청의 버전·위치와 대조한다.
-- **현재 Reader/후속 Writer:** DroneSpawnUtility가 입력 위치/Revision 1/CanAcceptTask=false로 최초 관측을 기록한다. Decision과 예약/공개 검사에서 읽는다. 지속 관측을 갱신하거나 드론을 이동시키는 시스템은 없다. 위치/경로 조건이 바뀌면 후속 수행부가 Revision을 갱신해야 한다.
+- **Writer/Reader:** DroneSpawnUtility가 입력 위치/Revision 1/CanAcceptTask=false로 최초 관측을 기록한다. DroneWorkerObservationPreparationSystem은 마지막 확정 위치/배터리/연결/화물/활동으로 관측을 준비하며 값이 바뀔 때만 Revision을 증가시킨다. Decision과 예약/공개 검사에서 읽는다.
 - **수명:** 수행자 수명 동안 최신 스냅샷을 유지하는 계약이다. GridPosition이나 렌더 위치 원본을 대체하지 않는다.
-- **현재 원본 연결 한계:** 생성 시 위치와 최초 관측은 같은 입력을 사용한다. 관리 측은 Position/Revision을 서로 비교하지만 지속 관측이 위치 원본에서 갱신되었는지 검사하지 않는다. 이동/지속 관측 Producer는 후속이며 실제 이동과 관측의 정합성은 구현된 계약이 아니다.
+- **원본 연결:** Movement Execution은 LocalTransform/GridPosition/렌더와 실제 배터리를 함께 갱신한다. 다음 Preparation이 확정 위치에서 관측을 준비하며 관측만으로 원본 위치나 배터리를 만들지 않는다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneWorkerComponents.cs), [경로·후보 검사](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs).
 
 ## DroneWorkerAssignment
@@ -239,7 +239,7 @@ Task 9.4의 외부 생성/취소 요청이다. Submit은 시뮬레이션 전 메
 
 - **종류·부착 대상·목적:** 일반 IComponentData. 수행자의 적재 출처 제약이다. Origin은 None/Supply/Recovery이며 실제 목록·품목·수량은 StoredItemElement가 원본이다.
 - **현재 Reader:** 신규 배정 검사에서 Origin=None 및 빈 보관 버퍼를 요구한다. 적재가 남은 수행자에게 신규 작업을 중복 배정하지 않는다.
-- **Writer/제약:** DroneSpawnUtility가 Origin=None과 빈 화물 버퍼로 초기화한다. DroneTaskLifecycleApplySystem이 수집 성공 시 Supply 또는 Recovery로 설정하고 인계 후 빈 적재이면 None으로 비운다. Recovery는 보관 건물에 넣기 전 현장에 직접 공급할 수 없도록 SupplyConstructionSite에서 Origin=Supply를 요구한다. 상위 작업 종료나 Retargeting만으로 출처를 지우지 않는다. 적재품 목적지 재탐색은 Direct 경로로 연결했고 실제 이동은 후속이다.
+- **Writer/제약:** DroneSpawnUtility가 Origin=None과 빈 화물 버퍼로 초기화한다. DroneTaskLifecycleApplySystem이 수집 성공 시 Supply 또는 Recovery로 설정하고 인계 후 빈 적재이면 None으로 비운다. Recovery는 보관 건물에 넣기 전 현장에 직접 공급할 수 없도록 SupplyConstructionSite에서 Origin=Supply를 요구한다. 상위 작업 종료나 Retargeting만으로 출처를 지우지 않는다. 적재품 목적지 재탐색은 Direct 요청을 사용하고 Flight Decision의 실제 경로/충전 경유 평가 뒤 Movement가 비행한다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneWorkerComponents.cs), [빈 수행자 검사](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs), [출처 반영·공급 검사](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs).
 
 ## DroneRouteEvaluationRequest
@@ -248,15 +248,15 @@ Task 9.4의 외부 생성/취소 요청이다. Submit은 시뮬레이션 전 메
 - **필드:** Worker/관측 revision·Assignment/배정 revision·EvaluationRevision과 Kind/출발·공급원·목적지 위치를 가진다. Direct의 IsDropPositionSearch=true는 건물 목적지 평가가 아니라 현장 외부 방출 셀 검색이다. 이때 Source/Destination은 Null이고 원점 관측과 배정 버전을 고정한다.
 - **현재 Producer:** Decision이 배정 전 ViaSource 입력을 DroneRouteDecisionElement의 Create 명령에 기록하고, DroneTaskExecutionSystem이 현재 대상·관측 스냅샷을 적용 guard로 확인한 뒤 EndSimulation에 요청을 공개한다. Assignment=Null, AssignmentRevision=0이며 공급은 수행자→공급원→현장, 회수는 수행자→실물→보관처다. 같은 수행자·공급원·목적지의 현재 유효 요청을 재사용하고 같은 틱 중복 의도도 막는다.
 - **대기·Consumer·삭제:** 외부 평가자는 아직 없다. 필요한 경로의 결과 대기 중 요청을 유지한다. Decision과 후보 재검사는 관측·대상 위치·생존·철거 예정 상태를 대조한다. Decision은 무효 스냅샷·잘못된 결과를 제외하고 기존 요청마다 Retain 또는 Remove 명령을 기록한다. Execution은 명시된 Remove만 EndSimulation에 엔티티째 삭제하고 Retain에는 ECS/ECB 변경을 하지 않는다. 의도 버퍼에 없는 요청을 임의로 삭제하지 않는다. 유효 결과는 현재 관측에서 재사용되며 배정 후 수행자가 더 이상 빈 수행자가 아니면 다음 틱의 Decision·Execution을 거쳐 정리된다.
-- **적재 재배정 Direct 경로:** Decision이 Assignment/AssignmentRevision과 현재 관측→목적지 Direct 요청을 작성한다. Source=Null이며 현재 관측 버전/위치·배정 revision·대상 생존/위치·철거 예정 상태로 재검사한다. 관련 결과 None은 대기하고 Reachable의 실제 거리/동률 PlacementStamp를 비교한다. 실제 경로 계산·충전 경유 Writer는 후속이다.
-- **방출 셀 검색:** 현재 셀이 현장 내부일 때 Direct/IsDropPositionSearch 요청으로 외부 평가자에게 가장 가까운 실제 도달 가능한 현장 외부 셀을 요청한다. 관리층은 검색 범위·기본 거리·대체 좌표를 만들지 않는다. None/Unreachable이면 적재 대기하고 Reachable/HasDropPosition 결과의 현재 현장 외부 조건을 다시 확인한다.
+- **적재 재배정 Direct 경로:** Decision이 Assignment/AssignmentRevision과 현재 관측→목적지 Direct 요청을 작성한다. Source=Null이며 현재 관측 버전/위치·배정 revision·대상 생존/위치·철거 예정 상태로 재검사한다. 관련 결과 None은 대기하고 Reachable의 실제 거리/동률 PlacementStamp를 비교한다. Flight Decision이 실제 경로 거리/충전 경유를 평가한다. 에너지 대기는 도달 불가나 안전 방출 허가로 해석하지 않는다.
+- **방출 셀 검색:** 현재 셀이 현장 내부일 때 Direct/IsDropPositionSearch 요청으로 Flight Decision에 가장 가까운 실제 도달 가능한 현장 외부 셀을 요청한다. 관리층은 검색 범위·기본 거리·대체 좌표를 만들지 않는다. None/Unreachable이면 적재 대기하고 Reachable/HasDropPosition 결과의 현재 현장 외부 조건을 다시 확인한다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneRouteContracts.cs), [생성·유지 판단](../../../Assets/Scripts/Systems/Drones/Decision/DroneTaskDecisionSystem.cs), [요청 생성·정리](../../../Assets/Scripts/Systems/Drones/Execution/DroneTaskExecutionSystem.cs), [스냅샷 검사](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs).
 
 ## DroneRouteDecisionElement
 
 - **종류·부착 대상·목적:** IBufferElementData. DroneTaskCandidateDecisionElement와 같은 singleton에 있는 한 틱의 경로 생성·유지·삭제 명령 버퍼다. 경로 요청 엔티티의 실제 생성·삭제와 Decision의 판단을 분리한다.
 - **필드:** Kind는 Create/Retain/Remove다. Create는 Request에 새 DroneRouteEvaluationRequest 입력을 담고, Retain/Remove는 ExistingRequest로 기존 요청을 지정한다. Kind 없이 ExistingRequest의 Null 여부만으로 동작을 추론하지 않는다.
-- **Producer·Reader·소비:** DroneSchedulingUtility.GetOrCreateCandidates가 시스템 초기화 시 버퍼를 구성한다. Decision은 매 틱 비운 뒤 경로 생성 명령과 기존 요청별 유지/삭제 명령을 작성한다. DroneTaskExecutionSystem은 Create의 최신 관측·대상 스냅샷을 확인하여 생성하고 Remove의 기존 요청을 삭제하도록 EndSimulation ECB에 기록한다. Retain은 변경 없이 유지하고 소비 후 버퍼를 Clear한다. 의도에 없는 기존 요청을 찾아 삭제하는 추가 판단은 하지 않는다.
+- **Producer·Reader·소비:** DroneSchedulingUtility.GetOrCreateCandidates가 시스템 초기화 시 버퍼를 구성한다. Decision은 매 틱 비운 뒤 경로 생성 명령과 기존 요청별 유지/삭제 명령을 작성한다. DroneTaskExecutionSystem은 Create의 최신 관측·대상 스냅샷을 확인하여 생성하고 Remove의 기존 요청을 삭제하도록 EndSimulation ECB에 기록한다. Retain은 준비된 내부 평가 결과를 EndSimulation에 공개하고 요청을 유지한다. 소비 후 의도 버퍼를 Clear한다. 의도에 없는 기존 요청을 찾아 삭제하는 추가 판단은 하지 않는다.
 - **수명·한계:** Decision에서 Execution까지 유지하는 임시 판단 데이터다. 의도를 기록한 순간 요청 엔티티가 생기는 것은 아니며 외부 평가자는 EndSimulation 이후에 공개된 요청을 읽는다. Execution 뒤에 변경된 대상은 다음 Decision에서 재검사한다. 거리 계산·이동 실행 결과도 아니다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneRouteDecisionElement.cs), [작성](../../../Assets/Scripts/Systems/Drones/Decision/DroneTaskDecisionSystem.cs), [실행·소비](../../../Assets/Scripts/Systems/Drones/Execution/DroneTaskExecutionSystem.cs), [초기화](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs).
 
@@ -265,7 +265,7 @@ Task 9.4의 외부 생성/취소 요청이다. Submit은 시뮬레이션 전 메
 - **종류·부착 대상·목적:** 일반 IComponentData. 경로 요청과 같은 엔티티에 외부 평가자가 게시할 결과다. 배정 승인·실물 인계 성공이 아니다.
 - **필드·유효성:** EvaluationRevision은 요청 버전과 같고 Status는 None/Reachable/Unreachable이다. Reachable의 TotalDistance는 유한한 실제 거리다. 방출 검색 성공은 HasDropPosition=true와 DropPosition을 명시해야 하며 기본 0 좌표를 성공으로 해석하지 않는다. 목표 좌표는 실제 드론 위치가 아니고 None/Unreachable은 방출 대기다.
 - **현재 Consumer:** Decision이 유효 결과를 후보 비교에 사용하고 Reservation·Publish도 재검사한다. 현재 재고·공간 조건을 만족한 관련 공급원/보관처 중 평가를 기다리는 것이 있으면 해당 작업 후보를 대기시킨다. Unreachable은 후보에서 제외한다.
-- **Producer·수명:** 실제 거리 계산과 결과 게시 Producer는 아직 없다. 요청 유효기간 동안 재사용하며 무효화되면 같은 엔티티로 삭제한다. 테스트용 결과 입력과 실제 거리 계산 구현은 구분해야 한다.
+- **Producer/수명:** Flight Decision이 이번 틱 DroneRouteEvaluationDecision을 만들고 Task Decision은 이를 우선 읽는다. Task Execution은 유지되는 결과만 EndSimulation에 공개한다. 요청 유효기간 동안 재사용하며 무효화되면 요청/결과를 같은 엔티티로 삭제한다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneRouteContracts.cs), [결과 검사](../../../Assets/Scripts/Common/DroneSchedulingUtility.cs), [후보 생성](../../../Assets/Scripts/Systems/Drones/Decision/DroneTaskDecisionSystem.cs).
 
 ## DroneActionReadyRequest
@@ -274,7 +274,7 @@ Task 9.4의 외부 생성/취소 요청이다. Submit은 시뮬레이션 전 메
 - **필드·계약:** ReceiptSequence는 World의 접수 순서다. Action은 배정·버전·행동 번호·수행자·행동·대상의 DroneActionIdentity다. WorkerObservationRevision은 관측 버전, WorldPosition은 DropCargo 격자 위치다. CollectFromStorage, RecoverWorldItem, SupplyConstructionSite, StoreCargo, DropCargo를 구분한다.
 - **Producer·접수:** 시뮬레이션 전 주 스레드의 외부 입력 경계에서 DroneActionRequestUtility.Submit이 World 접수 순번을 발급하고 새 요청 엔티티를 즉시 게시한다. 전달된 ReceiptSequence는 발급값으로 덮어쓰며 DroneItemTransferDecision과 실물·슬롯 계획 버퍼도 부착한다. 실물·예약을 바꾸거나 행동 성공을 만들지는 않는다.
 - **Decision·Execution:** DroneItemTransferDecisionSystem은 요청의 초기 자격만 기록한다. Execution의 OrderFirst 인계 계획 시스템은 이번 드론 물류 쓰기 전의 실물 전체 ID·요구량/수량 상한·기존 슬롯 품목/개수를 확정한다. 이번 틱 수집 이후에만 가능한 Supply 신호를 미리 함께 넣으면 Decision 시점의 NextAction 불일치로 거절한다. 공급하려면 다음 틱에 새 행동 신호를 제출해야 한다.
-- **StateApply 검사:** DroneTaskLifecycleApplySystem은 접수 순서로 초기 자격·계획 준비 여부와 공통 TryValidate 검사를 다시 확인한다. 계획 안의 실물만 현재 버퍼·생존·품목·유효 Transfer 소유권·Destroy·현장 footprint로 검사한다. 같은 틱 건물 종료의 입고품·출고 여유는 계획에 포함할 수 있다. 드론 적용 중 새 수집품·새 공간은 추가하지 않는다. 일반 행동의 실제 이동·도착 검증과 관측 원본 Writer는 후속이다.
+- **StateApply 검사:** DroneTaskLifecycleApplySystem은 접수 순서로 초기 자격·계획 준비 여부와 공통 TryValidate 검사를 다시 확인한다. 계획 안의 실물만 현재 버퍼·생존·품목·유효 Transfer 소유권·Destroy·현장 footprint로 검사한다. 같은 틱 건물 종료의 입고품·출고 여유는 계획에 포함할 수 있다. 드론 적용 중 새 수집품·새 공간은 추가하지 않는다. 이동/도착과 관측 원본 Writer는 연결되어 있다. 실제 픽업/납품 행동 신호 Producer는 후속이며 도착만으로 실물 인계를 성공 처리하지 않는다.
 - **수명·결과 공개:** 처리한 요청과 세 판단/계획 컴포넌트 제거, 같은 엔티티의 DroneItemTransferResult 추가를 EndSimulation에 기록한다. 내부 pending 집합으로 ECB 재생 전 시스템 반복 호출의 중복 적용을 막는다. Lifecycle은 남은 요청 참조가 있는 배정의 삭제를 보류한다. 미소비 결과가 있는 엔티티에 새 요청을 부착해도 기존 결과를 덮어쓰거나 다시 인계하지 않는다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneActionContracts.cs), [접수·외부 소비 API](../../../Assets/Scripts/Common/DroneActionRequestUtility.cs), [초기 자격](../../../Assets/Scripts/Systems/Drones/Decision/DroneItemTransferDecisionSystem.cs), [계획 준비](../../../Assets/Scripts/Systems/Drones/Execution/DroneItemTransferExecutionSystem.cs), [공통 자격 검사](../../../Assets/Scripts/Common/DroneItemTransferValidationUtility.cs), [인계·결과](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs), [유효 소유권](../../../Assets/Scripts/Common/DroneItemTransferUtility.cs), [삭제 보류](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs).
 
@@ -326,3 +326,30 @@ Task 9.4의 외부 생성/취소 요청이다. Submit은 시뮬레이션 전 메
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneActionContracts.cs), [행동 정산·결과 Writer](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs), [실물 반영 API](../../../Assets/Scripts/Systems/Items/StateApply/ItemOwnershipApplySystem.cs), [외부 소비](../../../Assets/Scripts/Common/DroneActionRequestUtility.cs), [배정 참조 검사](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs).
 
 DroneActionIdentity는 요청/결과 안의 일반 구조체다. 인계가 revision/행동 번호·대상 일치를 검사하며 재배정은 revision 증가와 번호 초기화로 이전 신호를 구분한다. World ReceiptSequence는 요청 간 접수 순서다. 완공은 현재 월드 실물과 활성 Destroy로 차단을 갱신하며 회수 작업 존재 자체로 차단하지 않는다.
+
+## DroneMovementConfig
+
+- **종류/부착 대상/목적:** 읽기 전용 singleton IComponentData다. Speed/EmergencySpeed/EnergyPerDistance는 정상 속도/비상 속도/실제 거리당 소비다.
+- **Writer/수명:** DroneConfigInitializationSystem이 유한 양수를 다른 공통 드론 설정과 함께 원자적으로 검증/게시한다. 유효한 기존 singleton은 보존하며 World 수명을 따른다.
+- **Reader:** Flight Decision의 구간 에너지 계획과 Movement Execution의 실제 이동/소비가 읽는다. [이동 명세](../../Specifications/DroneMovement.md)를 따른다.
+
+## DroneMovementState
+
+- **종류/부착 대상/목적:** 수행자의 IComponentData다. ChargingStation/ReturnStation은 진행 중인 충전 경유/비상 귀환 목적지만 유지하며 위치/배터리/작업 상태를 복제하지 않는다.
+- **Writer/수명:** Spawn/Activate가 같은 EndSimulation에 초기화하고 Movement Execution이 도착/대기를 갱신한다. Store는 Worker 역할과 함께 제거한다.
+
+## DroneMovementDecision
+
+- **종류/부착 대상/목적:** 수행자의 이번 틱 IComponentData다. Ready/Purpose/Target/Station과 Assignment/AssignmentRevision/Action은 실행할 구간과 판단 버전이다. Failure/ClearFailure는 중단 결과의 생성/정리 의도다.
+- **Writer/Reader/수명:** Flight Decision의 병렬 Job이 작성하고 Movement Execution이 소비한다. 원본 이동이나 공개 배정 상태를 대신하지 않으며 다음 Decision이 다시 작성한다.
+
+## DroneMovementResult
+
+- **종류/부착 대상/목적:** 수행자의 IComponentData다. Assignment/AssignmentRevision/Action에 대한 실제 Arrived/Failure 결과를 유지한다.
+- **Writer/Reader/수명:** Movement Execution이 실제 이동 후 작성한다. Movement Apply는 현재 연결/버전/행동과 일치하는 도착 상태만 EndSimulation에 기록한다. 중단 결과는 Task Decision/Reservation/Lifecycle이 기존 예약/화물을 정산하기 전 지우지 않는다. Spawn/Activate에서 초기화하고 Store에서 제거한다.
+
+## DroneRouteEvaluationDecision
+
+- **종류/부착 대상/목적:** 경로 요청 Entity의 이번 틱 내부 IComponentData다. Ready/Result로 공개 DroneRouteEvaluationResult와 수명을 구분한다.
+- **Writer/Reader/공개:** Flight Decision이 작성하고 Task Decision이 같은 틱에 우선 읽는다. Task Execution은 유지되는 결과만 EndSimulation에 게시하며 요청 삭제 때 함께 제거한다.
+- **에너지 계약:** WaitingForEnergy는 기하 도달 불가와 구분하고 적재품 안전 방출 근거로 쓰지 않는다. 충전 경유 거리와 계획 최대 배터리는 경로 계산에만 쓰며 실제 배터리를 채우지 않는다.

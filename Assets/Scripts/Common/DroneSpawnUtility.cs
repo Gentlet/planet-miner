@@ -96,7 +96,8 @@ public static class DroneSpawnUtility
         return manager.HasComponent<DroneWorker>(entity) || manager.HasComponent<DroneWorkerObservation>(entity) ||
             manager.HasComponent<DroneWorkerAssignment>(entity) || manager.HasComponent<DroneCargoState>(entity) ||
             manager.HasComponent<DroneActivityState>(entity) || manager.HasComponent<DroneDocked>(entity) ||
-            manager.HasBuffer<StoredItemElement>(entity);
+            manager.HasBuffer<StoredItemElement>(entity) || manager.HasComponent<DroneMovementState>(entity) ||
+            manager.HasComponent<DroneMovementDecision>(entity) || manager.HasComponent<DroneMovementResult>(entity);
     }
 
     private static bool HasReadyDatabase(EntityManager manager, out string error)
@@ -186,6 +187,9 @@ public static class DroneSpawnUtility
         ecb.AddComponent<DroneWorkerAssignment>(drone);
         ecb.AddComponent<DroneCargoState>(drone);
         ecb.AddComponent<DroneActivityState>(drone);
+        ecb.AddComponent<DroneMovementState>(drone);
+        ecb.AddComponent<DroneMovementDecision>(drone);
+        ecb.AddComponent<DroneMovementResult>(drone);
         ecb.AddBuffer<StoredItemElement>(drone);
         if (!hasBattery)
         {

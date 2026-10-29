@@ -18,8 +18,8 @@ PrefabDatabaseInitializationSystem은 요청한 SubScene 로딩을 기다린 뒤
 | PrefabDatabaseReady | 공통 초기화 검증 소유자 | GameSimulationGroup과 생성 API의 준비 전제 |
 | 새 드론 Entity | DroneSpawnUtility.TrySpawnActiveDrone의 기록; 호출자가 제공한 EndSimulation ECB | Playback 뒤 후속 틱 |
 | 기존 Entity의 수행자 초기 구성 | TryInitializeWorkerRole의 기록; 같은 EndSimulation 경계 | Task 9.3이 논리 Entity 전환에 재사용 가능 |
-| 위치·기본 관측·빈 배정/화물 | 생성 초기화 1회 | 실제 관측/이동 Producer는 후속 |
-| DroneBatteryState.CurrentCharge | 새 개체는 호출자가 명시한 최대 배터리로 초기화; 기존 값은 보존 | 소비/충전은 9.10·9.14 후속 |
+| 위치·기본 관측·빈 배정/화물 | 생성 초기화 1회 | Movement Execution의 실제 이동과 다음 Preparation 관측 |
+| DroneBatteryState.CurrentCharge | 새 개체는 호출자가 명시한 최대 배터리로 초기화; 기존 값은 보존 | Movement Execution의 거리 소비 / 실제 충전은 9.14 후속 |
 
 TrySpawnActiveDrone은 World의 준비 태그를 확인하고 검증된 유일 드론 DB에서 원형을 읽어 복제한다. 이미 초기 검증한 원형의 역할/구성을 매번 다시 검사하지 않는다. 표시 원형의 회전·scale을 보존하고 위치만 입력 위치로 바꾼다. GridPosition은 해당 위치의 floor 셀이며 LocalToWorld는 초기 pose와 원형 PostTransformMatrix를 함께 반영한다.
 
@@ -27,14 +27,14 @@ TryInitializeWorkerRole은 기존 Entity를 교체하지 않는 초기 구성 AP
 
 모든 호출 입력을 확인한 뒤 명령을 기록한다. 준비 전·비유한 위치/배터리·int 격자 범위 밖 좌표·0 이하 최대 배터리는 실패와 오류 문자열을 반환하며 원본이나 ECB를 일부 변경하지 않는다. 실패 결과의 요청 소비/외부 결과/Fatal 선택은 호출자가 소유한다. Shared ECB를 rollback으로 간주하지 않는다.
 
-생성 후 DroneWorkerObservation은 입력 위치·Revision 1·CanAcceptTask=false다. 배정은 Null, 화물 버퍼는 비어 있고 출처는 None이다. 실제 이동·경로/행동 Producer 없이 배차 가능 상태나 성공 결과를 만들지 않는다.
+생성 후 DroneWorkerObservation은 입력 위치·Revision 1·CanAcceptTask=false다. 배정은 Null, 화물 버퍼는 비어 있고 출처는 None이다. 최초 초기화만으로 배차 가능 상태나 행동 성공을 만들지 않는다. 다음 Observation Preparation이 자격을 준비하고 Flight Decision/Movement Execution이 경로와 이동을 처리한다.
 
 ## 이번 범위와 후속 연결
 
 - 이번 배터리 상태는 현재량 하나만 가진다. 최대치를 개체마다 복제하지 않는다. 최대 배터리 값은 호출자가 명시하는 필수 입력이다. Task 9.3의 DroneConfigInitializationSystem과 정거장 Lifecycle이 maximumBattery를 읽기 전용 설정에서 전달한다. 공통 carryingCapacity 게시도 이번 범위에 포함하지 않는다.
 - 이번 생성 유틸리티는 아이템 역할/Owner/소유 버퍼를 제거하거나 정거장 슬롯·예약을 정산하지 않는다. 기존 Entity의 표시를 아이템/드론 원형으로 바꾸는 책임도 Task 9.3의 별도 정거장 Lifecycle이 소유한다. 기존 Entity 재사용 API의 존재를 전체 Identity 전환 완료로 해석하지 않는다.
 - 독립적인 자동 생성/배차 Producer를 추가하지 않았다. Task 9.3 정거장 Lifecycle이 EndSimulation ECB로 기존 Entity 초기화를 호출하며 9.22의 자동 시작 Producer는 후속이다. 새 작업·배정·경로의 다음 틱 사용 계약은 유지한다.
-- 수용량·벨트 입출고·귀환·수납·충전·이동·연구 정책은 해당 후속 Task의 범위다. 기존 ItemConfig 이동과 MaxStack 50, 레거시 설정 보관 변경은 보존한다.
+- 수용량/벨트 입출고/명시적 출고/정박/수납은 별도 Lifecycle이, 실제 경로/이동/도착은 Movement가 소유한다. 정상 귀환 자동 흐름/실제 충전/연구는 후속이다. 기존 ItemConfig 이동과 MaxStack 50, 레거시 설정 보관 변경은 보존한다.
 
 ## 검증
 
@@ -47,3 +47,5 @@ Task 9.3.1 당시 Unity 컴파일 오류 없음과 선택 EditMode 56/56(실패/
 베이킹 probe는 설치된 Entities 패키지의 내부 BakingUtility를 reflection으로 호출한 검증 도구이며 제품 코드에 추가하지 않았다. 초기 두 eval은 검증 스크립트의 시스템 생성 API 해석 오류로 실행되지 않았고, public World.GetOrCreateSystem(Type)로 바꾼 최종 probe가 성공했다. 프로젝트 C# 컴파일 오류와 구분한다.
 
 초기화/생성 반영/컴포넌트 계약/guard/공개 경계의 독립 읽기 전용 검수 5개 역할에서 확인한 범위의 지적은 없었다. 최종 주석과 문서도 생성 초기 Writer를 반영했다. Play Mode/실제 비행/표시/Player 빌드/성능은 이번 검증에 포함하지 않는다.
+
+활성 역할은 이동 State/Decision/Result도 같은 생성 ECB에서 초기화한다. 최초 CanAcceptTask=false를 유지하며 다음 Observation Preparation이 마지막 확정 위치/배터리로 실제 자격을 준비한다. 이동 계약은 [DroneMovement](DroneMovement.md)를 따른다.

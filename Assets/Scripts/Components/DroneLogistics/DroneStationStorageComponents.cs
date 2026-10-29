@@ -29,7 +29,7 @@ public enum DroneActivityKind : byte
     WaitingForCharge
 }
 
-/// <summary>수행자 자체의 진행 중 동작. 생성은 Idle, 실제 이동/충전 Writer는 후속 Task다.</summary>
+/// <summary>수행자 자체의 진행 중 동작. 생성은 Idle, 이동 Execution이 이동/대기를 작성하며 실제 충전 입력은 후속 소유자가 전달한다.</summary>
 public struct DroneActivityState : IComponentData
 {
     public DroneActivityKind Activity;
