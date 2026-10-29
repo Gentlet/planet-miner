@@ -37,7 +37,7 @@ public enum DroneItemTransferStatusEnum : byte
 /// <summary>
 /// 역할·목적: 행동 신호가 어느 배정의 어떤 행동인지 식별하여 중복 인계와 재배정 이전 신호를 구분한다.
 /// 부착 엔티티: 독립 ECS 컴포넌트가 아니며 요청·결과 컴포넌트에 포함하는 값 형식이다.
-/// 생성: 외부 수행부 또는 자동 픽업 Decision이 현재 배정의 양수 revision/sequence/Worker/행동/Target을 채운다.
+/// 생성: 외부 수행부 또는 자동 픽업/납품 Decision이 현재 배정의 양수 revision/sequence/Worker/행동/Target을 채운다.
 /// 이용: Decision의 DroneItemTransferDecisionSystem과 StateApply의 DroneTaskLifecycleApplySystem이 현재 배정과 대조한다.
 /// 제거: 이 값을 포함한 요청이 처리되거나 결과 엔티티가 소비될 때 함께 사라진다.
 /// DropCargo의 Target은 Null이며 다른 행동은 해당 공급원·회수품·목적지다.
@@ -53,9 +53,9 @@ public struct DroneActionIdentity
 }
 
 /// <summary>
-/// 역할/목적: 도착/행동 준비 후 외부 또는 자동 픽업 Producer가 실물 인계를 시도하는 입력이다. 성공 수량은 입력하지 않는다.
+/// 역할/목적: 도착/행동 준비 후 외부 또는 자동 픽업/납품 Producer가 실물 인계를 시도하는 입력이다. 성공 수량은 입력하지 않는다.
 /// 부착 엔티티: 배정·수행자와 별도인 행동 요청 엔티티이며 인계 판단·실물 후보·슬롯 계획과 함께 존재한다.
-/// 생성: DroneActionRequestUtility.Submit이 World 접수 번호를 발급해 게시한다. 외부 입력은 시뮬레이션 전, 자동 픽업은 같은 틱 인계 Decision 전에 생성한다.
+/// 생성: DroneActionRequestUtility.Submit이 World 접수 번호를 발급해 게시한다. 외부 입력은 시뮬레이션 전, 자동 픽업/납품은 같은 틱 인계 Decision 전에 생성한다.
 /// 이용: Decision의 DroneItemTransferDecisionSystem이 자격을 판단하고 Execution의 DroneItemTransferExecutionSystem이 계획을 준비한다.
 /// StateApply의 DroneTaskLifecycleApplySystem이 접수 순서대로 현재 실물·배정·대상을 재검사하여 인계와 결과 정산을 수행한다.
 /// 제거: Lifecycle이 요청·계획 제거와 같은 엔티티의 결과 추가를 EndSimulation에 기록한다. 결과 Entity는 요청 소유자의 소비까지 남는다.
@@ -70,7 +70,7 @@ public struct DroneActionReadyRequest : IRequestComponent
 }
 
 /// <summary>
-/// 역할·목적: 외부 행동 완료 신호에 대한 내부 인계 결과와 실제 옮긴 실물 개수를 공개한다.
+/// 역할/목적: 외부/자동 인계 요청의 결과와 실제 옮긴 실물 개수를 공개한다.
 /// 부착 엔티티: 처리한 DroneActionReadyRequest와 같은 엔티티에 부착되며 요청·계획 제거 후에도 유지된다.
 /// 생성: StateApply의 DroneTaskLifecycleApplySystem이 실물 인계·현장 도착량·예약 정산 후 EndSimulation에 게시한다.
 /// 이용: 외부 수행부 또는 자동 Producer는 자신이 생성한 결과를 DroneActionRequestUtility.TryConsumeResult로 읽는다. Lifecycle은 미소비 결과의 배정 참조를 삭제 보류에 사용한다.

@@ -395,6 +395,6 @@ public partial struct DroneFlightDecisionSystem : ISystem
     private static bool TryPoint(Entity entity, ComponentLookup<GridPosition> positions,
         ComponentLookup<BuildingFootprint> footprints, ComponentLookup<Direction> directions, out float2 point)
     {
-        return DroneFlightPlanningUtility.TryGetTargetPoint(entity, positions, footprints, directions, out point);
+        return DroneTargetPointUtility.TryGetTargetPoint(entity, positions, footprints, directions, out point);
     }
 }

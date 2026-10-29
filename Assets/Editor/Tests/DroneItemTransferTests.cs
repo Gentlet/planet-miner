@@ -164,6 +164,38 @@ public class DroneItemTransferTests : EcsWorldTestFixture
         Assert.AreEqual(0UL, Assignment(assignmentEntity).LastAppliedActionSequence);
     }
 
+    [TestCase(0, TestName = "DeliveryRequest_RejectsMovingBeforeArrival")]
+    [TestCase(1, TestName = "DeliveryRequest_RejectsActualPositionAwayFromDestination")]
+    [TestCase(2, TestName = "DeliveryRequest_RejectsObservationNotMatchingActualPosition")]
+    public void DeliveryRequest_RequiresPublishedArrivalActualPositionAndObservation(int invalidCondition)
+    {
+        Entity destination = CreateStorage(0);
+        Entity worker = CreateWorker(3, DroneCargoOriginEnum.Supply);
+        Entity assignmentEntity = CreateAssignment(worker, Entity.Null, destination, 3, DroneActionKindEnum.StoreCargo);
+        if (invalidCondition == 0)
+        {
+            var assignment = Assignment(assignmentEntity);
+            assignment.State = DroneTaskAssignmentStateEnum.MovingToDestination;
+            _entityManager.SetComponentData(assignmentEntity, assignment);
+        }
+        else if (invalidCondition == 1)
+        {
+            _entityManager.SetComponentData(worker, LocalTransform.FromPosition(new float3(2f, 0f, 0f)));
+        }
+        else
+        {
+            var observation = _entityManager.GetComponentData<DroneWorkerObservation>(worker);
+            observation.Position = new float3(2f, 0f, 0f);
+            _entityManager.SetComponentData(worker, observation);
+        }
+        Entity request = DroneActionRequestUtility.Submit(_entityManager, Ready(assignmentEntity));
+        TransferTick();
+        AssertResult(request, DroneItemTransferStatusEnum.Rejected, 0);
+        Assert.AreEqual(3, Stored(worker).Length);
+        Assert.IsEmpty(Stored(destination));
+        Assert.AreEqual(0UL, Assignment(assignmentEntity).LastAppliedActionSequence);
+    }
+
     [Test]
     public void CollectThenSupply_PreservesItemEntities_AndSettlesDeliveredAndReservedQuantities()
     {
@@ -1033,6 +1065,19 @@ public class DroneItemTransferTests : EcsWorldTestFixture
 
     private Entity Submit(Entity assignment, ulong sequence = 1)
     {
+        var current = Assignment(assignment);
+        if (current.NextAction == DroneActionKindEnum.SupplyConstructionSite || current.NextAction == DroneActionKindEnum.StoreCargo)
+        {
+            // 이 fixture는 인계 Consumer의 도착 입력을 준비한다. 실제 이동은 이동 통합 fixture에서 검증한다.
+            Assert.IsTrue(DroneTargetPointUtility.TryGetTargetPoint(_entityManager, current.Destination, out var point));
+            var observation = _entityManager.GetComponentData<DroneWorkerObservation>(current.Worker);
+            observation.Position = new float3(point, 0f);
+            observation.Revision++;
+            _entityManager.SetComponentData(current.Worker, observation);
+            _entityManager.SetComponentData(current.Worker, LocalTransform.FromPosition(observation.Position));
+            current.State = DroneTaskAssignmentStateEnum.AwaitingDelivery;
+            _entityManager.SetComponentData(assignment, current);
+        }
         return DroneActionRequestUtility.Submit(_entityManager, Ready(assignment, sequence));
     }
 

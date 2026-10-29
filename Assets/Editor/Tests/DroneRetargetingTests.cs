@@ -592,6 +592,8 @@ public class DroneRetargetingTests : EcsWorldTestFixture
     private Entity CreateWorker(int cargoCount = 0, DroneCargoOriginEnum origin = DroneCargoOriginEnum.None)
     {
         Entity worker = _entityManager.CreateEntity(typeof(DroneWorker));
+        _entityManager.AddComponentData(worker, LocalTransform.Identity);
+        _entityManager.AddComponentData(worker, new DroneBatteryState { CurrentCharge = 100f });
         _entityManager.AddComponentData(worker, new DroneWorkerObservation
         {
             Position = float3.zero,
@@ -721,7 +723,22 @@ public class DroneRetargetingTests : EcsWorldTestFixture
         _entityManager.SetComponentData(worker, observation);
     }
 
-    private Entity SubmitCurrentAction(Entity assignment) => DroneActionRequestUtility.Submit(_entityManager, Ready(assignment));
+    private Entity SubmitCurrentAction(Entity assignment)
+    {
+        var current = Assignment(assignment);
+        if (current.NextAction == DroneActionKindEnum.SupplyConstructionSite || current.NextAction == DroneActionKindEnum.StoreCargo)
+        {
+            Assert.IsTrue(DroneTargetPointUtility.TryGetTargetPoint(_entityManager, current.Destination, out var point));
+            var observation = _entityManager.GetComponentData<DroneWorkerObservation>(current.Worker);
+            observation.Position = new float3(point, 0f);
+            observation.Revision++;
+            _entityManager.SetComponentData(current.Worker, observation);
+            _entityManager.SetComponentData(current.Worker, LocalTransform.FromPosition(observation.Position));
+            current.State = DroneTaskAssignmentStateEnum.AwaitingDelivery;
+            _entityManager.SetComponentData(assignment, current);
+        }
+        return DroneActionRequestUtility.Submit(_entityManager, Ready(assignment));
+    }
 
     private DroneActionReadyRequest Ready(Entity entity)
     {

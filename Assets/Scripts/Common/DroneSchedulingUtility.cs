@@ -218,6 +218,34 @@ public static class DroneSchedulingUtility
         return -1;
     }
 
+    public static bool CanReceiveStorageItem(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry)
+    {
+        if (!TryReadStorageLimit(manager, storage, type, registry, out int slots, out _))
+        {
+            return false;
+        }
+        int dedicated = StationStorageUtility.ReadDedicatedCount(manager, storage);
+        bool hasInputs = manager.HasBuffer<BuildingInputSlotElement>(storage);
+        for (int slot = 0; slot < slots; slot++)
+        {
+            if (!StationStorageUtility.IsItemSlotAllowed(slot, slots, dedicated, type))
+            {
+                continue;
+            }
+            if (hasInputs)
+            {
+                var inputs = manager.GetBuffer<BuildingInputSlotElement>(storage, true);
+                if (slot >= inputs.Length || inputs[slot].ItemType != type)
+                {
+                    continue;
+                }
+            }
+            // 실제 점유/정박은 공간 부족이다. 종류/필터/슬롯 역할에 따른 수령 거부와 구분한다.
+            return true;
+        }
+        return false;
+    }
+
     public static bool CanStoreInSlot(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry, int slot)
     {
         if (!TryReadStorageLimit(manager, storage, type, registry, out int slots, out int maxStack)) return false;

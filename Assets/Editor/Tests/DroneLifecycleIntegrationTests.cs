@@ -445,18 +445,13 @@ public class DroneLifecycleIntegrationTests : EcsWorldTestFixture
         var observation = _entityManager.GetComponentData<DroneWorkerObservation>(assignment.Worker);
         observation.Position = new float3(cell.x + 0.25f, cell.y + 0.25f, 0f);
         observation.Revision++;
-        if (collection)
+        if (collection || assignment.NextAction == DroneActionKindEnum.SupplyConstructionSite || assignment.NextAction == DroneActionKindEnum.StoreCargo)
         {
             // 이 fixture는 도착 입력을 명시한다. 실제 이동/도착 Producer 검증은 이동 통합 fixture가 담당한다.
-            float2 point = cell;
-            if (_entityManager.HasComponent<BuildingFootprint>(target) && _entityManager.HasComponent<Direction>(target))
-            {
-                point += (float2)_entityManager.GetComponentData<BuildingFootprint>(target)
-                    .GetEffectiveSize(_entityManager.GetComponentData<Direction>(target).dir) * 0.5f;
-            }
+            Assert.IsTrue(DroneTargetPointUtility.TryGetTargetPoint(_entityManager, target, out var point));
             observation.Position = new float3(point, 0f);
             _entityManager.SetComponentData(assignment.Worker, LocalTransform.FromPosition(observation.Position));
-            assignment.State = DroneTaskAssignmentStateEnum.AwaitingCollection;
+            assignment.State = collection ? DroneTaskAssignmentStateEnum.AwaitingCollection : DroneTaskAssignmentStateEnum.AwaitingDelivery;
             _entityManager.SetComponentData(entity, assignment);
         }
         _entityManager.SetComponentData(assignment.Worker, observation);

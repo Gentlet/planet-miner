@@ -211,4 +211,4 @@ Task 9.4의 [생성/취소 요청](DroneTaskRequests.md)은 아래 자동 생성
 
 Construction은 BuildingStateApply 마지막에 현재 월드 Owner/GridPosition·활성 Destroy와 지난 틱 드론 결과를 조회한다. 예정 위치 기록은 없다. 공통 helper가 활성·비취소 현장의 회전 footprint 내부 World Spawn을 Decision/최종 Apply에서 거부한다. Drop 최종 신호는 배정 목표==요청 WorldPosition==관측 격자 셀과 현장 외부 조건을 충족해야 한다. 선택 후 새 현장이 목표를 막으면 실물을 유지하고 Retargeting으로 재탐색한다. 공간 인덱스 최종 갱신·드론 내 연쇄 제한·단일 시스템 파일은 유지한다.
 
-자동 픽업의 실제 이동/도착/신호 Producer는 [픽업 계약](DronePickup.md)을 따른다. 건물 종료 뒤 준비한 실물 ID/수량 상한과 공통 Ownership API를 재사용한다. 자동 납품 신호/정상 귀환/실제 충전은 후속이다.
+자동 픽업의 실제 이동/도착/신호 Producer는 [픽업 계약](DronePickup.md)을 따른다. 건물 종료 뒤 준비한 실물 ID/수량 상한과 공통 Ownership API를 재사용한다. 자동 납품 신호는 [납품 계약](DroneDelivery.md)에 연결했고 정상 귀환/실제 충전은 후속이다.

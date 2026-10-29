@@ -113,6 +113,11 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
                     registry, slots, decision.WantedQuantity);
                 SelectStoredItems(manager, assignment.Worker, assignment.ItemType, items);
                 decision.MaximumQuantity = math.min(capacity, items.Length);
+                if (manager.HasComponent<DroneTransportReservation>(request.Action.Assignment))
+                {
+                    decision.MaximumQuantity = math.min(decision.MaximumQuantity,
+                        manager.GetComponentData<DroneTransportReservation>(request.Action.Assignment).RemainingQuantity);
+                }
                 break;
             case DroneActionKindEnum.DropCargo:
                 decision.WantedQuantity = manager.GetBuffer<StoredItemElement>(assignment.Worker, true).Length;

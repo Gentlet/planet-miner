@@ -6,14 +6,14 @@ using Unity.Mathematics;
 using Unity.Transforms;
 
 /// <summary>
-/// 공개된 수집 도착으로 이번 틱 픽업 요청을 판단한다. 별도 타이머나 실물 Writer는 없다.
+/// 공개된 수집/납품 도착으로 이번 틱 인계 요청을 판단한다. 별도 타이머나 실물 Writer는 없다.
 /// 후보 판단은 병렬 Job이며 기존 접수 번호/요청 생성 API 호출만 메인 스레드에서 수행한다.
 /// 자신이 생성한 결과만 다음 Decision에 소비하여 종료 배정의 참조를 남기지 않는다.
 /// </summary>
 [UpdateInGroup(typeof(DroneDecisionGroup))]
 [UpdateAfter(typeof(DroneTaskDecisionSystem))]
 [UpdateBefore(typeof(DroneItemTransferDecisionSystem))]
-public partial struct DronePickupDecisionSystem : ISystem
+public partial struct DroneActionRequestDecisionSystem : ISystem
 {
     private EntityQuery _ownedRequests;
     private EntityQuery _pendingRequests;
@@ -21,7 +21,7 @@ public partial struct DronePickupDecisionSystem : ISystem
 
     public void OnCreate(ref SystemState state)
     {
-        _ownedRequests = state.GetEntityQuery(ComponentType.ReadOnly<DroneAutomaticPickupRequest>());
+        _ownedRequests = state.GetEntityQuery(ComponentType.ReadOnly<DroneAutomaticActionRequest>());
         _pendingRequests = state.GetEntityQuery(ComponentType.ReadOnly<DroneActionReadyRequest>());
         _candidates = DroneSchedulingUtility.GetOrCreateCandidates(state.EntityManager);
     }
@@ -37,22 +37,22 @@ public partial struct DronePickupDecisionSystem : ISystem
             }
         }
 
-        using var decisions = new NativeQueue<PickupIntent>(Allocator.TempJob);
-        state.Dependency = new PreparePickupsJob
+        using var decisions = new NativeQueue<ActionIntent>(Allocator.TempJob);
+        state.Dependency = new PrepareActionsJob
         {
-            Assignments = state.GetComponentLookup<DroneTaskAssignment>(true),
-            Invalidations = state.GetBufferLookup<DroneTaskInvalidationDecisionElement>(true),
+            Assignments = SystemAPI.GetComponentLookup<DroneTaskAssignment>(true),
+            Invalidations = SystemAPI.GetBufferLookup<DroneTaskInvalidationDecisionElement>(true),
             Candidates = _candidates,
             Decisions = decisions.AsParallelWriter()
         }.ScheduleParallel(state.Dependency);
         // 접수 번호와 구조 변경은 기존 API가 소유하므로 이 판단 Job의 완료만 기다린다.
         state.Dependency.Complete();
-        using var ordered = new NativeList<PickupIntent>(Allocator.Temp);
+        using var ordered = new NativeList<ActionIntent>(Allocator.Temp);
         while (decisions.TryDequeue(out var decision))
         {
             ordered.Add(decision);
         }
-        ordered.AsArray().Sort(new PickupOrder());
+        ordered.AsArray().Sort(new ActionOrder());
         using var pending = _pendingRequests.ToComponentDataArray<DroneActionReadyRequest>(Allocator.Temp);
         for (int i = 0; i < ordered.Length; i++)
         {
@@ -62,12 +62,16 @@ public partial struct DronePickupDecisionSystem : ISystem
                 continue;
             }
             var assignment = manager.GetComponentData<DroneTaskAssignment>(intent.Request.Action.Assignment);
-            if (!DroneItemTransferValidationUtility.IsAtCollectionPoint(manager, assignment))
+            bool collection = intent.Request.Action.Kind == DroneActionKindEnum.CollectFromStorage ||
+                intent.Request.Action.Kind == DroneActionKindEnum.RecoverWorldItem;
+            bool arrived = collection ? DroneItemTransferValidationUtility.IsAtCollectionPoint(manager, assignment) :
+                DroneItemTransferValidationUtility.IsAtDeliveryPoint(manager, assignment);
+            if (!arrived)
             {
                 continue;
             }
             Entity request = DroneActionRequestUtility.Submit(manager, intent.Request);
-            manager.AddComponent<DroneAutomaticPickupRequest>(request);
+            manager.AddComponent<DroneAutomaticActionRequest>(request);
         }
     }
 
@@ -85,15 +89,15 @@ public partial struct DronePickupDecisionSystem : ISystem
         return false;
     }
 
-    private struct PickupIntent
+    private struct ActionIntent
     {
         public DroneActionReadyRequest Request;
         public ulong TaskCreationSequence;
     }
 
-    private struct PickupOrder : IComparer<PickupIntent>
+    private struct ActionOrder : IComparer<ActionIntent>
     {
-        public int Compare(PickupIntent first, PickupIntent second)
+        public int Compare(ActionIntent first, ActionIntent second)
         {
             int order = first.TaskCreationSequence.CompareTo(second.TaskCreationSequence);
             if (order != 0)
@@ -107,12 +111,12 @@ public partial struct DronePickupDecisionSystem : ISystem
 
     [BurstCompile]
     [WithNone(typeof(DroneDocked))]
-    private partial struct PreparePickupsJob : IJobEntity
+    private partial struct PrepareActionsJob : IJobEntity
     {
         [ReadOnly] public ComponentLookup<DroneTaskAssignment> Assignments;
         [ReadOnly] public BufferLookup<DroneTaskInvalidationDecisionElement> Invalidations;
         public Entity Candidates;
-        public NativeQueue<PickupIntent>.ParallelWriter Decisions;
+        public NativeQueue<ActionIntent>.ParallelWriter Decisions;
 
         private void Execute(Entity entity, in DroneWorker worker, in DroneWorkerAssignment link,
             in DroneWorkerObservation observation, in LocalTransform transform, in DroneBatteryState battery,
@@ -127,14 +131,23 @@ public partial struct DronePickupDecisionSystem : ISystem
                 return;
             }
             var assignment = Assignments[link.Assignment];
-            if (assignment.State != DroneTaskAssignmentStateEnum.AwaitingCollection || assignment.Worker != entity ||
-                assignment.LastAppliedActionSequence == ulong.MaxValue || battery.CurrentCharge <= 0f ||
-                cargo.Origin != DroneCargoOriginEnum.None || !items.IsEmpty)
+            if (assignment.Worker != entity || assignment.LastAppliedActionSequence == ulong.MaxValue)
             {
                 return;
             }
-            if (assignment.NextAction != DroneActionKindEnum.CollectFromStorage &&
-                assignment.NextAction != DroneActionKindEnum.RecoverWorldItem)
+            bool collection = assignment.State == DroneTaskAssignmentStateEnum.AwaitingCollection &&
+                (assignment.NextAction == DroneActionKindEnum.CollectFromStorage || assignment.NextAction == DroneActionKindEnum.RecoverWorldItem);
+            bool delivery = assignment.State == DroneTaskAssignmentStateEnum.AwaitingDelivery &&
+                (assignment.NextAction == DroneActionKindEnum.SupplyConstructionSite || assignment.NextAction == DroneActionKindEnum.StoreCargo);
+            if (!collection && !delivery)
+            {
+                return;
+            }
+            if (collection && (battery.CurrentCharge <= 0f || cargo.Origin != DroneCargoOriginEnum.None || !items.IsEmpty))
+            {
+                return;
+            }
+            if (delivery && items.IsEmpty)
             {
                 return;
             }
@@ -142,13 +155,13 @@ public partial struct DronePickupDecisionSystem : ISystem
             for (int i = 0; i < invalidations.Length; i++)
             {
                 var invalidation = invalidations[i];
-                if (invalidation.Target == assignment.Task ||
+                if ((collection && invalidation.Target == assignment.Task) ||
                     (invalidation.Target == link.Assignment && invalidation.AssignmentRevision == assignment.Revision))
                 {
                     return;
                 }
             }
-            Decisions.Enqueue(new PickupIntent
+            Decisions.Enqueue(new ActionIntent
             {
                 TaskCreationSequence = assignment.OriginalTaskCreationSequence,
                 Request = new DroneActionReadyRequest
@@ -156,7 +169,7 @@ public partial struct DronePickupDecisionSystem : ISystem
                     Action = new DroneActionIdentity
                     {
                         Assignment = link.Assignment, AssignmentRevision = assignment.Revision,
-                        Worker = entity, Kind = assignment.NextAction, Target = assignment.Source,
+                        Worker = entity, Kind = assignment.NextAction, Target = collection ? assignment.Source : assignment.Destination,
                         Sequence = assignment.LastAppliedActionSequence + 1
                     },
                     WorkerObservationRevision = observation.Revision,

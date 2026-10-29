@@ -28,7 +28,7 @@
 - 일반 운반은 요청량/공통 적재량/현재 출발 재고/도착 수용 공간의 최솟값으로 이번 판단의 수량 상한을 작성한다. 공간 판정은 기존 품목 필터/입력 슬롯/정박 점유/드론 전용 슬롯/MaxStack 규칙을 공유한다. 전체 요청량을 한 번에 수용해야 한다는 제한은 없다.
 - 재고/공간 변화와 대상 소멸을 매 판단에 반영한다. 재고/공간이 부족하면 목표량과 작업을 보존하고 기다린다. 계획만으로 실물/Owner/용량/예약량은 변경하지 않는다.
 - DroneTransportPlanDecisionElement는 일반 운반 전용 버퍼다. 기존 Candidate 형식을 재사용하며 공급/회수/적재 재배정의 Decision 후보 버퍼와 분리한다. DroneTaskReservationSystem은 두 버퍼를 함께 읽어 수행자당 하나 선택한다. 일반 운반은 선택분만 전체 목표량 안에서 별도 미공개 확보 기록으로 작성한다. 선택된 승인은 기존 Assignment Publish가 최종 검사 후 EndSimulation에 배정으로 공개한다.
-- 배정 공개와 확보 인계는 구현되어 있으며 자동 픽업 신호/실제 수집량과 미수집 확보량 반환은 [픽업 계약](DronePickup.md)에 연결했다. 실제 자동 납품/완료량 정산은 후속이다.  목표 잔량은 확보/정산 계약이 관리한다. 계획을 운반 완료로 표시하지 않는다.
+- 배정 공개와 확보 인계는 구현되어 있으며 자동 픽업 신호/실제 수집량과 미수집 확보량 반환은 [픽업 계약](DronePickup.md)에 연결했다. 실제 자동 납품/완료량 정산은 [납품 계약](DroneDelivery.md)에 연결했다.  목표 잔량은 확보/정산 계약이 관리한다. 계획을 운반 완료로 표시하지 않는다.
 
 ## 소유자와 공개 경계
 
@@ -37,7 +37,7 @@
 | DroneStationNetworkDecision.ActivityBounds | 기존 정거장 Decision Job | 대표와 함께 매 틱 초기화/작성, 작업 Decision이 같은 틱 읽음 |
 | DroneTaskRequest.Quantity | 시뮬레이션 전 Submit | 불변 요청, EndSimulation에 소비 |
 | DroneTransportRequirement | Task Execution | 작업과 같은 EndSimulation에 최초 생성, 작업 수명 |
-| DroneTransportProgress | Task Execution 초기화 / Task Reservation 확보 / 후속 납품 정산 | root의 완료량/미공개 및 진행 중 확보량, 작업 수명 |
+| DroneTransportProgress | Task Execution 초기화 / Task Reservation 확보 / Lifecycle의 실제 납품 정산 | root의 완료량/미공개 및 진행 중 확보량, 작업 수명 |
 | DroneTransportPlanDecisionElement | Task Decision | 후보 singleton에 생성, 매 Decision Clear/재작성, 통합 Reservation 선택 입력 |
 | DroneTransportPendingReservationElement | Task Reservation의 단일 Burst Job | 선택된 일반 운반만 보관하며 다음 Reservation 반환 또는 후속 소비자 인계까지 보존, Decision은 읽기만 함 |
 | 작업/경로/결과 | 기존 Execution/Lifecycle | 기존 EndSimulation 공개, 다음 틱 이용 |

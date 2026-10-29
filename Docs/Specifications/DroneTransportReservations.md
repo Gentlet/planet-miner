@@ -1,6 +1,6 @@
 # 일반 운반 목표량 확보와 정산 계약
 
-2026-10-28 사용자 확정 1A/2A/3A/4A를 따른다. 일반 반입/반출의 작업 내 수량 중재/후속 정산 API와 종료/무효화 연결을 구현한다. 작업 간 자동 선택은 확정한 1A 순서로 통합했고 배정 확정은 기존 Publish에 연결했고 실제 수집/납품 연결은 9.11~9.12, 진행 중 취소/중단 정산은 9.15에 남긴다.
+2026-10-28 사용자 확정 1A/2A/3A/4A를 따른다. 일반 반입/반출의 작업 내 수량 중재/후속 정산 API와 종료/무효화 연결을 구현한다. 작업 간 자동 선택은 확정한 1A 순서로 통합했고 배정 확정은 기존 Publish에 연결했고 실제 수집/납품과 완료량은 [픽업](DronePickup.md)/[납품 계약](DroneDelivery.md)에 연결했고 진행 중 취소/중단 정산은 9.15에 남긴다.
 
 ## 목표량과 실적
 
@@ -15,8 +15,8 @@
 | 자료 | 생성/Writer | Reader/소비 |
 | --- | --- | --- |
 | Requirement/Progress | 기존 Task Execution이 같은 EndSimulation ECB에 생성, Progress 초기값 0 | Decision의 계획 잔량과 Reservation의 최종 작업 내 수량 중재 |
-| Progress.ReservedQuantity | Task Reservation의 단일 Burst Job이 확보/무효 인계/미인계 반환, Assignment Publish가 최종 감량/거부 반환, Lifecycle이 실제 픽업의 미수집분 반환 | 실제 납품/완료량 정산은 후속이며 같은 utility를 사용 |
-| Progress.DeliveredQuantity | 후속 납품 소유자가 실제 성공량으로 TryRecordDelivery 호출 | 현재 자동 Writer는 없으며 계획/승인/픽업은 증가시키지 않음 |
+| Progress.ReservedQuantity | Task Reservation의 단일 Burst Job이 확보/무효 인계/미인계 반환, Assignment Publish가 최종 감량/거부 반환, Lifecycle이 실제 픽업의 미수집분 반환 | Lifecycle이 실제 보관 성공량의 완료 정산/잔여 반환에도 같은 utility 사용 |
+| Progress.DeliveredQuantity | Lifecycle이 실제 성공량으로 TryRecordDelivery 호출 | 계획/승인/픽업은 증가시키지 않으며 실제 보관 성공만 기록 |
 | DroneTransportPendingReservationElement | Reservation이 새 승인/옛 기록 정리, Publish가 Take/PublicationQueued 작성 | Decision은 반환 예정량을 읽음. 미인계 기록은 다음 Reservation에서 반환, 인계 기록은 0이므로 재반환하지 않음 |
 | DroneTransportReservation | 승인 기록 안의 Task/RemainingQuantity를 Assignment Publish가 Take로 인계 | 배정/수행자 연결과 같은 EndSimulation에 부착. 최초 Revision=1/MovingToSource/CollectFromStorage |
 
@@ -40,7 +40,7 @@ Job은 Requirement/선택된 후보 배열/무효화 의도/배정 존재 RO와 
 - 2A: 공개 실패 뒤 같은 틱에 새 후보를 찾거나 반환량을 재배분하지 않는다. 다음 Decision부터 다시 선택한다. 9.8의 Reservation 내 대체 선택은 유지하며 최종 공개 뒤의 재선택과 구분한다.
 - 순수 후보/계획은 Decision, 통합 선택/목표량 승인은 Reservation, 최종 자격/확보 인계/배정 기록은 Publish, 실제 공개는 EndSimulation이 소유한다. 유형별 승인 버퍼와 기존 수행자 연결을 재사용하며 수동 우선순위/일시 중단/재개를 추가하지 않는다.
 - 일반 운반 승인 잔량이 양수이거나 PublicationQueued이면 정거장 Reservation/최종 Apply의 Busy에 포함한다. Take 후 잔량이 0이어도 같은 EndSimulation 이전에는 수납/정박으로 배정 연결을 덮어쓰지 않는다.
-- 기존 CanAcceptTask와 현재 revision의 평가 완료 경로를 최종 소비한다. 배차 시 완충이나 전체 왕복 에너지의 임의 기준을 추가하지 않는다. 실제 경로/배터리/지속 관측 Producer는 9.10, 일반 운반 픽업/미수집분 반환은 [픽업 계약](DronePickup.md)에 연결했고 실제 납품은 9.12, 진행 중 취소는 9.15다.
+- 기존 CanAcceptTask와 현재 revision의 평가 완료 경로를 최종 소비한다. 배차 시 완충이나 전체 왕복 에너지의 임의 기준을 추가하지 않는다. 실제 경로/배터리/지속 관측 Producer는 9.10, 일반 운반 픽업/미수집분 반환은 [픽업 계약](DronePickup.md)에 연결했고 실제 납품/완료량은 납품 계약에 연결했고 진행 중 취소는 9.15다.
 
 ## 후속 소비자 API
 
@@ -50,7 +50,7 @@ Job은 Requirement/선택된 후보 배열/무효화 의도/배정 존재 RO와 
 - `TryRecordDelivery`: 실제 보관 성공량만 완료량으로 옮긴다. 기록 잔량보다 큰 값/음수는 거부하고 상태를 변경하지 않는다.
 - `Release`: 남은 확보량만 반환하고 기록을 0으로 만든다. 같은 소유 기록의 재반환은 효과가 없다.
 
-호출자는 항상 확보 기록의 Task에서 Progress를 읽고 해당 기록과 함께 저장한다. 최초 목표량은 불변이며 확보 기록은 단일 소유자만 변경한다. 이 전제를 지키면 `완료량 + 확보량 <= 목표량`이 유지된다. 행동 번호/배정 revision의 중복 거부, 실제 도착/목적지 자격과 성공량 증명은 기존 Lifecycle/후속 납품 소유자의 책임이며 utility 호출만으로 실물 인계 성공을 만들지 않는다. root 종료/무효화 정산은 아래 현재 계약을 따르고 실제 납품과 수행 중단의 Producer는 9.12/9.15에 남긴다.
+호출자는 항상 확보 기록의 Task에서 Progress를 읽고 해당 기록과 함께 저장한다. 최초 목표량은 불변이며 확보 기록은 단일 소유자만 변경한다. 이 전제를 지키면 `완료량 + 확보량 <= 목표량`이 유지된다. 행동 번호/배정 revision의 중복 거부, 실제 도착/목적지 자격과 성공량 증명은 기존 Lifecycle의 책임이며 utility 호출만으로 실물 인계 성공을 만들지 않는다. root 종료/무효화 정산은 아래 현재 계약을 따르고 실제 납품은 9.12에 연결했고 사용자 취소/추가 수행 중단은 9.15에 남긴다.
 
 ## 종료와 무효화
 
@@ -64,7 +64,7 @@ Job은 Requirement/선택된 후보 배열/무효화 의도/배정 존재 RO와 
 - 정상 경로 평가 대기/계획된 충전 경유와 공간 부족만으로 확보량을 반환하지 않는다. 실제 중단을 알리는 Producer는 9.15에서 연결한다.
 - 유휴 취소의 Busy 판정은 확보 합계에서 아직 미인계인 승인량을 빼서 인계분을 구분한다. 미인계 승인만으로 Busy를 만들지 않으며 인계된 미정산분이나 기존 배정 참조가 있으면 취소를 거부한다.
 
-일반 운반 배정 Producer는 Assignment Publish에 연결했다. 실제 픽업/미수집분 반환 Writer는 기존 Lifecycle에 연결했고 실제 납품/완료량은 9.12에 남기며 배정 공개를 실제 이동/수집/납품의 완료로 해석하지 않는다.
+일반 운반 배정 Producer는 Assignment Publish에 연결했다. 실제 픽업/미수집분 반환 Writer는 기존 Lifecycle에 연결했고 실제 납품/완료량도 기존 Lifecycle에 연결했으며 배정 공개를 실제 이동/수집/납품의 완료로 해석하지 않는다.
 
 ## 목표량 중재 검증 (Task 9.6)
 
@@ -97,4 +97,4 @@ Decision/Reservation/StateApply/컴포넌트/guard/경계 6역할의 같은 14�
 AssignmentNeedsCleanup은 한 호출에서 이미 검증한 동일 Task 데이터를 지역 변수로 재사용한다. 운반 기록이 없거나 현재 Task와 다르면 기존 조회/검사를 수행한다. 저장/방출의 자격 검사나 Lifecycle의 별도 최신 재검사는 제거하지 않았다. 지속 캐시나 새 원본 상태를 추가하지 않았다.
 
 수정 후 C# 재컴파일 completed/failed false/errors 없음/compilationFailed false, Editor ready/비컴파일/비리로드/Play stopped와 최신 runtime/Editor 어셈블리를 확인했다. 최신 관련 선택 7개 fixture는 147/147(실패/생략/불확정 0)이다. 집중 회귀 2/2는 이 묶음의 부분집합이며 합산하지 않는다. 이전 147/147은 확장 전 테스트의 실행이며 이번 보완과 구분한다. 수정 후 콘솔 오류 0건/기존 경고 213건을 기록했다. StateApply/guard/컴포넌트/경계 집중 재검수에서 P2/P3 해소를 확인했고, 최신 지침에 따른 추가 가독성/주석 독립 검수도 지적 없이 완료했다. 검증 기록의 임시 문구도 갱신했다. 원본 결과는 ignored Logs/Task97/CommitFix에 보관한다. Play Mode/Player/Burst AOT 전체/성능은 미수행이다.
-일반 반입/반출 픽업은 실제 수집량만 확보로 남기고 TryReduce로 미수집분을 반환한다. 픽업은 목표량/완료량을 증가시키지 않는다. 해당 확보 기록을 가진 StoreCargo는 실제 납품 정산이 연결될 때까지 거절한다.
+일반 반입/반출 픽업은 실제 수집량만 확보로 남기고 TryReduce로 미수집분을 반환한다. 픽업은 목표량/완료량을 증가시키지 않는다. StoreCargo는 실제 인계량으로 TryRecordDelivery를 호출한다. 양수 배터리의 공간 부족은 잔여 확보를 유지하고 실제 중단은 잔량만 반환한다.

@@ -2,14 +2,14 @@ using System;
 using Unity.Entities;
 
 /// <summary>
-/// 역할/목적: 외부 행동/자동 픽업 신호의 World 접수 번호와 요청/결과 수명을 소유한다.
-/// 입력·출력: 주 스레드에서 Submit이 행동 요청/인계 계획 버퍼를 즉시 만들고 ReceiptSequence를 부여한다. 외부 입력과 같은 틱 픽업 Decision이 같은 접수 경계를 사용한다.
+/// 역할/목적: 외부 행동/자동 픽업/납품 신호의 World 접수 번호와 요청/결과 수명을 소유한다.
+/// 입력·출력: 주 스레드에서 Submit이 행동 요청/인계 계획 버퍼를 즉시 만들고 ReceiptSequence를 부여한다. 외부 입력과 픽업/납품의 공통 자동 행동 요청 Decision이 같은 접수 경계를 사용한다.
 /// 이용: 인계 Decision/Execution이 준비한 계획을 DroneTaskLifecycleApplySystem이 정산한 뒤 요청을 소유한 외부 수행부 또는 자동 Producer가 TryConsumeResult로 결과를 읽는다.
 /// 수명·가시화: 접수 순번 상태는 World 수명 동안 유지한다. 요청 제거/결과 게시는 EndSimulation, 결과 확인 후 Entity 삭제는 해당 요청 소유자의 소비 경계다. 실물을 직접 변경하지 않는다.
 /// </summary>
 public static class DroneActionRequestUtility
 {
-    /// <summary>시뮬레이션 전 외부 입력 또는 인계 Decision 전 자동 픽업을 접수한다. 행동 번호와 별도로 World 접수 번호를 발급한다.</summary>
+    /// <summary>시뮬레이션 전 외부 입력 또는 인계 Decision 전 자동 픽업/납품을 접수한다. 행동 번호와 별도로 World 접수 번호를 발급한다.</summary>
     public static Entity Submit(EntityManager manager, in DroneActionReadyRequest request)
     {
         Entity sequenceEntity = GetOrCreateReceiptSequence(manager);

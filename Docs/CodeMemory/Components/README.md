@@ -2,9 +2,9 @@
 
 이 문서는 컴포넌트를 출발점으로 Planet Miner의 현재 데이터 흐름을 따라가기 위한 지도다. 각 하위 문서에서 **목적 → 부착 엔티티 → 생성과 초기화 → 읽고 쓰는 시스템 → 처리와 반영 시점 → 소비와 종료**를 확인할 수 있다. 함께 유지하는 데이터 관계와 조건도 해당 컴포넌트에 기록했다.
 
-최초 조사는 **2026-10-03**, 조사 시작 커밋은 `0998016624ee15ee035beb8dc306d68990a69bb0`이다. **2026-10-06 건물·드론 도메인 분리와 후보/공개 대기 예약 분리까지**의 정의와 경로로 갱신했다. **프로젝트 ECS 컴포넌트/버퍼 요소 103개를 9개 하위 문서에 정리**했으며 당시 드론은 23개다. 이후 정거장/생성/보관/활동/설정/요청/계획/운반 확보/이동 타입을 추가해 현재 드론 문서는 ECS 컴포넌트/버퍼 요소 56개를 다룬다. 현장 내부의 새 월드 생성·방출은 금지하고 완공은 현재 월드 실물과 활성 Destroy만 조회한다. 실제 경로/이동/관측/도착과 최소 비상 귀환은 [이동 명세](../../Specifications/DroneMovement.md)에 연결했다. 자동 픽업은 [픽업 명세](../../Specifications/DronePickup.md)에 연결했고 실제 충전/자동 납품/정상 귀환 자동 흐름과 연구 Writer는 후속이다. 소스와 실행 검증을 구분한다.
+최초 조사는 **2026-10-03**, 조사 시작 커밋은 `0998016624ee15ee035beb8dc306d68990a69bb0`이다. **2026-10-06 건물·드론 도메인 분리와 후보/공개 대기 예약 분리까지**의 정의와 경로로 갱신했다. **프로젝트 ECS 컴포넌트/버퍼 요소 103개를 9개 하위 문서에 정리**했으며 당시 드론은 23개다. 이후 정거장/생성/보관/활동/설정/요청/계획/운반 확보/이동 타입을 추가해 현재 드론 문서는 ECS 컴포넌트/버퍼 요소 56개를 다룬다. 현장 내부의 새 월드 생성·방출은 금지하고 완공은 현재 월드 실물과 활성 Destroy만 조회한다. 실제 경로/이동/관측/도착과 최소 비상 귀환은 [이동 명세](../../Specifications/DroneMovement.md)에 연결했다. 자동 픽업은 [픽업 명세](../../Specifications/DronePickup.md)에 연결했고 자동 납품/완료량은 [납품 명세](../../Specifications/DroneDelivery.md)에 연결했고 실제 충전/정상 귀환 자동 흐름과 연구 Writer는 후속이다. 소스와 실행 검증을 구분한다.
 
-드론 관리 1~4단계의 작업·예약·인계·Direct 재배정·현장 외부 방출·완공 차단과 5단계 선별 통합 회귀를 연결했다. 기존 142사례와 신규 4사례는 이전 구조의 별도 실행이다. 현재 구조에서 수행한 컴파일·선택 EditMode·제한된 Play Mode 검증은 과거 실행과 합산하지 않는다. Task 9.3은 [Identity/정거장 보관](../../Specifications/DroneIdentityAndStationStorage.md)과 [공통 초기화](../../Specifications/DroneCapacityInitializationPlan.md)를 구현했다. 실제 경로/이동/관측/도착과 최소 비상 귀환은 [이동 명세](../../Specifications/DroneMovement.md)에 연결했다. 자동 픽업은 [픽업 명세](../../Specifications/DronePickup.md)에 연결했고 실제 충전/자동 납품/정상 귀환 자동 흐름과 연구 Writer는 후속이다. 세부 계약은 [명세](../../Specifications/ConstructionAndDroneSupply.md)와 [드론 컴포넌트 계약](DroneLogistics.md)을 따른다.
+드론 관리 1~4단계의 작업·예약·인계·Direct 재배정·현장 외부 방출·완공 차단과 5단계 선별 통합 회귀를 연결했다. 기존 142사례와 신규 4사례는 이전 구조의 별도 실행이다. 현재 구조에서 수행한 컴파일·선택 EditMode·제한된 Play Mode 검증은 과거 실행과 합산하지 않는다. Task 9.3은 [Identity/정거장 보관](../../Specifications/DroneIdentityAndStationStorage.md)과 [공통 초기화](../../Specifications/DroneCapacityInitializationPlan.md)를 구현했다. 실제 경로/이동/관측/도착과 최소 비상 귀환은 [이동 명세](../../Specifications/DroneMovement.md)에 연결했다. 자동 픽업은 [픽업 명세](../../Specifications/DronePickup.md)에 연결했고 자동 납품/완료량은 [납품 명세](../../Specifications/DroneDelivery.md)에 연결했고 실제 충전/정상 귀환 자동 흐름과 연구 Writer는 후속이다. 세부 계약은 [명세](../../Specifications/ConstructionAndDroneSupply.md)와 [드론 컴포넌트 계약](DroneLogistics.md)을 따른다.
 
 ## 읽는 방법
 
@@ -175,7 +175,7 @@ Preparation/Power 분리와 전신주/참가자 연결·망 수명주기·석탄
 
 ### 드론 작업 관리 계약
 
-일반 운반의 요청/계획과 부분 footprint 필터는 [작업 계획 명세](../../Specifications/DroneTaskPlanning.md)를 따른다. 실제 운반과 경로 평가 Producer는 후속이다.
+일반 운반의 요청/계획과 부분 footprint 필터는 [작업 계획 명세](../../Specifications/DroneTaskPlanning.md)를 따른다. 실제 경로/이동은 [이동 명세](../../Specifications/DroneMovement.md), 자동 픽업/납품과 실제 완료량은 [픽업](../../Specifications/DronePickup.md)/[납품 명세](../../Specifications/DroneDelivery.md)에 연결했다.
 
 
 작업·후보·현장 예약·배정 경로와 실제 수행부·행동 인계의 미구현 범위를 각 항목에서 구분한다.
@@ -194,7 +194,7 @@ Preparation/Power 분리와 전신주/참가자 연결·망 수명주기·석탄
 | [ConstructionSupplyReservation](DroneLogistics.md#constructionsupplyreservation) | 상태 | [ConstructionSupplyReservation.cs](../../../Assets/Scripts/Components/Construction/ConstructionSupplyReservation.cs) |
 | [DroneWorker](DroneLogistics.md#droneworker) | 수행자 표시 | [DroneWorkerComponents.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneWorkerComponents.cs) |
 | [DroneCapacityState](DroneLogistics.md#dronecapacitystate) | 공통 적재량 상태 | [DroneCapacityState.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneCapacityState.cs) |
-| [DroneAutomaticPickupRequest](DroneLogistics.md#droneautomaticpickuprequest) | 자동 픽업 요청/결과의 수명 소유 표식 | [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneAutomaticPickupRequest.cs) |
+| [DroneAutomaticActionRequest](DroneLogistics.md#droneautomaticactionrequest) | 자동 픽업/납품 요청/결과의 수명 소유 표식 | [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneAutomaticActionRequest.cs) |
 | [DroneMovementConfig](DroneLogistics.md#dronemovementconfig) | 이동 속도/거리 소비 설정 | [이동 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneMovementComponents.cs) |
 | [DroneMovementState](DroneLogistics.md#dronemovementstate) | 충전 경유/비상 귀환 목적지 | [이동 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneMovementComponents.cs) |
 | [DroneMovementDecision](DroneLogistics.md#dronemovementdecision) | 이번 틱 이동 판단 | [이동 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneMovementComponents.cs) |
