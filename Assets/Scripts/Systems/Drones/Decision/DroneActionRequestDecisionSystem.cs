@@ -6,7 +6,7 @@ using Unity.Mathematics;
 using Unity.Transforms;
 
 /// <summary>
-/// 공개된 수집/납품 도착으로 이번 틱 인계 요청을 판단한다. 별도 타이머나 실물 Writer는 없다.
+/// 공개된 수집/납품/안전 방출 도착으로 이번 틱 인계 요청을 판단한다. 별도 타이머나 실물 Writer는 없다.
 /// 후보 판단은 병렬 Job이며 기존 접수 번호/요청 생성 API 호출만 메인 스레드에서 수행한다.
 /// 자신이 생성한 결과만 다음 Decision에 소비하여 종료 배정의 참조를 남기지 않는다.
 /// </summary>
@@ -64,8 +64,13 @@ public partial struct DroneActionRequestDecisionSystem : ISystem
             var assignment = manager.GetComponentData<DroneTaskAssignment>(intent.Request.Action.Assignment);
             bool collection = intent.Request.Action.Kind == DroneActionKindEnum.CollectFromStorage ||
                 intent.Request.Action.Kind == DroneActionKindEnum.RecoverWorldItem;
-            bool arrived = collection ? DroneItemTransferValidationUtility.IsAtCollectionPoint(manager, assignment) :
-                DroneItemTransferValidationUtility.IsAtDeliveryPoint(manager, assignment);
+            bool arrived;
+            if (collection)
+                arrived = DroneItemTransferValidationUtility.IsAtCollectionPoint(manager, assignment);
+            else if (intent.Request.Action.Kind == DroneActionKindEnum.DropCargo)
+                arrived = math.all(intent.Request.WorldPosition == assignment.DropPosition);
+            else
+                arrived = DroneItemTransferValidationUtility.IsAtDeliveryPoint(manager, assignment);
             if (!arrived)
             {
                 continue;
@@ -139,7 +144,9 @@ public partial struct DroneActionRequestDecisionSystem : ISystem
                 (assignment.NextAction == DroneActionKindEnum.CollectFromStorage || assignment.NextAction == DroneActionKindEnum.RecoverWorldItem);
             bool delivery = assignment.State == DroneTaskAssignmentStateEnum.AwaitingDelivery &&
                 (assignment.NextAction == DroneActionKindEnum.SupplyConstructionSite || assignment.NextAction == DroneActionKindEnum.StoreCargo);
-            if (!collection && !delivery)
+            bool dropping = assignment.State == DroneTaskAssignmentStateEnum.AwaitingDelivery &&
+                assignment.NextAction == DroneActionKindEnum.DropCargo;
+            if (!collection && !delivery && !dropping)
             {
                 return;
             }
@@ -147,7 +154,8 @@ public partial struct DroneActionRequestDecisionSystem : ISystem
             {
                 return;
             }
-            if (delivery && items.IsEmpty)
+            // 공개 도착 뒤 납품/방출에는 추가 이동 에너지가 없다. 0 배터리의 새 목표 선택은 재배정/비행 판단에서 차단한다.
+            if ((delivery || dropping) && items.IsEmpty)
             {
                 return;
             }
@@ -161,6 +169,8 @@ public partial struct DroneActionRequestDecisionSystem : ISystem
                     return;
                 }
             }
+            Entity target = collection ? assignment.Source : assignment.Destination;
+            if (dropping) target = Entity.Null;
             Decisions.Enqueue(new ActionIntent
             {
                 TaskCreationSequence = assignment.OriginalTaskCreationSequence,
@@ -169,7 +179,7 @@ public partial struct DroneActionRequestDecisionSystem : ISystem
                     Action = new DroneActionIdentity
                     {
                         Assignment = link.Assignment, AssignmentRevision = assignment.Revision,
-                        Worker = entity, Kind = assignment.NextAction, Target = collection ? assignment.Source : assignment.Destination,
+                        Worker = entity, Kind = assignment.NextAction, Target = target,
                         Sequence = assignment.LastAppliedActionSequence + 1
                     },
                     WorkerObservationRevision = observation.Revision,

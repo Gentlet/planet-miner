@@ -6,7 +6,7 @@
 
 2A는 공개된 AwaitingDelivery와 현재 실제 목적지 위치를 모두 만족하는 경우에만 배터리 0의 납품을 허용한다. 추가 이동/신규 픽업/새 배차에는 이 예외를 적용하지 않는다. 0 배터리 인계 뒤 잔여 화물이 있으면 이전 확보를 정산하고 실물을 보존한 Retargeting/비상 귀환으로 연결한다. 전량 인계는 정상 완료 후 귀환한다. 이는 기존 5A의 귀환 우선 규칙에 명시한 납품 예외다.
 
-현장 공급, 회수품 보관, 일반 반입/반출과 이미 적재한 화물의 유효한 재배정 공급/보관을 자동화한다. 정상 귀환/정박/수납과 수요 기반 출고는 [귀환/출고 계약](DroneReturnAndDispatch.md)에 연결한다. 실제 충전은 [충전 계약](DroneCharging.md), 사용자 진행 중 취소는 [취소/실패 계약](DroneTaskCancellation.md)에 연결한다. 자동 안전 방출/추가 복구는 9.16에 남긴다.
+현장 공급, 회수품 보관, 일반 반입/반출과 이미 적재한 화물의 유효한 재배정 공급/보관을 자동화한다. 정상 귀환/정박/수납과 수요 기반 출고는 [귀환/출고 계약](DroneReturnAndDispatch.md)에 연결한다. 실제 충전은 [충전 계약](DroneCharging.md), 사용자 진행 중 취소는 [취소/실패 계약](DroneTaskCancellation.md)에 연결한다. 자동 안전 방출과 표시 기반 회수는 [화물 복구 계약](DroneCargoRecovery.md)을 따른다. 추가 작업 유형은 해당 Producer 구현 시 연결한다.
 
 ## 요청/실물/공개 소유자
 
@@ -21,7 +21,7 @@
 | EndSimulation | 기존 요청/계획 제거와 결과 공개를 확정한다. |
 | 다음 DroneDecision | 자동 수행부가 자신의 결과만 소비한다. 외부 결과는 외부 호출자에게 남긴다. |
 
-공통 요청 수행부는 픽업 전용 시스템/표식의 책임을 확장한 것이다. 새 수행자 진행 상태나 별도 결과 Writer는 추가하지 않는다. 이름 변경 때 기존 meta GUID를 유지했다. 자동 행동은 CollectFromStorage/RecoverWorldItem/SupplyConstructionSite/StoreCargo만 생성하며 DropCargo는 생성하지 않는다.
+공통 요청 수행부는 픽업 전용 시스템/표식의 책임을 확장한 것이다. 새 수행자 진행 상태나 별도 결과 Writer는 추가하지 않는다. 이름 변경 때 기존 meta GUID를 유지했다. 자동 행동은 CollectFromStorage/RecoverWorldItem/SupplyConstructionSite/StoreCargo/DropCargo를 생성한다. 안전 방출은 공개 도착/실제 셀을 사용하고 확정된 1A에 따라 추가 이동 없는 0 배터리 방출을 허용한다. 자세한 범위는 화물 복구 계약을 따른다.
 
 이번 틱 새 도착은 다음 틱부터 인계한다. 새 픽업 뒤의 목적지 이동도 다음 틱부터다. 이번 드론의 마지막 납품/바닥 회수에 따른 건물 완공은 다음 건물 틱에 반영한다. 같은 틱 Decision이나 건물 완공을 재실행하지 않는다.
 
