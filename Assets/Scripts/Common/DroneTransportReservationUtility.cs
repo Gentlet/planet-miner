@@ -38,7 +38,9 @@ public static class DroneTransportReservationUtility
         }
         for (int i = 0; i < decisions.Length; i++)
         {
-            if (decisions[i].Kind == DroneTaskInvalidationDecisionKindEnum.InvalidateAssignment && decisions[i].Target == owner)
+            bool ending = decisions[i].Kind == DroneTaskInvalidationDecisionKindEnum.InvalidateAssignment ||
+                decisions[i].Kind == DroneTaskInvalidationDecisionKindEnum.CancelAssignment;
+            if (ending && decisions[i].Target == owner)
             {
                 return true;
             }

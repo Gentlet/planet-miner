@@ -258,7 +258,7 @@ public class DroneTaskRequestTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void ActiveAssignment_RejectsCancellationWithoutChangingAssignmentOrBlockingSource()
+    public void ActiveAssignment_CancellationStopsAssignmentAndBlocksSource()
     {
         Entity site = Site();
         Entity task = Supply(site);
@@ -269,52 +269,69 @@ public class DroneTaskRequestTests : EcsWorldTestFixture
         _entityManager.SetComponentData(worker, new DroneWorkerAssignment { Assignment = assignment });
         Entity cancel = DroneTaskRequestUtility.SubmitCancel(_entityManager, task);
         _game.Update();
-        Assert.AreEqual(DroneTaskRequestStatusEnum.Busy, Result(cancel).Status);
+        Assert.AreEqual(DroneTaskRequestStatusEnum.Cancelled, Result(cancel).Status);
         Assert.IsTrue(_entityManager.Exists(task));
-        Assert.AreEqual(DroneTaskAssignmentStateEnum.MovingToSource, _entityManager.GetComponentData<DroneTaskAssignment>(assignment).State);
-        Assert.AreEqual(assignment, _entityManager.GetComponentData<DroneWorkerAssignment>(worker).Assignment);
-        Assert.AreEqual(0, _entityManager.GetBuffer<DroneTaskGenerationBlockElement>(_candidates).Length);
+        Assert.IsFalse(_entityManager.Exists(assignment));
+        Assert.AreEqual(Entity.Null, _entityManager.GetComponentData<DroneWorkerAssignment>(worker).Assignment);
+        Assert.AreEqual(1, _entityManager.GetBuffer<DroneTaskGenerationBlockElement>(_candidates).Length);
     }
 
     [TestCase(false)]
     [TestCase(true)]
-    public void UnsettledSiteQuantityOrPublication_RejectsCancellation(bool publication)
+    public void ExistingReservation_CancellationReturnsAssignedAndUnpublishedQuantity(bool unpublished)
     {
         Entity site = Site();
         Entity task = Supply(site);
-        if (publication)
+        Entity worker = _entityManager.CreateEntity(typeof(DroneWorker), typeof(DroneWorkerObservation),
+            typeof(DroneWorkerAssignment), typeof(DroneCargoState), typeof(StoredItemElement));
+        Entity source = Entities.CreateStorage(new int2(2, 0), new int2(1, 1), slotCount: 1);
+        Entities.CreateStoredItem(source, ItemTypeEnum.Iron);
+        var requirements = _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site);
+        var row = requirements[0];
+        row.ReservedQuantity = 1;
+        requirements[0] = row;
+        if (unpublished)
         {
-            _entityManager.GetBuffer<DroneTaskPendingPublicationElement>(_candidates).Add(new DroneTaskPendingPublicationElement { Candidate = new DroneTaskCandidateDecisionElement { Task = task }, Quantity = 1, PublicationQueued = true });
+            _entityManager.GetBuffer<DroneTaskPendingPublicationElement>(_candidates).Add(new DroneTaskPendingPublicationElement
+            {
+                Candidate = new DroneTaskCandidateDecisionElement { Task = task, Worker = worker,
+                    Source = source, Destination = site, ItemType = ItemTypeEnum.Iron, Quantity = 1 },
+                Quantity = 1, CommittedQuantity = 1
+            });
         }
         else
         {
-            var buffer = _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site);
-            var value = buffer[0];
-            value.ReservedQuantity = 1;
-            buffer[0] = value;
+            Entity assignment = _entityManager.CreateEntity(typeof(DroneTaskAssignment), typeof(ConstructionSupplyReservation));
+            _entityManager.SetComponentData(assignment, new DroneTaskAssignment { Task = task, Worker = worker,
+                Source = source, Destination = site, ItemType = ItemTypeEnum.Iron, Revision = 1,
+                State = DroneTaskAssignmentStateEnum.MovingToSource, NextAction = DroneActionKindEnum.CollectFromStorage,
+                AssignedQuantity = 1, OriginalTaskCreationSequence = _entityManager.GetComponentData<DroneLogisticsTask>(task).CreationSequence });
+            _entityManager.SetComponentData(assignment, new ConstructionSupplyReservation { Site = site,
+                ItemType = ItemTypeEnum.Iron, RemainingQuantity = 1 });
+            _entityManager.SetComponentData(worker, new DroneWorkerAssignment { Assignment = assignment });
         }
-
         Entity cancel = DroneTaskRequestUtility.SubmitCancel(_entityManager, task);
         _game.Update();
-        Assert.AreEqual(DroneTaskRequestStatusEnum.Busy, Result(cancel).Status);
-        Assert.IsTrue(_entityManager.Exists(task));
-        Assert.AreEqual(0, _entityManager.GetBuffer<DroneTaskGenerationBlockElement>(_candidates).Length);
+        Assert.AreEqual(DroneTaskRequestStatusEnum.Cancelled, Result(cancel).Status);
+        Assert.AreEqual(0, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)[0].ReservedQuantity);
+        Assert.AreEqual(0, _entityManager.GetBuffer<ConstructionMaterialRequirementElement>(site)[0].DeliveredQuantity);
+        Assert.AreEqual(1, _entityManager.GetBuffer<DroneTaskGenerationBlockElement>(_candidates).Length);
     }
 
     [Test]
-    public void LatePublication_RechecksBusyAtLifecycleBeforeAnyCancellationCommit()
+    public void AcceptedCancellation_RemainsApprovedThroughReservationAndCommit()
     {
         Entity site = Site();
         Entity task = Supply(site);
         Entity cancel = DroneTaskRequestUtility.SubmitCancel(_entityManager, task);
         _decision.Update();
+        _reservation.Update();
         _execution.Update();
-        _entityManager.GetBuffer<DroneTaskPendingPublicationElement>(_candidates).Add(new DroneTaskPendingPublicationElement { Candidate = new DroneTaskCandidateDecisionElement { Task = task }, PublicationQueued = true });
         _apply.Update();
         _end.Update();
-        Assert.AreEqual(DroneTaskRequestStatusEnum.Busy, Result(cancel).Status);
-        Assert.IsTrue(_entityManager.Exists(task));
-        Assert.AreEqual(0, _entityManager.GetBuffer<DroneTaskGenerationBlockElement>(_candidates).Length);
+        Assert.AreEqual(DroneTaskRequestStatusEnum.Cancelled, Result(cancel).Status);
+        Assert.IsFalse(_entityManager.Exists(task));
+        Assert.AreEqual(1, _entityManager.GetBuffer<DroneTaskGenerationBlockElement>(_candidates).Length);
     }
 
     [TestCase(false)]

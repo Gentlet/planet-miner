@@ -117,6 +117,7 @@ internal static class DroneTaskRequestDecisionUtility
     public static DroneTaskGenerationKey Key(in DroneLogisticsTask task) => DroneTaskGenerationKey.From(task.Kind, task.Target, task.ItemType);
     public static bool IsCancellationPlanned(EntityManager manager, Entity candidates, Entity task)
     {
+        if (task == Entity.Null) return false;
         foreach (var decision in manager.GetBuffer<DroneTaskGenerationDecisionElement>(candidates, true))
         {
             if (decision.CancelledTask == task)
@@ -213,7 +214,7 @@ internal static class DroneTaskRequestDecisionUtility
         return reason == DroneRecoveryReasonEnum.None ? DroneTaskRequestStatusEnum.Rejected : DroneTaskRequestStatusEnum.Created;
     }
 
-    public static DroneTaskRequestStatusEnum ValidateCancellation(EntityManager manager, Entity candidates, Entity taskEntity, NativeArray<Entity> assignments, bool checkPlan = true)
+    public static DroneTaskRequestStatusEnum ValidateCancellation(EntityManager manager, Entity candidates, Entity taskEntity, NativeArray<Entity> assignments)
     {
         if (!DroneSchedulingUtility.IsActiveEntity(manager, taskEntity))
         {
@@ -226,59 +227,45 @@ internal static class DroneTaskRequestDecisionUtility
         }
 
         var task = manager.GetComponentData<DroneLogisticsTask>(taskEntity);
-        if (task.State != DroneLogisticsTaskStateEnum.Open)
-        {
-            return DroneTaskRequestStatusEnum.Rejected;
-        }
-
         if (task.Kind != DroneLogisticsTaskKindEnum.ConstructionSupply && task.Kind != DroneLogisticsTaskKindEnum.WorldItemRecovery &&
             !DroneSchedulingUtility.IsTransportKind(task.Kind))
         {
             return DroneTaskRequestStatusEnum.Unsupported;
         }
 
-        if (checkPlan && IsCancellationPlanned(manager, candidates, taskEntity))
+        if (task.State != DroneLogisticsTaskStateEnum.Open && task.State != DroneLogisticsTaskStateEnum.Closed)
         {
             return DroneTaskRequestStatusEnum.Rejected;
         }
 
+        if (IsCancellationPlanned(manager, candidates, taskEntity))
+        {
+            return DroneTaskRequestStatusEnum.Rejected;
+        }
+
+        bool hasActiveAssignment = false;
         foreach (Entity assignment in assignments)
         {
-            if (manager.GetComponentData<DroneTaskAssignment>(assignment).Task == taskEntity)
+            var current = manager.GetComponentData<DroneTaskAssignment>(assignment);
+            if (current.Task == taskEntity && !DroneSchedulingUtility.IsTerminal(current.State))
             {
-                return DroneTaskRequestStatusEnum.Busy;
+                hasActiveAssignment = true;
             }
         }
-
-        foreach (var pending in manager.GetBuffer<DroneTaskPendingPublicationElement>(candidates, true))
+        // Closed는 신규 이용의 종료다. 픽업 후 회수처럼 실제 운반이 남으면 취소할 수 있다.
+        if (task.State != DroneLogisticsTaskStateEnum.Open && !hasActiveAssignment)
         {
-            if (pending.Candidate.Task == taskEntity && (pending.Quantity > 0 || pending.CommittedQuantity > 0 || pending.PublicationQueued))
-            {
-                return DroneTaskRequestStatusEnum.Busy;
-            }
+            return DroneTaskRequestStatusEnum.Rejected;
         }
-
         if (DroneSchedulingUtility.IsTransportKind(task.Kind))
         {
             var progress = manager.GetComponentData<DroneTransportProgress>(taskEntity);
-            var pending = manager.GetBuffer<DroneTransportPendingReservationElement>(candidates, true);
-            if (DroneTransportReservationUtility.ReadInFlightQuantity(taskEntity, progress, pending) > 0)
+            if (!hasActiveAssignment && DroneTransportReservationUtility.IsCompleted(
+                manager.GetComponentData<DroneTransportRequirement>(taskEntity), progress))
             {
-                return DroneTaskRequestStatusEnum.Busy;
+                return DroneTaskRequestStatusEnum.Rejected;
             }
         }
-
-        if (task.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply && DroneSchedulingUtility.IsSite(manager, task.Target))
-        {
-            foreach (var requirement in manager.GetBuffer<ConstructionMaterialRequirementElement>(task.Target, true))
-            {
-                if (requirement.ItemType == task.ItemType && requirement.ReservedQuantity > 0)
-                {
-                    return DroneTaskRequestStatusEnum.Busy;
-                }
-            }
-        }
-
         return DroneTaskRequestStatusEnum.Cancelled;
     }
 }

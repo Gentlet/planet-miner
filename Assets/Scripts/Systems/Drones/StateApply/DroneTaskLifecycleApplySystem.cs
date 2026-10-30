@@ -53,13 +53,13 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         using var requests = _actionRequests.ToComponentDataArray<DroneActionReadyRequest>(Allocator.Temp);
         using var results = _actionResults.ToComponentDataArray<DroneItemTransferResult>(Allocator.Temp);
         ApplyInvalidationDecisions(manager, requests, results, ecb, sites);
-        RetireClosedTasks(manager, tasks, assignments, ecb);
-        ApplyTaskRequests(manager, ecb, assignments);
+        ApplyTaskRequests(manager, ecb);
+        RetireEndedTasks(manager, tasks, assignments, ecb);
     }
 
     private EntityQuery _taskRequests;
 
-    private void ApplyTaskRequests(EntityManager manager, EntityCommandBuffer ecb, NativeArray<Entity> assignments)
+    private void ApplyTaskRequests(EntityManager manager, EntityCommandBuffer ecb)
     {
         var original = manager.GetBuffer<DroneTaskGenerationBlockElement>(_candidates, true);
         using var blocks = new NativeList<DroneTaskGenerationBlockElement>(Allocator.Temp);
@@ -102,11 +102,6 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
             var status = decision.Status;
             if (status == DroneTaskRequestStatusEnum.Cancelled)
             {
-                status = DroneTaskRequestDecisionUtility.ValidateCancellation(manager, _candidates, request.Task, assignments, false);
-            }
-
-            if (status == DroneTaskRequestStatusEnum.Cancelled)
-            {
                 var key = DroneTaskRequestDecisionUtility.Key(manager.GetComponentData<DroneLogisticsTask>(request.Task));
                 bool exists = false;
                 foreach (var block in blocks)
@@ -120,8 +115,11 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
                     changed = true;
                 }
 
-                // 활성/미정산 참조가 없는 root만 기존 Lifecycle 소유자가 삭제한다.
-                ecb.DestroyEntity(request.Task);
+                // Decision 승인 뒤 신규 배정/이동/인계를 막았으므로 자체 정산으로 줄어든 참조를 Busy로 재판정하지 않는다.
+                // 취소 상태 반영과 실물 복구 완료는 다르다. 삭제는 아래 참조 정리가 끝난 뒤 한 곳에서 기록한다.
+                var task = manager.GetComponentData<DroneLogisticsTask>(request.Task);
+                task.State = DroneLogisticsTaskStateEnum.Cancelled;
+                manager.SetComponentData(request.Task, task);
             }
 
             DroneTaskRequestUtility.RecordResult(ecb, record.Entity, request.Operation, status, request.Task);
@@ -176,7 +174,8 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
                 task.State = DroneLogisticsTaskStateEnum.Closed;
                 manager.SetComponentData(decision.Target, task);
             }
-            else if (decision.Kind == DroneTaskInvalidationDecisionKindEnum.InvalidateAssignment)
+            else if (decision.Kind == DroneTaskInvalidationDecisionKindEnum.InvalidateAssignment ||
+                     decision.Kind == DroneTaskInvalidationDecisionKindEnum.CancelAssignment)
             {
                 ApplyAssignmentInvalidation(manager, decision, requests, results, ecb, sites);
             }
@@ -191,9 +190,10 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         Entity entity = decision.Target;
         if (!manager.HasComponent<DroneTaskAssignment>(entity)) return;
         var assignment = manager.GetComponentData<DroneTaskAssignment>(entity);
-        // 같은 엔티티의 재배정 revision이 바뀌었거나 행동 반영으로 다시 유효해졌으면 과거 종료 의도를 적용하지 않는다.
-        if (assignment.Revision != decision.AssignmentRevision ||
-            !DroneSchedulingUtility.AssignmentNeedsCleanup(manager, entity, assignment, sites)) return;
+        // 과거 revision의 의도는 적용하지 않는다. 일반 무효화만 최신 자격을 재검사하고 명시 취소는 승인된 의도를 따른다.
+        if (assignment.Revision != decision.AssignmentRevision) return;
+        bool isExplicitCancellation = decision.Kind == DroneTaskInvalidationDecisionKindEnum.CancelAssignment;
+        if (!isExplicitCancellation && !DroneSchedulingUtility.AssignmentNeedsCleanup(manager, entity, assignment, sites)) return;
 
         bool workerExists = DroneSchedulingUtility.IsActiveEntity(manager, assignment.Worker);
         bool ownsWorker = workerExists && manager.HasComponent<DroneWorkerAssignment>(assignment.Worker) &&
@@ -205,6 +205,7 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         else if (assignment.State != DroneTaskAssignmentStateEnum.Completed &&
                  assignment.State != DroneTaskAssignmentStateEnum.Cancelled)
             assignment.State = DroneTaskAssignmentStateEnum.Cancelled;
+        if (isExplicitCancellation) assignment.NextAction = DroneActionKindEnum.None;
         manager.SetComponentData(entity, assignment);
         if (hasCargo) return;
 
@@ -222,13 +223,13 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         if (!hasResult && !hasReservation) ecb.DestroyEntity(entity);
     }
 
-    private static void RetireClosedTasks(EntityManager manager, NativeArray<Entity> tasks, NativeArray<Entity> assignments, EntityCommandBuffer ecb)
+    private static void RetireEndedTasks(EntityManager manager, NativeArray<Entity> tasks, NativeArray<Entity> assignments, EntityCommandBuffer ecb)
     {
-        // Closed는 작업의 신규 이용 종료다. 살아 있는 배정이 참조하는 동안에는 작업 엔티티까지 삭제하지 않는다.
+        // 일반 종료와 명시 취소 모두 새 작업 이용을 끝낸다. 화물 복구 등 살아 있는 배정의 참조는 보존한다.
         for (int t = 0; t < tasks.Length; t++)
         {
             var task = manager.GetComponentData<DroneLogisticsTask>(tasks[t]);
-            if (task.State != DroneLogisticsTaskStateEnum.Closed)
+            if (task.State != DroneLogisticsTaskStateEnum.Closed && task.State != DroneLogisticsTaskStateEnum.Cancelled)
             {
                 continue;
             }
@@ -305,7 +306,7 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
             ecb.RemoveComponent<DroneItemTransferSlotDecisionElement>(pending.Entity);
             // 미소비 결과가 있는 엔티티를 요청으로 재사용해 이전 결과를 덮어쓰지 않는다.
             if (manager.HasComponent<DroneItemTransferResult>(pending.Entity)) continue;
-            var result = ApplyRequest(manager, pending.Entity, pending.Request, registry, ecb, sites, slotBudgets);
+            var result = ApplyRequest(manager, _candidates, pending.Entity, pending.Request, registry, ecb, sites, slotBudgets);
             ecb.AddComponent(pending.Entity, result);
         }
     }
@@ -322,11 +323,20 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         }
     }
 
-    private static DroneItemTransferResult ApplyRequest(EntityManager manager, Entity requestEntity,
+    private static DroneItemTransferResult ApplyRequest(EntityManager manager, Entity candidates, Entity requestEntity,
         in DroneActionReadyRequest request, Entity registry, EntityCommandBuffer ecb, NativeArray<Entity> sites,
         Dictionary<Entity, List<DroneItemTransferSlotDecisionElement>> slotBudgets)
     {
         var result = new DroneItemTransferResult { Action = request.Action, Status = DroneItemTransferStatusEnum.Rejected };
+        foreach (var invalidation in manager.GetBuffer<DroneTaskInvalidationDecisionElement>(candidates, true))
+        {
+            if (invalidation.Kind == DroneTaskInvalidationDecisionKindEnum.CancelAssignment &&
+                invalidation.Target == request.Action.Assignment &&
+                invalidation.AssignmentRevision == request.Action.AssignmentRevision)
+            {
+                return result;
+            }
+        }
         if (!manager.HasComponent<DroneItemTransferDecision>(requestEntity)) return result;
         if (!manager.HasBuffer<DroneItemTransferItemDecisionElement>(requestEntity)) return result;
         if (!manager.HasBuffer<DroneItemTransferSlotDecisionElement>(requestEntity)) return result;

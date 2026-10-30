@@ -882,8 +882,8 @@ public class DroneTaskSchedulingTests : EcsWorldTestFixture
             Entity cancel = DroneTaskRequestUtility.SubmitCancel(_entityManager, task);
             Tick();
             Assert.IsTrue(DroneTaskRequestUtility.TryConsumeResult(_entityManager, cancel, out var result));
-            Assert.AreEqual(DroneTaskRequestStatusEnum.Busy, result.Status);
-            Assert.AreEqual(1, _entityManager.GetComponentData<DroneTransportProgress>(task).ReservedQuantity);
+            Assert.AreEqual(DroneTaskRequestStatusEnum.Cancelled, result.Status);
+            Assert.AreEqual(0, _entityManager.GetComponentData<DroneTransportProgress>(task).ReservedQuantity);
         }
         else
         {

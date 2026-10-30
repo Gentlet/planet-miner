@@ -434,7 +434,7 @@ public class DroneTaskPlanningTests : EcsWorldTestFixture
     }
 
     [Test]
-    public void DetachedClaimIsBusyBeforeOrphanCleanup_AndDoesNotPreventLaterIdleCancel()
+    public void DetachedClaimIsReturnedBeforeApprovedCancellationWithoutRetry()
     {
         Entity source = Storage(new int2(-2, 0), 3);
         Entity destination = Storage(new int2(2, 0), 0);
@@ -448,12 +448,13 @@ public class DroneTaskPlanningTests : EcsWorldTestFixture
         _entityManager.SetComponentData(orphan, detached);
         Entity cancel = DroneTaskRequestUtility.SubmitCancel(_entityManager, task);
         Tick();
-        Assert.AreEqual(DroneTaskRequestStatusEnum.Busy, Result(cancel).Status);
+        Assert.AreEqual(DroneTaskRequestStatusEnum.Cancelled, Result(cancel).Status);
         Assert.AreEqual(0, _entityManager.GetComponentData<DroneTransportReservation>(orphan).RemainingQuantity);
-        Assert.AreEqual(3, _entityManager.GetComponentData<DroneTransportProgress>(task).ReservedQuantity);
+        Assert.IsFalse(_entityManager.Exists(task));
+        Assert.AreEqual(3, DroneSchedulingUtility.CountInventory(_entityManager, source, ItemTypeEnum.Iron));
         Entity retry = DroneTaskRequestUtility.SubmitCancel(_entityManager, task);
         Tick();
-        Assert.AreEqual(DroneTaskRequestStatusEnum.Cancelled, Result(retry).Status);
+        Assert.AreEqual(DroneTaskRequestStatusEnum.Rejected, Result(retry).Status);
         Assert.IsFalse(_entityManager.Exists(task));
     }
 

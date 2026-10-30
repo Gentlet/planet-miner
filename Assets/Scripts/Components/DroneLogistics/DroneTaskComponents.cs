@@ -18,9 +18,9 @@ public enum DroneLogisticsTaskKindEnum : byte
 }
 
 /// <summary>
-/// 역할·목적: 상위 작업의 Open/Closed 상태를 구분한다.
+/// 역할/목적: 상위 작업의 Open/Closed와 명시 취소된 Cancelled 상태를 구분한다.
 /// 부착 엔티티: 열거형 자체는 부착하지 않으며 DroneLogisticsTask.State에 포함한다.
-/// 생성·이용: DroneTaskExecutionSystem(Execution)이 Open 작업을 기록하고 DroneTaskLifecycleApplySystem(StateApply)이 무효화 의도로 Closed를 반영한다.
+/// 생성/이용: TaskExecution이 Open을 기록한다. TaskLifecycle은 일반 종료에 Closed, 승인한 명시 취소에 Cancelled를 반영해 지연 취소가 화물 복구를 다시 중단하지 않게 한다.
 /// 제거: 값을 담은 컴포넌트·판단·결과의 갱신/삭제 수명을 따른다. 별도 엔티티 수명을 갖지 않는다.
 /// </summary>
 public enum DroneLogisticsTaskStateEnum : byte
@@ -28,6 +28,7 @@ public enum DroneLogisticsTaskStateEnum : byte
     None,
     Open,
     Closed,
+    Cancelled,
     Count
 }
 
@@ -70,8 +71,8 @@ public enum DroneTaskAssignmentStateEnum : byte
 /// 부착 엔티티: 현장·아이템·수행자·배정과 별도인 상위 작업 엔티티다. Target은 공급 현장 또는 회수할 실물이다.
 /// 생성: Decision의 DroneTaskDecisionSystem이 의도를 작성하고 Execution의 DroneTaskExecutionSystem이 순번을 발급하여 EndSimulation에 생성한다.
 /// 이용: 다음 틱부터 Decision의 DroneTaskDecisionSystem이 후보를 판단하고 Reservation의 DroneTaskReservationSystem이 생성 순서·PlacementStamp에 따른 선두를 선택한다.
-/// StateApply의 DroneTaskAssignmentPublishSystem은 배정에 작업을 연결하고 DroneTaskLifecycleApplySystem은 전달받은 무효화 의도로 Closed를 반영한다.
-/// 제거: Lifecycle이 Closed인 작업에 연결 배정이 없음을 확인한 뒤 EndSimulation에 작업 엔티티 삭제를 기록한다.
+/// StateApply의 AssignmentPublish는 배정에 작업을 연결하고 TaskLifecycle은 일반 종료에 Closed, 명시 취소에 Cancelled를 반영한다.
+/// 제거: Lifecycle이 Closed/Cancelled 작업의 연결 배정과 미정산 확보량이 없음을 확인한 뒤 EndSimulation에 삭제를 기록한다.
 /// CreationSequence는 PlacementStamp와 별개인 양수 작업 생성 순번이며 RecoveryReason은 회수 필요의 근거다.
 /// </summary>
 public struct DroneLogisticsTask : IComponentData

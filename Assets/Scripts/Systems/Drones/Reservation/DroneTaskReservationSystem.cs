@@ -61,7 +61,8 @@ public partial struct DroneTaskReservationSystem : ISystem
         {
             Entity entity = assignments[i];
             var assignment = manager.GetComponentData<DroneTaskAssignment>(entity);
-            if (DroneSchedulingUtility.AssignmentNeedsCleanup(manager, entity, assignment, sites))
+            if (DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, assignment.Task) ||
+                DroneSchedulingUtility.AssignmentNeedsCleanup(manager, entity, assignment, sites))
             {
                 if (manager.HasComponent<ConstructionSupplyReservation>(entity))
                 {

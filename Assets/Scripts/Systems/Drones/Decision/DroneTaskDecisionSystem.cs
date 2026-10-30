@@ -78,6 +78,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         // 예약 해제는 Reservation, 종료 상태와 삭제 보류는 Lifecycle Apply가 각 소유 경계에서 처리한다.
         for (int t = 0; t < tasks.Length; t++)
         {
+            if (DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, tasks[t])) continue;
             var task = manager.GetComponentData<DroneLogisticsTask>(tasks[t]);
             if (task.State == DroneLogisticsTaskStateEnum.Open && !DroneSchedulingUtility.IsTaskValid(manager, task, sites))
             {
@@ -102,6 +103,17 @@ public partial struct DroneTaskDecisionSystem : ISystem
         for (int a = 0; a < assignments.Length; a++)
         {
             var assignment = manager.GetComponentData<DroneTaskAssignment>(assignments[a]);
+            if (!DroneSchedulingUtility.IsTerminal(assignment.State) &&
+                DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, assignment.Task))
+            {
+                invalidationDecisions.Add(new DroneTaskInvalidationDecisionElement
+                {
+                    Kind = DroneTaskInvalidationDecisionKindEnum.CancelAssignment,
+                    Target = assignments[a],
+                    AssignmentRevision = assignment.Revision
+                });
+                continue;
+            }
             if (DroneSchedulingUtility.AssignmentNeedsCleanup(manager, assignments[a], assignment, sites))
             {
                 invalidationDecisions.Add(new DroneTaskInvalidationDecisionElement
@@ -357,6 +369,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         {
             Entity entity = assignments[i];
             if (!DroneSchedulingUtility.IsRetargetingWorker(manager, entity, out var assignment, out int cargo)) continue;
+            if (DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, assignment.Task)) continue;
             Entity network = DroneTaskNetworkUtility.FindWorkerNetwork(networks,
                 manager.GetComponentData<DroneWorkerObservation>(assignment.Worker).Position);
             if (network == Entity.Null)

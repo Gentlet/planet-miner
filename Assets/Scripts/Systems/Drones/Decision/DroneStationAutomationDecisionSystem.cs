@@ -82,8 +82,13 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
             Entity assignment = manager.GetComponentData<DroneWorkerAssignment>(worker).Assignment;
             bool linked = assignment != Entity.Null && manager.Exists(assignment);
             bool invalidated = false;
+            bool cancellationPlanned = false;
             foreach (var invalidation in manager.GetBuffer<DroneTaskInvalidationDecisionElement>(_candidates, true))
+            {
                 invalidated |= invalidation.Kind == DroneTaskInvalidationDecisionKindEnum.InvalidateAssignment && invalidation.Target == assignment;
+                cancellationPlanned |= invalidation.Kind == DroneTaskInvalidationDecisionKindEnum.CancelAssignment && invalidation.Target == assignment;
+            }
+            if (cancellationPlanned) continue;
             if (invalidated)
             {
                 if (!docked) continue;

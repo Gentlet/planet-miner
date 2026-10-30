@@ -44,7 +44,7 @@ public partial struct DroneMovementExecutionSystem : ISystem
         [ReadOnly] public BufferLookup<DroneReturnReservationElement> ReturnReservations;
         [ReadOnly] public ComponentLookup<PostTransformMatrix> PostTransforms;
 
-        private void Execute(Entity entity, in DroneWorker worker, in DroneMovementDecision decision,
+        private void Execute(Entity entity, in DroneWorker worker, in DroneWorkerAssignment link, in DroneMovementDecision decision,
             ref LocalTransform transform, ref GridPosition position, ref LocalToWorld world,
             ref DroneBatteryState battery, ref DroneActivityState activity,
             ref DroneMovementState movement, ref DroneMovementResult result)
@@ -52,6 +52,18 @@ public partial struct DroneMovementExecutionSystem : ISystem
             if (!decision.Ready)
             {
                 return;
+            }
+            // 이번 틱 승인된 취소만 멈춘다. 다음 판단에서 빈 드론 재배차/화물 복구를 재개한다.
+            foreach (var invalidation in Invalidations[Candidates])
+            {
+                if (invalidation.Kind == DroneTaskInvalidationDecisionKindEnum.CancelAssignment &&
+                    invalidation.Target == link.Assignment)
+                {
+                    movement = default;
+                    result = default;
+                    activity.Activity = DroneActivityKind.Idle;
+                    return;
+                }
             }
             if (ReturnReservations.HasBuffer(Candidates))
             {
