@@ -114,3 +114,5 @@ FixTests/*
 !/.codex/agents/
 /.codex/agents/*
 !/.codex/agents/*.toml
+Assets/Logs
+Assets/Logs.meta
