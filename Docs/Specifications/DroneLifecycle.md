@@ -15,8 +15,8 @@
 | 수행자 연결 | `DroneWorkerAssignment.Assignment`. | 수행자가 현재 수행하는 배정을 가리킨다. 배정 종료와 배정 Entity 삭제는 별개다. |
 | 화물 | `StoredItemElement`와 `ItemOwnership`, 출처는 `DroneCargoState`. | 실제 실물의 종류·수량·Owner가 원본이다. 배정 수량으로 실물을 대체하지 않는다. |
 | 예약 | 개별 `ConstructionSupplyReservation`과 현장 `ReservedQuantity`, 미공개 예약 기록. | 공급 예정량을 관리한다. 공급원 재고·일반 보관 공간의 영속 예약을 새로 만들지 않는다. |
-| 드론 자체 상태 | 활동 원본은 DroneActivityState이며 이동/충전 대기/최소 비상 귀환은 Movement가 작성한다. 정박은 DroneDocked, 수납은 Item 역할 전환이다. 정상 귀환/정거장 전환과 수요 기반 출고는 [귀환/출고 계약](DroneReturnAndDispatch.md)을 따르며 실제 충전은 후속이다. | 작업 상태를 복제하지 않고 수행자의 활동·보관 전환을 관리한다. |
-| 배터리/관측 | 현재량 원본은 `DroneBatteryState.CurrentCharge`다. DroneSpawnUtility가 호출자의 EndSimulation ECB에 최초 현재량과 입력 위치/Revision 1/CanAcceptTask=false 관측을 기록하고 기존 배터리는 보존한다. | 지속 이동 소비는 Movement Execution, 관측은 다음 Preparation이 소유한다. 실제 충전 입력은 후속이다. 실제 결과를 관측과 배차 자격에 연결하며 관측값만으로 배터리를 만들지 않는다. |
+| 드론 자체 상태 | 활동 원본은 DroneActivityState이며 비정박 이동/충전 경유 대기/최소 비상 귀환은 Movement가, 정박 충전/대기는 Charging Execution이 작성한다. 정박은 DroneDocked, 수납은 Item 역할 전환이다. 정상 귀환/정거장 전환과 수요 기반 출고는 [귀환/출고 계약](DroneReturnAndDispatch.md)을 따르며 실제 충전은 [충전 계약](DroneCharging.md)을 따른다. | 작업 상태를 복제하지 않고 수행자의 활동·보관 전환을 관리한다. |
+| 배터리/관측 | 현재량 원본은 `DroneBatteryState`의 가용 `CurrentCharge`와 충전된 미세 잔량 `FractionalCharge`다. 경로/배차는 가용값을 읽고 충전 정산은 잔량을 보존한다. DroneSpawnUtility가 호출자의 EndSimulation ECB에 최초 현재량과 입력 위치/Revision 1/CanAcceptTask=false 관측을 기록하고 기존 배터리는 보존한다. | 지속 이동 소비는 Movement Execution, 관측은 다음 Preparation이 소유한다. 정박 배터리 증가는 DroneChargingExecutionSystem이 소유하고 다음 틱 판단에 반영한다. 실제 결과를 관측과 배차 자격에 연결하며 관측값만으로 배터리를 만들지 않는다. |
 
 `Pending → Reserved → Assigned → PickingUp → Delivering → Completed`는 후보·예약·배정·행동의 흐름을 설명하는 말이다. 이를 `DroneLogisticsTask.State` 하나에 합치지 않는다. Movement가 공개 배정으로 비행하고 도착 Apply가 `AwaitingCollection/AwaitingDelivery`를 EndSimulation에 기록한다. 자동 픽업은 [픽업 계약](DronePickup.md)에 연결했고 자동 납품은 [납품 계약](DroneDelivery.md)에 연결했다. 수납은 화물의 `StoreCargo`와 구분한다.
 
@@ -33,7 +33,7 @@
 
 정상 귀환 중 재배차와 보관 아이템의 작업 수요 기반 자동 출고는 2026-10-30 확정한 [귀환/출고 계약](DroneReturnAndDispatch.md)의 1A/2A를 추가로 따른다. 아래 Task 9.1의 정책 번호와 구분한다.
 
-정거장의 수용 가능성은 [Task 9.3의 보관 소유자](DroneIdentityAndStationStorage.md)의 전용/일반 슬롯과 실제 보관/정박, 이번 틱 승인분으로 판단한다. 사용자 확정 전용 5슬롯/일반 공간 공유를 적용하며 충전 수치/분담은 Task 9.14 후속이다. DroneConfig의 적재량/최대 배터리는 읽지만 비상 속도/거리 소비/충전 수치는 후속이다.
+정거장의 수용 가능성은 [Task 9.3의 보관 소유자](DroneIdentityAndStationStorage.md)의 전용/일반 슬롯과 실제 보관/정박, 이번 틱 승인분으로 판단한다. 사용자 확정 전용 5슬롯/일반 공간 공유를 적용한다. DroneConfig는 적재량/최대 배터리/이동과 비상 속도/거리 소비/충전 속도와 드론당 전력을 게시하며 충전 수치/분담/틱 경계는 [충전 계약](DroneCharging.md)을 따른다.
 
 ## 기존 작업·배정의 전이
 
@@ -97,9 +97,9 @@
 | 외부 행동 결과 소비 | DroneActionRequestUtility.TryConsumeResult의 외부 Consumer | EndSimulation 공개 이후. 예약·실물 성공량 재정산 금지 | 자동 픽업/납품은 자기 요청 결과만 소비하며 외부 Consumer API는 유지 |
 | 수행자 등록/정박/수납과 Identity 전환 | DroneStationLifecycle D/R/Apply. 같은 Entity와 보관 관계를 반영하며 작업/예약을 직접 중복 정산하지 않음 | DroneDecision/Reservation → DroneStateApply의 작업 Publish 기록 뒤 → EndSimulation | Task 9.3의 전환을 귀환/출고 자동 요청에 연결. 철거 재배치는 9.19 후속 |
 | 실제 이동 위치·도착/실패 근거 | Movement Execution이 실제 거리/도착/중단을 제공하고 Movement Apply가 같은 배정의 도착 상태만 기록 | DroneExecution. 인계 신호는 기존 외부 접수/공개 계약에 연결 | Task 9.10 |
-| 배터리 원본 | 현재 Movement Execution이 실제 거리 소비를 단독 반영한다. 후속 충전은 이 단일 정산 경계에 입력을 전달한다. 이동/충전 쪽이 같은 원본을 각자 차감/가산하지 않음 | DroneExecution. 후속 배차 자격 관측은 확정된 값을 사용 | Task 9.10·9.14 |
+| 배터리 원본 | Movement Execution은 비정박 이동 소비를, 그 뒤 Charging Execution은 정박 증가량을 반영한다. 정박 관계로 쓰기 대상을 분리하며 같은 수행자에 두 처리를 중복하지 않는다 | DroneExecution. 후속 배차 자격 관측은 확정된 값을 사용 | Task 9.10·9.14 |
 | 실제 위치 기반 관측·CanAcceptTask | DroneWorkerObservationPreparationSystem이 마지막 확정 이동/배터리/수행자 상태로 관측을 준비 | 기존 Observation Revision/외부 입력 계약 준수. 다음 Decision에 최신 입력 제공 | Task 9.3·9.10·9.14 |
-| 충전 자격/수요 근거 | 후속 충전 준비 소유자가 기존 PowerDemand 단독 Writer에 연결 | Preparation. 충전 수요는 Power 이전에 준비 | Task 9.14 |
+| 충전 자격/수요 근거 | DroneChargingPreparationSystem이 정거장 준비 버퍼를 작성하고 기존 BuildingPowerDemandPreparationSystem만 합산 수요를 작성 | Preparation. 충전 수요는 Power 이전에 준비 | Task 9.14 |
 | 전력 배분·연료·확정 소비 | 기존 Power 시스템. 배정량은 이번 틱 소비이며 환급/재배분 없음 | Power → EndPower. Drone은 공개 공급만 사용 | 구현 |
 | 드론 직접 철거 등 건물 변경 | 후속 드론 작업은 실제 행동 결과만 전달. 승인/반환/환급/삭제는 기존 건물 소유자가 담당 | 기존 Command/EndBuilding 경계 유지. Drone이 건물 원본을 직접 삭제하지 않음 | Task 9.17 |
 
@@ -116,7 +116,7 @@
 7. 충전 수요는 Preparation에서 준비하고 Power가 소비를 확정한 뒤 배터리에 반영한다. 이번 틱 새로 귀환/접속한 드론은 다음 틱 충전 수요부터 참여한다. Drone 처리 중 새 배차/귀환이 생겨 배정 전력을 쓰지 못해도 환급하지 않는다. 같은 틱 후반에 생긴 수요를 앞선 Power에 소급 반영하지 않는다.
 8. 전력 없음·미평가 경로·정거장 만석·배터리 부족은 정상 대기/귀환/중단 정책의 입력이다. 그 자체를 공통 Fatal로 처리하지 않는다. 공통 Fatal의 NextTick/RemainingDomains 정책과 현재 틱 rollback 부재는 기존 계약을 유지한다.
 
-경로/충전 경유 거리와 에너지 계획, 실제 이동/관측/도착과 최소 비상 귀환은 [이동 명세](DroneMovement.md)에 연결했다. 자동 픽업은 [픽업 계약](DronePickup.md)을 따르며 자동 납품은 [납품 계약](DroneDelivery.md)을 따르며 실제 충전은 후속이다. 빈 수행자 배차와 적재 재배정 모두 실행 가능한 경로를 사용해야 하며, 단순 직선 거리·임의 배터리 기준으로 성공을 만들지 않는다. 정거장 도착, 충전 접속, 충전 성공, 수납 성공, 작업 성공은 서로 다른 이벤트/조건이다.
+경로/충전 경유 거리와 에너지 계획, 실제 이동/관측/도착과 최소 비상 귀환은 [이동 명세](DroneMovement.md)에 연결했다. 자동 픽업은 [픽업 계약](DronePickup.md)을 따르며 자동 납품은 [납품 계약](DroneDelivery.md)을 따르며 실제 충전은 [충전 계약](DroneCharging.md)을 따른다. 빈 수행자 배차와 적재 재배정 모두 실행 가능한 경로를 사용해야 하며, 단순 직선 거리·임의 배터리 기준으로 성공을 만들지 않는다. 정거장 도착, 충전 접속, 충전 성공, 수납 성공, 작업 성공은 서로 다른 이벤트/조건이다.
 
 ## 전이 검증 기준과 근거
 
@@ -139,7 +139,7 @@
 ## 후속 Task 연결
 
 - 9.3.1: [드론 Authoring·DB·생성 초기화](DroneCreation.md)는 구현했다. 실제 관측/이동·제품 배차·Identity 전환·수용량의 완료와 구분한다.
-- 9.2의 [정거장 등록/범위/네트워크](DroneStationNetwork.md)와 9.3의 [동일 Entity 전환/정박/수납/수용량](DroneIdentityAndStationStorage.md), [6A 초기화](DroneCapacityInitializationPlan.md)를 구현했다. 실제 경로/이동/도착과 배터리 0의 최소 비상 귀환 목적지 선택은 Movement가 제공한다. 정상 귀환/정박/수납과 수요 기반 출고는 [귀환/출고 계약](DroneReturnAndDispatch.md)을 따른다. 실제 충전은 후속이다.
+- 9.2의 [정거장 등록/범위/네트워크](DroneStationNetwork.md)와 9.3의 [동일 Entity 전환/정박/수납/수용량](DroneIdentityAndStationStorage.md), [6A 초기화](DroneCapacityInitializationPlan.md)를 구현했다. 실제 경로/이동/도착과 배터리 0의 최소 비상 귀환 목적지 선택은 Movement가 제공한다. 정상 귀환/정박/수납과 수요 기반 출고는 [귀환/출고 계약](DroneReturnAndDispatch.md)을 따른다. 실제 충전은 [충전 계약](DroneCharging.md)을 따른다.
 - 9.10/9.13: 실제 이동/거리 소비/관측과 정상/비상 귀환, 재배차/정박/수납/수요 기반 출고를 연결한다. 9.14는 실제 Power 기반 충전과 충전 완료 자격을 이 기존 흐름에 연결한다.
 - 9.15·9.16: 새 수행 실패 사유를 기존 종료/예약 정산·적재 보존에 연결한다. 복구를 이유로 기존 실물을 재생성하지 않는다.
 - 9.17·9.19·9.20: 추가 작업·정거장 철거의 재배치와 전체 흐름 검증. 기존 정거장 철거의 전체 수용량 선검사/불충족 시 철거 보류 규칙은 유지한다.

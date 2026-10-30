@@ -100,6 +100,9 @@ public class DroneConfigurationTests : EcsWorldTestFixture
         Assert.AreEqual(4f,settings.Speed);
         Assert.AreEqual(0.5f,settings.EmergencySpeed);
         Assert.AreEqual(1f,settings.EnergyPerDistance);
+        using var charging = _entityManager.CreateEntityQuery(typeof(DroneChargingConfig));
+        Assert.AreEqual(10f, charging.GetSingleton<DroneChargingConfig>().ChargePerSecond);
+        Assert.AreEqual(5f, charging.GetSingleton<DroneChargingConfig>().PowerPerDrone);
         Assert.IsTrue(DroneConfigInitializationSystem.Initialize(_entityManager, "invalid ignored after valid publication"));
         using var capacities = _entityManager.CreateEntityQuery(typeof(DroneCapacityState));
         Assert.AreEqual(1, capacities.CalculateEntityCount());
@@ -114,7 +117,13 @@ public class DroneConfigurationTests : EcsWorldTestFixture
     [TestCase("batteryConsumptionPerDistance", "missing")]
     [TestCase("batteryConsumptionPerDistance", "zero")]
     [TestCase("batteryConsumptionPerDistance", "string")]
-    public void InvalidMovementInput_DoesNotPublishPartialConfiguration(string field, string fault)
+    [TestCase("chargingSpeed", "missing")]
+    [TestCase("chargingSpeed", "zero")]
+    [TestCase("chargingSpeed", "string")]
+    [TestCase("chargingPowerConsumptionPerDrone", "missing")]
+    [TestCase("chargingPowerConsumptionPerDrone", "zero")]
+    [TestCase("chargingPowerConsumptionPerDrone", "string")]
+    public void InvalidMovementOrChargingInput_DoesNotPublishPartialConfiguration(string field, string fault)
     {
         var json = JObject.Parse(Resources.Load<TextAsset>(DroneConfigInitializationSystem.ResourcePath).text);
         if (fault == "missing")
@@ -134,9 +143,35 @@ public class DroneConfigurationTests : EcsWorldTestFixture
         using var capacities = _entityManager.CreateEntityQuery(typeof(DroneCapacityState));
         using var batteries = _entityManager.CreateEntityQuery(typeof(DroneBatteryConfig));
         using var movements = _entityManager.CreateEntityQuery(typeof(DroneMovementConfig));
+        using var charging = _entityManager.CreateEntityQuery(typeof(DroneChargingConfig));
         Assert.AreEqual(0, capacities.CalculateEntityCount());
         Assert.AreEqual(0, batteries.CalculateEntityCount());
         Assert.AreEqual(0, movements.CalculateEntityCount());
+        Assert.AreEqual(0, charging.CalculateEntityCount());
+        Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
+    }
+
+    [TestCase(false)]
+    [TestCase(true)]
+    public void InvalidExistingCharging_StopsWithoutReplacingPublishedState(bool duplicate)
+    {
+        Assert.IsTrue(DroneConfigInitializationSystem.Initialize(_entityManager));
+        using var query = _entityManager.CreateEntityQuery(typeof(DroneChargingConfig));
+        Entity original = query.GetSingletonEntity();
+        var config = query.GetSingleton<DroneChargingConfig>();
+        if (duplicate)
+        {
+            _entityManager.SetComponentData(_entityManager.CreateEntity(typeof(DroneChargingConfig)), config);
+        }
+        else
+        {
+            config.PowerPerDrone = 0f;
+            _entityManager.SetComponentData(original, config);
+        }
+        LogAssert.Expect(LogType.Error, new Regex("DroneConfigInitializationSystem"));
+        Assert.IsFalse(DroneConfigInitializationSystem.Initialize(_entityManager));
+        Assert.AreEqual(config.PowerPerDrone, _entityManager.GetComponentData<DroneChargingConfig>(original).PowerPerDrone);
+        Assert.AreEqual(duplicate ? 2 : 1, query.CalculateEntityCount());
         Assert.IsTrue(SimulationFailureUtility.HasFatalError(_entityManager));
     }
 

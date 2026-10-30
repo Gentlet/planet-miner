@@ -32,6 +32,7 @@ public partial struct BuildingPowerDemandPreparationSystem : ISystem
             ConfigLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
             MinerLookup = SystemAPI.GetComponentLookup<MinerWorkPreparation>(true),
             CrafterLookup = SystemAPI.GetComponentLookup<CrafterWorkPreparation>(true),
+            ChargingLookup = SystemAPI.GetBufferLookup<DroneChargingPreparationElement>(true),
             DeltaTime = math.min(SystemAPI.Time.DeltaTime, GameConstants.MaxSimulationDeltaTime)
         }.ScheduleParallel(_consumerQuery, dependency);
         state.Dependency = prepare;
@@ -48,6 +49,7 @@ internal partial struct PrepareBuildingPowerDemandJob : IJobEntity
     [ReadOnly] public BufferLookup<BuildingConfigElement> ConfigLookup;
     [ReadOnly] public ComponentLookup<MinerWorkPreparation> MinerLookup;
     [ReadOnly] public ComponentLookup<CrafterWorkPreparation> CrafterLookup;
+    [ReadOnly] public BufferLookup<DroneChargingPreparationElement> ChargingLookup;
     public float DeltaTime;
 
     private void Execute(Entity entity, ref PowerDemand demand, EnabledRefRW<PowerDemand> prepared, EnabledRefRW<PowerConsumer> intent, in BuildingType type)
@@ -63,6 +65,7 @@ internal partial struct PrepareBuildingPowerDemandJob : IJobEntity
             return;
         }
         bool canWork = false;
+        float requestedEnergy = 0f;
         switch (type.Type)
         {
             case BuildingTypeEnum.Miner:
@@ -80,9 +83,15 @@ internal partial struct PrepareBuildingPowerDemandJob : IJobEntity
                 var decision = CrafterLookup[entity];
                 canWork = decision.CanStartCraft || decision.CanAdvance;
                 break;
+            case BuildingTypeEnum.DroneStation:
+            case BuildingTypeEnum.MainFacility:
+                double chargingEnergy = 0d;
+                foreach (var charging in ChargingLookup[entity]) chargingEnergy += charging.RequestedEnergy;
+                requestedEnergy = PowerFrameUtility.RoundEnergyUp(chargingEnergy);
+                break;
         }
-        // 연구/충전의 Producer는 후속이다. 고정 수요를 만들지 않고 준비 완료인 0으로 유지한다.
-        demand.RequestedEnergy = canWork ? config.Power.MaximumConsumption * DeltaTime : 0f;
+        // 연구 수요는 후속이다. 충전은 준비된 부족분만 요청하며 대기 중 고정 소비를 만들지 않는다.
+        demand.RequestedEnergy = canWork ? config.Power.MaximumConsumption * DeltaTime : requestedEnergy;
         intent.ValueRW = demand.RequestedEnergy > 0f;
         prepared.ValueRW = true;
     }

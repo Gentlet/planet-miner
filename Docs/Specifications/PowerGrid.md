@@ -1,15 +1,15 @@
 # 전력망 명세
 
-2026-10-15 사용자 확정 1A·2A·3A·4A·5A·6A를 구현한다. 배정 에너지를 이번 틱 소비로 확정하며 미사용분은 환급하거나 재배분하지 않는다. Preparation은 작업 자격/수요, Power는 선택·망·가용량·배분·연료 소비·공개를, Building/Drone은 공개 공급에 따른 작업을 소유한다. 현재 검사는 실제 Writer와 공개 경계를 기준으로 좁혔으며 상세 계약은 아래 「Writer와 검사 경계」를 따른다. 연구·충전의 실제 Producer는 후속이고 과거 검증 수치는 각 변경 시점의 별도 기록이다.
+2026-10-15 사용자 확정 1A·2A·3A·4A·5A·6A를 구현한다. 배정 에너지를 이번 틱 소비로 확정하며 미사용분은 환급하거나 재배분하지 않는다. Preparation은 작업 자격/수요, Power는 선택·망·가용량·배분·연료 소비·공개를, Building/Drone은 공개 공급에 따른 작업을 소유한다. 현재 검사는 실제 Writer와 공개 경계를 기준으로 좁혔으며 상세 계약은 아래 「Writer와 검사 경계」를 따른다. 충전 Producer는 [충전 계약](DroneCharging.md)을 따르고 연구 Producer는 후속이며 과거 검증 수치는 각 변경 시점의 별도 기록이다.
 
 ## 설정 원본과 검증
 
 전력 능력은 `BuildingConfigElement.Power`의 `BuildingPowerConfig`에 통합한다. 별도 PowerConfig/시계/Tick singleton은 없다. 능력은 게시 후 불변이며 종류·Tier별 명시 설정을 검증한다. maximumGeneration/maximumConsumption은 에너지/초, coalEnergyPerItem/RemainingEnergy/RequestedEnergy/AllocatedEnergy는 에너지 단위다. World 시간의 `min(DeltaTime, GameConstants.MaxSimulationDeltaTime)`을 모든 도메인이 공유한다.
 
-- MainFacility는 기초 발전과 자기 셀의 가상 전신주, 후속 동적 충전 수요를 갖는다. 주변 셀 공급은 일반 전신주가 확장한다.
+- MainFacility는 기초 발전과 자기 셀의 가상 전신주, 동적 충전 수요를 갖는다. 주변 셀 공급은 일반 전신주가 확장한다.
 - CoalGenerator는 명시적 `storageCapacity` 슬롯과 Coal MaxStack을 사용한다. 1티어 임시 1슬롯·석탄 에너지 600은 유지한다. 별도 실물 10개 제한은 없다. Coal Whitelist만 허용한다.
 - Miner/Crafter의 정격 수요는 작업 가능한 경우에만 작성한다. 제작 완료/출력 확정 대기는 수요 0이다.
-- ResearchBuilding 및 DroneStation/MainFacility의 연구·충전 수요는 후속 도메인이 작성한다. 임의의 고정 충전 수요는 추가하지 않는다.
+- DroneStation/MainFacility는 정박 충전 준비를 기존 수요 Writer가 합산한다. ResearchBuilding의 연구 수요는 후속이며 고정 충전 수요는 추가하지 않는다.
 
 ## 데이터 소유와 활성 상태
 

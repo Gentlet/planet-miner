@@ -109,6 +109,7 @@ public static class BuildingLifecycleUtility
             ecb.SetComponent(newBuilding, new Storage(storageCapacity + config.DroneStationStorageCapacity));
             ecb.AddComponent(newBuilding, new DroneStationStorage { DedicatedSlotCount = config.DroneStationStorageCapacity });
             ecb.AddBuffer<DockedDroneElement>(newBuilding);
+            ecb.AddBuffer<DroneChargingPreparationElement>(newBuilding);
         }
 
         return newBuilding;

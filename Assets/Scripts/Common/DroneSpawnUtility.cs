@@ -79,8 +79,10 @@ public static class DroneSpawnUtility
         }
 
         bool hasBattery = manager.HasComponent<DroneBatteryState>(entity);
-        float charge = hasBattery ? manager.GetComponentData<DroneBatteryState>(entity).CurrentCharge : maximumBatteryCharge;
-        if (!math.isfinite(charge) || charge < 0f || charge > maximumBatteryCharge)
+        var battery = hasBattery ? manager.GetComponentData<DroneBatteryState>(entity) :
+            new DroneBatteryState { CurrentCharge = maximumBatteryCharge };
+        float charge = battery.CurrentCharge;
+        if (!DroneBatteryUtility.IsValid(battery, maximumBatteryCharge))
         {
             error = "Existing drone battery is outside the configured range.";
             return false;

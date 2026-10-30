@@ -113,7 +113,22 @@ public static class PowerFrameUtility
         return deltaTime * math.min(supply.SupplyRatio, supply.AllocatedEnergy / requested);
     }
 
-    /// <summary>float 변환이 double 예산을 초과하지 않게 한다. 미세한 잔여분도 재배분하지 않는다.</summary>
+    /// <summary>요청량은 위로 반올림해 마지막 충전 단위의 에너지가 부족해지지 않게 한다.</summary>
+    public static float RoundEnergyUp(double energy)
+    {
+        if (energy <= 0d)
+        {
+            return 0f;
+        }
+        float result = math.min((float)energy, float.MaxValue);
+        if ((double)result < energy && result < float.MaxValue)
+        {
+            result = math.asfloat(math.asuint(result) + 1u);
+        }
+        return result;
+    }
+
+    /// <summary>음이 아닌 double 목표량과 limit을 넘지 않는 float 값으로 내림한다.</summary>
     public static float RoundEnergyDown(double energy, float limit)
     {
         if (energy <= 0d)

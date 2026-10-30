@@ -1,6 +1,6 @@
 # 드론 Identity 전환과 정거장 보관
 
-2026-10-22 Task 9.3. 사용자 확정 1A/2A/3A/수정 5/6A/7A와 [Lifecycle](DroneLifecycle.md)의 엄격한 수납 자격을 구현한다. [생성 기반](DroneCreation.md)과 [정거장 네트워크](DroneStationNetwork.md)를 재사용한다. 실제 경로/이동/도착과 최소 비상 귀환은 [이동 명세](DroneMovement.md)를 따른다. 정상 귀환/정박/수납과 수요 기반 출고는 [귀환/출고 계약](DroneReturnAndDispatch.md)을 따른다. 실제 충전은 후속이다.
+2026-10-22 Task 9.3. 사용자 확정 1A/2A/3A/수정 5/6A/7A와 [Lifecycle](DroneLifecycle.md)의 엄격한 수납 자격을 구현한다. [생성 기반](DroneCreation.md)과 [정거장 네트워크](DroneStationNetwork.md)를 재사용한다. 실제 경로/이동/도착과 최소 비상 귀환은 [이동 명세](DroneMovement.md)를 따른다. 정상 귀환/정박/수납과 수요 기반 출고는 [귀환/출고 계약](DroneReturnAndDispatch.md)을 따른다. 실제 전력 충전은 [충전 계약](DroneCharging.md)을 따른다.
 
 ## 설정과 슬롯 원본
 
@@ -27,7 +27,7 @@
 
 [귀환/출고 계약](DroneReturnAndDispatch.md)의 Station Automation Decision이 기존 Task Decision 뒤 실제 도착/작업 수요를 확인하고 Submit으로 자동 요청을 접수한다. 자동 요청은 DroneAutomaticStationRequest로 외부 요청과 구분한다. Station Activation Reservation은 기존 Task Reservation 뒤 실제 승인/확보를 제외한 잔여 수요만 자동 출고로 남기며, 기존 Station Lifecycle Reservation이 요청/슬롯을 최종 중재한다.
 
-외부 요청의 Idle 자격은 유지한다. 자동 요청은 실제 정거장 내부와 ChargingStation 일치를 확인한 WaitingForCharge 도착 대기도 Dock/정박 해제의 입력으로 사용한다. 자동 Store는 완충/무배정/무행동/빈 화물/공간 조건을 모두 만족해 더 기다릴 충전이 없을 때 대기 의도 종료와 수납 역할 전환을 같은 Apply/EndSimulation에서 확정한다. 미완충 대기를 수납하거나 정박을 충전으로 처리하지 않는다. 자동 정박 Activate는 이동 목적지/활동 초기화도 같은 공개 경계에서 반영하고 배터리/기존 배정/화물은 유지한다.
+외부 요청의 Idle 자격은 유지한다. 자동 요청은 실제 정거장 내부와 연결된 정박 Station을 확인한 Charging/WaitingForCharge를 정박 해제 입력으로 사용한다. 명시적 Dock에는 이동 목적지가 없을 수 있으므로 정박 관계를 사용하며, 비정박 도착 대기는 기존 ChargingStation 일치를 요구한다. 자동 Store는 완충/무배정/무행동/빈 화물/공간 조건을 모두 만족해 더 기다릴 충전이 없을 때 대기 의도 종료와 수납 역할 전환을 같은 Apply/EndSimulation에서 확정한다. 미완충 대기를 수납하거나 정박을 충전으로 처리하지 않는다. 자동 정박 Activate는 이동 목적지/활동 초기화도 같은 공개 경계에서 반영하고 배터리/기존 배정/화물은 유지한다.
 
 ### Job 의존성과 임시 자료
 
@@ -45,7 +45,7 @@ StateApply의 데이터 Job은 원본 ECS를 바꾸지 않고 ECB와 Actor/Prefa
 
 표시는 검증된 단일 루트 프리팹의 MaterialMeshInfo/RenderMeshArray/RenderBounds와 TRS/PostTransformMatrix를 사용한다. 논리 Entity를 파괴/재생성하지 않고 다른 역할의 배터리를 삭제하지 않는다. 생성 helper의 실패 전에는 아이템/보관 원본을 제거하지 않는다.
 
-DroneActivityState는 Idle/Moving/Acting/Charging/WaitingForCharge의 수행자 자체 동작이며 작업/배정 상태를 복제하지 않는다. 생성 초기 Writer는 DroneSpawnUtility, 이동/대기 갱신 Writer는 DroneMovementExecutionSystem이다. 실제 충전 Writer는 후속이다. DroneDocked는 활성 정박 관계의 원본, DockedDroneElement는 같은 소유자의 정거장 역참조다. 수납 아이템의 관계는 기존 ItemOwnership/StoredItemElement를 사용한다.
+DroneActivityState는 Idle/Moving/Acting/Charging/WaitingForCharge의 수행자 자체 동작이며 작업/배정 상태를 복제하지 않는다. 생성 초기 Writer는 DroneSpawnUtility, 비정박 이동/대기 Writer는 DroneMovementExecutionSystem, 정박 충전 증가/활동 Writer는 DroneChargingExecutionSystem이다. 충전 결과는 다음 틱 Decision부터 사용한다. DroneDocked는 활성 정박 관계의 원본, DockedDroneElement는 같은 소유자의 정거장 역참조다. 수납 아이템의 관계는 기존 ItemOwnership/StoredItemElement를 사용한다.
 
 ## 벨트/기존 보관과의 연결
 

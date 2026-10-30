@@ -2,11 +2,11 @@
 
 [전체 색인](README.md) · [배치와 공사](Construction.md) · [아이템과 저장](ItemsAndStorage.md)
 
-드론 작업/예약/인계/재배정과 정거장 연결/보관/Identity/요청/계획의 데이터 계약을 설명한다. 일반 운반 계획은 별도 버퍼로 구분하며 배정 공개는 기존 Publish에 연결했고 실제 경로/이동/관측/도착은 [이동 명세](../../Specifications/DroneMovement.md)를 따르며 자동 픽업은 [픽업 명세](../../Specifications/DronePickup.md)에 연결했고 자동 납품은 [납품 명세](../../Specifications/DroneDelivery.md)에 연결했다. 정상 귀환/정거장 전환과 수요 기반 출고는 [귀환/출고 명세](../../Specifications/DroneReturnAndDispatch.md)를 따르며 실제 충전은 후속이다.
+드론 작업/예약/인계/재배정과 정거장 연결/보관/Identity/요청/계획의 데이터 계약을 설명한다. 일반 운반 계획은 별도 버퍼로 구분하며 배정 공개는 기존 Publish에 연결했고 실제 경로/이동/관측/도착은 [이동 명세](../../Specifications/DroneMovement.md)를 따르며 자동 픽업은 [픽업 명세](../../Specifications/DronePickup.md)에 연결했고 자동 납품은 [납품 명세](../../Specifications/DroneDelivery.md)에 연결했다. 정상 귀환/정거장 전환과 수요 기반 출고는 [귀환/출고 명세](../../Specifications/DroneReturnAndDispatch.md)를 따르며 실제 충전은 [충전 계약](../../Specifications/DroneCharging.md)을 따른다.
 
 2026-10-15 Task 9.1은 [상태 전이·Lifecycle Owner 계약](../../Specifications/DroneLifecycle.md)을 확정했다. 1A~6A의 수납·완충 전/연속 배차·귀환·비상 이동·중단 정산은 후속 수행부가 따라야 할 정책이다. Task 9.1 당시 23개 타입과 관리 계층을 유지했으며 실제 정거장·이동·배터리·충전·수납 Writer나 새 상태 enum을 추가하지 않았다. 이후 Task 9.2의 정거장 기반은 아래 별도 타입/명세로 구분한다. 작업/배정의 기존 상태와 수행자 자체의 후속 개념 상태를 구분한다.
 
-기존 142사례와 기존 통합 4사례는 이전 구조의 별도 실행이며 합산하지 않는다. Task 9.3.1은 생성 초기화, 9.3은 [명시적 출고/정박/수납과 용량](../../Specifications/DroneIdentityAndStationStorage.md), [공통 설정 초기화](../../Specifications/DroneCapacityInitializationPlan.md)를 연결한다. 경로/이동/관측/도착과 최소 비상 귀환은 구현되어 있다. 자동 픽업은 공개 도착 다음 틱 기존 인계 경로를 사용한다. 자동 납품/완료량은 [납품 명세](../../Specifications/DroneDelivery.md)를 따른다. 정상 귀환/정거장 전환과 수요 기반 출고는 [귀환/출고 명세](../../Specifications/DroneReturnAndDispatch.md)를 따른다. 실제 충전과 연구 Writer는 후속이다. DropPosition은 실제 위치 원본이 아니다.
+기존 142사례와 기존 통합 4사례는 이전 구조의 별도 실행이며 합산하지 않는다. Task 9.3.1은 생성 초기화, 9.3은 [명시적 출고/정박/수납과 용량](../../Specifications/DroneIdentityAndStationStorage.md), [공통 설정 초기화](../../Specifications/DroneCapacityInitializationPlan.md)를 연결한다. 경로/이동/관측/도착과 최소 비상 귀환은 구현되어 있다. 자동 픽업은 공개 도착 다음 틱 기존 인계 경로를 사용한다. 자동 납품/완료량은 [납품 명세](../../Specifications/DroneDelivery.md)를 따른다. 정상 귀환/정거장 전환과 수요 기반 출고는 [귀환/출고 명세](../../Specifications/DroneReturnAndDispatch.md)를 따른다. 실제 충전은 [충전 계약](../../Specifications/DroneCharging.md)을 따르며 연구 Writer는 후속이다. DropPosition은 실제 위치 원본이 아니다.
 
 ```text
 Command / EndCommand: 현장·자재 요구와 취소 반환·삭제 공개
@@ -44,7 +44,7 @@ Construction은 BuildingStateApply 마지막에서 현재 Owner=Null/GridPositio
 
 ## DroneBatteryState
 
-현재 배터리량 CurrentCharge만 소유한다. DroneSpawnUtility가 호출자의 명시적 최대치로 새 개체를 초기화하고 기존 값은 역할 초기화로 충전하지 않는다. 최대치 설정과 Identity 전환은 Task 9.3에서 연결했고 이동 소비는 9.10에 연결했고 실제 충전은 9.14 후속이다. 생성 초기 구성과 EndSimulation 공개·Ready 전제는 [드론 생성 명세](../../Specifications/DroneCreation.md)를 따른다.
+가용 배터리 CurrentCharge(float)와 이미 충전됐지만 표현 단위 미만인 FractionalCharge(double)를 같은 배터리 원본으로 소유한다. 충전 정산이 잔량을 누적/게시하고 이동과 역할 전환은 잔량을 보존한다. 최대 배터리와 전력 예산은 복제하지 않는다. DroneSpawnUtility가 호출자의 명시적 최대치로 새 개체를 초기화하고 기존 값은 역할 초기화로 충전하지 않는다. 최대치 설정과 Identity 전환은 Task 9.3에서 연결했고 이동 소비는 9.10에 연결했고 정박 증가량은 DroneChargingExecutionSystem이 반영한다. 생성 초기 구성과 EndSimulation 공개·Ready 전제는 [드론 생성 명세](../../Specifications/DroneCreation.md)를 따른다.
 
 ## DroneStationStorage
 
@@ -60,7 +60,7 @@ Construction은 BuildingStateApply 마지막에서 현재 Owner=Null/GridPositio
 
 ## DroneActivityState
 
-수행자 자체의 Idle/Moving/Acting/Charging/WaitingForCharge 활동이다. 생성이 Idle을 기록하고 Store/Dock 자격 검사가 읽는다. 작업/배정 상태를 복제하지 않는다. 실제 이동/대기는 Movement Execution이 작성한다. 자동 정박 Activate는 이동 상태 초기값/Idle을 기존 정박 관계 해제와 같은 EndSimulation에 기록하며 기존 배터리/배정/화물을 보존한다. 충전 입력은 후속이며 수납 전환에서 활동을 제거한다.
+수행자 자체의 Idle/Moving/Acting/Charging/WaitingForCharge 활동이다. 생성이 Idle을 기록하고 Store/Dock 자격 검사가 읽는다. 작업/배정 상태를 복제하지 않는다. 비정박 이동/대기는 Movement Execution, 정박 충전/대기는 Charging Execution이 작성한다. 자동 정박 Activate는 이동 상태 초기값/Idle을 기존 정박 관계 해제와 같은 EndSimulation에 기록하며 기존 배터리/배정/화물을 보존한다. 이번 틱 충전량은 다음 틱 판단이 읽으며 수납 전환에서 활동을 제거한다.
 
 ## DroneBatteryConfig
 
@@ -376,3 +376,12 @@ DroneActionIdentity는 요청/결과 안의 일반 구조체다. 인계가 revis
 - **종류/부착 대상/목적:** 자동 정거장 요청 Entity의 IComponentData다. 자동 결과 소비의 소유권을 표시하고 DemandTask/Quantity로 해당 호출의 수요 기반 Activate 중재 입력을 전달한다. 수행자 상태나 영속 작업 확보를 복제하지 않는다.
 - **Writer/Reader:** DroneStationAutomationDecisionSystem이 기존 Submit으로 만든 요청에 부착한다. DroneStationActivationReservationSystem은 Task Reservation 뒤 남은 작업 수요만 출고 대상으로 중재하고 기존 Station Lifecycle이 전환/결과를 기록한다.
 - **수명/공개:** 기존 요청/결정 제거와 결과 공개는 EndSimulation이다. 다음 자동 Decision이 자기 표식의 결과만 TryConsumeResult로 소비한다. 외부 요청/결과에는 이 소유권을 적용하지 않는다.
+
+
+## DroneChargingConfig
+
+초기화가 한 번 검증/게시하는 ChargePerSecond/PowerPerDrone이다. 유효한 기존 singleton은 보존하고 무효/중복은 공통 Fatal이다. Preparation은 필요량을, Execution은 에너지당 증가량을 계산한다. 위치/현재 배터리는 포함하지 않는다.
+
+## DroneChargingPreparationElement
+
+공통 건물 생성이 DroneStation/MainFacility에 부착하는 이번 틱 버퍼다. DroneChargingPreparationSystem만 Clear/작성하며 Drone/DesiredCharge/RequestedEnergy를 준비한다. BuildingPowerDemandPreparationSystem은 합산 수요를 작성하고 DroneChargingExecutionSystem은 확정 공급으로 정박 배터리/활동을 갱신한다. 원본 정박 관계나 영속 예약을 복제하지 않으며 다음 Preparation이 다시 만든다.

@@ -238,3 +238,12 @@
 | Assets/Scripts/Common/SimulationFailureUtility.cs | 공통 Fatal 게시와 중단 범위 검사. 기본 NextTick, Power RemainingDomains. |
 
 이번 준비/결정 분리·공통 Fatal·Job 의존성 변경은 Unity 컴파일 completed/failed false/errors 없음/compilationFailed false·Editor ready/비컴파일/비리로드·최신 runtime/Editor DLL과 관련 선택 EditMode 170/170(실패·생략·불확정 0)으로 확인했다. Play Mode·베이킹·Player 빌드·성능은 미수행이다.
+
+
+### 드론 충전 소스
+
+- `Assets/Scripts/Components/DroneLogistics/DroneChargingComponents.cs`: DroneChargingConfig / DroneChargingPreparationElement.
+- `Assets/Scripts/Systems/Drones/Preparation/DroneChargingPreparationSystem.cs`: 정박 드론의 충전 부족분/에너지 준비.
+- `Assets/Scripts/Systems/Drones/Execution/DroneChargingExecutionSystem.cs`: 확정 배정 한도 내 배터리/활동 갱신.
+
+- `Assets/Scripts/Common/DroneBatteryUtility.cs`: 배터리 입력 범위 검증과 이미 충전된 미세 잔량의 보존/가용값 게시.

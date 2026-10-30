@@ -24,15 +24,18 @@ public partial class DroneConfigInitializationSystem : SystemBase
         Entity createdCapacity = Entity.Null;
         Entity createdBattery = Entity.Null;
         Entity createdMovement = Entity.Null;
+        Entity createdCharging = Entity.Null;
         try
         {
             using var capacities = manager.CreateEntityQuery(typeof(DroneCapacityState));
             using var batteries = manager.CreateEntityQuery(typeof(DroneBatteryConfig));
             using var movements = manager.CreateEntityQuery(typeof(DroneMovementConfig));
+            using var charging = manager.CreateEntityQuery(typeof(DroneChargingConfig));
+            int chargingCount = charging.CalculateEntityCount();
             int movementCount = movements.CalculateEntityCount();
             int capacityCount = capacities.CalculateEntityCount();
             int batteryCount = batteries.CalculateEntityCount();
-            if (capacityCount > 1 || batteryCount > 1 || movementCount > 1)
+            if (capacityCount > 1 || batteryCount > 1 || movementCount > 1 || chargingCount > 1)
             {
                 throw new InvalidOperationException("Drone configuration has duplicate singleton state.");
             }
@@ -58,7 +61,16 @@ public partial class DroneConfigInitializationSystem : SystemBase
                     throw new InvalidOperationException("Existing drone movement configuration must be finite and positive.");
                 }
             }
-            if (capacityCount == 1 && batteryCount == 1 && movementCount == 1)
+            if (chargingCount == 1)
+            {
+                var existing = charging.GetSingleton<DroneChargingConfig>();
+                if (!math.isfinite(existing.ChargePerSecond) || existing.ChargePerSecond <= 0f ||
+                    !math.isfinite(existing.PowerPerDrone) || existing.PowerPerDrone <= 0f)
+                {
+                    throw new InvalidOperationException("Existing drone charging configuration must be finite and positive.");
+                }
+            }
+            if (capacityCount == 1 && batteryCount == 1 && movementCount == 1 && chargingCount == 1)
             {
                 return true;
             }
@@ -101,6 +113,11 @@ public partial class DroneConfigInitializationSystem : SystemBase
                 EmergencySpeed = ReadPositiveNumber(input, "emergencyMovementSpeed"),
                 EnergyPerDistance = ReadPositiveNumber(input, "batteryConsumptionPerDistance")
             };
+            var chargingConfig = new DroneChargingConfig
+            {
+                ChargePerSecond = ReadPositiveNumber(input, "chargingSpeed"),
+                PowerPerDrone = ReadPositiveNumber(input, "chargingPowerConsumptionPerDrone")
+            };
 
             // 모든 입력/기존 상태 검사가 끝나기 전에는 기존 원본이나 새 엔티티를 변경하지 않는다.
             if (capacityCount == 0)
@@ -118,10 +135,19 @@ public partial class DroneConfigInitializationSystem : SystemBase
                 createdMovement = manager.CreateEntity(typeof(DroneMovementConfig));
                 manager.SetComponentData(createdMovement, movementConfig);
             }
+            if (chargingCount == 0)
+            {
+                createdCharging = manager.CreateEntity(typeof(DroneChargingConfig));
+                manager.SetComponentData(createdCharging, chargingConfig);
+            }
             return true;
         }
         catch (Exception exception)
         {
+            if (createdCharging != Entity.Null && manager.Exists(createdCharging))
+            {
+                manager.DestroyEntity(createdCharging);
+            }
             if (createdCapacity != Entity.Null && manager.Exists(createdCapacity))
             {
                 manager.DestroyEntity(createdCapacity);

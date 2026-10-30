@@ -106,8 +106,7 @@ internal struct DroneStationEligibility
             }
             if (Batteries.HasComponent(drone))
             {
-                float charge = Batteries[drone].CurrentCharge;
-                if (!math.isfinite(charge) || charge < 0f || charge > maximum)
+                if (!DroneBatteryUtility.IsValid(Batteries[drone], maximum))
                 {
                     return DroneStationRequestStatus.Rejected;
                 }
@@ -118,9 +117,12 @@ internal struct DroneStationEligibility
         {
             return DroneStationRequestStatus.Rejected;
         }
-        bool waitingAtStation = automatic && Activities[drone].Activity == DroneActivityKind.WaitingForCharge &&
-            Movements[drone].ChargingStation == station && IsAtStation(drone, station);
-        if (Activities[drone].Activity != DroneActivityKind.Idle && !waitingAtStation)
+        bool chargingActivity = Activities[drone].Activity == DroneActivityKind.WaitingForCharge ||
+            Activities[drone].Activity == DroneActivityKind.Charging;
+        // 명시적 Dock은 이동 목적지가 없어도 유효하다. 정박 관계가 없을 때만 도착 목적지를 사용한다.
+        Entity chargingStation = Docks.HasComponent(drone) ? Docks[drone].Station : Movements[drone].ChargingStation;
+        bool chargingAtStation = automatic && chargingActivity && chargingStation == station && IsAtStation(drone, station);
+        if (Activities[drone].Activity != DroneActivityKind.Idle && !chargingAtStation)
         {
             return DroneStationRequestStatus.Busy;
         }

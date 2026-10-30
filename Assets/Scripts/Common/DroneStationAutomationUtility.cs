@@ -208,7 +208,12 @@ internal static class DroneStationAutomationUtility
         }
         plan.ViaSource = assignment.NextAction == DroneActionKindEnum.CollectFromStorage || assignment.NextAction == DroneActionKindEnum.RecoverWorldItem;
         if (plan.ViaSource && !DroneTargetPointUtility.TryGetTargetPoint(manager, assignment.Source, out plan.Source)) return;
-        if (assignment.NextAction == DroneActionKindEnum.DropCargo) return;
+        if (assignment.NextAction == DroneActionKindEnum.DropCargo)
+        {
+            plan.Destination = assignment.DropPosition;
+            plans.Add(plan);
+            return;
+        }
         if (!DroneTargetPointUtility.TryGetTargetPoint(manager, assignment.Destination, out plan.Destination)) return;
         plans.Add(plan);
     }

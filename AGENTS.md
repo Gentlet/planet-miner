@@ -4,7 +4,7 @@
 
 `planet miner`는 격자 기반 2D 채굴·공장 시뮬레이션 Unity 프로젝트다. 현재 소스는 Architecture V2로 전환 중이며, Unity Entities의 unmanaged 컴포넌트와 `ISystem`/Burst Job을 중심으로 구성한다. 설정 로드 일부와 시스템 그룹, 개발용 검증에는 managed 시스템을 사용한다.
 
-이 지도는 2026-09-28에 작성하고 2026-10-06 건물·드론 도메인 분리까지 현재 소스 계약을 갱신했다. 현재 구현 범위는 아이템 수명주기, 벨트·저장·채굴·제작·분배/합류, 청크 자원 생성과 바닥 선택, 프리팹 DB 베이킹, 건물 배치 검증·공사 현장 생성·자재 요구 관리·현장 취소·완공 건물 직접 스폰과 드론 작업 생성·배정·현장 공급 예약이다. 기존 공사 자재 운송/수령/예약 처리는 제거했으며 새 드론의 행동 신호 기반 실물 인계·도착량·예약 정산을 연결했다. 드론 경로 평가/이동/관측/도착과 최소 비상 귀환을 구현했으며 자동 픽업은 [픽업 계약](Docs/Specifications/DronePickup.md)에 연결했으며 자동 납품/완료량은 [납품 계약](Docs/Specifications/DroneDelivery.md)에 연결했다. 정상 귀환/정거장 전환과 수요 기반 출고는 [귀환/출고 계약](Docs/Specifications/DroneReturnAndDispatch.md)을 따르며 실제 충전은 후속이다.
+이 지도는 2026-09-28에 작성하고 2026-10-06 건물·드론 도메인 분리까지 현재 소스 계약을 갱신했다. 현재 구현 범위는 아이템 수명주기, 벨트·저장·채굴·제작·분배/합류, 청크 자원 생성과 바닥 선택, 프리팹 DB 베이킹, 건물 배치 검증·공사 현장 생성·자재 요구 관리·현장 취소·완공 건물 직접 스폰과 드론 작업 생성·배정·현장 공급 예약이다. 기존 공사 자재 운송/수령/예약 처리는 제거했으며 새 드론의 행동 신호 기반 실물 인계·도착량·예약 정산을 연결했다. 드론 경로 평가/이동/관측/도착과 최소 비상 귀환을 구현했으며 자동 픽업은 [픽업 계약](Docs/Specifications/DronePickup.md)에 연결했으며 자동 납품/완료량은 [납품 계약](Docs/Specifications/DroneDelivery.md)에 연결했다. 정상 귀환/정거장 전환과 수요 기반 출고는 [귀환/출고 계약](Docs/Specifications/DroneReturnAndDispatch.md)을 따르며 실제 전력 충전은 [충전 계약](Docs/Specifications/DroneCharging.md)을 따른다.
 
 `Assets/Scenes/V2 Test Scene.unity`를 빌드와 평소 Editor 편집의 공통 진입 장면으로 사용한다. 전역 `ProjectSettings/EditorBuildSettings.asset`와 활성 Windows 빌드 프로필의 장면 목록은 모두 이 메인 장면 하나를 활성화한다. 메인 장면은 `Assets/Scenes/V2 Test Scene/sub.unity`를 자동 로드하며, 이 SubScene에 건물·아이템·자원 프리팹 DB Authoring이 있다. `V2FloorBiomePreview`의 진단용 색상 바닥은 유지한다. Editor에서는 이 메인 장면을 열어 작업하고 Play Mode Start Scene도 이 장면으로 지정한다. 이 시작 장면 지정은 Editor별 로컬 설정이므로 다른 Editor에서도 같은 기준을 적용한다. SampleScene 계열은 레거시 참고로 남아 있으며 현재 빌드 진입이 아니다.
 
@@ -73,6 +73,8 @@ Command → EndCommand → Preparation
 | SimulationCommit / Systems/Commit | EndSimulationEntityCommandBufferSystem이 드론 작업·경로·배정·결과 및 종료 삭제를 확정한다. |
 | Synchronization / Systems/Synchronization | 최상위 OrderLast로 최종 Commit 뒤에 실행한다. Belt/Building/Item/ResourceSpatialSyncSystem, PowerGridConnectionSyncSystem, DroneStationSpatialSyncSystem이 원본 ECS로 맵을 재구축하며 WorldInvariantValidationSystem은 내부 OrderLast다. |
 
+정박 충전은 [충전 계약](Docs/Specifications/DroneCharging.md)을 따른다. DroneChargingPreparationSystem이 정거장의 이번 틱 충전 버퍼를 작성한 뒤 기존 BuildingPowerDemandPreparationSystem만 합산 수요/enable을 작성한다. Power가 확정 소비/공급을 게시하고 DroneChargingExecutionSystem이 이동 처리 뒤 정박 배터리/활동을 갱신한다. 이번 틱의 충전량은 다음 틱 Decision부터 사용한다. float 단위 미만으로 이미 충전된 양은 기존 DroneBatteryState의 FractionalCharge로 보존하고, 새 배정과 합쳐 실제로 확보한 가용값만 게시한다. 이동/역할 전환은 잔량을 보존하며 전력 환급/재배분은 하지 않는다.
+
 ### 페이즈 배치와 시스템 명명
 
 - 새 시스템은 처리 대상과 데이터 변경 책임을 먼저 정하고 기존 실행 그룹에 배치한다. Initialization은 Unity의 별도 상위 그룹이며, Command 이후의 사용자 정의 체인은 GameSimulationGroup 안에 있다. 기능별 그룹 추가나 재배치는 기존 실행·공개 경계에 영향을 주는 구조 변경으로 다룬다.
@@ -106,12 +108,12 @@ DroneTaskCandidateDecisionElement는 Decision이 매 틱 Clear하고 다시 만�
 
 건물 철거는 Command에서 승인·PendingBuildingDemolition 게시·이전 Transfer 비활성화·ProductResult Clear 후 후보 생성을 차단한다. ItemSpawnAdmissionDecisionSystem은 철거 대상 Storage/Product 요청을 비활성화하고 EndBuilding에 삭제한다. BuildingLifecycleApplySystem은 승인 상태로 기존 Disabled 포함 대상을 조회하여 반환·환급·철거를 EndBuilding에 기록하며 BuildingType 소실만 방어한다. 기존 실물 반환·비용 환급·활성 Destroy 제외와 같은 틱 재배치의 이전 인덱스 점유 규칙은 유지한다.
 
-현재 드론 관리에는 Task 9.3.1의 생성 유틸리티와 Task 9.3의 명시적 출고/정박/수납 요청 처리가 있다. 실제 경로/이동/거리 소비/지속 관측과 최소 비상 귀환은 [이동 계약](Docs/Specifications/DroneMovement.md)을 따른다. 자동 픽업은 도착 공개 다음 틱 기존 인계 경로를 사용한다. 자동 납품/완료량은 [납품 계약](Docs/Specifications/DroneDelivery.md)을 따른다. 정상 귀환/정거장 전환과 수요 기반 출고는 [귀환/출고 계약](Docs/Specifications/DroneReturnAndDispatch.md)을 따른다. 실제 충전 및 연구 Writer는 후속이다. [드론 계약](Docs/CodeMemory/Components/DroneLogistics.md), [건설 명세](Docs/Specifications/ConstructionAndDroneSupply.md)를 따른다. 기존 통합 4사례와 기존 142사례는 이전 여섯 phase의 별도 실행 기록이며 새 구조의 검증으로 합산하거나 소급 해석하지 않는다.
+현재 드론 관리에는 Task 9.3.1의 생성 유틸리티와 Task 9.3의 명시적 출고/정박/수납 요청 처리가 있다. 실제 경로/이동/거리 소비/지속 관측과 최소 비상 귀환은 [이동 계약](Docs/Specifications/DroneMovement.md)을 따른다. 자동 픽업은 도착 공개 다음 틱 기존 인계 경로를 사용한다. 자동 납품/완료량은 [납품 계약](Docs/Specifications/DroneDelivery.md)을 따른다. 정상 귀환/정거장 전환과 수요 기반 출고는 [귀환/출고 계약](Docs/Specifications/DroneReturnAndDispatch.md)을 따른다. 실제 전력 충전은 [충전 계약](Docs/Specifications/DroneCharging.md)을 따르며 연구 Writer는 후속이다. [드론 계약](Docs/CodeMemory/Components/DroneLogistics.md), [건설 명세](Docs/Specifications/ConstructionAndDroneSupply.md)를 따른다. 기존 통합 4사례와 기존 142사례는 이전 여섯 phase의 별도 실행 기록이며 새 구조의 검증으로 합산하거나 소급 해석하지 않는다.
 
 2026-10-15 Task 9.1은 [드론 상태 전이·Lifecycle Owner 계약](Docs/Specifications/DroneLifecycle.md)을 문서로 확정했다. 작업·배정·예약·화물은 기존 소유자를 유지하고, 수행자 자체 상태·배터리·관측의 후속 Writer와 공개 경계를 구분한다. 1A~6A의 엄격한 수납 자격, 충전 경유의 완충 전/연속 배차, 정상/비상 귀환과 실제 중단 시 예약 해제·화물 보존을 적용한다. 이 계약 완료는 실제 정거장·이동·충전 구현이나 새 실행 검증의 완료가 아니다. 슬롯 수·충전 수치·적재량 초기화의 남은 결정은 해당 후속 Task에서 다룬다.
 
 [공통 적재량 초기화 계약](Docs/Specifications/DroneCapacityInitializationPlan.md)은 2026-10-22 사용자 확정 6A(설정값 3/공통 Fatal/유효한 기존 singleton 보존)를 따른다. Task 9.3의 DroneConfigInitializationSystem이 carryingCapacity와 최대 배터리를 한 번 게시한다. 개발 마일스톤 Phase7 등의 숫자는 런타임 그룹 개수를 뜻하지 않는다.
-2026-10-22 Task 9.2는 [정거장 네트워크 명세](Docs/Specifications/DroneStationNetwork.md)를 따른다. 공통 건물 생성은 주 시설·정거장에 역할/결정/공개 연결을 부착한다. BuildingConfig의 종류·티어별 단일 DroneStationRangeInChunks와 회전 footprint 긴 변으로 정사각형 활동 영역을 계산한다. 음수 Range는 0, 홀수 여백은 양의 축에 1셀을 더 두며 long 합산을 사용한다. 무전력 참가·공유 셀 연결·PlacementStamp 대표 Entity를 적용한다. DroneDecision의 이번 틱 결과를 DroneStationNetworkApplySystem이 EndSimulation에 공개한다. DroneStationSpatialSyncSystem은 공개 연결/건물 원본으로 맵을 재구축하고 같은 singleton의 Fence를 완료한 뒤 재할당/해제한다. 작업 망 필터는 현재 틱 NetworkDecision을 사용한다. 수용량은 기존 정거장 보관 계약을 따른다. 정상 귀환/정거장 전환은 귀환/출고 계약에 연결했고 실제 충전과 철거 시 전체 수행자 재배치는 후속 Task다.
+2026-10-22 Task 9.2는 [정거장 네트워크 명세](Docs/Specifications/DroneStationNetwork.md)를 따른다. 공통 건물 생성은 주 시설·정거장에 역할/결정/공개 연결을 부착한다. BuildingConfig의 종류·티어별 단일 DroneStationRangeInChunks와 회전 footprint 긴 변으로 정사각형 활동 영역을 계산한다. 음수 Range는 0, 홀수 여백은 양의 축에 1셀을 더 두며 long 합산을 사용한다. 무전력 참가·공유 셀 연결·PlacementStamp 대표 Entity를 적용한다. DroneDecision의 이번 틱 결과를 DroneStationNetworkApplySystem이 EndSimulation에 공개한다. DroneStationSpatialSyncSystem은 공개 연결/건물 원본으로 맵을 재구축하고 같은 singleton의 Fence를 완료한 뒤 재할당/해제한다. 작업 망 필터는 현재 틱 NetworkDecision을 사용한다. 수용량은 기존 정거장 보관 계약을 따른다. 정상 귀환/정거장 전환은 귀환/출고 계약에 연결했고 실제 충전은 충전 계약에 연결했고 철거 시 전체 수행자 재배치는 후속 Task다.
 
 ## 핵심 데이터와 변경 규칙
 
@@ -202,7 +204,7 @@ DroneTaskCandidateDecisionElement는 Decision이 매 틱 Clear하고 다시 만�
 
 Task 9.3의 [Identity/정거장 보관 계약](Docs/Specifications/DroneIdentityAndStationStorage.md)은 같은 Entity의 Item/Worker 전환과 정박 관계를 EndSimulation에 공개한다. DroneStationLifecycleDecisionSystem은 병렬 Burst IJobEntity로 자격을, ReservationSystem은 단일 Burst IJob으로 기존 작업 예약 선택 뒤 Sequence 순서/슬롯 경합을 처리한다. ApplySystem의 단일 Burst 데이터 Job은 DroneTaskAssignmentPublishSystem의 공개 기록 뒤 최신 실물/활동/공간을 재검사하고 역할/버퍼/결과/비관리형 표시를 ECB에 기록한다. 승인된 Actor/Prefab 목록 완료를 기다린 메인 스레드는 관리형 RenderMeshArray만 별도 ECB에 기록하며 두 ECB 모두 기존 EndSimulation에 공개한다. 입력 deferred array/임시 Native 자료의 마지막 접근과 state.Dependency/ECB Producer를 등록하며 새 공유 Fence는 없다. 새 수행자는 최초 CanAcceptTask=false다. 입고만으로 활성화하지 않으며 수납에는 완충/무배정/Idle/빈 화물/공간을 모두 요구한다. DroneDocked와 DockedDroneElement는 같은 Lifecycle 소유자가 정박 양방향 관계를 기록하고 활성 정박은 슬롯 전체를 차지한다. 철거 시 이 관계의 재배치는 Task 9.19 후속이므로 현재 활성 정박 드론이 있는 정거장 철거는 Command에서 거부한다.
 
-BuildingConfig의 DroneStationStorageCapacity는 주 시설/정거장의 종류/티어별 전용 5슬롯이다. 일반 StorageCapacity 50/20과 분리하며 생성된 Storage.SlotCount는 두 구간의 합계다. 전용 구간은 총 슬롯의 뒤쪽이고 일반 아이템은 들어가지 않는다. 드론 아이템은 ItemConfig MaxStack 50으로 보관하고 귀환 보관은 전용부터 일반 공간을 공유한다. 벨트 드론 입고는 전용 여유만 허용하고 드론 출고는 금지하며 일반 아이템 FIFO는 유지한다. 실제 이동과 활동/배터리 Writer는 DroneMovementExecutionSystem이며 지속 관측은 다음 Preparation이 준비한다. 실제 충전 입력은 후속이다.
+BuildingConfig의 DroneStationStorageCapacity는 주 시설/정거장의 종류/티어별 전용 5슬롯이다. 일반 StorageCapacity 50/20과 분리하며 생성된 Storage.SlotCount는 두 구간의 합계다. 전용 구간은 총 슬롯의 뒤쪽이고 일반 아이템은 들어가지 않는다. 드론 아이템은 ItemConfig MaxStack 50으로 보관하고 귀환 보관은 전용부터 일반 공간을 공유한다. 벨트 드론 입고는 전용 여유만 허용하고 드론 출고는 금지하며 일반 아이템 FIFO는 유지한다. 비정박 이동 소비/활동은 DroneMovementExecutionSystem, 정박 충전 증가/활동은 DroneChargingExecutionSystem이 작성하며 지속 관측은 다음 Preparation이 준비한다. 정박 배터리 증가는 DroneChargingExecutionSystem이 소유하며 판단 반영은 다음 틱부터다.
 
 ### 코드 작성 스타일
 
@@ -234,7 +236,7 @@ Task 10B.1의 [월드 입력/카메라 명세](Docs/Specifications/WorldInputAnd
 | `Assets/Resources/Config/CrafterRecipeConfig.json` | `RecipeInitSystem` / `RecipeConfigLoader` → `RecipeRegistry`와 레시피·재료·출력 버퍼. 전체 초기화는 ID 1~5를 요구하며 파일 실패 뒤 기본 레시피로 대체하지 않는다. |
 | `Assets/Resources/Config/BuildingConfig.json` | `BuildingConfigInitSystem` / `BuildingConfigLoader` → 전력 능력 Power를 포함한 `BuildingConfigElement`, `BuildingConstructionMaterialElement`, 호환용 `BuildingRuntimeConfigElement`. 역할별 전력 검증을 포함하며 실패 시 게시하지 않는다. |
 | `Assets/Resources/Config/WorldGenerationConfig.json` | `WorldGenerationConfigLoadSystem` / `WorldGenerationConfigLoader` → 자원 설정과 `FloorGenerationSettings`, `FloorBiomeElement`, `FloorVariantElement`를 같은 엔티티에 게시한다. 자원·바닥·Sprite 참조 검증 실패 시 부분 게시하지 않는다. |
-| `Assets/Resources/Config/DroneConfig.json` | `DroneConfigInitializationSystem` → 공통 `DroneCapacityState`와 읽기 전용 `DroneBatteryConfig`/`DroneMovementConfig`. 명시적 양수 적재량과 유한 양수 최대 배터리/속도/비상 속도/거리 소비를 원자적으로 검증/게시하고 유효한 기존 상태는 보존한다. 오류/중복은 공통 Fatal이며 충전 설정은 후속이다. |
+| `Assets/Resources/Config/DroneConfig.json` | `DroneConfigInitializationSystem` → 공통 `DroneCapacityState`와 읽기 전용 `DroneBatteryConfig`/`DroneMovementConfig`/`DroneChargingConfig`. 명시적 양수 적재량과 유한 양수 최대 배터리/속도/비상 속도/거리 소비를 원자적으로 검증/게시하고 유효한 기존 상태는 보존한다. 오류/중복은 공통 Fatal이며 충전 속도/드론당 전력도 명시적 유한 양수로 검증한다. |
 
 `BuildingConfigLoadSystem.cs`에는 실제 로더인 managed `BuildingConfigInitSystem`과, `BuildingConfig`를 요구하고 한 번 실행 후 비활성화되는 `BuildingConfigLoadSystem`이 함께 있다. 이름만 보고 로드 책임을 잘못 배정하지 않는다. 전력 능력은 BuildingConfig로 통합했고 별도 PowerConfig.json은 제거했다. 기존 드론·연구·시작 아이템 JSON의 존재는 현재 로더가 사용한다는 증거가 아니다.
 
