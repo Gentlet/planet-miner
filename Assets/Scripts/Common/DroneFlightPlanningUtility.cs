@@ -199,6 +199,19 @@ internal static class DroneFlightPlanningUtility
 
     public static int FindReturnStation(float2 origin, NativeList<DroneFlightStation> stations)
     {
+        return SelectReturnStation(origin, stations, false, 0f, 0f, 0f, out _);
+    }
+
+    public static int PlanReturn(float2 origin, NativeList<DroneFlightStation> stations,
+        float charge, float maximum, float energyPerDistance, out DroneFlightPlan plan)
+    {
+        return SelectReturnStation(origin, stations, true, charge, maximum, energyPerDistance, out plan);
+    }
+
+    private static int SelectReturnStation(float2 origin, NativeList<DroneFlightStation> stations,
+        bool evaluateEnergy, float charge, float maximum, float energyPerDistance, out DroneFlightPlan selectedPlan)
+    {
+        selectedPlan = default;
         Entity network = Entity.Null;
         int2 cell = (int2)math.floor(origin);
         for (int i = 0; i < stations.Length; i++)
@@ -220,7 +233,15 @@ internal static class DroneFlightPlanningUtility
                 continue;
             }
             bool sameNetwork = network != Entity.Null && station.Network == network;
-            float candidateDistance = math.distance(origin, station.Position);
+            var candidatePlan = evaluateEnergy
+                ? Plan(origin, station.Position, charge, maximum, energyPerDistance, stations)
+                : new DroneFlightPlan { Status = DroneRouteEvaluationStatusEnum.Reachable,
+                    Distance = math.distance(origin, station.Position), NextPosition = station.Position };
+            if (candidatePlan.Status != DroneRouteEvaluationStatusEnum.Reachable)
+            {
+                continue;
+            }
+            float candidateDistance = candidatePlan.Distance;
             bool preferred = selected < 0;
             if (selected >= 0)
             {
@@ -242,6 +263,7 @@ internal static class DroneFlightPlanningUtility
                 selected = i;
                 distance = candidateDistance;
                 selectedSameNetwork = sameNetwork;
+                selectedPlan = candidatePlan;
             }
         }
         return selected;

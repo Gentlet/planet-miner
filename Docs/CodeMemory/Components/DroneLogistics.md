@@ -2,11 +2,11 @@
 
 [전체 색인](README.md) · [배치와 공사](Construction.md) · [아이템과 저장](ItemsAndStorage.md)
 
-드론 작업/예약/인계/재배정과 정거장 연결/보관/Identity/요청/계획의 데이터 계약을 설명한다. 일반 운반 계획은 별도 버퍼로 구분하며 배정 공개는 기존 Publish에 연결했고 실제 경로/이동/관측/도착은 [이동 명세](../../Specifications/DroneMovement.md)를 따르며 자동 픽업은 [픽업 명세](../../Specifications/DronePickup.md)에 연결했고 자동 납품은 [납품 명세](../../Specifications/DroneDelivery.md)에 연결했고 정상 귀환/충전은 후속이다.
+드론 작업/예약/인계/재배정과 정거장 연결/보관/Identity/요청/계획의 데이터 계약을 설명한다. 일반 운반 계획은 별도 버퍼로 구분하며 배정 공개는 기존 Publish에 연결했고 실제 경로/이동/관측/도착은 [이동 명세](../../Specifications/DroneMovement.md)를 따르며 자동 픽업은 [픽업 명세](../../Specifications/DronePickup.md)에 연결했고 자동 납품은 [납품 명세](../../Specifications/DroneDelivery.md)에 연결했다. 정상 귀환/정거장 전환과 수요 기반 출고는 [귀환/출고 명세](../../Specifications/DroneReturnAndDispatch.md)를 따르며 실제 충전은 후속이다.
 
 2026-10-15 Task 9.1은 [상태 전이·Lifecycle Owner 계약](../../Specifications/DroneLifecycle.md)을 확정했다. 1A~6A의 수납·완충 전/연속 배차·귀환·비상 이동·중단 정산은 후속 수행부가 따라야 할 정책이다. Task 9.1 당시 23개 타입과 관리 계층을 유지했으며 실제 정거장·이동·배터리·충전·수납 Writer나 새 상태 enum을 추가하지 않았다. 이후 Task 9.2의 정거장 기반은 아래 별도 타입/명세로 구분한다. 작업/배정의 기존 상태와 수행자 자체의 후속 개념 상태를 구분한다.
 
-기존 142사례와 기존 통합 4사례는 이전 구조의 별도 실행이며 합산하지 않는다. Task 9.3.1은 생성 초기화, 9.3은 [명시적 출고/정박/수납과 용량](../../Specifications/DroneIdentityAndStationStorage.md), [공통 설정 초기화](../../Specifications/DroneCapacityInitializationPlan.md)를 연결한다. 경로/이동/관측/도착과 최소 비상 귀환은 구현되어 있다. 자동 픽업은 공개 도착 다음 틱 기존 인계 경로를 사용한다. 자동 납품/완료량은 [납품 명세](../../Specifications/DroneDelivery.md)를 따른다. 정상 귀환/충전과 연구 Writer는 후속이다. DropPosition은 실제 위치 원본이 아니다.
+기존 142사례와 기존 통합 4사례는 이전 구조의 별도 실행이며 합산하지 않는다. Task 9.3.1은 생성 초기화, 9.3은 [명시적 출고/정박/수납과 용량](../../Specifications/DroneIdentityAndStationStorage.md), [공통 설정 초기화](../../Specifications/DroneCapacityInitializationPlan.md)를 연결한다. 경로/이동/관측/도착과 최소 비상 귀환은 구현되어 있다. 자동 픽업은 공개 도착 다음 틱 기존 인계 경로를 사용한다. 자동 납품/완료량은 [납품 명세](../../Specifications/DroneDelivery.md)를 따른다. 정상 귀환/정거장 전환과 수요 기반 출고는 [귀환/출고 명세](../../Specifications/DroneReturnAndDispatch.md)를 따른다. 실제 충전과 연구 Writer는 후속이다. DropPosition은 실제 위치 원본이 아니다.
 
 ```text
 Command / EndCommand: 현장·자재 요구와 취소 반환·삭제 공개
@@ -56,11 +56,11 @@ Construction은 BuildingStateApply 마지막에서 현재 Owner=Null/GridPositio
 
 ## DroneDocked
 
-활성 수행자의 Station/SlotIndex 관계 원본이다. 수납 아이템의 ItemOwnership과 상호 배타적이다. Lifecycle만 EndSimulation에 양쪽 관계를 기록한다. 실제 귀환 도착 Producer는 후속이다. IsIdleWorker는 정박 중 새 후보를 만들지 않으며 명시적 Activate로 정박을 해제한다.
+활성 수행자의 Station/SlotIndex 관계 원본이다. 수납 아이템의 ItemOwnership과 상호 배타적이다. Lifecycle만 EndSimulation에 양쪽 관계를 기록한다. 이동 도착을 읽은 자동 Producer가 기존 Dock/Activate 요청을 제출한다. IsIdleWorker는 정박 중 새 후보를 만들지 않는다. 목적지 무효화 뒤 화물과 연결이 Retargeting으로 보존된 경우에도 자동 재개 판단은 실행 가능한 대체 경로를 확인하고 Activate로 정박을 해제한다. 반복 무효화 의도만으로 이 재개 판단을 차단하지 않는다.
 
 ## DroneActivityState
 
-수행자 자체의 Idle/Moving/Acting/Charging/WaitingForCharge 활동이다. 생성이 Idle을 기록하고 Store/Dock 자격 검사가 읽는다. 작업/배정 상태를 복제하지 않는다. 실제 이동/대기는 Movement Execution이 작성하고 충전 입력은 후속이며 수납 전환에서 제거한다.
+수행자 자체의 Idle/Moving/Acting/Charging/WaitingForCharge 활동이다. 생성이 Idle을 기록하고 Store/Dock 자격 검사가 읽는다. 작업/배정 상태를 복제하지 않는다. 실제 이동/대기는 Movement Execution이 작성한다. 자동 정박 Activate는 이동 상태 초기값/Idle을 기존 정박 관계 해제와 같은 EndSimulation에 기록하며 기존 배터리/배정/화물을 보존한다. 충전 입력은 후속이며 수납 전환에서 활동을 제거한다.
 
 ## DroneBatteryConfig
 
@@ -68,17 +68,17 @@ World의 읽기 전용 최대 배터리 singleton이다. DroneConfigInitializati
 
 ## DroneStationRequest
 
-외부 메인 스레드 Submit이 Drone/Station/Operation/양수 Sequence를 접수하고 Decision과 함께 생성한다. Activate/Dock/Store 요청이며 단순 입고가 자동 생성하지 않는다. 처리 뒤 Request/Decision 제거와 결과 추가는 같은 EndSimulation이다. [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneStationRequests.cs).
+외부 입력 또는 자동 Station Decision의 메인 스레드 Submit이 Drone/Station/Operation/양수 Sequence를 접수하고 Decision과 함께 생성한다. Activate/Dock/Store 요청이며 단순 입고가 자동 생성하지 않는다. 처리 뒤 Request/Decision 제거와 결과 추가는 같은 EndSimulation이다. [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneStationRequests.cs).
 
 ## DroneStationDecision
 
-병렬 Burst Decision Job이 요청별 자격/거부 상태를 초기화하고 단일 Burst Reservation Job이 Sequence 순으로 승인/SlotIndex/경합 거부 Status를 작성한다. 단일 Burst Apply 데이터 Job은 승인 슬롯과 최신 원본을 검사하며 다른 슬롯으로 확장하지 않는다. 실물/영속 예약/공개 결과가 아니며 EndSimulation에 소비한다.
+병렬 Burst Station Lifecycle Decision Job이 요청별 자격/거부 상태를 초기화한다. 자동 수요 기반 출고는 Task Reservation 뒤 Station Activation Reservation이 잔여 수요 상한을 중재하며, 그 뒤 기존 단일 Burst Station Lifecycle Reservation Job이 Sequence 순으로 승인/SlotIndex/경합 거부 Status를 작성한다. 단일 Burst Apply 데이터 Job은 승인 슬롯과 최신 원본을 검사하며 다른 슬롯으로 확장하지 않는다. 실물/영속 예약/공개 결과가 아니며 EndSimulation에 소비한다.
 
 입력 Entity 목록은 비동기 수집의 deferred array로 전달하고 state.Dependency를 연결한다. 요청 정렬/Busy 수행자 집합/슬롯 예산은 각 Job 내부 Native 임시 자료다. 공통 자격 규칙은 QueryMask와 값별 RO Lookup을 읽으며 ECS 원본을 별도 캐시하지 않는다. Apply만 Actor/Prefab 표시 목록을 TempJob으로 전달한다. 데이터 ECB Producer를 등록하고 목록 완료를 기다린 뒤 관리형 RenderMeshArray를 메인 스레드에서 별도 EndSimulation ECB에 기록한다. 두 ECB는 순서대로 같은 경계에서 공개하며 임시 자료는 마지막 접근 뒤 해제한다. 상세 계약과 현재 검증은 [Identity/보관 명세](../../Specifications/DroneIdentityAndStationStorage.md)를 따른다.
 
 ## DroneStationResult
 
-처리 요청 Entity에 Applied/Rejected/Busy/NoSpace/Duplicate와 Drone/Operation을 EndSimulation 공개한다. 외부 TryConsumeResult가 결과를 읽고 Entity를 삭제한다. 결과 조회로 정산을 반복하지 않는다.
+Station Lifecycle Apply가 전환 결과를 기존 요청 Entity에 EndSimulation으로 게시한다. 외부 요청의 결과는 외부 호출자가 TryConsumeResult로 한 번 소비한다. 자동 요청은 DroneAutomaticStationRequest 표식으로 구분하고 다음 DroneStationAutomationDecisionSystem이 자기 결과만 소비한다. 결과 소비는 역할/소유권 전환을 반복하지 않는다.
 
 ## DroneStationRequestSequence
 
@@ -334,13 +334,19 @@ DroneActionIdentity는 요청/결과 안의 일반 구조체다. 인계가 revis
 
 ## DroneMovementState
 
-- **종류/부착 대상/목적:** 수행자의 IComponentData다. ChargingStation/ReturnStation은 진행 중인 충전 경유/비상 귀환 목적지만 유지하며 위치/배터리/작업 상태를 복제하지 않는다.
+- **종류/부착 대상/목적:** 수행자의 IComponentData다. ChargingStation/ReturnStation은 진행 중인 충전 경유/정상 또는 비상 귀환 목적지를 유지한다. IsNormalReturn은 정상 귀환 중 신규 배차/적재 재배정 허용과 비상 귀환/작업 충전 경유 차단을 구분한다. 위치/배터리/작업 상태를 복제하지 않는다.
 - **Writer/수명:** Spawn/Activate가 같은 EndSimulation에 초기화하고 Movement Execution이 도착/대기를 갱신한다. Store는 Worker 역할과 함께 제거한다.
 
 ## DroneMovementDecision
 
 - **종류/부착 대상/목적:** 수행자의 이번 틱 IComponentData다. Ready/Purpose/Target/Station과 Assignment/AssignmentRevision/Action은 실행할 구간과 판단 버전이다. Failure/ClearFailure는 중단 결과의 생성/정리 의도다.
-- **Writer/Reader/수명:** Flight Decision의 병렬 Job이 작성하고 Movement Execution이 소비한다. 원본 이동이나 공개 배정 상태를 대신하지 않으며 다음 Decision이 다시 작성한다.
+- **Writer/Reader/수명:** Flight Decision의 병렬 Job만 작성하고 Movement Execution이 소비한다. Return Reservation의 차단은 별도 DroneReturnReservationElement로 전달하며 이 결정을 덮어쓰지 않는다. 원본 이동이나 공개 배정 상태를 대신하지 않으며 다음 Decision이 다시 작성한다.
+
+## DroneReturnReservationElement
+
+- **종류/부착 대상/목적:** 기존 task candidates singleton의 IBufferElementData scratch다. Worker와 PreserveArrival은 이번 틱 정상 귀환이 작업/미평가 경로/접수 요청에 의해 차단됐음을 전달하며 영속 예약이나 작업 상태가 아니다.
+- **Writer/Reader/수명:** DroneSchedulingUtility.GetOrCreateCandidates가 최초 부착한다. DroneReturnReservationSystem의 단일 Burst Job이 Task Reservation 뒤 매 틱 Clear/작성하며 Movement Execution이 읽는다. Flight Decision을 덮어쓰지 않고 EndSimulation에 공개할 별도 원본을 만들지 않는다.
+- **소비:** PreserveArrival이면 접수된 정거장/행동 요청의 최종 적용까지 현재 이동 상태와 위치를 보존하며 멈춘다. 그 외 차단이면 이동 목적지를 정리하고 Idle로 현재 위치를 유지해 다음 경로 평가/배정에 넘긴다.
 
 ## DroneMovementResult
 
@@ -364,3 +370,9 @@ DroneActionIdentity는 요청/결과 안의 일반 구조체다. 인계가 revis
 현재 일반 운반 납품은 TryRecordDelivery로 실제 성공량만 DeliveredQuantity로 옮긴다. 잔여 화물은 공간 부족/수령 거부/0 배터리를 구분해 대기하거나 정산/재배정한다. 요청/결과 표식은 픽업/납품이 같은 자동 수행부를 사용하며 역할 상태를 복제하지 않는다. [납품 계약](../../Specifications/DroneDelivery.md)을 따른다.
 
 자동 표식 결과는 공통 DroneActionRequestDecisionSystem이 다음 DroneDecision에 소비한다. 표식 없는 외부 결과는 별도 호출자에게 남기며 결과 소비로 화물/완료량을 다시 정산하지 않는다.
+
+## DroneAutomaticStationRequest
+
+- **종류/부착 대상/목적:** 자동 정거장 요청 Entity의 IComponentData다. 자동 결과 소비의 소유권을 표시하고 DemandTask/Quantity로 해당 호출의 수요 기반 Activate 중재 입력을 전달한다. 수행자 상태나 영속 작업 확보를 복제하지 않는다.
+- **Writer/Reader:** DroneStationAutomationDecisionSystem이 기존 Submit으로 만든 요청에 부착한다. DroneStationActivationReservationSystem은 Task Reservation 뒤 남은 작업 수요만 출고 대상으로 중재하고 기존 Station Lifecycle이 전환/결과를 기록한다.
+- **수명/공개:** 기존 요청/결정 제거와 결과 공개는 EndSimulation이다. 다음 자동 Decision이 자기 표식의 결과만 TryConsumeResult로 소비한다. 외부 요청/결과에는 이 소유권을 적용하지 않는다.

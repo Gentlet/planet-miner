@@ -1,12 +1,12 @@
 # 드론 경로 평가/이동/관측 계약
 
-2026-10-29 사용자 확정 1A/2A/3A/4A를 적용한다. 기준 코드는 Task 9.9의 87a0404이며 이번 범위는 실제 경로 평가/이동/거리 소비/관측/도착과 최소 비상 귀환이다. 자동 픽업은 [픽업 계약](DronePickup.md)에 연결했고 자동 납품은 [납품 계약](DroneDelivery.md)에 연결했고 정상 귀환/정박/수납 자동 흐름은 9.13, 실제 전력 기반 충전은 9.14에 유지한다.
+2026-10-29 사용자 확정 1A/2A/3A/4A를 적용한다. 기준 코드는 Task 9.9의 87a0404이며 이번 범위는 실제 경로 평가/이동/거리 소비/관측/도착과 최소 비상 귀환이다. 자동 픽업은 [픽업 계약](DronePickup.md)에 연결했고 자동 납품은 [납품 계약](DroneDelivery.md)에 연결했고 정상 귀환/정박/수납과 수요 기반 출고는 [귀환/출고 계약](DroneReturnAndDispatch.md)에 연결한다. 실제 전력 기반 충전은 9.14에 유지한다.
 
 ## 확정 정책
 
 - 1A: XY 평면의 직선 자유 비행이다. 건물/자원/벨트를 비행 장애물로 취급하지 않는다. 충전 경유가 필요하면 실제 직선 구간의 합을 비교한다. 충전 장소/에너지를 무시한 단순 거리를 성공 결과로 만들지 않는다.
 - 2A: 건물/현장/정거장의 목표는 회전된 footprint 중심이다. 월드 아이템과 안전 방출은 원래 격자 위치다. 평가와 실제 이동이 같은 목표점 함수를 사용한다. 이동은 Z를 보존한다.
-- 3A: 경로/에너지 계획, 실제 이동/관측, 도착/중단 연결과 배터리 0의 최소 비상 귀환을 제공한다. 충전 정거장에 도착해도 자동 정박/수납/충전 성공을 만들지 않는다. 충전 경유와 실제 중단은 구분한다.
+- 3A: 경로/에너지 계획, 실제 이동/관측, 도착/중단 연결과 배터리 0의 최소 비상 귀환을 제공한다. 이동 도착만으로 정박/수납/충전 성공을 만들지 않는다. 자동 정거장 요청은 [귀환/출고 계약](DroneReturnAndDispatch.md)에 따라 기존 Station Lifecycle을 거친다. 충전 경유와 실제 중단은 구분한다.
 - 4A: 현재 위치/출발/도착의 기존 네트워크 후보 자격과 부분 footprint 허용은 유지한다. 이미 시작한 비행이 중간의 미포함 셀을 통과했다는 이유로 취소하지 않는다. 안전 방출 목표는 여전히 현재 망 안의 활성 현장 외부다.
 - 현재 Resources/Config/DroneConfig.json의 speed=4, emergency speed=0.5, maximum battery=100, distance consumption=1을 사용한다. 이동 세 수치는 명시적 finite 양수로 검증한다. 설정 누락/중복/무효 값은 기존 공통 Fatal/원본 보존/자동 재시도 없음 계약을 따른다.
 
@@ -17,7 +17,7 @@
 | Initialization | DroneConfigInitializationSystem이 기존 적재량/최대 배터리와 DroneMovementConfig를 모두 검증한 뒤 한 번 게시한다. 유효한 기존 singleton을 덮어쓰지 않는다. |
 | Preparation | DroneWorkerObservationPreparationSystem이 마지막 확정 LocalTransform/배터리/수행자 연결/화물/충전 경유 상태를 관측으로 갱신한다. 값이 달라질 때만 Revision을 증가시킨다. |
 | DroneDecision | 정거장 NetworkDecision 뒤 DroneFlightDecisionSystem이 임시 정거장/현장 자료를 만들고 경로 판단과 진행 중 이동 의도를 병렬 Burst Job으로 작성한다. Task Decision은 이번 판단을 내부 입력으로 읽는다. |
-| DroneReservation | 기존 Task Reservation이 이전 무효 예약과 새 후보를 정산한다. 이전 이동 실패 결과는 같은 배정/revision에만 무효화 근거다. |
+| DroneReservation | 기존 Task Reservation이 이전 무효 예약과 새 후보를 정산한다. 그 뒤 DroneReturnReservationSystem이 신규 선택/미평가 경로/접수 요청과 정상 귀환 fallback을 중재한다. 이전 이동 실패 결과는 같은 배정/revision에만 무효화 근거다. |
 | DroneExecution | Task Execution은 Create/Retain/Remove 의도를 따라 유지되는 경로 결과만 EndSimulation에 기록한다. Movement Execution은 이번 이동 의도와 Task Decision의 무효화 의도를 소비해 실제 위치/격자/LocalToWorld/배터리/활동/결과를 쓴다. |
 | DroneStateApply | 기존 Lifecycle이 예약/배정 정리를 소유한다. Movement Apply는 그 뒤 도착 결과를 같은 배정/revision/action에 한정해 AwaitingCollection/Delivery로 ECB 기록한다. 기존 Publish가 새 배정/재배정을 마지막에 기록한다. |
 | EndSimulation | 경로 요청/공개 결과와 도착 상태/배정을 확정한다. 새 배정은 다음 틱부터 이동하며, 관측은 다음 Preparation에서 실제 위치와 일치시킨다. |

@@ -50,6 +50,7 @@ public partial struct DroneStationLifecycleApplySystem : ISystem
             Requests = requests.AsDeferredJobArray(), PendingOwners = pending.AsDeferredJobArray(), Actions = actions.AsDeferredJobArray(),
             RequestLookup = state.GetComponentLookup<DroneStationRequest>(true),
             Decisions = state.GetComponentLookup<DroneStationDecision>(true),
+            Automatic = SystemAPI.GetComponentLookup<DroneAutomaticStationRequest>(true),
             PendingLookup = state.GetBufferLookup<DroneTaskPendingPublicationElement>(true),
             TransportPendingLookup = state.GetBufferLookup<DroneTransportPendingReservationElement>(true),
             ActionLookup = state.GetComponentLookup<DroneActionReadyRequest>(true),
@@ -84,6 +85,7 @@ internal struct DroneStationLifecycleApplyJob : IJob
     [ReadOnly] public NativeArray<Entity> Actions;
     [ReadOnly] public ComponentLookup<DroneStationRequest> RequestLookup;
     [ReadOnly] public ComponentLookup<DroneStationDecision> Decisions;
+    [ReadOnly] public ComponentLookup<DroneAutomaticStationRequest> Automatic;
     [ReadOnly] public BufferLookup<DroneTaskPendingPublicationElement> PendingLookup;
     [ReadOnly] public BufferLookup<DroneTransportPendingReservationElement> TransportPendingLookup;
     [ReadOnly] public ComponentLookup<DroneActionReadyRequest> ActionLookup;
@@ -118,7 +120,7 @@ internal struct DroneStationLifecycleApplyJob : IJob
             var status = decision.Status;
             if (decision.Approved)
             {
-                status = Eligibility.Validate(request, MaximumCharge);
+                status = Eligibility.Validate(request, MaximumCharge, Automatic.HasComponent(record.Entity));
                 if (status == DroneStationRequestStatus.Applied && busy.Contains(request.Drone))
                 {
                     status = DroneStationRequestStatus.Busy;
@@ -192,6 +194,12 @@ internal struct DroneStationLifecycleApplyJob : IJob
                 ECB.RemoveComponent<BeltMovementDecision>(drone);
                 ECB.RemoveComponent<BuildingItemInputDecision>(drone);
                 ECB.RemoveComponent<DroneRecoveryPending>(drone);
+            }
+            // 출고가 공개된 다음 틱부터 이동/작업 판단을 재개한다. 배터리와 기존 배정은 보존한다.
+            if (!activatedItem)
+            {
+                ECB.SetComponent(drone, new DroneMovementState());
+                ECB.SetComponent(drone, new DroneActivityState { Activity = DroneActivityKind.Idle });
             }
             ECB.RemoveComponent<DroneDocked>(drone);
             ECB.RemoveComponent<DisableRendering>(drone);

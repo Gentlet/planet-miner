@@ -23,6 +23,7 @@ public partial struct DroneStationLifecycleDecisionSystem : ISystem
         state.Dependency = new DroneStationLifecycleDecisionJob
         {
             Eligibility = DroneStationEligibility.Create(ref state, _stationMask, _itemMask, _workerMask),
+            Automatic = SystemAPI.GetComponentLookup<DroneAutomaticStationRequest>(true),
             MaximumCharge = SystemAPI.GetSingleton<DroneBatteryConfig>().MaximumCharge
         }.ScheduleParallel(state.Dependency);
     }
@@ -32,11 +33,12 @@ public partial struct DroneStationLifecycleDecisionSystem : ISystem
 internal partial struct DroneStationLifecycleDecisionJob : IJobEntity
 {
     [Unity.Collections.ReadOnly] public DroneStationEligibility Eligibility;
+    [Unity.Collections.ReadOnly] public ComponentLookup<DroneAutomaticStationRequest> Automatic;
     public float MaximumCharge;
 
-    public void Execute(in DroneStationRequest request, ref DroneStationDecision decision)
+    public void Execute(Entity entity, in DroneStationRequest request, ref DroneStationDecision decision)
     {
-        var status = Eligibility.Validate(request, MaximumCharge);
+        var status = Eligibility.Validate(request, MaximumCharge, Automatic.HasComponent(entity));
         decision = new DroneStationDecision
         {
             Eligible = status == DroneStationRequestStatus.Applied, Status = status, SlotIndex = -1

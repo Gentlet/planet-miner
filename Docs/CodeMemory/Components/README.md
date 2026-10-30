@@ -2,9 +2,9 @@
 
 이 문서는 컴포넌트를 출발점으로 Planet Miner의 현재 데이터 흐름을 따라가기 위한 지도다. 각 하위 문서에서 **목적 → 부착 엔티티 → 생성과 초기화 → 읽고 쓰는 시스템 → 처리와 반영 시점 → 소비와 종료**를 확인할 수 있다. 함께 유지하는 데이터 관계와 조건도 해당 컴포넌트에 기록했다.
 
-최초 조사는 **2026-10-03**, 조사 시작 커밋은 `0998016624ee15ee035beb8dc306d68990a69bb0`이다. **2026-10-06 건물·드론 도메인 분리와 후보/공개 대기 예약 분리까지**의 정의와 경로로 갱신했다. **프로젝트 ECS 컴포넌트/버퍼 요소 103개를 9개 하위 문서에 정리**했으며 당시 드론은 23개다. 이후 정거장/생성/보관/활동/설정/요청/계획/운반 확보/이동 타입을 추가해 현재 드론 문서는 ECS 컴포넌트/버퍼 요소 56개를 다룬다. 현장 내부의 새 월드 생성·방출은 금지하고 완공은 현재 월드 실물과 활성 Destroy만 조회한다. 실제 경로/이동/관측/도착과 최소 비상 귀환은 [이동 명세](../../Specifications/DroneMovement.md)에 연결했다. 자동 픽업은 [픽업 명세](../../Specifications/DronePickup.md)에 연결했고 자동 납품/완료량은 [납품 명세](../../Specifications/DroneDelivery.md)에 연결했고 실제 충전/정상 귀환 자동 흐름과 연구 Writer는 후속이다. 소스와 실행 검증을 구분한다.
+최초 조사는 **2026-10-03**, 조사 시작 커밋은 `0998016624ee15ee035beb8dc306d68990a69bb0`이다. **2026-10-06 건물·드론 도메인 분리와 후보/공개 대기 예약 분리까지**의 정의와 경로로 갱신했다. **프로젝트 ECS 컴포넌트/버퍼 요소 103개를 9개 하위 문서에 정리**했으며 당시 드론은 23개다. 이후 정거장/생성/보관/활동/설정/요청/계획/운반 확보/이동 타입을 추가해 현재 드론 문서는 ECS 컴포넌트/버퍼 요소 58개를 다룬다. 현장 내부의 새 월드 생성·방출은 금지하고 완공은 현재 월드 실물과 활성 Destroy만 조회한다. 실제 경로/이동/관측/도착과 최소 비상 귀환은 [이동 명세](../../Specifications/DroneMovement.md)에 연결했다. 자동 픽업은 [픽업 명세](../../Specifications/DronePickup.md)에 연결했고 자동 납품/완료량은 [납품 명세](../../Specifications/DroneDelivery.md)에 연결했다. 정상 귀환/정거장 전환과 수요 기반 출고는 [귀환/출고 명세](../../Specifications/DroneReturnAndDispatch.md)를 따르며 실제 충전과 연구 Writer는 후속이다. 소스와 실행 검증을 구분한다.
 
-드론 관리 1~4단계의 작업·예약·인계·Direct 재배정·현장 외부 방출·완공 차단과 5단계 선별 통합 회귀를 연결했다. 기존 142사례와 신규 4사례는 이전 구조의 별도 실행이다. 현재 구조에서 수행한 컴파일·선택 EditMode·제한된 Play Mode 검증은 과거 실행과 합산하지 않는다. Task 9.3은 [Identity/정거장 보관](../../Specifications/DroneIdentityAndStationStorage.md)과 [공통 초기화](../../Specifications/DroneCapacityInitializationPlan.md)를 구현했다. 실제 경로/이동/관측/도착과 최소 비상 귀환은 [이동 명세](../../Specifications/DroneMovement.md)에 연결했다. 자동 픽업은 [픽업 명세](../../Specifications/DronePickup.md)에 연결했고 자동 납품/완료량은 [납품 명세](../../Specifications/DroneDelivery.md)에 연결했고 실제 충전/정상 귀환 자동 흐름과 연구 Writer는 후속이다. 세부 계약은 [명세](../../Specifications/ConstructionAndDroneSupply.md)와 [드론 컴포넌트 계약](DroneLogistics.md)을 따른다.
+드론 관리 1~4단계의 작업·예약·인계·Direct 재배정·현장 외부 방출·완공 차단과 5단계 선별 통합 회귀를 연결했다. 기존 142사례와 신규 4사례는 이전 구조의 별도 실행이다. 현재 구조에서 수행한 컴파일·선택 EditMode·제한된 Play Mode 검증은 과거 실행과 합산하지 않는다. Task 9.3은 [Identity/정거장 보관](../../Specifications/DroneIdentityAndStationStorage.md)과 [공통 초기화](../../Specifications/DroneCapacityInitializationPlan.md)를 구현했다. 실제 경로/이동/관측/도착과 최소 비상 귀환은 [이동 명세](../../Specifications/DroneMovement.md)에 연결했다. 자동 픽업은 [픽업 명세](../../Specifications/DronePickup.md)에 연결했고 자동 납품/완료량은 [납품 명세](../../Specifications/DroneDelivery.md)에 연결했다. 정상 귀환/정거장 전환과 수요 기반 출고는 [귀환/출고 명세](../../Specifications/DroneReturnAndDispatch.md)를 따르며 실제 충전과 연구 Writer는 후속이다. 세부 계약은 [명세](../../Specifications/ConstructionAndDroneSupply.md)와 [드론 컴포넌트 계약](DroneLogistics.md)을 따른다.
 
 ## 읽는 방법
 
@@ -27,7 +27,7 @@ Task 9.1에서 확정한 귀환·충전·수납·재배차 정책과 Lifecycle O
 | [건물과 건물 설정](Buildings.md) | 12 | 건물 식별·크기·배치 순번, 설정, 직접 생성과 철거 요청 |
 | [전력 설정과 상태 계약](PowerGrid.md) | 14 | 통합 능력 설정, 망 생성/병합/분리·빈 망/기존 참조 정리·공개 인덱스/Fence·프레임 결정; 공급·석탄 전환/배정 소비·생산 반영; 연구/충전은 후속 |
 | [배치와 공사](Construction.md) | 5 | 배치 묶음, 현장, 자재 요구 데이터, 현장 취소·완공 |
-| [드론 작업 관리 계약](DroneLogistics.md) | 56 | 작업/배정/예약/공통 적재량, 실물 인계/재배정, 정거장/Identity/요청/일반 운반, 경로/이동/관측/배터리/도착 |
+| [드론 작업 관리 계약](DroneLogistics.md) | 58 | 작업/배정/예약/공통 적재량, 실물 인계/재배정, 정거장/Identity/요청/일반 운반, 경로/이동/관측/배터리/도착 |
 | [아이템과 저장](ItemsAndStorage.md) | 13 | 아이템·소유권·요청, 보관·입출고·입력 슬롯, 현장 내부 World Spawn 거부 |
 | [벨트와 분배 및 합류](BeltsAndRouting.md) | 6 | 벨트 속도·실제 이동·프레임 계획, 라우팅 상태·전달 결정 |
 | [채굴과 제작](Production.md) | 14 | 작업 상태·결정, 레시피 설정, 결과와 출력 대기 실물 |
@@ -52,7 +52,9 @@ Task 9.1에서 확정한 귀환·충전·수납·재배차 정책과 Lifecycle O
 | [DroneTaskRequest / Decision / Execution / Result](DroneLogistics.md#dronetaskrequest--dronetaskrequestdecision--dronetaskrequestexecution--dronetaskrequestresult) | 작업 생성/유휴 취소와 외부 결과 | [요청 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneTaskRequests.cs) |
 | [DroneTaskGenerationBlockElement / DecisionElement](DroneLogistics.md#dronetaskgenerationblockelement--dronetaskgenerationdecisionelement) | 사용자 자동 생성 차단 원본/이번 틱 의도 | [제어 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneTaskRequests.cs) |
 | [DroneStationDecision](DroneLogistics.md#dronestationdecision) | 자격/슬롯 승인 | [요청 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneStationRequests.cs) |
-| [DroneStationResult](DroneLogistics.md#dronestationresult) | 외부 소비 결과 | [요청 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneStationRequests.cs) |
+| [DroneStationResult](DroneLogistics.md#dronestationresult) | 자동/외부 호출자별 소비 결과 | [요청 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneStationRequests.cs) |
+| [DroneAutomaticStationRequest](DroneLogistics.md#droneautomaticstationrequest) | 자동 정거장 결과 소비와 수요 기반 출고 중재 입력 | [표식 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneAutomaticStationRequest.cs) |
+| [DroneReturnReservationElement](DroneLogistics.md#dronereturnreservationelement) | 이번 틱 귀환 차단 scratch | [버퍼 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneReturnReservationElement.cs) |
 | [DroneStationRequestSequence](DroneLogistics.md#dronestationrequestsequence) | World 접수 순번 | [요청 정의](../../../Assets/Scripts/Components/DroneLogistics/DroneStationRequests.cs) |
 | [DroneStationNetworkDecision](DroneLogistics.md#dronestationnetworkdecision) | 이번 틱 연결 판단 | [DroneStationComponents.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneStationComponents.cs) |
 | [DroneStationNetwork](DroneLogistics.md#dronestationnetwork) | 공개 연결 | [DroneStationComponents.cs](../../../Assets/Scripts/Components/DroneLogistics/DroneStationComponents.cs) |

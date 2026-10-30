@@ -33,6 +33,7 @@ public class DroneMovementTests : EcsWorldTestFixture
         _decision.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneFlightDecisionSystem>());
         _decision.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskDecisionSystem>());
         _reservation.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskReservationSystem>());
+        _reservation.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneReturnReservationSystem>());
         _execution.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskExecutionSystem>());
         _execution.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneMovementExecutionSystem>());
         _apply.AddSystemToUpdateList(_world.GetOrCreateSystem<DroneTaskLifecycleApplySystem>());
@@ -775,7 +776,8 @@ public class DroneMovementTests : EcsWorldTestFixture
     {
         for (int i = 0; i < 8; i++)
         {
-            Tick();
+            // 배정 준비 동안 시간을 진행하지 않는다. 실제 이동은 각 사례의 명시적인 DeltaTime으로 검사한다.
+            Tick(0f);
             Entity assignment = _entityManager.GetComponentData<DroneWorkerAssignment>(worker).Assignment;
             if (assignment != Entity.Null)
             {

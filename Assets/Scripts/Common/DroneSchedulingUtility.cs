@@ -49,13 +49,17 @@ public static class DroneSchedulingUtility
             {
                 manager.AddBuffer<DroneTransportPendingReservationElement>(existing);
             }
+            if (!manager.HasBuffer<DroneReturnReservationElement>(existing))
+            {
+                manager.AddBuffer<DroneReturnReservationElement>(existing);
+            }
             return existing;
         }
 
         return manager.CreateEntity(typeof(DroneTaskCandidateDecisionElement), typeof(DroneTaskPendingPublicationElement), typeof(DroneRouteDecisionElement),
             typeof(DroneTaskCreationDecisionElement), typeof(DroneTaskInvalidationDecisionElement),
             typeof(DroneTaskGenerationBlockElement), typeof(DroneTaskGenerationDecisionElement), typeof(DroneTransportPlanDecisionElement),
-            typeof(DroneTransportPendingReservationElement));
+            typeof(DroneTransportPendingReservationElement), typeof(DroneReturnReservationElement));
     }
 
     /// <summary>초기 능력/연구 Writer가 게시한 공통 값을 읽는다. 미게시 상태에 임의 기본값을 만들지 않는다.</summary>
@@ -476,11 +480,12 @@ public static class DroneSchedulingUtility
         if (!manager.HasComponent<DroneWorker>(assignment.Worker)) return false;
         if (!manager.HasComponent<DroneWorkerObservation>(assignment.Worker)) return false;
         if (!manager.HasComponent<DroneWorkerAssignment>(assignment.Worker)) return false;
+        if (manager.HasComponent<DroneDocked>(assignment.Worker)) return false;
         if (manager.GetComponentData<DroneWorkerAssignment>(assignment.Worker).Assignment != assignmentEntity) return false;
         if (manager.HasComponent<DroneMovementState>(assignment.Worker))
         {
             var movement = manager.GetComponentData<DroneMovementState>(assignment.Worker);
-            if (movement.ChargingStation != Entity.Null || movement.ReturnStation != Entity.Null ||
+            if ((!movement.IsNormalReturn && (movement.ChargingStation != Entity.Null || movement.ReturnStation != Entity.Null)) ||
                 manager.GetComponentData<DroneBatteryState>(assignment.Worker).CurrentCharge <= 0f)
             {
                 return false;

@@ -21,6 +21,7 @@ internal struct DroneStationEligibility
     [ReadOnly] public ComponentLookup<DroneWorkerAssignment> Assignments;
     [ReadOnly] public ComponentLookup<DroneCargoState> Cargo;
     [ReadOnly] public ComponentLookup<DroneDocked> Docks;
+    [ReadOnly] public ComponentLookup<DroneMovementState> Movements;
     [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyRequests;
     [ReadOnly] public ComponentLookup<Storage> Storages;
     [ReadOnly] public ComponentLookup<GridPosition> Positions;
@@ -64,6 +65,7 @@ internal struct DroneStationEligibility
             Assignments = state.GetComponentLookup<DroneWorkerAssignment>(true),
             Cargo = state.GetComponentLookup<DroneCargoState>(true),
             Docks = state.GetComponentLookup<DroneDocked>(true),
+            Movements = state.GetComponentLookup<DroneMovementState>(true),
             DestroyRequests = state.GetComponentLookup<DestroyItemRequest>(true),
             Storages = state.GetComponentLookup<Storage>(true),
             Positions = state.GetComponentLookup<GridPosition>(true),
@@ -75,7 +77,7 @@ internal struct DroneStationEligibility
         };
     }
 
-    public DroneStationRequestStatus Validate(in DroneStationRequest request, float maximum)
+    public DroneStationRequestStatus Validate(in DroneStationRequest request, float maximum, bool automatic = false)
     {
         Entity drone = request.Drone;
         Entity station = request.Station;
@@ -116,7 +118,9 @@ internal struct DroneStationEligibility
         {
             return DroneStationRequestStatus.Rejected;
         }
-        if (Activities[drone].Activity != DroneActivityKind.Idle)
+        bool waitingAtStation = automatic && Activities[drone].Activity == DroneActivityKind.WaitingForCharge &&
+            Movements[drone].ChargingStation == station && IsAtStation(drone, station);
+        if (Activities[drone].Activity != DroneActivityKind.Idle && !waitingAtStation)
         {
             return DroneStationRequestStatus.Busy;
         }

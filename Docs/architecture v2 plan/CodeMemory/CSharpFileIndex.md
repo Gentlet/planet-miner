@@ -128,6 +128,7 @@
 | --- | --- |
 | `Assets/Scripts/Systems/Drones/Execution/DroneTaskExecutionSystem.cs` | Execution에서 Decision의 작업 생성과 경로 Create/Retain/Remove 의도를 실행한다. |
 | `Assets/Scripts/Systems/Drones/Decision/DroneTaskDecisionSystem.cs` | 한 본체에서 생성·신규/적재 후보·ViaSource/Direct 경로·무효화를 판단한다. 적재품은 현장/보관/방출 우선순위와 거리/Stamp를 적용하며 None은 대기한다. 원본을 쓰지 않는다. |
+| `Assets/Scripts/Components/DroneLogistics/DroneReturnReservationElement.cs` | task candidates singleton의 이번 틱 귀환 차단 scratch. Reservation이 쓰고 Movement Execution이 소비한다. |
 | `Assets/Scripts/Components/DroneLogistics/DroneMovementComponents.cs` | 이동 설정/상태/판단/도착 결과와 내부 경로 평가 판단을 구분한다. |
 | `Assets/Scripts/Common/DroneTargetPointUtility.cs` | 이동/실물 인계/격리 입력의 회전 footprint 중심과 월드 격자 목표점을 공유한다. |
 | `Assets/Scripts/Common/DroneFlightPlanningUtility.cs` | 직선 구간과 충전 경유 거리/에너지, 비상 귀환 정거장과 현장 외부 셀을 평가한다. |
@@ -135,6 +136,11 @@
 | `Assets/Scripts/Components/DroneLogistics/DroneAutomaticActionRequest.cs` | 자동 픽업/납품 Producer가 생성한 요청/결과의 수명 표식이다. |
 | `Assets/Scripts/Systems/Drones/Decision/DroneActionRequestDecisionSystem.cs` | 공개 도착의 픽업/정상 납품 의도를 Burst Job으로 판단하고 기존 API로 요청을 접수하며 자기 결과만 소비한다. |
 | `Assets/Scripts/Systems/Drones/Decision/DroneFlightDecisionSystem.cs` | 정거장/현장 입력을 준비하고 병렬 Burst Job으로 이번 틱 경로와 이동 구간을 판단한다. |
+| `Assets/Scripts/Common/DroneStationAutomationUtility.cs` | 자동 정거장 요청의 임시 판단 입력과 실제 작업 수요/재개 경로 자료를 준비한다. 영속 작업 확보나 보관 전환을 수행하지 않는다. |
+| `Assets/Scripts/Components/DroneLogistics/DroneAutomaticStationRequest.cs` | 자동 요청 결과의 소비 소유권과 수요 기반 출고 중재 입력을 해당 요청 Entity에 유지한다. |
+| `Assets/Scripts/Systems/Drones/Decision/DroneStationAutomationDecisionSystem.cs` | 실제 도착의 Dock/Store와 실행 가능 수요의 Activate를 준비/접수하고 자기 자동 결과만 소비한다. |
+| `Assets/Scripts/Systems/Drones/Reservation/DroneStationActivationReservationSystem.cs` | Task Reservation 뒤 실제 승인/진행 확보를 제외한 잔여 수요로 자동 출고를 제한한다. 작업 수량을 미리 예약하지 않는다. |
+| `Assets/Scripts/Systems/Drones/Reservation/DroneReturnReservationSystem.cs` | Task Reservation 뒤 신규 선택/미평가 경로/접수 요청과 정상 귀환 fallback을 중재한다. 원본 위치/배터리를 쓰지 않는다. |
 | `Assets/Scripts/Systems/Drones/Execution/DroneMovementExecutionSystem.cs` | 실제 거리만 이동/소비하며 위치/격자/렌더/활동/도착 또는 중단 결과를 작성한다. |
 | `Assets/Scripts/Systems/Drones/StateApply/DroneMovementApplySystem.cs` | Lifecycle 뒤 같은 배정/revision/action의 도착 상태만 EndSimulation에 기록한다. |
 | `Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs` | StateApply에서 행동 신호와 작업/배정 무효화 의도를 반영하고 실제 인계량을 정산한다. |

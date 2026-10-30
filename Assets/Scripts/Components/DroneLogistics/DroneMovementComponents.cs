@@ -18,6 +18,7 @@ public enum DroneFlightPurposeEnum : byte
     WaitingForCharge,
     WaitingForStation,
     AwaitingAction,
+    NormalReturn,
     Count
 }
 
@@ -34,6 +35,8 @@ public struct DroneMovementState : IComponentData
 {
     public Entity ChargingStation;
     public Entity ReturnStation;
+    // 정상 귀환은 다음 작업으로 전환할 수 있다. 비상 귀환/작업 충전 경유는 기존 배차 차단을 유지한다.
+    public bool IsNormalReturn;
 }
 
 /// <summary>Decision의 이동 의도다. Execution은 이 구간만 실행하며 충전/실물 성공을 만들지 않는다.</summary>

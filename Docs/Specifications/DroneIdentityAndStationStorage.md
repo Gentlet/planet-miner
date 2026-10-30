@@ -1,6 +1,6 @@
 # 드론 Identity 전환과 정거장 보관
 
-2026-10-22 Task 9.3. 사용자 확정 1A/2A/3A/수정 5/6A/7A와 [Lifecycle](DroneLifecycle.md)의 엄격한 수납 자격을 구현한다. [생성 기반](DroneCreation.md)과 [정거장 네트워크](DroneStationNetwork.md)를 재사용한다. 실제 경로/이동/도착과 최소 비상 귀환은 [이동 명세](DroneMovement.md)를 따른다. 정상 귀환/정박/수납 자동 흐름과 실제 충전은 후속이다.
+2026-10-22 Task 9.3. 사용자 확정 1A/2A/3A/수정 5/6A/7A와 [Lifecycle](DroneLifecycle.md)의 엄격한 수납 자격을 구현한다. [생성 기반](DroneCreation.md)과 [정거장 네트워크](DroneStationNetwork.md)를 재사용한다. 실제 경로/이동/도착과 최소 비상 귀환은 [이동 명세](DroneMovement.md)를 따른다. 정상 귀환/정박/수납과 수요 기반 출고는 [귀환/출고 계약](DroneReturnAndDispatch.md)을 따른다. 실제 충전은 후속이다.
 
 ## 설정과 슬롯 원본
 
@@ -18,10 +18,16 @@
 | DroneDecision | DroneStationLifecycleDecisionSystem의 병렬 Burst IJobEntity가 EndBuilding 원본에서 요청별 활성화/정박/수납 자격을 DroneStationDecision에 작성한다. |
 | DroneReservation | DroneStationLifecycleReservationSystem의 단일 Burst IJob이 기존 작업 예약 선택 뒤 Sequence 순으로 요청과 슬롯 경합을 중재한다. Approved/SlotIndex/거부 Status를 작성하며 실물이나 영속 예약을 만들지 않는다. |
 | DroneStateApply | 작업 Publish 기록 뒤 단일 Burst 데이터 Job이 최신 실물/동작/공간을 검사하고 역할/양쪽 보관 관계/비관리형 표시/결과를 EndSimulation ECB에 기록한다. Job 완료 뒤 메인 스레드는 승인된 표시 목록의 관리형 RenderMeshArray만 별도 EndSimulation ECB에 기록한다. 선택한 슬롯을 새로 확장하지 않는다. |
-| EndSimulation | 역할과 보관 관계, 요청/Decision 제거와 같은 요청 Entity의 DroneStationResult를 함께 공개한다. 외부 TryConsumeResult가 결과를 한 번 소비한다. |
+| EndSimulation | 역할과 보관 관계, 요청/Decision 제거와 같은 요청 Entity의 DroneStationResult를 함께 공개한다. 외부 결과는 외부 TryConsumeResult가, 자동 결과는 다음 DroneStationAutomationDecisionSystem이 자기 표식의 결과만 한 번 소비한다. |
 | Synchronization | 기존 인덱스가 최종 원본을 읽고 WorldInvariantValidationSystem은 전용 슬롯/정박 양방향 관계를 검사한다. |
 
 슬롯 예산은 각 단계 호출의 임시 자료다. 예약 계획 뒤 선행 드론 행동이 공간을 사용하면 최종 적용은 거부할 수 있다. 이번 틱 활성화로 새로 비는 공간은 같은 계획에서 재사용하지 않는다. 앞선 슬롯 예약이 실패해도 다른 요청에 예산을 확대/재배분하지 않는다. 기존 미공개 작업 배정/일반 운반 승인이나 행동 요청이 있는 수행자는 보관 전환하지 않는다. 일반 운반은 Take 후 승인 잔량이 0이어도 PublicationQueued이면 같은 EndSimulation 전 Busy를 유지한다. 새 수행자는 다음 틱부터 보이고 최초 관측 CanAcceptTask=false를 유지한다.
+
+### 자동 요청과 도착 대기
+
+[귀환/출고 계약](DroneReturnAndDispatch.md)의 Station Automation Decision이 기존 Task Decision 뒤 실제 도착/작업 수요를 확인하고 Submit으로 자동 요청을 접수한다. 자동 요청은 DroneAutomaticStationRequest로 외부 요청과 구분한다. Station Activation Reservation은 기존 Task Reservation 뒤 실제 승인/확보를 제외한 잔여 수요만 자동 출고로 남기며, 기존 Station Lifecycle Reservation이 요청/슬롯을 최종 중재한다.
+
+외부 요청의 Idle 자격은 유지한다. 자동 요청은 실제 정거장 내부와 ChargingStation 일치를 확인한 WaitingForCharge 도착 대기도 Dock/정박 해제의 입력으로 사용한다. 자동 Store는 완충/무배정/무행동/빈 화물/공간 조건을 모두 만족해 더 기다릴 충전이 없을 때 대기 의도 종료와 수납 역할 전환을 같은 Apply/EndSimulation에서 확정한다. 미완충 대기를 수납하거나 정박을 충전으로 처리하지 않는다. 자동 정박 Activate는 이동 목적지/활동 초기화도 같은 공개 경계에서 반영하고 배터리/기존 배정/화물은 유지한다.
 
 ### Job 의존성과 임시 자료
 
@@ -34,7 +40,7 @@ StateApply의 데이터 Job은 원본 ECS를 바꾸지 않고 ECB와 Actor/Prefa
 | 요청 | 조건/변경 |
 | --- | --- |
 | Activate | 정거장이 실제 소유한 드론 아이템을 같은 Entity의 수행자로 바꾼다. ItemIdentity/ItemOwnership/아이템 요청/벨트 역할과 정거장 보관 참조를 제거하고 생성 API의 Worker/관측/빈 배정/화물/Idle을 구성한다. 새 개체는 설정 최대치로 최초 충전하고 기존 유효 배터리는 그대로 둔다. 정박 수행자의 Activate는 정박 관계만 해제하며 배터리를 채우지 않는다. |
-| Dock | 활성 수행자의 실제 LocalTransform/GridPosition이 정거장의 회전 footprint 안이고 Idle이어야 한다. 빈 슬롯 하나를 점유하는 DroneDocked와 DockedDroneElement를 함께 게시한다. 활성 표시/배터리/화물/기존 배정은 보존하며 수납 아이템으로 숨기지 않는다. Movement가 실제 도착을 제공하며 자동 Dock 요청 Producer는 9.13 후속이다. |
+| Dock | 활성 수행자의 실제 LocalTransform/GridPosition이 정거장의 회전 footprint 안이고 Idle이어야 한다. 빈 슬롯 하나를 점유하는 DroneDocked와 DockedDroneElement를 함께 게시한다. 활성 표시/배터리/화물/기존 배정은 보존하며 수납 아이템으로 숨기지 않는다. Movement가 실제 도착을 제공하며 자동 정거장 요청 Producer가 기존 Dock 자격/공간 중재에 연결한다. |
 | Store | 실제 정거장 내부, Idle, 완충, 배정/진행 중 행동 없음, 빈 화물/None 출처, 보관 공간의 모든 조건이 필요하다. 같은 Entity의 Worker 역할/화물 버퍼/정박 관계를 제거하고 공통 아이템 초기화로 Drone ItemIdentity/Stored Owner/비활성 이동과 요청을 구성한다. 정거장 StoredItemElement와 숨김을 함께 게시한다. 기존 정박 슬롯이 있으면 그 슬롯을 유지한다. |
 
 표시는 검증된 단일 루트 프리팹의 MaterialMeshInfo/RenderMeshArray/RenderBounds와 TRS/PostTransformMatrix를 사용한다. 논리 Entity를 파괴/재생성하지 않고 다른 역할의 배터리를 삭제하지 않는다. 생성 helper의 실패 전에는 아이템/보관 원본을 제거하지 않는다.
@@ -75,4 +81,4 @@ Job 분리 후 실제 SubScene Baker/제품 설정/공통 생성의 같은 Entit
 | DroneItemTransferTests / DroneTaskSchedulingTests / DroneRetargetingTests / DroneLifecycleIntegrationTests | 33 / 39 / 17 / 6 |
 | Phase8PowerContractTests / Phase8PowerTopologyTests | 26 / 51 |
 
-활성 역할 전환은 이동 State/Decision/Result도 생성/제거한다. 최소 비상 귀환의 실제 정거장 도착은 자동 Dock/Store/충전 성공이 아니며, 활성 배정/화물을 보존한 충전 대기는 후속 정상 귀환/충전 소유자의 입력을 기다린다. 실제 이동/관측은 [이동 명세](DroneMovement.md)를 따른다.
+활성 역할 전환은 이동 State/Decision/Result도 생성/제거한다. 실제 정거장 도착은 정거장 전환의 입력이다. 자동 Dock/Store 요청도 기존 자격/공간 중재와 EndSimulation 공개를 거친다. 활성 배정/화물을 보존한 정박 대기는 후속 충전 소유자의 실제 에너지 입력을 기다린다. 실제 이동/관측은 [이동 명세](DroneMovement.md)를 따른다.

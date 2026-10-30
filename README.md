@@ -133,3 +133,5 @@ flowchart TD
 자동 픽업의 공개 도착/요청 수명/일반 운반 확보량 정산은 [픽업 계약](Docs/Specifications/DronePickup.md)을 따른다.
 
 자동 납품/일반 운반 완료량/공간 대기와 도착 후 배터리 0 예외는 [납품 계약](Docs/Specifications/DroneDelivery.md)을 따른다.
+
+정상 귀환 중 재배차, 자동 정박/수납과 작업 수요 기반 출고는 [귀환/출고 계약](Docs/Specifications/DroneReturnAndDispatch.md)을 따른다. 실제 전력 충전은 후속 범위다.

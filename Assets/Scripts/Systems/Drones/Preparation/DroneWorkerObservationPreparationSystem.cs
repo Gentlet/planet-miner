@@ -32,7 +32,7 @@ public partial struct DroneWorkerObservationPreparationSystem : ISystem
             in DroneCargoState cargo, in DynamicBuffer<StoredItemElement> items, ref DroneWorkerObservation observation)
         {
             bool canAccept = battery.CurrentCharge > 0f && link.Assignment == Entity.Null &&
-                movement.ChargingStation == Entity.Null && movement.ReturnStation == Entity.Null &&
+                (movement.IsNormalReturn || (movement.ChargingStation == Entity.Null && movement.ReturnStation == Entity.Null)) &&
                 cargo.Origin == DroneCargoOriginEnum.None && items.IsEmpty && !Docks.HasComponent(entity);
             if (math.any(observation.Position != transform.Position) || observation.CanAcceptTask != canAccept)
             {

@@ -263,15 +263,28 @@ public partial struct DroneFlightDecisionSystem : ISystem
                     return;
                 }
             }
-            bool needsReturn = movement.ReturnStation != Entity.Null ||
+            if (battery.CurrentCharge > 0f && failureSettled && (!hasAssignment ||
+                assignment.State == DroneTaskAssignmentStateEnum.Retargeting || DroneSchedulingUtility.IsTerminal(assignment.State)))
+            {
+                // 작업 선택보다 앞선 순수 fallback이다. Reservation이 배정/경로 대기와 경합을 중재한다.
+                PrepareNormalReturn(transform.Position.xy, battery.CurrentCharge, ref decision);
+                return;
+            }
+            bool needsReturn = (!movement.IsNormalReturn && movement.ReturnStation != Entity.Null) ||
                 (previous.Failure != DroneMovementFailureEnum.None && !failureSettled) || battery.CurrentCharge <= 0f;
             bool chargingStationActive = false;
-            if (movement.ChargingStation != Entity.Null)
+            if (movement.ChargingStation != Entity.Null && !movement.IsNormalReturn)
             {
                 for (int i = 0; i < Stations.Length; i++)
                 {
                     if (Stations[i].Entity == movement.ChargingStation)
                     {
+                        if (!Stations[i].CanDock && (!hasAssignment ||
+                            assignment.State == DroneTaskAssignmentStateEnum.Retargeting || DroneSchedulingUtility.IsTerminal(assignment.State)))
+                        {
+                            // 미정박 귀환의 만석은 대체 정거장을 찾는다. 진행 중 작업의 계획된 충전 대기와 구분한다.
+                            break;
+                        }
                         chargingStationActive = true;
                         if (battery.CurrentCharge <= 0f || (previous.Failure != DroneMovementFailureEnum.None && !failureSettled))
                         {
@@ -358,6 +371,20 @@ public partial struct DroneFlightDecisionSystem : ISystem
             decision.Target = plan.NextPosition;
             decision.Station = plan.ChargingStation;
             decision.Purpose = plan.ChargingStation == Entity.Null ? DroneFlightPurposeEnum.Task : DroneFlightPurposeEnum.ChargingStop;
+        }
+
+        private void PrepareNormalReturn(float2 origin, float charge, ref DroneMovementDecision decision)
+        {
+            int stationIndex = DroneFlightPlanningUtility.PlanReturn(origin, Stations, charge, Maximum,
+                Config.EnergyPerDistance, out var plan);
+            if (stationIndex < 0)
+            {
+                decision.Purpose = DroneFlightPurposeEnum.WaitingForStation;
+                return;
+            }
+            decision.Purpose = DroneFlightPurposeEnum.NormalReturn;
+            decision.Target = plan.NextPosition;
+            decision.Station = plan.ChargingStation == Entity.Null ? Stations[stationIndex].Entity : plan.ChargingStation;
         }
 
         private void PrepareReturn(float2 origin, float charge, Entity assignmentEntity, in DroneTaskAssignment assignment,

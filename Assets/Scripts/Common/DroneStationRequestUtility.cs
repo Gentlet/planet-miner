@@ -3,7 +3,7 @@ using Unity.Entities;
 
 public static class DroneStationRequestUtility
 {
-    /// <summary>시뮬레이션 전 메인 스레드 접수. 요청은 순번 순서로 중재하고 같은 수행자의 중복 적용을 막는다.</summary>
+    /// <summary>외부 입력 또는 정거장 Decision의 메인 스레드 접수. 요청은 순번 순서로 중재하고 같은 수행자의 중복 적용을 막는다.</summary>
     public static Entity Submit(EntityManager manager, Entity drone, Entity station, DroneStationOperation operation)
     {
         using var query = manager.CreateEntityQuery(typeof(DroneStationRequestSequence));

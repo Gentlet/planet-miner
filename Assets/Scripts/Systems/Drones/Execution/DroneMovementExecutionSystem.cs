@@ -15,6 +15,7 @@ public partial struct DroneMovementExecutionSystem : ISystem
         _candidates = SystemAPI.QueryBuilder().WithAll<DroneTaskInvalidationDecisionElement>().Build();
         state.RequireForUpdate(_candidates);
         state.RequireForUpdate<DroneMovementConfig>();
+        state.RequireForUpdate<DroneBatteryConfig>();
     }
 
     [BurstCompile]
@@ -23,8 +24,10 @@ public partial struct DroneMovementExecutionSystem : ISystem
         state.Dependency = new MoveDronesJob
         {
             Config = SystemAPI.GetSingleton<DroneMovementConfig>(), DeltaTime = SystemAPI.Time.DeltaTime,
+            MaximumCharge = SystemAPI.GetSingleton<DroneBatteryConfig>().MaximumCharge,
             Candidates = _candidates.GetSingletonEntity(),
             Invalidations = state.GetBufferLookup<DroneTaskInvalidationDecisionElement>(true),
+            ReturnReservations = state.GetBufferLookup<DroneReturnReservationElement>(true),
             PostTransforms = state.GetComponentLookup<PostTransformMatrix>(true)
         }.ScheduleParallel(state.Dependency);
     }
@@ -35,8 +38,10 @@ public partial struct DroneMovementExecutionSystem : ISystem
     {
         public DroneMovementConfig Config;
         public float DeltaTime;
+        public float MaximumCharge;
         public Entity Candidates;
         [ReadOnly] public BufferLookup<DroneTaskInvalidationDecisionElement> Invalidations;
+        [ReadOnly] public BufferLookup<DroneReturnReservationElement> ReturnReservations;
         [ReadOnly] public ComponentLookup<PostTransformMatrix> PostTransforms;
 
         private void Execute(Entity entity, in DroneWorker worker, in DroneMovementDecision decision,
@@ -47,6 +52,24 @@ public partial struct DroneMovementExecutionSystem : ISystem
             if (!decision.Ready)
             {
                 return;
+            }
+            if (ReturnReservations.HasBuffer(Candidates))
+            {
+                var reservations = ReturnReservations[Candidates];
+                for (int i = 0; i < reservations.Length; i++)
+                {
+                    if (reservations[i].Worker != entity)
+                    {
+                        continue;
+                    }
+                    if (!reservations[i].PreserveArrival)
+                    {
+                        movement = default;
+                        activity.Activity = DroneActivityKind.Idle;
+                        if (decision.ClearFailure) result = default;
+                    }
+                    return;
+                }
             }
             if (decision.Purpose == DroneFlightPurposeEnum.Task || decision.Purpose == DroneFlightPurposeEnum.ChargingStop)
             {
@@ -94,12 +117,14 @@ public partial struct DroneMovementExecutionSystem : ISystem
             }
             if (decision.Purpose == DroneFlightPurposeEnum.WaitingForStation)
             {
-                movement.ReturnStation = Entity.Null;
+                movement = default;
                 activity.Activity = DroneActivityKind.Idle;
                 return;
             }
             bool emergency = decision.Purpose == DroneFlightPurposeEnum.EmergencyReturn;
-            movement.ReturnStation = emergency ? decision.Station : Entity.Null;
+            bool normalReturn = decision.Purpose == DroneFlightPurposeEnum.NormalReturn;
+            movement.IsNormalReturn = normalReturn;
+            movement.ReturnStation = emergency || normalReturn ? decision.Station : Entity.Null;
             movement.ChargingStation = Entity.Null;
             float2 origin = transform.Position.xy;
             float distance = math.distance(origin, decision.Target);
@@ -145,10 +170,11 @@ public partial struct DroneMovementExecutionSystem : ISystem
                 }
                 else
                 {
-                    // 정거장 도착은 정박/충전 성공이 아니다. 후속 충전 소유자가 실제량을 줄 때까지 기다린다.
+                    // 도착만 기록한다. 정박/수납 요청은 다음 Decision이 기존 정거장 소유자에게 전달한다.
                     movement.ChargingStation = decision.Station;
                     movement.ReturnStation = Entity.Null;
-                    activity.Activity = DroneActivityKind.WaitingForCharge;
+                    activity.Activity = normalReturn && battery.CurrentCharge >= MaximumCharge
+                        ? DroneActivityKind.Idle : DroneActivityKind.WaitingForCharge;
                 }
             }
         }
