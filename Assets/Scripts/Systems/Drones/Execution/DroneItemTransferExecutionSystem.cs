@@ -140,16 +140,15 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
     private static void PrepareRecovery(EntityManager manager, in DroneTaskAssignment assignment,
         DynamicBuffer<DroneItemTransferItemDecisionElement> items, NativeArray<Entity> sites)
     {
-        // 회수는 지정된 월드 실물 하나만 계획한다. 현장 정리 회수라면 현재도 현장 아래에 있어야 한다.
+        // 지정된 월드 실물 하나만 계획한다. 자동 단독 현장 정리는 현재 현장 자격이 필요하다.
+        // 승인된 명시 의도가 합쳐졌다면 현장 종료 뒤에도 일반 바닥 자격으로 진행한다.
         // 이후 적재 출처가 Recovery로 유지되어 보관처 입고 전에는 건설 공급으로 전용되지 않는다.
         if (!DroneSchedulingUtility.IsStorage(manager, assignment.Destination)) return;
         if (!DroneItemTransferUtility.CanMove(manager, assignment.Source, assignment.ItemType, Entity.Null)) return;
         var task = manager.GetComponentData<DroneLogisticsTask>(assignment.Task);
-        if (task.RecoveryReason != DroneRecoveryReasonEnum.DroneDrop &&
-            task.RecoveryReason != DroneRecoveryReasonEnum.BuildingDemolition)
+        if (!DroneWorldItemRecoveryUtility.IsReasonValid(manager, task, sites))
         {
-            if (task.RecoveryReason != DroneRecoveryReasonEnum.SiteClearance) return;
-            if (!DroneSchedulingUtility.IsUnderSite(manager, assignment.Source, sites)) return;
+            return;
         }
         items.Add(new DroneItemTransferItemDecisionElement { ItemEntity = assignment.Source });
     }

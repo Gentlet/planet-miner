@@ -391,8 +391,7 @@ public static class DroneSchedulingUtility
             return false;
         }
 
-        return task.RecoveryReason == DroneRecoveryReasonEnum.DroneDrop || task.RecoveryReason == DroneRecoveryReasonEnum.BuildingDemolition ||
-               (task.RecoveryReason == DroneRecoveryReasonEnum.SiteClearance && IsUnderSite(manager, task.Target, sites));
+        return DroneWorldItemRecoveryUtility.IsReasonValid(manager, task, sites);
     }
 
     public static bool IsTerminal(DroneTaskAssignmentStateEnum state)

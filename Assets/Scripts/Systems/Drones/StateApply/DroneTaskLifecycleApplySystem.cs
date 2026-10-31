@@ -106,6 +106,17 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
             var decision = manager.GetComponentData<DroneTaskRequestDecision>(record.Entity);
             if (request.Operation == DroneTaskRequestOperationEnum.Create && manager.GetComponentData<DroneTaskRequestExecution>(record.Entity).CreationRecorded)
             {
+                // 공개된 기존 root만 여기서 병합한다. 같은 ECB의 새 root는 생성할 때 이미 의도를 기록했다.
+                // root 전체를 ECB Set으로 예약하면 뒤의 명시 취소 상태를 Playback 때 덮을 수 있으므로 소유 단계에서 반영한다.
+                if (request.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery && decision.Task != Entity.Null)
+                {
+                    var recoveryTask = manager.GetComponentData<DroneLogisticsTask>(decision.Task);
+                    if (!recoveryTask.HasExplicitRecoveryIntent)
+                    {
+                        recoveryTask.HasExplicitRecoveryIntent = true;
+                        manager.SetComponentData(decision.Task, recoveryTask);
+                    }
+                }
                 var key = DroneTaskGenerationKey.From(request.Kind, request.Target, request.ItemType);
                 for (int i = blocks.Length - 1; i >= 0; i--)
                 {
@@ -470,12 +481,9 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         if (!DroneSchedulingUtility.IsStorage(manager, assignment.Destination)) return 0;
         if (!ItemOwnershipApplySystem.CanTransferItem(manager, assignment.Source, assignment.ItemType, Entity.Null)) return 0;
         var task = manager.GetComponentData<DroneLogisticsTask>(assignment.Task);
-        if (task.RecoveryReason != DroneRecoveryReasonEnum.DroneDrop &&
-            task.RecoveryReason != DroneRecoveryReasonEnum.BuildingDemolition)
+        if (!DroneWorldItemRecoveryUtility.IsReasonValid(manager, task, sites))
         {
-            // 현장 정리 회수는 아직 현장 아래 있는 실물에만 유효하다. 드론 배출품은 현장 밖에서도 회수 대상이다.
-            if (task.RecoveryReason != DroneRecoveryReasonEnum.SiteClearance) return 0;
-            if (!DroneSchedulingUtility.IsUnderSite(manager, assignment.Source, sites)) return 0;
+            return 0;
         }
         int2 position = (int2)math.floor(manager.GetComponentData<DroneWorkerObservation>(assignment.Worker).Position.xy);
         if (!ItemOwnershipApplySystem.TryTransferItem(manager, assignment.Source, assignment.ItemType,

@@ -108,7 +108,8 @@ public partial struct DroneTaskExecutionSystem : ISystem
         public Entity Task;
     }
 
-    private static Entity RecordCreation(EntityCommandBuffer ecb, in DroneTaskCreationDecisionElement creation, ref DroneTaskSequence sequence)
+    private static Entity RecordCreation(EntityCommandBuffer ecb, in DroneTaskCreationDecisionElement creation,
+        ref DroneTaskSequence sequence, bool hasExplicitRecoveryIntent = false)
     {
         switch (creation.Kind)
         {
@@ -117,7 +118,8 @@ public partial struct DroneTaskExecutionSystem : ISystem
             case DroneLogisticsTaskKindEnum.ConstructionSupply:
                 return DroneTaskCreationUtility.CreateConstructionSupplyTask(ecb, creation.Target, creation.ItemType, ref sequence);
             case DroneLogisticsTaskKindEnum.WorldItemRecovery:
-                return DroneTaskCreationUtility.CreateRecoveryTask(ecb, creation.Target, creation.ItemType, creation.RecoveryReason, ref sequence);
+                return DroneTaskCreationUtility.CreateRecoveryTask(ecb, creation.Target, creation.ItemType,
+                    creation.RecoveryReason, ref sequence, hasExplicitRecoveryIntent);
             default:
                 return DroneTaskCreationUtility.CreateStorageTransportTask(ecb, creation.Target, creation.ItemType,
                     creation.Kind, creation.Quantity, ref sequence);
@@ -155,7 +157,8 @@ public partial struct DroneTaskExecutionSystem : ISystem
 
             if (accepted && status == DroneTaskRequestStatusEnum.Created)
             {
-                task = RecordCreation(ecb, creation, ref sequence);
+                task = RecordCreation(ecb, creation, ref sequence,
+                    hasExplicitRecoveryIntent: request.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery);
                 recorded.Add(new RecordedCreation { Creation = creation, Request = record.Entity, Task = task });
             }
             else if (accepted && task == Entity.Null)

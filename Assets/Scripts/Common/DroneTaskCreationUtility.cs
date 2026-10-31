@@ -40,10 +40,11 @@ public static class DroneTaskCreationUtility
         Entity item,
         ItemTypeEnum itemType,
         DroneRecoveryReasonEnum reason,
-        ref DroneTaskSequence sequence)
+        ref DroneTaskSequence sequence,
+        bool hasExplicitRecoveryIntent = false)
     {
         return CreateTask(ecb, item, itemType, DroneLogisticsTaskKindEnum.WorldItemRecovery,
-            reason, ref sequence);
+            reason, ref sequence, hasExplicitRecoveryIntent);
     }
 
     public static Entity CreateStorageTransportTask(EntityCommandBuffer ecb, Entity target, ItemTypeEnum itemType,
@@ -70,7 +71,8 @@ public static class DroneTaskCreationUtility
         ItemTypeEnum itemType,
         DroneLogisticsTaskKindEnum kind,
         DroneRecoveryReasonEnum recoveryReason,
-        ref DroneTaskSequence sequence)
+        ref DroneTaskSequence sequence,
+        bool hasExplicitRecoveryIntent = false)
     {
         if (sequence.NextValue == 0)
         {
@@ -91,7 +93,8 @@ public static class DroneTaskCreationUtility
             Target = target,
             ItemType = itemType,
             CreationSequence = sequence.NextValue++,
-            RecoveryReason = recoveryReason
+            RecoveryReason = recoveryReason,
+            HasExplicitRecoveryIntent = hasExplicitRecoveryIntent
         });
         return task;
     }

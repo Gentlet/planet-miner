@@ -201,7 +201,7 @@ internal static class DroneTaskRequestDecisionUtility
             return DroneTaskRequestStatusEnum.Rejected;
         }
 
-        if (!DroneSchedulingUtility.IsWorldItem(manager, request.Target, request.ItemType))
+        if (!DroneWorldItemRecoveryUtility.IsFloorItem(manager, request.Target, request.ItemType))
         {
             return DroneTaskRequestStatusEnum.Rejected;
         }
@@ -216,7 +216,11 @@ internal static class DroneTaskRequestDecisionUtility
             reason = DroneRecoveryReasonEnum.SiteClearance;
         }
 
-        return reason == DroneRecoveryReasonEnum.None ? DroneTaskRequestStatusEnum.Rejected : DroneTaskRequestStatusEnum.Created;
+        if (reason == DroneRecoveryReasonEnum.None)
+        {
+            reason = DroneRecoveryReasonEnum.UserRequested;
+        }
+        return DroneTaskRequestStatusEnum.Created;
     }
 
     public static DroneTaskRequestStatusEnum ValidateCancellation(EntityManager manager, Entity candidates, Entity taskEntity, NativeArray<Entity> assignments)

@@ -1,5 +1,8 @@
 using System;
+using System.Collections.Generic;
+using Unity.Collections;
 using Unity.Entities;
+using Unity.Mathematics;
 
 public static class DroneTaskRequestUtility
 {
@@ -13,6 +16,59 @@ public static class DroneTaskRequestUtility
 
     public static Entity SubmitCreate(EntityManager manager, DroneLogisticsTaskKindEnum kind, Entity target, ItemTypeEnum type, int quantity = 0) => Submit(manager, new DroneTaskRequest { Operation = DroneTaskRequestOperationEnum.Create, Kind = kind, Target = target, ItemType = type, Quantity = quantity });
     public static Entity SubmitCancel(EntityManager manager, Entity task) => Submit(manager, new DroneTaskRequest { Operation = DroneTaskRequestOperationEnum.Cancel, Task = task });
+
+    /// <summary>
+    /// 시뮬레이션 전 메인 스레드 접수 시 양 끝 셀을 포함하는 범위의 바닥 실물을 한 번 선택한다.
+    /// 활성 World 소유 실물 중 실제 벨트가 없는 셀만 선택한다.
+    /// 반환값은 기존 Create 요청 핸들이며 각 결과는 EndSimulation 뒤 TryConsumeResult로 소비한다.
+    /// 이후 유입/생성품을 계속 모집하는 영역 상태는 만들지 않는다.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">선택분 전체의 접수번호가 부족하면 일부 요청도 접수하지 않고 거부한다.</exception>
+    public static Entity[] SubmitRecoveryRange(EntityManager manager, int2 first, int2 last)
+    {
+        int2 min = math.min(first, last);
+        int2 max = math.max(first, last);
+        using var query = manager.CreateEntityQuery(typeof(ItemIdentity), typeof(ItemOwnership), typeof(GridPosition));
+        using var items = query.ToEntityArray(Allocator.Temp);
+        using var belts = DroneWorldItemRecoveryUtility.ReadBeltPositions(manager);
+        var selected = new List<Entity>();
+        foreach (Entity item in items)
+        {
+            int2 position = manager.GetComponentData<GridPosition>(item).Value;
+            if (math.any(position < min) || math.any(position > max))
+            {
+                continue;
+            }
+            var type = manager.GetComponentData<ItemIdentity>(item).Type;
+            if (!DroneSchedulingUtility.IsWorldItem(manager, item, type))
+            {
+                continue;
+            }
+            if (DroneWorldItemRecoveryUtility.ContainsBelt(belts, position))
+            {
+                continue;
+            }
+            selected.Add(item);
+        }
+
+        // 일괄 요청 도중 접수번호가 소진되어 일부만 접수되는 것을 막는다.
+        if ((ulong)selected.Count > ReadAvailableRequestSequenceCount(manager))
+        {
+            throw new InvalidOperationException("Not enough drone task request sequences for recovery range.");
+        }
+
+        // Query 순서를 접수 순서로 사용하지 않고 이 일괄 요청의 발급 순서만 고정한다.
+        selected.Sort((left, right) => left.Index != right.Index
+            ? left.Index.CompareTo(right.Index) : left.Version.CompareTo(right.Version));
+        var requests = new Entity[selected.Count];
+        for (int i = 0; i < selected.Count; i++)
+        {
+            Entity item = selected[i];
+            requests[i] = SubmitCreate(manager, DroneLogisticsTaskKindEnum.WorldItemRecovery, item,
+                manager.GetComponentData<ItemIdentity>(item).Type);
+        }
+        return requests;
+    }
     /// <summary>외부는 시뮬레이션 전, 건물 Command 어댑터는 Command 내부에서 메인 스레드로 접수한다. 순번 오류는 접수 전에 거절한다.</summary>
     public static Entity Submit(EntityManager manager, DroneTaskRequest value)
     {

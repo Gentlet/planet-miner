@@ -35,9 +35,9 @@ public enum DroneLogisticsTaskStateEnum : byte
 }
 
 /// <summary>
-/// 역할·목적: 월드 실물 회수 필요가 현장 바닥 정리인지 드론 방출인지 구분한다.
+/// 역할/목적: 현장 정리/드론 방출/철거 반환/사용자 선택의 월드 실물 회수 근거를 구분한다.
 /// 부착 엔티티: 열거형 자체는 부착하지 않으며 DroneLogisticsTask.RecoveryReason·생성 의도에 포함한다.
-/// 생성·이용: DroneTaskDecisionSystem(Decision)이 현장 footprint/DroneRecoveryPending으로 선택하고 관리 측 유효성 검사가 해당 근거의 현재성을 확인한다.
+/// 생성/이용: Task Decision이 현장/반환 표시 또는 명시 요청으로 선택한다. 사용자 선택은 일반 바닥 자격을, 기존 자동 회수는 각 사유의 현재성을 검사한다.
 /// 제거: 값을 담은 컴포넌트·판단·결과의 갱신/삭제 수명을 따른다. 별도 엔티티 수명을 갖지 않는다.
 /// </summary>
 public enum DroneRecoveryReasonEnum : byte
@@ -46,6 +46,7 @@ public enum DroneRecoveryReasonEnum : byte
     SiteClearance,
     DroneDrop,
     BuildingDemolition,
+    UserRequested,
     Count
 }
 
@@ -86,6 +87,12 @@ public struct DroneLogisticsTask : IComponentData
     public ItemTypeEnum ItemType;
     public ulong CreationSequence;
     public DroneRecoveryReasonEnum RecoveryReason;
+    /// <summary>
+    /// 최초 RecoveryReason과 별개로 같은 실물 root에 합쳐진 승인된 사용자 회수 의도다.
+    /// 새 root는 Execution이 생성과 함께 기록하고 기존 root는 Lifecycle이 성공한 명시 요청에만 반영한다.
+    /// 요청 Entity 소비 뒤에도 유지하며 root의 명시 취소/종료와 함께 수명을 마친다.
+    /// </summary>
+    public bool HasExplicitRecoveryIntent;
 }
 
 /// <summary>
