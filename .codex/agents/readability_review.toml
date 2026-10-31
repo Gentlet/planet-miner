@@ -1,6 +1,6 @@
 name = "readability_review"
-description = "Luna: 변경된 코드의 명명/메서드 책임/처리 순서/조건식과 흐름을 숨기는 분해/추상화 검수."
-model = "gpt-6-luna"
+description = "GPT-6.1 Terra: 변경된 코드의 명명/메서드 책임/처리 순서/조건식과 흐름을 숨기는 분해/추상화 검수."
+model = "gpt-6.1-terra"
 model_reasoning_effort = "xhigh"
 
 developer_instructions = """
