@@ -19,6 +19,7 @@ public enum DroneFlightPurposeEnum : byte
     WaitingForStation,
     AwaitingAction,
     NormalReturn,
+    StationRelocation,
     Count
 }
 
@@ -39,7 +40,7 @@ public struct DroneMovementState : IComponentData
     public bool IsNormalReturn;
 }
 
-/// <summary>Decision의 이동 의도다. Execution은 이 구간만 실행하며 충전/실물 성공을 만들지 않는다.</summary>
+/// <summary>일반 Flight와 재배치 Decision이 대상별로 나눠 쓰는 이동 의도다. Execution은 충전/실물 성공을 만들지 않는다.</summary>
 public struct DroneMovementDecision : IComponentData
 {
     public bool Ready;

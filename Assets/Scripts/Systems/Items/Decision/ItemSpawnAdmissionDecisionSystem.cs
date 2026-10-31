@@ -3,8 +3,8 @@ using Unity.Collections;
 using Unity.Entities;
 
 /// <summary>
-/// 역할·목적: 철거 승인 건물의 새 입고와 현장 내부의 새 월드 생성이 실행 후보가 되는 것을 앞단에서 막는다.
-/// 처리 단계: Decision. 입력은 활성 SpawnItemRequest와 현재 PendingBuildingDemolition/현장 footprint다.
+/// 역할/목적: 철거 입고/정거장 준비 중 새 드론 입고/재배치 예약 슬롯과 현장 내부 World 생성을 앞단에서 막는다.
+/// 처리 단계: Building Decision. 입력은 활성 SpawnItemRequest와 중단/준비/슬롯 예약/현장 footprint다.
 /// 출력·소유권: 금지 요청을 즉시 비활성화한다. 기존 실물의 Owner나 현장 자재/예약 상태는 변경하지 않는다.
 /// 정리·가시화: 거부 요청은 EndBuilding에 삭제하고 허용 요청은 ItemLifecycleApplySystem이 처리한다. World 위치는 Apply에서도 최종 재검사한다.
 /// </summary>
@@ -31,6 +31,8 @@ public partial struct ItemSpawnAdmissionDecisionSystem : ISystem
         var job = new ItemSpawnAdmissionDecisionJob
         {
             PendingLookup = _pendingLookup,
+            Preparing = state.GetComponentLookup<PreparingStationDemolition>(true),
+            Reserved = state.GetBufferLookup<DroneStationReservedSlotElement>(true),
             ConstructionFootprints = footprints,
             ECB = ecbSystem.CreateCommandBuffer()
         };
@@ -44,6 +46,8 @@ public partial struct ItemSpawnAdmissionDecisionSystem : ISystem
 public partial struct ItemSpawnAdmissionDecisionJob : IJobEntity
 {
     [ReadOnly] public ComponentLookup<PendingBuildingDemolition> PendingLookup;
+    [ReadOnly] public ComponentLookup<PreparingStationDemolition> Preparing;
+    [ReadOnly] public BufferLookup<DroneStationReservedSlotElement> Reserved;
     [ReadOnly] public NativeArray<ConstructionSiteWorldItemUtility.Footprint> ConstructionFootprints;
     public EntityCommandBuffer ECB;
 
@@ -74,7 +78,11 @@ public partial struct ItemSpawnAdmissionDecisionJob : IJobEntity
         {
             return;
         }
-        if (!PendingLookup.HasComponent(owner))
+        bool blocked = PendingLookup.HasComponent(owner) ||
+            (request.ValueRO.ItemType == ItemTypeEnum.Drone && Preparing.HasComponent(owner)) ||
+            (destination == ItemSpawnDestination.Storage &&
+                DroneStationRelocationUtility.IsReserved(Reserved, owner, request.ValueRO.TargetSlotIndex));
+        if (!blocked)
         {
             return;
         }

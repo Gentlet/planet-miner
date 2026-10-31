@@ -110,7 +110,7 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
             case DroneActionKindEnum.StoreCargo:
                 decision.WantedQuantity = manager.GetBuffer<StoredItemElement>(assignment.Worker, true).Length;
                 int capacity = CaptureStorageSlots(manager, assignment.Destination, assignment.ItemType,
-                    registry, slots, decision.WantedQuantity);
+                    registry, slots, decision.WantedQuantity, request.Action.Assignment);
                 SelectStoredItems(manager, assignment.Worker, assignment.ItemType, items);
                 decision.MaximumQuantity = math.min(capacity, items.Length);
                 if (manager.HasComponent<DroneTransportReservation>(request.Action.Assignment))
@@ -183,8 +183,10 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
     }
 
     private static int CaptureStorageSlots(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry,
-        DynamicBuffer<DroneItemTransferSlotDecisionElement> snapshot, int wanted)
+        DynamicBuffer<DroneItemTransferSlotDecisionElement> snapshot, int wanted, Entity deliveryAssignment)
     {
+        if (type == ItemTypeEnum.Drone && manager.HasComponent<PreparingStationDemolition>(storage) &&
+            !DroneStationRelocationUtility.CanReceiveCommittedDroneCargo(manager, storage, deliveryAssignment)) return 0;
         // 이 슬롯 기록은 런타임 Storage의 복제 원본이 아니라 이번 행동에 허용할 공간 상한이다.
         // 뒤의 출고로 공간이 늘어도 상한을 확장하지 않고, 실제 성공분만 Lifecycle의 슬롯 예산에서 차감한다.
         if (DroneSchedulingUtility.FindStorageSlot(manager, storage, type, registry) < 0) return 0;
@@ -213,7 +215,8 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
             });
             bool allowed = StationStorageUtility.IsItemSlotAllowed(slot, slotCount,
                 StationStorageUtility.ReadDedicatedCount(manager, storage), type) &&
-                !StationStorageUtility.IsDockOccupied(manager, storage, slot);
+                !StationStorageUtility.IsDockOccupied(manager, storage, slot) &&
+                !DroneStationRelocationUtility.IsReserved(manager, storage, slot);
             if (hasInputSlots)
             {
                 var inputs = manager.GetBuffer<BuildingInputSlotElement>(storage, true);

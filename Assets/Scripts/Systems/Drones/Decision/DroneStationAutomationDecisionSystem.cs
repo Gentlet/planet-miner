@@ -71,6 +71,7 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
 
         foreach (Entity worker in workers)
         {
+            if (manager.HasComponent<DroneStationRelocation>(worker)) continue;
             if (busy.Contains(worker)) continue;
             if (DroneStationAutomationUtility.HasTaskDecisionPriority(manager, _candidates, worker))
             {
@@ -122,7 +123,7 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
             slotPreview.Clear();
             int preferred = docked ? manager.GetComponentData<DroneDocked>(worker).SlotIndex : -1;
             if (DroneStationLifecycleUtility.ReserveSlot(station, worker, operation, preferred, maximumStack,
-                eligibility.Storages, dedicated, eligibility.Items, eligibility.Docked, slotRanges, slotPreview) < 0) continue;
+                eligibility.Storages, dedicated, eligibility.Items, eligibility.Docked, slotRanges, slotPreview, eligibility.Reserved) < 0) continue;
             intents.Add(new DroneStationAutomationIntent { Drone = worker, Station = station, Operation = operation });
         }
         foreach (Entity item in stored)

@@ -109,12 +109,12 @@ public partial struct DroneTaskExecutionSystem : ISystem
     }
 
     private static Entity RecordCreation(EntityCommandBuffer ecb, in DroneTaskCreationDecisionElement creation,
-        ref DroneTaskSequence sequence, bool hasExplicitRecoveryIntent = false)
+        ref DroneTaskSequence sequence, bool hasExplicitRecoveryIntent = false, bool stationDemolition = false)
     {
         switch (creation.Kind)
         {
             case DroneLogisticsTaskKindEnum.BuildingDemolition:
-                return DroneTaskCreationUtility.CreateBuildingDemolitionTask(ecb, creation.Target, ref sequence);
+                return DroneTaskCreationUtility.CreateBuildingDemolitionTask(ecb, creation.Target, ref sequence, stationDemolition);
             case DroneLogisticsTaskKindEnum.ConstructionSupply:
                 return DroneTaskCreationUtility.CreateConstructionSupplyTask(ecb, creation.Target, creation.ItemType, ref sequence);
             case DroneLogisticsTaskKindEnum.WorldItemRecovery:
@@ -158,7 +158,9 @@ public partial struct DroneTaskExecutionSystem : ISystem
             if (accepted && status == DroneTaskRequestStatusEnum.Created)
             {
                 task = RecordCreation(ecb, creation, ref sequence,
-                    hasExplicitRecoveryIntent: request.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery);
+                    hasExplicitRecoveryIntent: request.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery,
+                    stationDemolition: request.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition &&
+                        manager.HasComponent<PreparingStationDemolition>(creation.Target));
                 recorded.Add(new RecordedCreation { Creation = creation, Request = record.Entity, Task = task });
             }
             else if (accepted && task == Entity.Null)

@@ -6,7 +6,7 @@ using Unity.Rendering;
 using Unity.Transforms;
 
 /// <summary>
-/// 역할/목적: 직접 생성 요청과 Command 승인/드론 확인이 공개된 일반 건물 철거를 최종 반영한다.
+/// 역할/목적: 직접 생성 요청과 Command 승인/드론 확인이 공개된 완공 건물 철거를 최종 반영한다.
 /// 처리 단계: Building StateApply. 입력은 SpawnBuildingRequest, Pending 상태/연결 root의 실행 요청과 설정/프리팹 DB다.
 /// 출력·소유권: 보관/생산 실물의 월드 반환, 건축 비용 환급 Spawn, 철거 벨트 위 실물 정지, 건물 생성/삭제를 담당한다.
 /// 철거 정책은 Command 승인/드론 확인을 유지하며 대상 소실/환급 실패를 root 결과로 반환한다. 현장 취소/완공은 공사 소유자가 처리한다.

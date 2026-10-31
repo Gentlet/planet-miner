@@ -78,6 +78,9 @@ public partial struct ItemOwnershipApplySystem : ISystem
     public static bool CanTransferItem(EntityManager manager, Entity item, ItemTypeEnum type, Entity expectedOwner)
     {
         if (!IsActiveTransferEntity(manager, item)) return false;
+        if (manager.HasComponent<DroneStationRelocation>(item)) return false;
+        if (type == ItemTypeEnum.Drone && expectedOwner != Entity.Null &&
+            manager.HasComponent<PreparingStationDemolition>(expectedOwner)) return false;
         if (!manager.HasComponent<ItemIdentity>(item)) return false;
         if (!manager.HasComponent<ItemOwnership>(item)) return false;
         if (!manager.HasComponent<GridPosition>(item)) return false;
@@ -91,9 +94,11 @@ public partial struct ItemOwnershipApplySystem : ISystem
     /// 일반 이전 요청 적용 이후 호출하는 공통 실물 반영 경계.
     /// 수량·대상·슬롯 선택은 호출자가 소유하며, 성공한 한 실물의 버퍼·소유권·위치를 함께 반영한다.
     /// 렌더 구조 변경은 호출자가 전달한 종료 ECB에 기록한다. 새 Transfer 요청을 다시 발행하지 않는다.
+    /// 정거장 준비 중 드론 입고의 예외는 호출자가 전달한 기존 수집 배정/실제 Worker 소유로 증명한다.
     /// </summary>
     public static bool TryTransferItem(EntityManager manager, Entity item, ItemTypeEnum type,
-        Entity sourceOwner, Entity targetOwner, int slotIndex, int2 position, EntityCommandBuffer ecb)
+        Entity sourceOwner, Entity targetOwner, int slotIndex, int2 position, EntityCommandBuffer ecb,
+        Entity deliveryAssignment = default)
     {
         if (sourceOwner == targetOwner) return false;
         if (!CanTransferItem(manager, item, type, sourceOwner)) return false;
@@ -112,6 +117,9 @@ public partial struct ItemOwnershipApplySystem : ISystem
         // 실패 시 출발 버퍼만 제거된 실물이 남지 않도록 검사를 실제 변경보다 먼저 끝낸다.
         if (targetOwner != Entity.Null)
         {
+            if (type == ItemTypeEnum.Drone && manager.HasComponent<PreparingStationDemolition>(targetOwner) &&
+                (sourceOwner == Entity.Null ||
+                    !DroneStationRelocationUtility.CanReceiveCommittedDroneCargo(manager, targetOwner, deliveryAssignment, sourceOwner))) return false;
             if (!IsActiveTransferEntity(manager, targetOwner)) return false;
             if (!manager.HasBuffer<StoredItemElement>(targetOwner)) return false;
             if (slotIndex < 0) return false;
@@ -123,7 +131,8 @@ public partial struct ItemOwnershipApplySystem : ISystem
                 {
                     return false;
                 }
-                if (StationStorageUtility.IsDockOccupied(manager, targetOwner, slotIndex))
+                if (StationStorageUtility.IsDockOccupied(manager, targetOwner, slotIndex) ||
+                    DroneStationRelocationUtility.IsReserved(manager, targetOwner, slotIndex))
                 {
                     return false;
                 }

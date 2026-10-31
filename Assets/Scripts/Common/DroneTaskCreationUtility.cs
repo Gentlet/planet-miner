@@ -56,12 +56,21 @@ public static class DroneTaskCreationUtility
         return task;
     }
 
-    public static Entity CreateBuildingDemolitionTask(EntityCommandBuffer ecb, Entity target, ref DroneTaskSequence sequence)
+    public static Entity CreateBuildingDemolitionTask(EntityCommandBuffer ecb, Entity target, ref DroneTaskSequence sequence,
+        bool stationDemolition = false)
     {
         Entity task = CreateTask(ecb, target, ItemTypeEnum.None, DroneLogisticsTaskKindEnum.BuildingDemolition,
             DroneRecoveryReasonEnum.None, ref sequence);
         // deferred root는 생성과 같은 ECB에서만 건물 연결에 기록한다.
-        ecb.SetComponent(target, new PendingBuildingDemolition { Task = task });
+        // 정거장은 충전을 보존하는 준비 상태로 시작한다. 실제 중단은 전원 수납 뒤의 확인이 소유한다.
+        if (stationDemolition)
+        {
+            ecb.SetComponent(target, new PreparingStationDemolition { Task = task });
+        }
+        else
+        {
+            ecb.SetComponent(target, new PendingBuildingDemolition { Task = task });
+        }
         return task;
     }
 

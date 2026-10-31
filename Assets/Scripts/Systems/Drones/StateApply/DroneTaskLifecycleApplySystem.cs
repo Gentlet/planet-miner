@@ -72,6 +72,10 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
             task.State = DroneLogisticsTaskStateEnum.ExecutionConfirmed;
             ecb.SetComponent(assignment.Task, task);
             ecb.AddComponent<BuildingDemolitionExecutionRequest>(assignment.Task);
+            if (manager.HasComponent<PreparingStationDemolition>(task.Target))
+            {
+                ecb.AddComponent(task.Target, new PendingBuildingDemolition { Task = assignment.Task });
+            }
             assignment.State = DroneTaskAssignmentStateEnum.Completed;
             assignment.NextAction = DroneActionKindEnum.None;
             manager.SetComponentData(decision.Assignment, assignment);
@@ -544,7 +548,7 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
             int slot = budgetIndex >= 0 ? budget[budgetIndex].SlotIndex : -1;
             if (slot < 0) break;
             if (!ItemOwnershipApplySystem.TryTransferItem(manager, entry.ItemEntity, assignment.ItemType,
-                assignment.Worker, assignment.Destination, slot, position, ecb))
+                assignment.Worker, assignment.Destination, slot, position, ecb, assignmentEntity))
             {
                 i++;
                 continue;

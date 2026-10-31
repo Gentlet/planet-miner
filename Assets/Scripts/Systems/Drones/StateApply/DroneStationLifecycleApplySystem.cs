@@ -12,6 +12,7 @@ using Unity.Transforms;
 public partial struct DroneStationLifecycleApplySystem : ISystem
 {
     private EntityQuery _requests;
+    private EntityQuery _relocationDocks;
     private EntityQuery _pending;
     private EntityQuery _actions;
     private EntityQuery _droneDatabase;
@@ -23,12 +24,13 @@ public partial struct DroneStationLifecycleApplySystem : ISystem
     public void OnCreate(ref SystemState state)
     {
         _requests = state.GetEntityQuery(ComponentType.ReadOnly<DroneStationRequest>(), ComponentType.ReadOnly<DroneStationDecision>());
+        _relocationDocks = state.GetEntityQuery(ComponentType.ReadOnly<DroneStationRelocation>(),
+            ComponentType.ReadOnly<DroneDocked>(), ComponentType.ReadOnly<DroneWorker>());
         _pending = state.GetEntityQuery(ComponentType.ReadOnly<DroneTaskPendingPublicationElement>());
         _actions = state.GetEntityQuery(ComponentType.ReadOnly<DroneActionReadyRequest>());
         _droneDatabase = state.GetEntityQuery(ComponentType.ReadOnly<DronePrefabDatabase>(), ComponentType.ReadOnly<DronePrefab>());
         _itemDatabase = state.GetEntityQuery(ComponentType.ReadOnly<ItemPrefabDatabase>(), ComponentType.ReadOnly<ItemPrefabElement>());
         DroneStationEligibility.CreateMasks(ref state, out _stationMask, out _itemMask, out _workerMask);
-        state.RequireForUpdate(_requests);
         state.RequireForUpdate<PrefabDatabaseReady>();
         state.RequireForUpdate<DroneBatteryConfig>();
         state.RequireForUpdate<ItemRegistry>();
@@ -36,7 +38,18 @@ public partial struct DroneStationLifecycleApplySystem : ISystem
 
     public void OnUpdate(ref SystemState state)
     {
+        if (_requests.IsEmptyIgnoreFilter && _relocationDocks.IsEmptyIgnoreFilter) return;
         var owner = state.World.GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>();
+        if (!_relocationDocks.IsEmptyIgnoreFilter)
+        {
+            var dockRelease = new ReleaseLostRelocationDockJob
+            {
+                Entities = state.GetEntityStorageInfoLookup(), ECB = owner.CreateCommandBuffer()
+            }.Schedule(_relocationDocks, state.Dependency);
+            state.Dependency = dockRelease;
+            owner.AddJobHandleForProducer(dockRelease);
+        }
+        if (_requests.IsEmptyIgnoreFilter) return;
         Entity dronePrefab = _droneDatabase.GetSingleton<DronePrefab>().Prefab;
         var items = SystemAPI.GetBufferLookup<ItemPrefabElement>(true)[_itemDatabase.GetSingletonEntity()];
         PrefabLookupUtility.TryGetItemPrefab(items, ItemTypeEnum.Drone, out Entity itemPrefab);
@@ -51,6 +64,7 @@ public partial struct DroneStationLifecycleApplySystem : ISystem
             RequestLookup = state.GetComponentLookup<DroneStationRequest>(true),
             Decisions = state.GetComponentLookup<DroneStationDecision>(true),
             Automatic = SystemAPI.GetComponentLookup<DroneAutomaticStationRequest>(true),
+            RelocationRequests = SystemAPI.GetComponentLookup<DroneStationRelocationRequest>(true),
             PendingLookup = state.GetBufferLookup<DroneTaskPendingPublicationElement>(true),
             TransportPendingLookup = state.GetBufferLookup<DroneTransportPendingReservationElement>(true),
             ActionLookup = state.GetComponentLookup<DroneActionReadyRequest>(true),
@@ -69,6 +83,22 @@ public partial struct DroneStationLifecycleApplySystem : ISystem
         handle.Complete();
         DroneStationLifecycleUtility.RecordManagedAppearance(state.EntityManager, owner.CreateCommandBuffer(), visuals.AsArray());
     }
+
+    /// <summary>소실된 정거장의 재배치 정박만 해제한다. 위치/배터리와 실제 이동의 소유자는 유지한다.</summary>
+    [BurstCompile]
+    private partial struct ReleaseLostRelocationDockJob : IJobEntity
+    {
+        [ReadOnly] public EntityStorageInfoLookup Entities;
+        public EntityCommandBuffer ECB;
+
+        private void Execute(Entity drone, in DroneDocked dock)
+        {
+            if (Entities.Exists(dock.Station)) return;
+            ECB.RemoveComponent<DroneDocked>(drone);
+            ECB.SetComponent(drone, new DroneMovementState());
+            ECB.SetComponent(drone, new DroneActivityState { Activity = DroneActivityKind.Idle });
+        }
+    }
 }
 
 internal struct DroneStationAppliedChange
@@ -86,6 +116,7 @@ internal struct DroneStationLifecycleApplyJob : IJob
     [ReadOnly] public ComponentLookup<DroneStationRequest> RequestLookup;
     [ReadOnly] public ComponentLookup<DroneStationDecision> Decisions;
     [ReadOnly] public ComponentLookup<DroneAutomaticStationRequest> Automatic;
+    [ReadOnly] public ComponentLookup<DroneStationRelocationRequest> RelocationRequests;
     [ReadOnly] public BufferLookup<DroneTaskPendingPublicationElement> PendingLookup;
     [ReadOnly] public BufferLookup<DroneTransportPendingReservationElement> TransportPendingLookup;
     [ReadOnly] public ComponentLookup<DroneActionReadyRequest> ActionLookup;
@@ -120,7 +151,7 @@ internal struct DroneStationLifecycleApplyJob : IJob
             var status = decision.Status;
             if (decision.Approved)
             {
-                status = Eligibility.Validate(request, MaximumCharge, Automatic.HasComponent(record.Entity));
+                status = Eligibility.Validate(request, MaximumCharge, Automatic.HasComponent(record.Entity) || RelocationRequests.HasComponent(record.Entity), RelocationRequests.HasComponent(record.Entity));
                 if (status == DroneStationRequestStatus.Applied && busy.Contains(request.Drone))
                 {
                     status = DroneStationRequestStatus.Busy;
@@ -128,7 +159,7 @@ internal struct DroneStationLifecycleApplyJob : IJob
                 if (status == DroneStationRequestStatus.Applied && request.Operation != DroneStationOperation.Activate)
                 {
                     if (DroneStationLifecycleUtility.ReserveSlot(request.Station, request.Drone, request.Operation,
-                        decision.SlotIndex, MaximumStack, Eligibility.Storages, Dedicated, Eligibility.Items, Eligibility.Docked, ranges, slots) < 0)
+                        decision.SlotIndex, MaximumStack, Eligibility.Storages, Dedicated, Eligibility.Items, Eligibility.Docked, ranges, slots, Eligibility.Reserved) < 0)
                     {
                         status = DroneStationRequestStatus.NoSpace;
                     }

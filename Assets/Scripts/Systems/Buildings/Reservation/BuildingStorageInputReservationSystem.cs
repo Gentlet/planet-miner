@@ -73,6 +73,8 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
             StorageLookup = _storageLookup,
             StationStorageLookup = _stationStorageLookup,
             DockedLookup = _dockedLookup,
+            ReservedLookup = state.GetBufferLookup<DroneStationReservedSlotElement>(true),
+            PreparingLookup = state.GetComponentLookup<PreparingStationDemolition>(true),
             StoredBufferLookup = _storedBufferLookup,
             InputSlotLookup = _inputSlotLookup,
             ItemRegistryEntity = itemRegistryEntity,
@@ -105,6 +107,8 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
     public ComponentLookup<Storage> StorageLookup;
     [ReadOnly] public ComponentLookup<DroneStationStorage> StationStorageLookup;
     [ReadOnly] public BufferLookup<DockedDroneElement> DockedLookup;
+    [ReadOnly] public BufferLookup<DroneStationReservedSlotElement> ReservedLookup;
+    [ReadOnly] public ComponentLookup<PreparingStationDemolition> PreparingLookup;
 
     [ReadOnly]
     public BufferLookup<StoredItemElement> StoredBufferLookup;
@@ -222,6 +226,24 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
                 {
                     slotOccupancy[docked.SlotIndex] = maxStack;
                     slotTypes[docked.SlotIndex] = ItemTypeEnum.Drone;
+                }
+            }
+        }
+        if (itemType == ItemTypeEnum.Drone && PreparingLookup.HasComponent(building))
+        {
+            inputDecision.CanDeposit = false;
+            inputDecision.TargetSlotIndex = -1;
+            inputDecisionEnabled.ValueRW = false;
+            return;
+        }
+        if (ReservedLookup.HasBuffer(building))
+        {
+            foreach (var reserved in ReservedLookup[building])
+            {
+                if (reserved.SlotIndex >= 0 && reserved.SlotIndex < safeSlotCount)
+                {
+                    slotOccupancy[reserved.SlotIndex] = maxStack;
+                    slotTypes[reserved.SlotIndex] = ItemTypeEnum.Drone;
                 }
             }
         }

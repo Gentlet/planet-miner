@@ -24,6 +24,7 @@ public partial struct DroneStationLifecycleDecisionSystem : ISystem
         {
             Eligibility = DroneStationEligibility.Create(ref state, _stationMask, _itemMask, _workerMask),
             Automatic = SystemAPI.GetComponentLookup<DroneAutomaticStationRequest>(true),
+            RelocationRequests = SystemAPI.GetComponentLookup<DroneStationRelocationRequest>(true),
             MaximumCharge = SystemAPI.GetSingleton<DroneBatteryConfig>().MaximumCharge
         }.ScheduleParallel(state.Dependency);
     }
@@ -34,11 +35,12 @@ internal partial struct DroneStationLifecycleDecisionJob : IJobEntity
 {
     [Unity.Collections.ReadOnly] public DroneStationEligibility Eligibility;
     [Unity.Collections.ReadOnly] public ComponentLookup<DroneAutomaticStationRequest> Automatic;
+    [Unity.Collections.ReadOnly] public ComponentLookup<DroneStationRelocationRequest> RelocationRequests;
     public float MaximumCharge;
 
     public void Execute(Entity entity, in DroneStationRequest request, ref DroneStationDecision decision)
     {
-        var status = Eligibility.Validate(request, MaximumCharge, Automatic.HasComponent(entity));
+        var status = Eligibility.Validate(request, MaximumCharge, Automatic.HasComponent(entity) || RelocationRequests.HasComponent(entity), RelocationRequests.HasComponent(entity));
         decision = new DroneStationDecision
         {
             Eligible = status == DroneStationRequestStatus.Applied, Status = status, SlotIndex = -1

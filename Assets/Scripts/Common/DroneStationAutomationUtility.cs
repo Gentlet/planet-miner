@@ -33,10 +33,10 @@ internal static class DroneStationAutomationUtility
             bool canDock = false;
             for (int slot = 0; slot < manager.GetComponentData<Storage>(station).SlotCount; slot++)
             {
-                bool occupied = false;
+                bool occupied = DroneStationRelocationUtility.IsReserved(manager, station, slot);
                 foreach (var item in items) occupied |= item.SlotIndex == slot;
                 foreach (var dock in docks) occupied |= dock.SlotIndex == slot;
-                if (!occupied)
+                if (!occupied && !manager.HasComponent<PreparingStationDemolition>(station))
                 {
                     canDock = true;
                     break;
@@ -113,6 +113,7 @@ internal static class DroneStationAutomationUtility
         NativeArray<DroneStationNetworkDecision> networks, Entity registry, int capacity, float maximum,
         NativeList<DroneStationActivationPlan> plans)
     {
+        if (manager.HasComponent<PreparingStationDemolition>(station) || manager.HasComponent<DroneStationRelocation>(drone)) return;
         float charge = manager.HasComponent<DroneBatteryState>(drone) ? manager.GetComponentData<DroneBatteryState>(drone).CurrentCharge : maximum;
         if (charge <= 0f || capacity <= 0) return;
         float2 origin = manager.HasComponent<DroneWorker>(drone)
@@ -124,7 +125,8 @@ internal static class DroneStationAutomationUtility
             var task = manager.GetComponentData<DroneLogisticsTask>(taskEntity);
             if (!DroneSchedulingUtility.IsTaskValid(manager, task, sites) ||
                 DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, candidates, taskEntity)) continue;
-            if (!DroneTaskNetworkUtility.IsTargetInNetwork(manager, networks, network, task.Target)) continue;
+            if (!DroneStationRelocationUtility.IsStationDemolition(manager, task) &&
+                !DroneTaskNetworkUtility.IsTargetInNetwork(manager, networks, network, task.Target)) continue;
             // 기존 수행자의 평가가 끝나기 전에는 같은 수요로 보관 드론을 추가 출고하지 않는다.
             bool evaluating = false;
             foreach (var route in manager.GetBuffer<DroneRouteDecisionElement>(candidates, true))

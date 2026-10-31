@@ -41,6 +41,7 @@ public partial struct DroneStationLifecycleReservationSystem : ISystem
             Storages = state.GetComponentLookup<Storage>(true), Dedicated = state.GetComponentLookup<DroneStationStorage>(true),
             Items = state.GetBufferLookup<StoredItemElement>(true), Docked = state.GetBufferLookup<DockedDroneElement>(true),
             Docks = state.GetComponentLookup<DroneDocked>(true),
+            Reserved = state.GetBufferLookup<DroneStationReservedSlotElement>(true),
             MaximumStack = ItemRegistry.GetMaxStack(SystemAPI.GetSingletonBuffer<ItemConfigElement>(true), ItemTypeEnum.Drone)
         }.Schedule(JobHandle.CombineDependencies(state.Dependency, dependency));
         state.Dependency = JobHandle.CombineDependencies(requests.Dispose(handle), pending.Dispose(handle), actions.Dispose(handle));
@@ -63,6 +64,7 @@ internal struct DroneStationLifecycleReservationJob : IJob
     [ReadOnly] public BufferLookup<StoredItemElement> Items;
     [ReadOnly] public BufferLookup<DockedDroneElement> Docked;
     [ReadOnly] public ComponentLookup<DroneDocked> Docks;
+    [ReadOnly] public BufferLookup<DroneStationReservedSlotElement> Reserved;
     public int MaximumStack;
 
     public void Execute()
@@ -98,7 +100,7 @@ internal struct DroneStationLifecycleReservationJob : IJob
             {
                 int preferred = Docks.HasComponent(request.Drone) ? Docks[request.Drone].SlotIndex : -1;
                 decision.SlotIndex = DroneStationLifecycleUtility.ReserveSlot(request.Station, request.Drone, request.Operation,
-                    preferred, MaximumStack, Storages, Dedicated, Items, Docked, ranges, slots);
+                    preferred, MaximumStack, Storages, Dedicated, Items, Docked, ranges, slots, Reserved);
                 decision.Approved = decision.SlotIndex >= 0;
                 if (!decision.Approved)
                 {

@@ -176,7 +176,9 @@ public partial struct DroneTaskDecisionSystem : ISystem
                     continue;
                 }
                 if (!DroneSchedulingUtility.IsTaskValid(manager, task, sites)) continue;
-                if (!DroneTaskNetworkUtility.IsTargetInNetwork(manager, networks, network, task.Target))
+                // 정거장 재배치는 다른 망으로 이관할 수 있으므로 그 정거장의 마무리 철거만 망 간 접근을 허용한다.
+                if (!DroneStationRelocationUtility.IsStationDemolition(manager, task) &&
+                    !DroneTaskNetworkUtility.IsTargetInNetwork(manager, networks, network, task.Target))
                 {
                     continue;
                 }

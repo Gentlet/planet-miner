@@ -17,6 +17,14 @@ public static class DroneSchedulingUtility
         if (!query.IsEmptyIgnoreFilter)
         {
             Entity existing = query.GetSingletonEntity();
+            if (!manager.HasBuffer<DroneStationRelocationCandidateElement>(existing))
+            {
+                manager.AddBuffer<DroneStationRelocationCandidateElement>(existing);
+            }
+            if (!manager.HasBuffer<DroneStationRelocationIntentElement>(existing))
+            {
+                manager.AddBuffer<DroneStationRelocationIntentElement>(existing);
+            }
             if (!manager.HasBuffer<DroneDemolitionDecisionElement>(existing))
                 manager.AddBuffer<DroneDemolitionDecisionElement>(existing);
             if (!manager.HasBuffer<DroneTaskPendingPublicationElement>(existing))
@@ -61,7 +69,8 @@ public static class DroneSchedulingUtility
         return manager.CreateEntity(typeof(DroneTaskCandidateDecisionElement), typeof(DroneTaskPendingPublicationElement), typeof(DroneRouteDecisionElement),
             typeof(DroneTaskCreationDecisionElement), typeof(DroneTaskInvalidationDecisionElement),
             typeof(DroneTaskGenerationBlockElement), typeof(DroneTaskGenerationDecisionElement), typeof(DroneTransportPlanDecisionElement),
-            typeof(DroneTransportPendingReservationElement), typeof(DroneReturnReservationElement), typeof(DroneDemolitionDecisionElement));
+            typeof(DroneTransportPendingReservationElement), typeof(DroneReturnReservationElement), typeof(DroneDemolitionDecisionElement),
+            typeof(DroneStationRelocationCandidateElement), typeof(DroneStationRelocationIntentElement));
     }
 
     /// <summary>초기 능력/연구 Writer가 게시한 공통 값을 읽는다. 미게시 상태에 임의 기본값을 만들지 않는다.</summary>
@@ -161,7 +170,7 @@ public static class DroneSchedulingUtility
             return false;
         }
 
-        if (manager.HasComponent<DroneDocked>(worker))
+        if (manager.HasComponent<DroneDocked>(worker) || manager.HasComponent<DroneStationRelocation>(worker))
         {
             return false;
         }
@@ -176,6 +185,7 @@ public static class DroneSchedulingUtility
 
     public static int CountInventory(EntityManager manager, Entity storage, ItemTypeEnum type)
     {
+        if (type == ItemTypeEnum.Drone && manager.HasComponent<PreparingStationDemolition>(storage)) return 0;
         if (!IsStorage(manager, storage))
         {
             return 0;
@@ -186,6 +196,7 @@ public static class DroneSchedulingUtility
         for (int i = 0; i < items.Length; i++)
         {
             var entry = items[i];
+            if (manager.HasComponent<DroneStationRelocation>(entry.ItemEntity)) continue;
             if (entry.ItemType != type || !IsActiveEntity(manager, entry.ItemEntity))
             {
                 continue;
@@ -209,6 +220,7 @@ public static class DroneSchedulingUtility
 
     public static bool HasStorageSpace(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry)
     {
+        if (type == ItemTypeEnum.Drone && manager.HasComponent<PreparingStationDemolition>(storage)) return false;
         return FindStorageSlot(manager, storage, type, registry) >= 0;
     }
 
@@ -295,6 +307,7 @@ public static class DroneSchedulingUtility
 
     public static int CountStorageSpace(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry, int limit)
     {
+        if (type == ItemTypeEnum.Drone && manager.HasComponent<PreparingStationDemolition>(storage)) return 0;
         if (!TryReadStorageLimit(manager, storage, type, registry, out int slots, out int maxStack))
         {
             return 0;
@@ -318,7 +331,8 @@ public static class DroneSchedulingUtility
         {
             return 0;
         }
-        if (StationStorageUtility.IsDockOccupied(manager, storage, slot))
+        if (StationStorageUtility.IsDockOccupied(manager, storage, slot) ||
+            DroneStationRelocationUtility.IsReserved(manager, storage, slot))
         {
             return 0;
         }
@@ -404,6 +418,11 @@ public static class DroneSchedulingUtility
     public static bool AssignmentNeedsCleanup(EntityManager manager, Entity assignmentEntity, in DroneTaskAssignment assignment,
         NativeArray<Entity> sites)
     {
+        if (assignment.ItemType == ItemTypeEnum.Drone &&
+            ((assignment.NextAction == DroneActionKindEnum.CollectFromStorage &&
+                manager.HasComponent<PreparingStationDemolition>(assignment.Source)) ||
+             manager.HasComponent<PreparingStationDemolition>(assignment.Destination)) &&
+            (assignment.NextAction == DroneActionKindEnum.CollectFromStorage || assignment.NextAction == DroneActionKindEnum.RecoverWorldItem)) return true;
         if (manager.HasComponent<DroneMovementResult>(assignment.Worker))
         {
             var movement = manager.GetComponentData<DroneMovementResult>(assignment.Worker);
@@ -516,7 +535,7 @@ public static class DroneSchedulingUtility
         return manager.GetComponentData<DroneLogisticsTask>(assignment.Task).CreationSequence;
     }
 
-    private static int ReadAssignmentCargoQuantity(EntityManager manager, in DroneTaskAssignment assignment)
+    internal static int ReadAssignmentCargoQuantity(EntityManager manager, in DroneTaskAssignment assignment)
     {
         if (!IsActiveEntity(manager, assignment.Worker)) return 0;
         if (!manager.HasComponent<DroneCargoState>(assignment.Worker)) return 0;

@@ -86,7 +86,8 @@ internal static class DroneStationLifecycleUtility
     public static int ReserveSlot(Entity station, Entity drone, DroneStationOperation operation, int preferred, int maxStack,
         ComponentLookup<Storage> storages, ComponentLookup<DroneStationStorage> dedicated,
         BufferLookup<StoredItemElement> items, BufferLookup<DockedDroneElement> docked,
-        NativeParallelHashMap<Entity, DroneStationSlotRange> ranges, NativeList<DroneStationSlot> slots)
+        NativeParallelHashMap<Entity, DroneStationSlotRange> ranges, NativeList<DroneStationSlot> slots,
+        BufferLookup<DroneStationReservedSlotElement> reserved)
     {
         if (!ranges.TryGetValue(station, out var range))
         {
@@ -122,10 +123,13 @@ internal static class DroneStationLifecycleUtility
             }
             ranges.Add(station, range);
         }
+        int promised = DroneStationRelocationUtility.ReservedSlot(reserved, station, drone);
+        if (promised >= 0) preferred = promised;
         for (int index = 0; index < range.Count; index++)
         {
             int candidate = preferred >= 0 ? preferred : StationStorageUtility.SearchSlot(index, range.Count, range.Dedicated, ItemTypeEnum.Drone);
             var slot = slots[range.Start + candidate];
+            if (DroneStationRelocationUtility.IsReserved(reserved, station, candidate, drone)) continue;
             bool docking = operation == DroneStationOperation.Dock;
             if ((slot.Docked == Entity.Null || slot.Docked == drone) &&
                 (slot.Count == 0 || (!docking && slot.Type == ItemTypeEnum.Drone && slot.Count < maxStack)))

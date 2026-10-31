@@ -30,6 +30,9 @@ internal struct DroneStationEligibility
     [ReadOnly] public ComponentLookup<Direction> Directions;
     [ReadOnly] public BufferLookup<StoredItemElement> Items;
     [ReadOnly] public BufferLookup<DockedDroneElement> Docked;
+    [ReadOnly] public ComponentLookup<PreparingStationDemolition> Preparing;
+    [ReadOnly] public ComponentLookup<DroneStationRelocation> Relocations;
+    [ReadOnly] public BufferLookup<DroneStationReservedSlotElement> Reserved;
 
     public static void CreateMasks(ref SystemState state, out EntityQueryMask station, out EntityQueryMask item, out EntityQueryMask worker)
     {
@@ -73,11 +76,15 @@ internal struct DroneStationEligibility
             Footprints = state.GetComponentLookup<BuildingFootprint>(true),
             Directions = state.GetComponentLookup<Direction>(true),
             Items = state.GetBufferLookup<StoredItemElement>(true),
-            Docked = state.GetBufferLookup<DockedDroneElement>(true)
+            Docked = state.GetBufferLookup<DockedDroneElement>(true),
+            Preparing = state.GetComponentLookup<PreparingStationDemolition>(true),
+            Relocations = state.GetComponentLookup<DroneStationRelocation>(true),
+            Reserved = state.GetBufferLookup<DroneStationReservedSlotElement>(true)
         };
     }
 
-    public DroneStationRequestStatus Validate(in DroneStationRequest request, float maximum, bool automatic = false)
+    public DroneStationRequestStatus Validate(in DroneStationRequest request, float maximum, bool automatic = false,
+        bool relocationRequest = false)
     {
         Entity drone = request.Drone;
         Entity station = request.Station;
@@ -96,6 +103,30 @@ internal struct DroneStationEligibility
         if (DestroyRequests.HasComponent(drone) && DestroyRequests.IsComponentEnabled(drone))
         {
             return DroneStationRequestStatus.Rejected;
+        }
+        bool relocating = Relocations.HasComponent(drone);
+        if (relocating && !relocationRequest) return DroneStationRequestStatus.Busy;
+        if (relocationRequest && !relocating) return DroneStationRequestStatus.Rejected;
+        if (relocating)
+        {
+            var relocation = Relocations[drone];
+            if (request.Operation == DroneStationOperation.Store && station != relocation.Destination)
+                return DroneStationRequestStatus.Rejected;
+            if (request.Operation != DroneStationOperation.Activate && station == relocation.Destination &&
+                DroneStationRelocationUtility.ReservedSlot(Reserved, station, drone) != relocation.SlotIndex)
+                return DroneStationRequestStatus.NoSpace;
+        }
+        if (Preparing.HasComponent(station))
+        {
+            bool ownsDock = Docks.HasComponent(drone) && Docks[drone].Station == station;
+            bool promisedArrival = relocating &&
+                (Relocations[drone].Source == station || DroneStationRelocationUtility.ReservedSlot(Reserved, station, drone) >= 0);
+            if (!promisedArrival && !ownsDock) return DroneStationRequestStatus.Busy;
+            // 준비 중 기존 정박은 충전/기존 작업 이탈만 계속하며 새 수납으로 계획 입력을 바꾸지 않는다.
+            if (!promisedArrival && request.Operation == DroneStationOperation.Store) return DroneStationRequestStatus.Busy;
+            if (ownsDock && (!Assignments.HasComponent(drone) || !Items.HasBuffer(drone))) return DroneStationRequestStatus.Rejected;
+            if (!promisedArrival && !relocating && request.Operation == DroneStationOperation.Activate &&
+                Assignments[drone].Assignment == Entity.Null && Items[drone].IsEmpty) return DroneStationRequestStatus.Busy;
         }
         if (request.Operation == DroneStationOperation.Activate && ItemTypes.HasComponent(drone))
         {

@@ -40,6 +40,8 @@ public partial struct DroneFlightDecisionSystem : ISystem
             Directions = state.GetComponentLookup<Direction>(true),
             Networks = state.GetComponentLookup<DroneStationNetworkDecision>(true),
             Demolitions = state.GetComponentLookup<PendingBuildingDemolition>(true),
+            Preparing = state.GetComponentLookup<PreparingStationDemolition>(true),
+            Reserved = state.GetBufferLookup<DroneStationReservedSlotElement>(true),
             Stamps = state.GetComponentLookup<PlacementStamp>(true),
             Construction = state.GetComponentLookup<ConstructionSite>(true),
             Storages = state.GetComponentLookup<Storage>(true),
@@ -61,7 +63,8 @@ public partial struct DroneFlightDecisionSystem : ISystem
             Positions = state.GetComponentLookup<GridPosition>(true),
             Footprints = state.GetComponentLookup<BuildingFootprint>(true),
             Directions = state.GetComponentLookup<Direction>(true),
-            Assignments = state.GetComponentLookup<DroneTaskAssignment>(true)
+            Assignments = state.GetComponentLookup<DroneTaskAssignment>(true),
+            Relocations = state.GetComponentLookup<DroneStationRelocation>(true)
         }.ScheduleParallel(build);
         var readers = JobHandle.CombineDependencies(routes, movements);
         var ownerDisposal = JobHandle.CombineDependencies(stationOwners.Dispose(build), siteOwners.Dispose(build));
@@ -80,6 +83,8 @@ public partial struct DroneFlightDecisionSystem : ISystem
         [ReadOnly] public ComponentLookup<Direction> Directions;
         [ReadOnly] public ComponentLookup<DroneStationNetworkDecision> Networks;
         [ReadOnly] public ComponentLookup<PendingBuildingDemolition> Demolitions;
+        [ReadOnly] public ComponentLookup<PreparingStationDemolition> Preparing;
+        [ReadOnly] public BufferLookup<DroneStationReservedSlotElement> Reserved;
         [ReadOnly] public ComponentLookup<PlacementStamp> Stamps;
         [ReadOnly] public ComponentLookup<ConstructionSite> Construction;
         [ReadOnly] public ComponentLookup<Storage> Storages;
@@ -107,7 +112,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
                     var docks = Docks[entity];
                     for (int slot = 0; slot < Storages[entity].SlotCount; slot++)
                     {
-                        bool occupied = false;
+                        bool occupied = DroneStationRelocationUtility.IsReserved(Reserved, entity, slot);
                         for (int item = 0; item < items.Length; item++)
                         {
                             occupied |= items[item].SlotIndex == slot;
@@ -116,7 +121,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
                         {
                             occupied |= docks[dock].SlotIndex == slot;
                         }
-                        if (!occupied)
+                        if (!occupied && !Preparing.HasComponent(entity))
                         {
                             canDock = true;
                             break;
@@ -223,11 +228,14 @@ public partial struct DroneFlightDecisionSystem : ISystem
         [ReadOnly] public ComponentLookup<BuildingFootprint> Footprints;
         [ReadOnly] public ComponentLookup<Direction> Directions;
         [ReadOnly] public ComponentLookup<DroneTaskAssignment> Assignments;
+        [ReadOnly] public ComponentLookup<DroneStationRelocation> Relocations;
 
-        private void Execute(in DroneWorker worker, in LocalTransform transform, in DroneBatteryState battery,
+        private void Execute(Entity entity, in DroneWorker worker, in LocalTransform transform, in DroneBatteryState battery,
             in DroneWorkerAssignment link, in DroneMovementState movement, in DroneMovementResult previous,
             ref DroneMovementDecision decision)
         {
+            // 재배치 개체의 의도는 전용 Decision만 작성한다. 실제 이동 Writer는 공유한다.
+            if (Relocations.HasComponent(entity)) return;
             decision = new DroneMovementDecision { Ready = true, Target = transform.Position.xy };
             bool hasAssignment = Assignments.HasComponent(link.Assignment);
             DroneTaskAssignment assignment = hasAssignment ? Assignments[link.Assignment] : default;

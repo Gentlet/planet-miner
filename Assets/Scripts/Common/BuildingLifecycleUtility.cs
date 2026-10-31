@@ -231,6 +231,7 @@ public static class BuildingLifecycleUtility
     private static void AttachDroneStationComponents(ref EntityCommandBuffer ecb, Entity building)
     {
         ecb.AddComponent<DroneStation>(building);
+        ecb.AddBuffer<DroneStationReservedSlotElement>(building);
         ecb.AddComponent<DroneStationNetwork>(building);
         ecb.AddComponent<DroneStationNetworkDecision>(building);
         ecb.SetComponentEnabled<DroneStationNetworkDecision>(building, false);

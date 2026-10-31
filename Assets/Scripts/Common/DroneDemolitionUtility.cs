@@ -10,18 +10,21 @@ public static class DroneDemolitionUtility
         if (manager.HasComponent<Prefab>(target) || manager.HasComponent<IndestructibleBuilding>(target)) return false;
         var type = manager.GetComponentData<BuildingType>(target).Type;
         return type != BuildingTypeEnum.None && type != BuildingTypeEnum.ConstructionSite &&
-            !DroneStationRangeUtility.IsStationType(type) &&
+            type != BuildingTypeEnum.MainFacility &&
             manager.HasComponent<GridPosition>(target) && manager.HasComponent<BuildingFootprint>(target) &&
             manager.HasComponent<Direction>(target);
     }
 
     public static bool IsApprovedTarget(EntityManager manager, Entity target) =>
-        IsTarget(manager, target) && manager.HasComponent<PendingBuildingDemolition>(target);
+        IsTarget(manager, target) && (manager.HasComponent<PendingBuildingDemolition>(target) ||
+            manager.HasComponent<PreparingStationDemolition>(target));
 
     public static bool IsCurrentTask(EntityManager manager, in DroneLogisticsTask task)
     {
         if (!IsApprovedTarget(manager, task.Target)) return false;
-        Entity linked = manager.GetComponentData<PendingBuildingDemolition>(task.Target).Task;
+        Entity linked = manager.HasComponent<PreparingStationDemolition>(task.Target)
+            ? manager.GetComponentData<PreparingStationDemolition>(task.Target).Task
+            : manager.GetComponentData<PendingBuildingDemolition>(task.Target).Task;
         return manager.HasComponent<DroneLogisticsTask>(linked) &&
             manager.GetComponentData<DroneLogisticsTask>(linked).CreationSequence == task.CreationSequence;
     }
@@ -36,6 +39,8 @@ public static class DroneDemolitionUtility
         var task = manager.GetComponentData<DroneLogisticsTask>(assignment.Task);
         if (task.Kind != DroneLogisticsTaskKindEnum.BuildingDemolition || task.State != DroneLogisticsTaskStateEnum.Open ||
             task.Target != assignment.Destination || !IsCurrentTask(manager, task)) return false;
+        if (manager.HasComponent<PreparingStationDemolition>(task.Target) &&
+            !DroneStationRelocationUtility.IsComplete(manager, task.Target)) return false;
         Entity worker = assignment.Worker;
         if (!DroneSchedulingUtility.IsActiveEntity(manager, worker) ||
             manager.GetComponentData<DroneWorkerAssignment>(worker).Assignment != entity) return false;

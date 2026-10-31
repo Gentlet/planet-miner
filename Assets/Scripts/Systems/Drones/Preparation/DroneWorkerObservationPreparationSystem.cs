@@ -18,7 +18,8 @@ public partial struct DroneWorkerObservationPreparationSystem : ISystem
     {
         state.Dependency = new PrepareObservationsJob
         {
-            Docks = state.GetComponentLookup<DroneDocked>(true)
+            Docks = state.GetComponentLookup<DroneDocked>(true),
+            Relocations = state.GetComponentLookup<DroneStationRelocation>(true)
         }.ScheduleParallel(state.Dependency);
     }
 
@@ -26,6 +27,7 @@ public partial struct DroneWorkerObservationPreparationSystem : ISystem
     private partial struct PrepareObservationsJob : IJobEntity
     {
         [Unity.Collections.ReadOnly] public ComponentLookup<DroneDocked> Docks;
+        [Unity.Collections.ReadOnly] public ComponentLookup<DroneStationRelocation> Relocations;
 
         private void Execute(Entity entity, in DroneWorker worker, in LocalTransform transform,
             in DroneBatteryState battery, in DroneWorkerAssignment link, in DroneMovementState movement,
@@ -33,7 +35,7 @@ public partial struct DroneWorkerObservationPreparationSystem : ISystem
         {
             bool canAccept = battery.CurrentCharge > 0f && link.Assignment == Entity.Null &&
                 (movement.IsNormalReturn || (movement.ChargingStation == Entity.Null && movement.ReturnStation == Entity.Null)) &&
-                cargo.Origin == DroneCargoOriginEnum.None && items.IsEmpty && !Docks.HasComponent(entity);
+                cargo.Origin == DroneCargoOriginEnum.None && items.IsEmpty && !Docks.HasComponent(entity) && !Relocations.HasComponent(entity);
             if (math.any(observation.Position != transform.Position) || observation.CanAcceptTask != canAccept)
             {
                 // 정지 중 매 틱 revision을 바꾸면 아직 평가 중인 같은 경로가 계속 무효화된다.
