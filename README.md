@@ -72,7 +72,7 @@ flowchart TD
 
 ### 아이템 소유권과 조회용 데이터
 
-아이템 하나는 엔티티 하나로 관리합니다. `ItemOwnership.Owner`가 원본 소유 상태이며, 소유자의 보관 버퍼와 함께 갱신합니다. 드론 작업 배정과 실제 인계를 구분하고, 실제 인계에 성공한 수량으로 도착량과 예약을 정산합니다. [진행 중 취소](Docs/Specifications/DroneTaskCancellation.md)는 같은 틱의 미수행 이동/인계를 막고 남은 예약을 반환하며 화물을 보존합니다. 취소 결과와 화물 복구 완료는 구분합니다. [화물 복구](Docs/Specifications/DroneCargoRecovery.md)는 기존 재배정과 자동 안전 방출/표시 기반 회수를 연결하며 같은 아이템 Entity를 보존합니다. [드론 철거](Docs/Specifications/DroneDemolition.md)는 승인 중단/도착 확인과 다음 건물 단계의 반환/환급/삭제 결과를 구분합니다.
+아이템 하나는 엔티티 하나로 관리합니다. `ItemOwnership.Owner`가 원본 소유 상태이며, 소유자의 보관 버퍼와 함께 갱신합니다. 드론 작업 배정과 실제 인계를 구분하고, 실제 인계에 성공한 수량으로 도착량과 예약을 정산합니다. 진행 중 취소는 같은 틱의 미수행 이동/인계를 막고 남은 예약을 반환하며 화물을 보존합니다. 취소 결과와 화물 복구 완료는 구분합니다. 화물 복구는 기존 재배정과 자동 안전 방출/표시 기반 회수를 연결하며 같은 아이템 Entity를 보존합니다. 드론 철거는 승인 중단/도착 확인과 다음 건물 단계의 반환/환급/삭제 결과를 구분합니다.
 
 격자 위치와 소유권 같은 ECS 상태를 원본으로 두고 공간 인덱스는 조회용으로 재구축합니다. 공유 인덱스를 읽고 쓰는 Job은 Fence에 의존성을 등록하여 인덱스 갱신과 읽기가 충돌하지 않도록 처리합니다. 벨트 이동과 생산 등에는 `ISystem`, Job System과 Burst를 사용합니다.
 
@@ -103,7 +103,7 @@ flowchart TD
 
 현재 진입 장면은 **V2 개발/진단용 장면**입니다. 공개 프리알파의 조작과 UI를 그대로 이용하는 단계는 아니며, 플레이 가능한 이전 버전은 위 Windows 릴리스에서 확인할 수 있습니다.
 
-## 코드와 문서
+## 코드 구조
 
 ### 주요 코드 진입점
 
@@ -116,22 +116,3 @@ flowchart TD
 | 전력 계획과 공급 | [Assets/Scripts/Systems/Power](https://github.com/Gentlet/planet-miner/tree/architecture-v2/Assets/Scripts/Systems/Power) |
 | 드론 작업/예약/이동/자동 픽업/납품/인계 | [Assets/Scripts/Systems/Drones](https://github.com/Gentlet/planet-miner/tree/architecture-v2/Assets/Scripts/Systems/Drones) |
 | 공간 인덱스 동기화 | [Assets/Scripts/Systems/Synchronization](https://github.com/Gentlet/planet-miner/tree/architecture-v2/Assets/Scripts/Systems/Synchronization) |
-| EditMode 테스트 | [Assets/Editor/Tests](https://github.com/Gentlet/planet-miner/tree/architecture-v2/Assets/Editor/Tests) |
-
-### 상세 문서
-
-- [문서 안내](https://github.com/Gentlet/planet-miner/blob/architecture-v2/Docs/README.md)
-- [현재 실행 순서와 소유권 규칙](https://github.com/Gentlet/planet-miner/blob/architecture-v2/AGENTS.md)
-- [ECS 컴포넌트 색인](https://github.com/Gentlet/planet-miner/blob/architecture-v2/Docs/CodeMemory/Components/README.md)
-- [전력망 명세](https://github.com/Gentlet/planet-miner/blob/architecture-v2/Docs/Specifications/PowerGrid.md)
-- [건설과 드론 공급 명세](https://github.com/Gentlet/planet-miner/blob/architecture-v2/Docs/Specifications/ConstructionAndDroneSupply.md)
-- [드론 Lifecycle 설계](https://github.com/Gentlet/planet-miner/blob/architecture-v2/Docs/Specifications/DroneLifecycle.md)
-- [드론 이동/배터리/도착 계약](https://github.com/Gentlet/planet-miner/blob/architecture-v2/Docs/Specifications/DroneMovement.md)
-
-테스트 코드는 개별 시스템과 핵심 흐름, 결함 회귀를 확인하기 위한 자료입니다. 컴파일/선택 EditMode 테스트 결과와 실제 플레이, 시각 결과, Player 빌드, 성능 검증은 각각 구분해 관리합니다.
-
-자동 픽업의 공개 도착/요청 수명/일반 운반 확보량 정산은 [픽업 계약](Docs/Specifications/DronePickup.md)을 따른다.
-
-자동 납품/일반 운반 완료량/공간 대기와 도착 후 배터리 0 예외는 [납품 계약](Docs/Specifications/DroneDelivery.md)을 따른다.
-
-정상 귀환 중 재배차, 자동 정박/수납과 작업 수요 기반 출고는 [귀환/출고 계약](Docs/Specifications/DroneReturnAndDispatch.md)을 따른다. 전력 기반 충전과 다음 틱 재배차/수납은 [충전 계약](Docs/Specifications/DroneCharging.md)을 따른다.

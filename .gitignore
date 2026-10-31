@@ -108,11 +108,13 @@ InitTestScene*.unity*
 FixTests/*
 .serena
 
-# Share review agent profiles while keeping local Codex settings private.
-!/.codex/
-/.codex/*
-!/.codex/agents/
-/.codex/agents/*
-!/.codex/agents/*.toml
+# Keep development documentation, automation, agent settings, and tests local.
+/Docs/
+/Tools/Codex/
+/.codex/
+/AGENTS.md
+/Assets/Editor/Tests/
+/Assets/Editor/Tests.meta
+/TestResults/
 Assets/Logs
 Assets/Logs.meta
