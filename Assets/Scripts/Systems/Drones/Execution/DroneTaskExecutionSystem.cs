@@ -112,6 +112,8 @@ public partial struct DroneTaskExecutionSystem : ISystem
     {
         switch (creation.Kind)
         {
+            case DroneLogisticsTaskKindEnum.BuildingDemolition:
+                return DroneTaskCreationUtility.CreateBuildingDemolitionTask(ecb, creation.Target, ref sequence);
             case DroneLogisticsTaskKindEnum.ConstructionSupply:
                 return DroneTaskCreationUtility.CreateConstructionSupplyTask(ecb, creation.Target, creation.ItemType, ref sequence);
             case DroneLogisticsTaskKindEnum.WorldItemRecovery:
@@ -183,6 +185,8 @@ public partial struct DroneTaskExecutionSystem : ISystem
     private static bool IsCreationTargetValid(EntityManager manager, in DroneTaskCreationDecisionElement decision)
     {
         // 명령을 적용할 대상의 생존·종류만 확인한다. 요구량/회수 필요성 탐색은 Decision으로 되돌리지 않는다.
+        if (decision.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition)
+            return DroneDemolitionUtility.IsApprovedTarget(manager, decision.Target);
         if (decision.ItemType == ItemTypeEnum.None)
         {
             return false;

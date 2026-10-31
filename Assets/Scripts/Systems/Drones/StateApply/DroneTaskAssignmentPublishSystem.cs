@@ -84,15 +84,20 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
                 continue;
             }
 
+            bool demolition = manager.GetComponentData<DroneLogisticsTask>(candidate.Task).Kind == DroneLogisticsTaskKindEnum.BuildingDemolition;
             Entity assignment = RecordNewAssignment(manager, candidate, quantity,
+                demolition ? DroneActionKindEnum.DemolishBuilding :
                 supply ? DroneActionKindEnum.CollectFromStorage : DroneActionKindEnum.RecoverWorldItem, ecb);
-            ecb.AddComponent(assignment, new ConstructionSupplyReservation
+            if (!demolition)
             {
-                Site = supply ? candidate.Destination : Entity.Null,
-                ItemType = candidate.ItemType,
-                AssignmentRevision = 1,
-                RemainingQuantity = supply ? quantity : 0
-            });
+                ecb.AddComponent(assignment, new ConstructionSupplyReservation
+                {
+                    Site = supply ? candidate.Destination : Entity.Null,
+                    ItemType = candidate.ItemType,
+                    AssignmentRevision = 1,
+                    RemainingQuantity = supply ? quantity : 0
+                });
+            }
             // PublicationQueued는 ECB 기록 완료 표시다. Playback 전 반복 실행과 다음 틱 미공개 예약 롤백을 구분한다.
             pending.Quantity = quantity;
             pending.PublicationQueued = true;
@@ -166,7 +171,8 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
             ItemType = candidate.ItemType,
             AssignedQuantity = quantity,
             Revision = 1,
-            State = DroneTaskAssignmentStateEnum.MovingToSource,
+            State = nextAction == DroneActionKindEnum.DemolishBuilding
+                ? DroneTaskAssignmentStateEnum.MovingToDestination : DroneTaskAssignmentStateEnum.MovingToSource,
             NextAction = nextAction
         });
         ecb.SetComponent(candidate.Worker, new DroneWorkerAssignment { Assignment = assignment });

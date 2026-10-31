@@ -7,7 +7,7 @@ using Unity.Mathematics;
 /// 생성: DroneSchedulingUtility.GetOrCreateCandidates가 버퍼를 준비하고 Decision의 DroneTaskDecisionSystem이 신규·적재 재배정 후보를 작성한다.
 /// 이용: Reservation의 DroneTaskReservationSystem이 읽기 검사한 후보를 선택하여 별도 DroneTaskPendingPublicationElement에 복사한다.
 /// 제거: 다음 Decision 시작에 Clear한다. 버퍼와 관리 엔티티는 유지한다.
-/// Quantity는 판단 당시 수량 상한이다. 실제 선택 수량·미공개 예약·ECB 공개 기록은 이 버퍼에 쓰지 않는다.
+/// Quantity는 판단 당시 아이템 수량 상한이며 철거는 행동 한 회의 1이다. 실제 선택 수량·미공개 예약·ECB 공개 기록은 이 버퍼에 쓰지 않는다.
 /// Assignment가 있으면 같은 배정의 적재품 재배정 후보이며 NextAction은 공급·보관·방출 목적을 나타낸다.
 /// </summary>
 [InternalBufferCapacity(0)]

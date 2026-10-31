@@ -154,6 +154,10 @@ internal static class DroneTaskRequestDecisionUtility
     private static DroneTaskRequestStatusEnum ValidateCreation(EntityManager manager, in DroneTaskRequest request, NativeArray<Entity> sites, out DroneRecoveryReasonEnum reason)
     {
         reason = DroneRecoveryReasonEnum.None;
+        if (request.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition)
+            return request.ItemType == ItemTypeEnum.None && request.Quantity == 0 &&
+                DroneDemolitionUtility.IsApprovedTarget(manager, request.Target)
+                ? DroneTaskRequestStatusEnum.Created : DroneTaskRequestStatusEnum.Rejected;
         if (request.Kind != DroneLogisticsTaskKindEnum.ConstructionSupply && request.Kind != DroneLogisticsTaskKindEnum.WorldItemRecovery &&
             !DroneSchedulingUtility.IsTransportKind(request.Kind))
         {
@@ -204,7 +208,8 @@ internal static class DroneTaskRequestDecisionUtility
 
         if (manager.HasComponent<DroneRecoveryPending>(request.Target))
         {
-            reason = DroneRecoveryReasonEnum.DroneDrop;
+            reason = manager.GetComponentData<DroneRecoveryPending>(request.Target).Reason;
+            if (reason == DroneRecoveryReasonEnum.None) reason = DroneRecoveryReasonEnum.DroneDrop;
         }
         else if (DroneSchedulingUtility.IsUnderSite(manager, request.Target, sites))
         {
@@ -227,7 +232,8 @@ internal static class DroneTaskRequestDecisionUtility
         }
 
         var task = manager.GetComponentData<DroneLogisticsTask>(taskEntity);
-        if (task.Kind != DroneLogisticsTaskKindEnum.ConstructionSupply && task.Kind != DroneLogisticsTaskKindEnum.WorldItemRecovery &&
+        if (task.Kind != DroneLogisticsTaskKindEnum.BuildingDemolition &&
+            task.Kind != DroneLogisticsTaskKindEnum.ConstructionSupply && task.Kind != DroneLogisticsTaskKindEnum.WorldItemRecovery &&
             !DroneSchedulingUtility.IsTransportKind(task.Kind))
         {
             return DroneTaskRequestStatusEnum.Unsupported;

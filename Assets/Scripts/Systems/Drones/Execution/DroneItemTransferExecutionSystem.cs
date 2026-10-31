@@ -145,7 +145,8 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
         if (!DroneSchedulingUtility.IsStorage(manager, assignment.Destination)) return;
         if (!DroneItemTransferUtility.CanMove(manager, assignment.Source, assignment.ItemType, Entity.Null)) return;
         var task = manager.GetComponentData<DroneLogisticsTask>(assignment.Task);
-        if (task.RecoveryReason != DroneRecoveryReasonEnum.DroneDrop)
+        if (task.RecoveryReason != DroneRecoveryReasonEnum.DroneDrop &&
+            task.RecoveryReason != DroneRecoveryReasonEnum.BuildingDemolition)
         {
             if (task.RecoveryReason != DroneRecoveryReasonEnum.SiteClearance) return;
             if (!DroneSchedulingUtility.IsUnderSite(manager, assignment.Source, sites)) return;

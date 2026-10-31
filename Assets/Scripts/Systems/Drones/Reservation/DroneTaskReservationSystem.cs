@@ -52,11 +52,11 @@ public partial struct DroneTaskReservationSystem : ISystem
         var pendingPublications = manager.GetBuffer<DroneTaskPendingPublicationElement>(_candidates);
         ReleasePendingReservations(manager, pendingPublications);
         using var usedWorkers = new NativeHashSet<Entity>(16, Allocator.Temp);
-        using var claimedItems = new NativeHashSet<Entity>(16, Allocator.Temp);
+        using var claimedTargets = new NativeHashSet<Entity>(16, Allocator.Temp);
         using var assignments = _assignments.ToEntityArray(Allocator.Temp);
         using var sites = _sites.ToEntityArray(Allocator.Temp);
         // 배정 상태를 닫기 전에 수량 예약만 해제한다. 연결/종료 상태 변경은 Lifecycle Apply의 책임이다.
-        // 정상 배정의 드론과 회수 실물은 새 작업에 중복 선택하지 않는다.
+        // 정상 배정의 드론/회수 실물/철거 건물은 새 작업에 중복 선택하지 않는다.
         for (int i = 0; i < assignments.Length; i++)
         {
             Entity entity = assignments[i];
@@ -74,7 +74,8 @@ public partial struct DroneTaskReservationSystem : ISystem
                 continue;
             }
             usedWorkers.Add(assignment.Worker);
-            if (assignment.NextAction == DroneActionKindEnum.RecoverWorldItem) claimedItems.Add(assignment.Source);
+            if (assignment.NextAction == DroneActionKindEnum.RecoverWorldItem) claimedTargets.Add(assignment.Source);
+            if (assignment.NextAction == DroneActionKindEnum.DemolishBuilding) claimedTargets.Add(assignment.Destination);
         }
 
         Entity registry = _registry.IsEmptyIgnoreFilter ? Entity.Null : _registry.GetSingletonEntity();
@@ -82,12 +83,12 @@ public partial struct DroneTaskReservationSystem : ISystem
         SelectRetargetCandidates(manager, candidates, pendingPublications, registry, carryingCapacity, usedWorkers);
         var owners = _transportOwners.ToEntityArray(Allocator.TempJob);
         var selectedTransport = new NativeList<DroneTaskCandidateDecisionElement>(Allocator.TempJob);
-        SelectNewCandidates(manager, registry, carryingCapacity, usedWorkers, claimedItems, owners, selectedTransport);
+        SelectNewCandidates(manager, registry, carryingCapacity, usedWorkers, claimedTargets, owners, selectedTransport);
         ScheduleTransportReservations(ref state, owners, selectedTransport);
     }
 
     private void SelectNewCandidates(EntityManager manager, Entity registry, int carryingCapacity,
-        NativeHashSet<Entity> usedWorkers, NativeHashSet<Entity> claimedItems, NativeArray<Entity> owners,
+        NativeHashSet<Entity> usedWorkers, NativeHashSet<Entity> claimedTargets, NativeArray<Entity> owners,
         NativeList<DroneTaskCandidateDecisionElement> selectedTransport)
     {
         using var candidates = new NativeList<DroneTaskCandidateDecisionElement>(Allocator.Temp);
@@ -135,10 +136,12 @@ public partial struct DroneTaskReservationSystem : ISystem
                         continue;
                     }
                     var task = manager.GetComponentData<DroneLogisticsTask>(candidate.Task);
-                    if (task.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery && claimedItems.Contains(candidate.Source))
+                    if (task.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery && claimedTargets.Contains(candidate.Source))
                     {
                         continue;
                     }
+                    if (task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition && claimedTargets.Contains(candidate.Destination))
+                        continue;
                     int quantity;
                     if (DroneSchedulingUtility.IsTransportKind(task.Kind))
                     {
@@ -208,7 +211,7 @@ public partial struct DroneTaskReservationSystem : ISystem
                     }
                     else
                     {
-                        claimedItems.Add(chosen.Source);
+                        claimedTargets.Add(chosenTask.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition ? chosen.Destination : chosen.Source);
                     }
                     if (quantitySelected <= 0)
                     {

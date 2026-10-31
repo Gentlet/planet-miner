@@ -2,7 +2,7 @@
 
 이 문서는 컴포넌트를 출발점으로 Planet Miner의 현재 데이터 흐름을 따라가기 위한 지도다. 각 하위 문서에서 **목적 → 부착 엔티티 → 생성과 초기화 → 읽고 쓰는 시스템 → 처리와 반영 시점 → 소비와 종료**를 확인할 수 있다. 함께 유지하는 데이터 관계와 조건도 해당 컴포넌트에 기록했다.
 
-최초 조사는 **2026-10-03**, 조사 시작 커밋은 `0998016624ee15ee035beb8dc306d68990a69bb0`이다. **2026-10-06 건물·드론 도메인 분리와 후보/공개 대기 예약 분리까지**의 정의와 경로로 갱신했다. **프로젝트 ECS 컴포넌트/버퍼 요소 103개를 9개 하위 문서에 정리**했으며 당시 드론은 23개다. 이후 정거장/생성/보관/활동/설정/요청/계획/운반 확보/이동 타입을 추가해 현재 드론 문서는 ECS 컴포넌트/버퍼 요소 60개를 다룬다. 현장 내부의 새 월드 생성·방출은 금지하고 완공은 현재 월드 실물과 활성 Destroy만 조회한다. 실제 경로/이동/관측/도착과 최소 비상 귀환은 [이동 명세](../../Specifications/DroneMovement.md)에 연결했다. 자동 픽업은 [픽업 명세](../../Specifications/DronePickup.md)에 연결했고 자동 납품/완료량은 [납품 명세](../../Specifications/DroneDelivery.md)에 연결했다. 정상 귀환/정거장 전환과 수요 기반 출고는 [귀환/출고 명세](../../Specifications/DroneReturnAndDispatch.md)를 따르며 실제 충전은 [충전 계약](../../Specifications/DroneCharging.md)을 따르며 연구 Writer는 후속이다. 소스와 실행 검증을 구분한다.
+최초 조사는 **2026-10-03**, 조사 시작 커밋은 `0998016624ee15ee035beb8dc306d68990a69bb0`이다. **2026-10-06 건물·드론 도메인 분리와 후보/공개 대기 예약 분리까지**의 정의와 경로로 갱신했다. **프로젝트 ECS 컴포넌트/버퍼 요소 103개를 9개 하위 문서에 정리**했으며 당시 드론은 23개다. 이후 정거장/생성/보관/활동/설정/요청/계획/운반 확보/이동 타입을 추가해 현재 드론 문서는 ECS 컴포넌트/버퍼 요소 64개를 다룬다. 현장 내부의 새 월드 생성·방출은 금지하고 완공은 현재 월드 실물과 활성 Destroy만 조회한다. 실제 경로/이동/관측/도착과 최소 비상 귀환은 [이동 명세](../../Specifications/DroneMovement.md)에 연결했다. 자동 픽업은 [픽업 명세](../../Specifications/DronePickup.md)에 연결했고 자동 납품/완료량은 [납품 명세](../../Specifications/DroneDelivery.md)에 연결했다. 정상 귀환/정거장 전환과 수요 기반 출고는 [귀환/출고 명세](../../Specifications/DroneReturnAndDispatch.md)를 따르며 실제 충전은 [충전 계약](../../Specifications/DroneCharging.md)을 따르며 연구 Writer는 후속이다. 소스와 실행 검증을 구분한다.
 
 드론 관리 1~4단계의 작업·예약·인계·Direct 재배정·현장 외부 방출·완공 차단과 5단계 선별 통합 회귀를 연결했다. 기존 142사례와 신규 4사례는 이전 구조의 별도 실행이다. 현재 구조에서 수행한 컴파일·선택 EditMode·제한된 Play Mode 검증은 과거 실행과 합산하지 않는다. Task 9.3은 [Identity/정거장 보관](../../Specifications/DroneIdentityAndStationStorage.md)과 [공통 초기화](../../Specifications/DroneCapacityInitializationPlan.md)를 구현했다. 실제 경로/이동/관측/도착과 최소 비상 귀환은 [이동 명세](../../Specifications/DroneMovement.md)에 연결했다. 자동 픽업은 [픽업 명세](../../Specifications/DronePickup.md)에 연결했고 자동 납품/완료량은 [납품 명세](../../Specifications/DroneDelivery.md)에 연결했다. 정상 귀환/정거장 전환과 수요 기반 출고는 [귀환/출고 명세](../../Specifications/DroneReturnAndDispatch.md)를 따르며 실제 충전은 [충전 계약](../../Specifications/DroneCharging.md)을 따르며 연구 Writer는 후속이다. 세부 계약은 [명세](../../Specifications/ConstructionAndDroneSupply.md)와 [드론 컴포넌트 계약](DroneLogistics.md)을 따른다.
 
@@ -160,7 +160,7 @@ Preparation/Power 분리와 전신주/참가자 연결·망 수명주기·석탄
 | [BuildingType](Buildings.md#buildingtype) | 상태 | [BuildingComponents.cs](../../../Assets/Scripts/Components/Buildings/BuildingComponents.cs) |
 | [DemolishBuildingRequest](Buildings.md#demolishbuildingrequest) | 상태 | [BuildingRequests.cs](../../../Assets/Scripts/Components/Buildings/BuildingRequests.cs) |
 | [IndestructibleBuilding](Buildings.md#indestructiblebuilding) | 상태 | [BuildingComponents.cs](../../../Assets/Scripts/Components/Buildings/BuildingComponents.cs) |
-| [PendingBuildingDemolition](Buildings.md#pendingbuildingdemolition) | 상태 태그 | [BuildingComponents.cs](../../../Assets/Scripts/Components/Buildings/BuildingComponents.cs) |
+| [PendingBuildingDemolition](Buildings.md#pendingbuildingdemolition) | 승인 중단/root 연결 | [BuildingComponents.cs](../../../Assets/Scripts/Components/Buildings/BuildingComponents.cs) |
 | [PlacementStamp](Buildings.md#placementstamp) | 상태 | [PlacementStamp.cs](../../../Assets/Scripts/Components/Buildings/PlacementStamp.cs) |
 | [SpawnBuildingRequest](Buildings.md#spawnbuildingrequest) | 상태 | [BuildingRequests.cs](../../../Assets/Scripts/Components/Buildings/BuildingRequests.cs) |
 
@@ -303,3 +303,10 @@ Preparation/Power 분리와 전신주/참가자 연결·망 수명주기·석탄
 기존 [AGENTS.md](../../../AGENTS.md)는 프로젝트 공통 계약과 탐색 기준이며, [V2 코드 지도](../../architecture%20v2%20plan/CodeMemory/README.md)는 시스템 중심 탐색 보조다. 이 문서 묶음은 컴포넌트별 상세 진입점이다. 미이식 동작과 레거시 정책 차이는 [구현 작업 목록](../../architecture%20v2%20plan/Architecture%20V2%20Tasks.md)의 해당 Task에서 확인하며 현재 컴포넌트 계약을 과거 구조로 대체하지 않는다.
 
 컴포넌트의 정의·생성 위치·Writer·쿼리·소비 방식이 바뀌면 해당 타입 절과 이 색인의 종류/연결을 함께 갱신한다. 엔티티 삭제와 enable 상태 변경, ECB 반영 전후의 설명을 우선 대조하면 생명주기를 이어서 추적할 수 있다.
+
+| 철거 추가 데이터 | 역할 |
+| --- | --- |
+| [DroneDemolitionDecisionElement](DroneLogistics.md#dronedemolitiondecisionelement) | 이번 틱 공개 도착 확인 의도 |
+| [BuildingDemolitionExecutionRequest](DroneLogistics.md#buildingdemolitionexecutionrequest) | root의 일회성 건물 실행 요청 |
+| [BuildingDemolitionAutomaticTaskRequest](DroneLogistics.md#buildingdemolitionautomatictaskrequest) | Command 내부 어댑터 요청 수명 |
+| [BuildingDemolitionResult](DroneLogistics.md#buildingdemolitionresult) | 실제 건물 처리 결과 |

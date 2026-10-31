@@ -3,187 +3,160 @@ using Unity.Collections;
 using Unity.Entities;
 
 /// <summary>
-/// 역할·목적: 완공 건물의 철거 요청을 승인/거부하고 승인 건물의 해당 틱 동작을 중단한다.
-/// 처리 단계: Command. 입력은 별도 요청 엔티티의 DemolishBuildingRequest와 대상 건물/보호/프리팹 상태다.
-/// 출력·소유권: 승인 건물의 기존 Transfer를 비활성화하고 ProductResult를 비우며 PendingBuildingDemolition을 EndCommand에 기록한다.
-/// 이후 Decision은 승인 상태로 실행 후보를 차단하고 BuildingLifecycleApplySystem(StateApply)이 반환/환급/실제 삭제를 담당한다.
-/// 정리·가시화: 승인/거부/중복 요청 모두 EndCommand에서 삭제한다. 요청은 실행 전에 실체화하고 승인 대상/조건은 StateApply까지 유지한다.
+/// Command가 일반 완공 건물의 철거를 승인하고 입출고/생산을 중단한다.
+/// 드론 확인 전에는 건물을 보존하며 취소된 root의 중단 상태도 이 소유자가 다음 EndCommand에 해제한다.
+/// 외부 DemolishBuildingRequest는 여기서 수명을 끝내고 기존 Task 접수 API로 드론 작업을 요청한다.
 /// </summary>
 [UpdateInGroup(typeof(CommandGroup))]
 public partial struct BuildingDemolitionCommandSystem : ISystem
 {
-    private EntityQuery _requestQuery;
-    private ComponentLookup<BuildingType> _buildingTypeLookup;
-    private ComponentLookup<IndestructibleBuilding> _indestructibleLookup;
-    private ComponentLookup<Prefab> _prefabLookup;
-    private ComponentLookup<PendingBuildingDemolition> _pendingLookup;
-    private ComponentLookup<TransferOwnershipRequest> _transferLookup;
-    private BufferLookup<StoredItemElement> _storedLookup;
-    private BufferLookup<ProductItemElement> _productLookup;
-    private BufferLookup<ProductResult> _resultLookup;
-    private BufferLookup<DockedDroneElement> _dockedLookup;
+    private EntityQuery _requests;
+    private EntityQuery _pending;
+    private EntityQuery _ownedRequests;
+    private EntityQuery _targetsWithGeometry;
 
     public void OnCreate(ref SystemState state)
     {
-        _requestQuery = SystemAPI.QueryBuilder().WithAll<DemolishBuildingRequest>().Build();
-        _buildingTypeLookup = state.GetComponentLookup<BuildingType>(true);
-        _indestructibleLookup = state.GetComponentLookup<IndestructibleBuilding>(true);
-        _prefabLookup = state.GetComponentLookup<Prefab>(true);
-        _pendingLookup = state.GetComponentLookup<PendingBuildingDemolition>(true);
-        _transferLookup = state.GetComponentLookup<TransferOwnershipRequest>(false);
-        _storedLookup = state.GetBufferLookup<StoredItemElement>(true);
-        _productLookup = state.GetBufferLookup<ProductItemElement>(true);
-        _resultLookup = state.GetBufferLookup<ProductResult>(false);
-        _dockedLookup = state.GetBufferLookup<DockedDroneElement>(true);
-        state.RequireForUpdate(_requestQuery);
+        _requests = SystemAPI.QueryBuilder().WithAny<DemolishBuildingRequest, DroneTaskRequest>().Build();
+        _pending = SystemAPI.QueryBuilder().WithAll<PendingBuildingDemolition>()
+            .WithOptions(EntityQueryOptions.IncludeDisabledEntities).Build();
+        _ownedRequests = state.GetEntityQuery(typeof(BuildingDemolitionAutomaticTaskRequest));
+        _targetsWithGeometry = state.GetEntityQuery(new EntityQueryDesc
+        {
+            All = new[] { ComponentType.ReadOnly<GridPosition>(), ComponentType.ReadOnly<BuildingFootprint>(),
+                ComponentType.ReadOnly<Direction>() },
+            Options = EntityQueryOptions.IncludeDisabledEntities
+        });
     }
 
     public void OnUpdate(ref SystemState state)
     {
-        _buildingTypeLookup.Update(ref state);
-        _indestructibleLookup.Update(ref state);
-        _prefabLookup.Update(ref state);
-        _pendingLookup.Update(ref state);
-        _transferLookup.Update(ref state);
-        _storedLookup.Update(ref state);
-        _productLookup.Update(ref state);
-        _resultLookup.Update(ref state);
-        _dockedLookup.Update(ref state);
-        var ecbSystem = state.World.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
-        // 승인 상태는 EndCommand까지 보이지 않으므로 같은 Job의 중복 요청은 별도 집합으로 차단한다.
-        var acceptedTargets = new NativeParallelHashSet<Entity>(_requestQuery.CalculateEntityCount(), Allocator.TempJob);
-        var job = new ValidateBuildingDemolitionJob
+        using (var owned = _ownedRequests.ToEntityArray(Allocator.Temp))
+            foreach (Entity request in owned) DroneTaskRequestUtility.TryConsumeResult(state.EntityManager, request, out _);
+        if (_requests.IsEmptyIgnoreFilter && _pending.IsEmptyIgnoreFilter) return;
+        var end = state.World.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
+        var ecb = end.CreateCommandBuffer();
+        using var released = new NativeParallelHashSet<Entity>(System.Math.Max(1, _pending.CalculateEntityCount()), Allocator.TempJob);
+        using var accepted = new NativeParallelHashSet<Entity>(System.Math.Max(1, _requests.CalculateEntityCount()), Allocator.TempJob);
+        using var legacyTargets = new NativeQueue<Entity>(Allocator.TempJob);
+        using var legacySequenceBudget = new NativeReference<ulong>(
+            DroneTaskRequestUtility.ReadAvailableRequestSequenceCount(state.EntityManager), Allocator.TempJob);
+        var release = new ReleaseEndedBuildingDemolitionJob
         {
-            ECB = ecbSystem.CreateCommandBuffer(),
-            BuildingTypeLookup = _buildingTypeLookup,
-            IndestructibleLookup = _indestructibleLookup,
-            PrefabLookup = _prefabLookup,
-            PendingLookup = _pendingLookup,
-            TransferLookup = _transferLookup,
-            StoredLookup = _storedLookup,
-            ProductLookup = _productLookup,
-            ResultLookup = _resultLookup,
-            DockedLookup = _dockedLookup,
-            AcceptedTargets = acceptedTargets
-        };
-        var handle = job.Schedule(_requestQuery, state.Dependency);
-        state.Dependency = acceptedTargets.Dispose(handle);
-        ecbSystem.AddJobHandleForProducer(state.Dependency);
+            Tasks = state.GetComponentLookup<DroneLogisticsTask>(true),
+            Confirmations = state.GetComponentLookup<BuildingDemolitionExecutionRequest>(true),
+            Released = released, ECB = ecb
+        }.Schedule(_pending, state.Dependency);
+        var handle = new ValidateBuildingDemolitionJob
+        {
+            ECB = ecb,
+            Legacy = state.GetComponentLookup<DemolishBuildingRequest>(true),
+            Requests = state.GetComponentLookup<DroneTaskRequest>(true),
+            Buildings = state.GetComponentLookup<BuildingType>(true),
+            Indestructible = state.GetComponentLookup<IndestructibleBuilding>(true),
+            Prefabs = state.GetComponentLookup<Prefab>(true),
+            Pending = state.GetComponentLookup<PendingBuildingDemolition>(true),
+            Transfers = state.GetComponentLookup<TransferOwnershipRequest>(),
+            Stored = state.GetBufferLookup<StoredItemElement>(true),
+            Products = state.GetBufferLookup<ProductItemElement>(true),
+            Results = state.GetBufferLookup<ProductResult>(),
+            TargetShape = _targetsWithGeometry.GetEntityQueryMask(),
+            Released = released, Accepted = accepted, LegacyTargets = legacyTargets, LegacySequenceBudget = legacySequenceBudget
+        }.Schedule(_requests, release);
+        // Burst가 승인한 레거시 입력만 기존 메인 스레드 접수 API에 넘겨 World 순번의 단일 발급자를 유지한다.
+        handle.Complete();
+        while (legacyTargets.TryDequeue(out Entity target))
+        {
+            Entity request = DroneTaskRequestUtility.SubmitCreate(state.EntityManager, DroneLogisticsTaskKindEnum.BuildingDemolition,
+                target, ItemTypeEnum.None);
+            state.EntityManager.AddComponent<BuildingDemolitionAutomaticTaskRequest>(request);
+        }
+        state.Dependency = handle;
+        end.AddJobHandleForProducer(handle);
+    }
+}
+
+[BurstCompile]
+public partial struct ReleaseEndedBuildingDemolitionJob : IJobEntity
+{
+    [ReadOnly] public ComponentLookup<DroneLogisticsTask> Tasks;
+    [ReadOnly] public ComponentLookup<BuildingDemolitionExecutionRequest> Confirmations;
+    public NativeParallelHashSet<Entity> Released;
+    public EntityCommandBuffer ECB;
+
+    public void Execute(Entity entity, in PendingBuildingDemolition pending)
+    {
+        if (pending.Task == Entity.Null || Confirmations.HasComponent(pending.Task)) return;
+        if (Tasks.HasComponent(pending.Task))
+        {
+            var state = Tasks[pending.Task].State;
+            if (state != DroneLogisticsTaskStateEnum.Cancelled && state != DroneLogisticsTaskStateEnum.Closed) return;
+        }
+        Released.Add(entity);
+        ECB.RemoveComponent<PendingBuildingDemolition>(entity);
     }
 }
 
 [BurstCompile]
 public partial struct ValidateBuildingDemolitionJob : IJobEntity
 {
+    public EntityQueryMask TargetShape;
+    [ReadOnly] public ComponentLookup<DemolishBuildingRequest> Legacy;
+    [ReadOnly] public ComponentLookup<DroneTaskRequest> Requests;
+    [ReadOnly] public ComponentLookup<BuildingType> Buildings;
+    [ReadOnly] public ComponentLookup<IndestructibleBuilding> Indestructible;
+    [ReadOnly] public ComponentLookup<Prefab> Prefabs;
+    [ReadOnly] public ComponentLookup<PendingBuildingDemolition> Pending;
+    public ComponentLookup<TransferOwnershipRequest> Transfers;
+    [ReadOnly] public BufferLookup<StoredItemElement> Stored;
+    [ReadOnly] public BufferLookup<ProductItemElement> Products;
+    public BufferLookup<ProductResult> Results;
+    [ReadOnly] public NativeParallelHashSet<Entity> Released;
+    public NativeParallelHashSet<Entity> Accepted;
+    public NativeQueue<Entity> LegacyTargets;
+    public NativeReference<ulong> LegacySequenceBudget;
     public EntityCommandBuffer ECB;
-    [ReadOnly] public ComponentLookup<BuildingType> BuildingTypeLookup;
-    [ReadOnly] public ComponentLookup<IndestructibleBuilding> IndestructibleLookup;
-    [ReadOnly] public ComponentLookup<Prefab> PrefabLookup;
-    [ReadOnly] public ComponentLookup<PendingBuildingDemolition> PendingLookup;
-    public ComponentLookup<TransferOwnershipRequest> TransferLookup;
-    [ReadOnly] public BufferLookup<StoredItemElement> StoredLookup;
-    [ReadOnly] public BufferLookup<ProductItemElement> ProductLookup;
-    public BufferLookup<ProductResult> ResultLookup;
-    [ReadOnly] public BufferLookup<DockedDroneElement> DockedLookup;
-    public NativeParallelHashSet<Entity> AcceptedTargets;
 
-    public void Execute(Entity requestEntity, in DemolishBuildingRequest request)
+    public void Execute(Entity entity)
     {
-        if (!CanDemolish(request.TargetBuilding))
+        bool legacy = Legacy.HasComponent(entity);
+        Entity target;
+        if (legacy)
         {
-            ECB.DestroyEntity(requestEntity);
-            return;
+            target = Legacy[entity].TargetBuilding;
+            ECB.DestroyEntity(entity);
         }
-
-        if (!AcceptedTargets.Add(request.TargetBuilding))
+        else
         {
-            ECB.DestroyEntity(requestEntity);
-            return;
+            var request = Requests[entity];
+            if (request.Kind != DroneLogisticsTaskKindEnum.BuildingDemolition ||
+                request.Operation != DroneTaskRequestOperationEnum.Create || request.ItemType != ItemTypeEnum.None ||
+                request.Quantity != 0) return;
+            target = request.Target;
         }
-
-        // 이전 틱에서 남은 출고/생산 결과도 끊어야 승인 후 추가 입출고가 발생하지 않는다.
-        // 이번 틱 새 후보는 EndCommand에 공개되는 승인 상태를 읽어 Decision에서 차단한다.
-        CancelBufferedTransfers(request.TargetBuilding);
-        if (ResultLookup.HasBuffer(request.TargetBuilding))
-        {
-            ResultLookup[request.TargetBuilding].Clear();
-        }
-        // 외부 요청의 수명은 여기서 끝내고 이후 철거 수명주기는 대상 건물의 상태로 전달한다.
-        ECB.AddComponent<PendingBuildingDemolition>(request.TargetBuilding);
-        ECB.DestroyEntity(requestEntity);
-    }
-
-    private void CancelBufferedTransfers(Entity building)
-    {
-        if (StoredLookup.HasBuffer(building))
-        {
-            var items = StoredLookup[building];
-            for (int i = 0; i < items.Length; i++)
-            {
-                CancelTransfer(items[i].ItemEntity);
-            }
-        }
-        if (ProductLookup.HasBuffer(building))
-        {
-            var items = ProductLookup[building];
-            for (int i = 0; i < items.Length; i++)
-            {
-                CancelTransfer(items[i].ItemEntity);
-            }
-        }
+        if (target == Entity.Null || !Buildings.HasComponent(target)) return;
+        if (!TargetShape.MatchesIgnoreFilter(target)) return;
+        if (Prefabs.HasComponent(target) || Indestructible.HasComponent(target)) return;
+        var type = Buildings[target].Type;
+        if (type == BuildingTypeEnum.None || type == BuildingTypeEnum.ConstructionSite ||
+            DroneStationRangeUtility.IsStationType(type)) return;
+        if (Pending.HasComponent(target) && !Released.Contains(target)) return;
+        // 이 단일 Command에서 접수하기 전까지 다른 Submit은 실행되지 않는다. 발급 불가한 레거시 입력은 중단 전에 거부한다.
+        if (legacy && LegacySequenceBudget.Value == 0) return;
+        if (!Accepted.Add(target)) return;
+        if (legacy) LegacySequenceBudget.Value--;
+        if (Stored.HasBuffer(target))
+            foreach (var item in Stored[target]) CancelTransfer(item.ItemEntity);
+        if (Products.HasBuffer(target))
+            foreach (var item in Products[target]) CancelTransfer(item.ItemEntity);
+        if (Results.HasBuffer(target)) Results[target].Clear();
+        ECB.AddComponent<PendingBuildingDemolition>(target);
+        if (legacy) LegacyTargets.Enqueue(target);
     }
 
     private void CancelTransfer(Entity item)
     {
-        if (item == Entity.Null)
-        {
-            return;
-        }
-        if (!TransferLookup.HasComponent(item))
-        {
-            return;
-        }
-        TransferLookup.SetComponentEnabled(item, false);
-    }
-
-    private bool CanDemolish(Entity target)
-    {
-        if (target == Entity.Null)
-        {
-            return false;
-        }
-
-        if (!BuildingTypeLookup.HasComponent(target))
-        {
-            return false;
-        }
-
-        // 불변 프리팹 DB의 원형은 월드에 배치된 완공 건물이 아니다.
-        if (PrefabLookup.HasComponent(target))
-        {
-            return false;
-        }
-
-        if (PendingLookup.HasComponent(target))
-        {
-            return false;
-        }
-        // 정박 실물의 재배치 소유자는 Task 9.19 후속이다. 아직 인계할 수 없는 정거장은 승인하지 않는다.
-        BuildingTypeEnum type = BuildingTypeLookup[target].Type;
-        if (DroneStationRangeUtility.IsStationType(type) && !DockedLookup.HasBuffer(target))
-        {
-            return false;
-        }
-        if (DockedLookup.HasBuffer(target) && !DockedLookup[target].IsEmpty)
-        {
-            return false;
-        }
-
-        if (type == BuildingTypeEnum.None || type == BuildingTypeEnum.ConstructionSite || type == BuildingTypeEnum.MainFacility)
-        {
-            return false;
-        }
-
-        return !IndestructibleLookup.HasComponent(target);
+        if (Transfers.HasComponent(item) && Transfers.IsComponentEnabled(item))
+            Transfers.SetComponentEnabled(item, false);
     }
 }

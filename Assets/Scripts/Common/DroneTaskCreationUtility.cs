@@ -55,6 +55,15 @@ public static class DroneTaskCreationUtility
         return task;
     }
 
+    public static Entity CreateBuildingDemolitionTask(EntityCommandBuffer ecb, Entity target, ref DroneTaskSequence sequence)
+    {
+        Entity task = CreateTask(ecb, target, ItemTypeEnum.None, DroneLogisticsTaskKindEnum.BuildingDemolition,
+            DroneRecoveryReasonEnum.None, ref sequence);
+        // deferred root는 생성과 같은 ECB에서만 건물 연결에 기록한다.
+        ecb.SetComponent(target, new PendingBuildingDemolition { Task = task });
+        return task;
+    }
+
     private static Entity CreateTask(
         EntityCommandBuffer ecb,
         Entity target,

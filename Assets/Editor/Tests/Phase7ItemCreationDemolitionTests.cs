@@ -196,6 +196,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
             Assert.IsFalse(_entityManager.HasComponent<PendingBuildingDemolition>(rejectedTarget));
         }
 
+        ConfirmedBuildingDemolitionTestSystem.ConfirmApproved(_entityManager);
         Simulation.UpdateAndComplete(buildingSystem);
         Assert.IsTrue(_entityManager.Exists(approved), "실제 철거는 EndStateApply에서 확정된다.");
         Assert.IsTrue(_entityManager.HasComponent<PendingBuildingDemolition>(approved));
@@ -219,6 +220,8 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         Entity recipeConfig = RecipeInitSystem.InitializeRecipeRegistry(_entityManager);
         ItemConfigInitSystem.InitializeItemRegistry(_entityManager);
         var pipeline = Simulation.CreateCrafterPipeline();
+        _world.GetExistingSystemManaged<BuildingStateApplyGroup>().AddSystemToUpdateList(
+            _world.GetOrCreateSystemManaged<ConfirmedBuildingDemolitionTestSystem>());
         _endCommand = _world.GetExistingSystemManaged<EndCommandEntityCommandBufferSystem>();
         var recipe = _entityManager.GetBuffer<RecipeConfigElement>(recipeConfig, true)[0];
         using var recipeIngredients = _entityManager.GetBuffer<RecipeIngredientElement>(recipeConfig, true)
@@ -363,6 +366,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         var itemSystem = _world.GetExistingSystem<ItemLifecycleApplySystem>();
         var buildingSystem = _world.GetExistingSystem<BuildingLifecycleApplySystem>();
         // 중간 Job 완료 대기 없이 두 예약 순서와 ECB 생성 순서 모두 검증한다.
+        ConfirmedBuildingDemolitionTestSystem.ConfirmApproved(_entityManager);
         Simulation.Update(itemFirst ? itemSystem : buildingSystem);
         Simulation.Update(itemFirst ? buildingSystem : itemSystem);
         Simulation.Playback(_world.GetExistingSystemManaged<EndBuildingEntityCommandBufferSystem>());
@@ -385,6 +389,7 @@ public class Phase7ItemCreationDemolitionTests : EcsWorldTestFixture
         var reservation = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
         var execution = _world.GetOrCreateSystemManaged<BuildingExecutionGroup>();
         var apply = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
+        apply.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<ConfirmedBuildingDemolitionTestSystem>());
         var sync = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
         simulation.AddSystemToUpdateList(sync);
         simulation.AddSystemToUpdateList(building);

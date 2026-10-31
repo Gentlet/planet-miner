@@ -17,6 +17,8 @@ public static class DroneSchedulingUtility
         if (!query.IsEmptyIgnoreFilter)
         {
             Entity existing = query.GetSingletonEntity();
+            if (!manager.HasBuffer<DroneDemolitionDecisionElement>(existing))
+                manager.AddBuffer<DroneDemolitionDecisionElement>(existing);
             if (!manager.HasBuffer<DroneTaskPendingPublicationElement>(existing))
             {
                 manager.AddBuffer<DroneTaskPendingPublicationElement>(existing);
@@ -59,7 +61,7 @@ public static class DroneSchedulingUtility
         return manager.CreateEntity(typeof(DroneTaskCandidateDecisionElement), typeof(DroneTaskPendingPublicationElement), typeof(DroneRouteDecisionElement),
             typeof(DroneTaskCreationDecisionElement), typeof(DroneTaskInvalidationDecisionElement),
             typeof(DroneTaskGenerationBlockElement), typeof(DroneTaskGenerationDecisionElement), typeof(DroneTransportPlanDecisionElement),
-            typeof(DroneTransportPendingReservationElement), typeof(DroneReturnReservationElement));
+            typeof(DroneTransportPendingReservationElement), typeof(DroneReturnReservationElement), typeof(DroneDemolitionDecisionElement));
     }
 
     /// <summary>초기 능력/연구 Writer가 게시한 공통 값을 읽는다. 미게시 상태에 임의 기본값을 만들지 않는다.</summary>
@@ -365,6 +367,10 @@ public static class DroneSchedulingUtility
 
     public static bool IsTaskValid(EntityManager manager, in DroneLogisticsTask task, NativeArray<Entity> sites)
     {
+        if (task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition)
+            return task.CreationSequence != 0 &&
+                (task.State == DroneLogisticsTaskStateEnum.Open || task.State == DroneLogisticsTaskStateEnum.ExecutionConfirmed) &&
+                DroneDemolitionUtility.IsCurrentTask(manager, task);
         if (task.State != DroneLogisticsTaskStateEnum.Open || task.CreationSequence == 0 || task.ItemType == ItemTypeEnum.None)
         {
             return false;
@@ -385,7 +391,7 @@ public static class DroneSchedulingUtility
             return false;
         }
 
-        return task.RecoveryReason == DroneRecoveryReasonEnum.DroneDrop ||
+        return task.RecoveryReason == DroneRecoveryReasonEnum.DroneDrop || task.RecoveryReason == DroneRecoveryReasonEnum.BuildingDemolition ||
                (task.RecoveryReason == DroneRecoveryReasonEnum.SiteClearance && IsUnderSite(manager, task.Target, sites));
     }
 
@@ -436,6 +442,9 @@ public static class DroneSchedulingUtility
         }
         if (IsTerminal(assignment.State) || !IsActiveEntity(manager, assignment.Worker)) return true;
         if (assignment.State == DroneTaskAssignmentStateEnum.Retargeting) return true;
+        if (assignment.NextAction == DroneActionKindEnum.DemolishBuilding)
+            return !manager.HasComponent<DroneLogisticsTask>(assignment.Task) ||
+                !IsTaskValid(manager, manager.GetComponentData<DroneLogisticsTask>(assignment.Task), sites);
         if (assignment.NextAction == DroneActionKindEnum.DropCargo)
             return ReadAssignmentCargoQuantity(manager, assignment) <= 0 ||
                    !ConstructionSiteWorldItemUtility.IsWorldPositionAllowed(manager, assignment.DropPosition);
@@ -594,6 +603,15 @@ public static class DroneSchedulingUtility
         if (request.IsDropPositionSearch && request.Kind != DroneRouteKindEnum.Direct) return false;
         if (request.Kind == DroneRouteKindEnum.Direct)
             return DirectRouteIsCurrent(manager, request);
+        if (request.Kind == DroneRouteKindEnum.DirectToBuilding)
+        {
+            if (!IsIdleWorker(manager, request.Worker, carryingCapacity) || request.Source != Entity.Null ||
+                request.Assignment != Entity.Null || request.AssignmentRevision != 0 || request.EvaluationRevision == 0 ||
+                !DroneDemolitionUtility.IsApprovedTarget(manager, request.Destination)) return false;
+            var current = manager.GetComponentData<DroneWorkerObservation>(request.Worker);
+            return current.Revision == request.WorkerObservationRevision && math.all(current.Position == request.OriginPosition) &&
+                math.all(manager.GetComponentData<GridPosition>(request.Destination).Value == request.DestinationPosition);
+        }
         if (!IsIdleWorker(manager, request.Worker, carryingCapacity))
         {
             return false;
@@ -716,6 +734,9 @@ public static class DroneSchedulingUtility
         {
             return 0;
         }
+
+        if (task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition)
+            return task.Target == candidate.Destination && DroneDemolitionUtility.IsCurrentTask(manager, task) ? 1 : 0;
 
         if (task.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply)
         {

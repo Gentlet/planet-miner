@@ -47,6 +47,7 @@ public class DroneLifecycleIntegrationTests : EcsWorldTestFixture
         var buildingReservation = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
         var buildingExecution = _world.GetOrCreateSystemManaged<BuildingExecutionGroup>();
         _buildingApply = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
+        _buildingApply.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<ConfirmedBuildingDemolitionTestSystem>());
         _drone = _world.GetOrCreateSystemManaged<DroneSimulationGroup>();
         _commit = _world.GetOrCreateSystemManaged<SimulationCommitGroup>();
         _synchronization = _world.GetOrCreateSystemManaged<SynchronizationGroup>();

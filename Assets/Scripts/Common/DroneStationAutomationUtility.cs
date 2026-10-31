@@ -133,6 +133,13 @@ internal static class DroneStationAutomationUtility
             if (evaluating) continue;
             int demand = ReadDemand(manager, taskEntity, task, assignments, candidates);
             if (demand <= 0) continue;
+            if (task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition)
+            {
+                if (DroneTargetPointUtility.TryGetTargetPoint(manager, task.Target, out float2 point))
+                    plans.Add(new DroneStationActivationPlan { Drone = drone, Station = station, Task = taskEntity,
+                        Origin = origin, Destination = point, Charge = charge, Quantity = 1, ViaSource = false });
+                continue;
+            }
             bool sourceStorage = task.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply || task.Kind == DroneLogisticsTaskKindEnum.StorageImport;
             foreach (Entity storage in storages)
             {
@@ -156,6 +163,7 @@ internal static class DroneStationAutomationUtility
     private static int ReadDemand(EntityManager manager, Entity entity, in DroneLogisticsTask task,
         NativeArray<Entity> assignments, Entity candidates)
     {
+        if (task.State != DroneLogisticsTaskStateEnum.Open) return 0;
         if (DroneSchedulingUtility.IsTransportKind(task.Kind))
         {
             var goal = manager.GetComponentData<DroneTransportRequirement>(entity);
@@ -167,10 +175,16 @@ internal static class DroneStationAutomationUtility
         foreach (Entity owner in assignments)
         {
             var assignment = manager.GetComponentData<DroneTaskAssignment>(owner);
-            if (assignment.Source == task.Target && !DroneSchedulingUtility.IsTerminal(assignment.State)) return 0;
+            bool sameTarget = task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition
+                ? assignment.Task == entity : assignment.Source == task.Target;
+            if (sameTarget && !DroneSchedulingUtility.IsTerminal(assignment.State)) return 0;
         }
         foreach (var pending in manager.GetBuffer<DroneTaskPendingPublicationElement>(candidates, true))
-            if (pending.Candidate.Source == task.Target && (pending.Quantity > 0 || pending.PublicationQueued)) return 0;
+        {
+            bool sameTarget = task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition
+                ? pending.Candidate.Task == entity : pending.Candidate.Source == task.Target;
+            if (sameTarget && (pending.Quantity > 0 || pending.PublicationQueued)) return 0;
+        }
         return 1;
     }
 

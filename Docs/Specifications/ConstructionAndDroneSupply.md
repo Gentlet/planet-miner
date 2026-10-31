@@ -61,7 +61,7 @@ DroneWorker는 수행자 표시만 맡고 공통 적재량은 DroneCapacityState
 - 기존 공사 자재 운송의 기록·등록·수령·예약·결과 처리와 전용 테스트/헬퍼는 제거했다. 현재 공급/회수 작업·예약·실물 인계는 새 드론 관리 소유자가 담당한다.
 - `ConstructionSite.Progress`와 생성자 인자·초기화·테스트 참조를 제거했다. 자재 도착 비율의 계산·표시 기획도 제거한다.
 - `CancelConstructionRequest`는 Command의 ConstructionCancelCommandSystem이 처리하며, 기존 실물 반환과 현장/요청 삭제는 EndCommand에서 확정한다.
-- DemolishBuildingRequest 이름 변경 제안은 철회하여 기존 이름을 유지하고 CancelConstructionRequest와 분리한다. Command 승인 대상에 PendingBuildingDemolition 상태를 기록하고 모든 철거 요청을 EndCommand에 삭제한다. 이후 건물의 입고·생산·출고·벨트 이동/진입·분배·합류 운송을 앞단에서 중단한다. 실제 반환/환급/철거는 BuildingStateApply/EndBuilding에서 확정한다.
+- DemolishBuildingRequest 이름 변경 제안은 철회하여 기존 이름을 유지하고 CancelConstructionRequest와 분리한다. Command 승인 대상에 PendingBuildingDemolition 상태를 기록하고 모든 철거 요청을 EndCommand에 삭제한다. 이후 건물의 입고·생산·출고·벨트 이동/진입·분배·합류 운송을 앞단에서 중단한다. 실제 반환/환급/철거는 [드론 철거 계약](DroneDemolition.md)의 공개된 확인 요청이 있어야 다음 BuildingStateApply/EndBuilding에서 확정한다. 확인 전 취소는 Command가 중단을 해제한다.
 
 ## 현장 생성과 점유
 

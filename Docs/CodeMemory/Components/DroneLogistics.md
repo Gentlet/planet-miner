@@ -107,7 +107,7 @@ DroneStationSpatialSyncSystem이 같은 singleton의 Fence와 함께 생성한�
 ## DroneLogisticsTask
 
 - **종류·부착 대상·목적:** 일반 IComponentData. 독립 상위 작업 엔티티의 헤더다. 공급은 (현장, 품목), 회수는 월드 실물별 작업이다. 여러 하위 배정이 같은 공급 작업을 참조할 수 있다.
-- **필드:** Kind는 ConstructionSupply/WorldItemRecovery/StorageImport/StorageExport, State는 Open/Closed/Cancelled다. Target은 현장/회수 실물/일반 운반의 고정 출발 또는 도착 건물, ItemType은 품목이다. 양수 CreationSequence는 작업 생성 순서이며 현장의 PlacementStamp와 별개다. RecoveryReason은 SiteClearance/DroneDrop을 구분한다.
+- **필드:** Kind는 ConstructionSupply/WorldItemRecovery/StorageImport/StorageExport/BuildingDemolition, State는 Open/Closed/Cancelled/ExecutionConfirmed다. 철거의 ItemType은 None이며 확인 결과 대기 상태에서는 취소/새 배차를 하지 않는다. Target은 현장/회수 실물/일반 운반의 고정 출발 또는 도착 건물, ItemType은 품목이다. 양수 CreationSequence는 작업 생성 순서이며 현장의 PlacementStamp와 별개다. RecoveryReason은 SiteClearance/DroneDrop을 구분한다.
 - **공급 판단·Producer:** DroneTaskDecisionSystem의 생성 판단 메서드가 유효 현장을 PlacementStamp 순서로 순회하여 RequiredQuantity > DeliveredQuantity인 품목의 생성 의도를 만든다. 같은 품목의 요구 행이 여러 개여도 의도는 하나다. 동일 현장·품목의 살아 있는 Open/Closed/Cancelled 작업이 있으면 자동 생성하지 않는다. 참조 정리 전 취소 root도 이 중복 억제에 참여한다. 유효한 명시 생성은 취소/요청 계약에 따라 새 root를 만들고 차단을 해제한다. DroneTaskExecutionSystem이 의도에 순번을 부여하고 작업 생성을 기록한다. 배치 경로와 무관하게 현재 현장 데이터를 기준으로 판단한다.
 - **회수 판단·Producer:** 같은 Decision 시스템은 현재 ECS의 현장 footprint 아래 실물 또는 DroneRecoveryPending이 있는 실물의 생성 의도를 만든다. 현재 GridPosition·월드 소유권·회전 footprint를 사용하고 활성 Destroy를 제외한다. 일반 월드 실물 전체를 자동 회수하지 않는다. Open 회수 작업이 있는 실물에는 중복 생성하지 않는다. Execution이 Open 작업 생성을 기록하고 EndSimulation에 공개하여 다음 시뮬레이션의 Decision부터 후보로 조회한다.
 - **Reader·Writer·종료:** DroneTaskDecisionSystem은 소실·취소 현장, 수납·소멸 실물, 현장 밖으로 나간 SiteClearance 대상 등 무효 작업을 읽기 검사로 제외하고 CloseTask 의도를 남긴다. 유효 작업은 후보 생성과 Reservation 우선순위 비교에 사용한다. DroneTaskLifecycleApplySystem이 종료 의도를 최종 재검사하여 Closed로 바꾸고 연결된 배정이 없으면 EndSimulation에 삭제한다. 명시 취소는 Cancelled로 구분한다. 이전 틱부터 Closed/Cancelled인 작업도 연결 배정과 미정산 확보량이 사라지면 삭제한다. 상위 작업 자체가 공급원 재고나 공간을 잠그지는 않는다.
@@ -132,9 +132,9 @@ Reservation은 Task/RemainingQuantity의 단일 소유 기록이다. Assignment 
 
 ## DroneRecoveryPending
 
-- **종류·부착 대상·목적:** 빈 일반 IComponentData. 드론이 보관처를 찾지 못해 월드에 내려놓은 실물의 회수 필요 표시다. 위치·품목·수량을 복제하지 않는다.
+- **종류·부착 대상·목적:** 일반 IComponentData. 안전 방출/철거 반환과 환급 실물의 한정 회수 표시다. Reason은 DroneDrop/BuildingDemolition 출처이며 기존 None 입력은 DroneDrop으로 해석한다. 위치/품목/수량은 복제하지 않는다.
 - **현재 Reader:** DroneTaskDecisionSystem의 생성 판단 메서드는 월드 실물에 이 표시가 있으면 현장 밖에서도 DroneDrop 회수 생성 의도를 만든다. Execution이 작업을 생성하면서 표시를 제거하지 않으며 Open 작업으로 중복 생성을 막는다.
-- **Producer·제거:** DroneTaskLifecycleApplySystem은 DropCargo로 월드에 반환한 기존 실물에 표시 추가를 EndSimulation에 기록한다. RecoverWorldItem이 해당 실물을 실제로 수집하면 표시 제거를 같은 ECB에 기록한다. 방출 행동 요청은 DroneActionRequestDecisionSystem이 공개된 도착으로 접수하며 인계 시스템은 기존 요청/계획을 소비한다.
+- **Producer·제거:** DroneTaskLifecycleApplySystem은 DropCargo 성공분을 EndSimulation에, Building Lifecycle은 철거 반환/환급과 철거 벨트 정지 실물을 EndBuilding에 기록한다. RecoverWorldItem이 해당 실물을 실제로 수집하면 표시 제거를 같은 ECB에 기록한다. 방출 행동 요청은 DroneActionRequestDecisionSystem이 공개된 도착으로 접수하며 인계 시스템은 기존 요청/계획을 소비한다.
 - **근거:** [정의](../../../Assets/Scripts/Components/DroneLogistics/DroneRecoveryPending.cs), [회수 판단](../../../Assets/Scripts/Systems/Drones/Decision/DroneTaskDecisionSystem.cs), [회수 생성 실행](../../../Assets/Scripts/Systems/Drones/Execution/DroneTaskExecutionSystem.cs), [방출·회수 인계](../../../Assets/Scripts/Systems/Drones/StateApply/DroneTaskLifecycleApplySystem.cs).
 
 ## DroneTaskRequest / DroneTaskRequestDecision / DroneTaskRequestExecution / DroneTaskRequestResult
@@ -157,7 +157,7 @@ Task 9.4의 외부 생성/취소 요청이다. Submit은 시뮬레이션 전 메
 ## DroneTaskInvalidationDecisionElement
 
 - **종류·부착 대상·목적:** IBufferElementData. 후보와 같은 공유 singleton에서 작업·배정이 더 이상 유효하지 않다는 판단 결과를 StateApply로 전달한다. 판단은 Decision 시스템이 수행하며 이 버퍼가 판단 결과를 보관한다. 생성 시 DroneSchedulingUtility.GetOrCreateCandidates가 부착한다. 기존 DroneTaskLifecycleDecisionElement를 이 이름으로 변경했다.
-- **필드:** Kind는 DroneTaskInvalidationDecisionKindEnum의 CloseTask/InvalidateAssignment/CompleteTransportTask/CancelAssignment, Target은 상위 작업 또는 하위 배정, AssignmentRevision은 판단한 배정 버전이다. 상위 작업 닫기는 배정 버전을 사용하지 않는다. CompleteTransportTask는 완료량==목표량/확보량0의 다음 Decision 의도이며 Lifecycle이 최신 값을 재검사한다. CancelAssignment는 유효한 작업도 사용자 승인으로 중단하는 의도다. 무효/취소 배정은 적재품이 있으면 재배정 상태로 보존하므로 모든 행이 즉시 종료를 뜻하지는 않는다.
+- **필드:** Kind는 DroneTaskInvalidationDecisionKindEnum의 CloseTask/InvalidateAssignment/CompleteTransportTask/CancelAssignment/FinishDemolitionTask, Target은 상위 작업 또는 하위 배정, AssignmentRevision은 판단한 배정 버전이다. 상위 작업 닫기는 배정 버전을 사용하지 않는다. CompleteTransportTask는 완료량==목표량/확보량0의 다음 Decision 의도이며 Lifecycle이 최신 값을 재검사한다. CancelAssignment는 유효한 작업도 사용자 승인으로 중단하는 의도다. 무효/취소 배정은 적재품이 있으면 재배정 상태로 보존하므로 모든 행이 즉시 종료를 뜻하지는 않는다.
 - **Producer:** DroneTaskDecisionSystem이 매 틱 비운 뒤 Open 작업의 유효성과 배정의 정리 필요성을 읽기 검사하여 의도를 작성한다. 무효/취소 대상은 같은 Decision의 후보 계산에서도 제외한다. 이때 작업·배정 상태나 수행자 연결은 변경하지 않는다.
 - **Consumer·수명:** Reservation은 같은 의도의 남은 예약/확보량을 반환한다. Movement/자동 출고/행동 Producer는 승인된 취소의 이번 틱 실행을 차단하고 외부 행동은 최종 인계에서 거부한다. DroneTaskLifecycleApplySystem이 Target의 생존/컴포넌트와 배정 버전을 확인한다. 일반 무효화는 최신 무효 상태를 재검사하며 명시 취소는 Decision 승인 자체를 종료 근거로 사용한다. 종료 작업은 Closed로, 무효 배정은 적재가 있으면 Retargeting/없으면 Cancelled로 반영한다. 빈 적재의 수행자 연결은 같은 배정을 가리킬 때만 해제한다. 이후 의도 버퍼를 Clear한다.
 - **삭제 보류:** Apply는 미정산 예약과 행동 요청·결과 참조가 남은 배정을 삭제하지 않는다. 보류된 배정은 다음 Decision이 다시 검사한다. 이미 Closed/Cancelled인 상위 작업은 의도 존재 여부와 별도로 연결 배정이 사라진 후 EndSimulation에 삭제한다. 의도 기록만으로 예약 해제나 실물 반환이 일어나지는 않는다.
@@ -385,3 +385,21 @@ DroneActionIdentity는 요청/결과 안의 일반 구조체다. 인계가 revis
 ## DroneChargingPreparationElement
 
 공통 건물 생성이 DroneStation/MainFacility에 부착하는 이번 틱 버퍼다. DroneChargingPreparationSystem만 Clear/작성하며 Drone/DesiredCharge/RequestedEnergy를 준비한다. BuildingPowerDemandPreparationSystem은 합산 수요를 작성하고 DroneChargingExecutionSystem은 확정 공급으로 정박 배터리/활동을 갱신한다. 원본 정박 관계나 영속 예약을 복제하지 않으며 다음 Preparation이 다시 만든다.
+
+## DroneDemolitionDecisionElement
+
+후보 singleton의 이번 틱 IBufferElementData다. Task Decision만 Clear/작성하고 Lifecycle이 소비한다. Assignment/AssignmentRevision/WorkerObservationRevision을 전달하며 공개된 AwaitingDelivery/DemolishBuilding의 실제 확인 자격이다. 새 건물 삭제 Writer나 행동 진행 상태가 아니다.
+
+## BuildingDemolitionExecutionRequest
+
+Lifecycle이 확인한 root에 EndSimulation으로 붙이는 일회성 건물 실행 요청이다. 대상은 root.Target이고 건물의 PendingBuildingDemolition.Task가 역연결이다. Building Lifecycle만 다음 EndBuilding에 반환/환급/삭제/결과를 기록하고 요청을 제거한다. root의 ExecutionConfirmed는 결과 전 수명을 보존한다.
+
+## BuildingDemolitionAutomaticTaskRequest
+
+기존 DemolishBuildingRequest를 Task 요청으로 변환한 Command의 요청 수명 표식이다. Command는 기존 접수 API로 Sequence를 부여하고 자기 결과만 다음 Command에 소비한다. 외부 요청/결과에는 이 표식을 붙이지 않는다.
+
+## BuildingDemolitionResult
+
+건물 소유자가 실제 처리 뒤 root에 EndBuilding으로 게시하는 Completed/Failed 결과다. Task Decision의 FinishDemolitionTask를 Lifecycle이 읽어 Closed를 반영한다. 확인만 보냈다는 사실이나 대상 소실을 성공으로 만들지 않는다. 결과/참조가 정리된 root와 함께 삭제한다.
+
+철거 입력/중단/단일 배차/DirectToBuilding 경로/확인/취소/반환 회수/결과의 상세 계약은 [철거 명세](../../Specifications/DroneDemolition.md)를 따른다. 이 네 타입은 기존 60개에 추가되어 현재 64개다.

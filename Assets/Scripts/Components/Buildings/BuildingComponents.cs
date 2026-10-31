@@ -83,11 +83,13 @@ public struct IndestructibleBuilding : IComponentData
 /// <summary>
 /// 역할·목적: 철거 승인을 대상 건물의 상태로 유지하여 요청 엔티티 삭제 후에도 해당 틱의 동작을 중단한다.
 /// 부착 엔티티: Command에서 철거가 승인된 완공 건물. 요청 엔티티나 현장에는 붙이지 않는다.
-/// 생성: BuildingDemolitionCommandSystem이 EndCommand에 부착한다. 승인된 대상과 철거 조건은 StateApply까지 유지하는 계약이다.
+/// 생성: BuildingDemolitionCommandSystem이 EndCommand에 부착한다. 드론 확인 전까지 대상과 중단을 보존한다.
 /// 이용: 입고·생산·출고·벨트/라우팅 Decision과 드론 판단/검증이 읽어 실행 후보를 막는다.
-/// BuildingLifecycleApplySystem(StateApply)이 이 상태로 철거 대상을 조회하여 내용물 반환·비용 환급·건물 삭제를 기록한다.
-/// 제거: EndBuilding에서 건물과 함께 삭제한다. BuildingType이 소실된 경우에는 상태만 제거하는 방어 경로가 있다.
+/// Building Lifecycle은 연결 root의 공개된 실행 요청이 있어야 반환/환급/삭제를 기록한다.
+/// 제거: 취소는 Command가 다음 EndCommand에 해제하고 실행 완료는 EndBuilding에서 건물과 함께 삭제한다. BuildingType이 소실된 경우에는 상태만 제거하는 방어 경로가 있다.
 /// </summary>
 public struct PendingBuildingDemolition : IComponentData
 {
+    // Command가 중단을 승인하고 Task Execution이 같은 EndSimulation ECB에서 생성한 root를 연결한다.
+    public Entity Task;
 }

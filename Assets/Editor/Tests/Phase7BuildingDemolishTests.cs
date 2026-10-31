@@ -38,6 +38,7 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
     {
         // Command/EndCommand 승인과 동작 중단 뒤 Lifecycle/EndStateApply가 반환·환급·삭제를 반영한다.
         RunDemolitionCommandPhase();
+        ConfirmedBuildingDemolitionTestSystem.ConfirmApproved(_entityManager);
         Simulation.UpdateAndComplete(_lifecycleApplySystem);
         Simulation.Playback(_ecbSystem);
     }
@@ -212,10 +213,12 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         if (ownershipFirst)
         {
             Simulation.UpdateAndComplete(ownershipApply);
+            ConfirmedBuildingDemolitionTestSystem.ConfirmApproved(_entityManager);
             Simulation.UpdateAndComplete(_lifecycleApplySystem);
         }
         else
         {
+            ConfirmedBuildingDemolitionTestSystem.ConfirmApproved(_entityManager);
             Simulation.UpdateAndComplete(_lifecycleApplySystem);
             Simulation.UpdateAndComplete(ownershipApply);
         }
@@ -440,6 +443,7 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
             Assert.Less(progress, 1f, "철거 목적지의 경계 이전에서 대기한다.");
         }
 
+        ConfirmedBuildingDemolitionTestSystem.ConfirmApproved(_entityManager);
         Simulation.UpdateAndComplete(_lifecycleApplySystem);
         Simulation.Playback(_ecbSystem);
         Assert.IsFalse(_entityManager.Exists(target));
@@ -527,6 +531,7 @@ public class Phase7BuildingDemolishTests : EcsWorldTestFixture
         stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
         stateApplyGroup.AddSystemToUpdateList(_lifecycleApplySystem);
         stateApplyGroup.SortSystems();
+        ConfirmedBuildingDemolitionTestSystem.ConfirmApproved(_entityManager);
         stateApplyGroup.Update();
         Simulation.Playback(_ecbSystem);
         Assert.AreEqual(sourcePosition, _entityManager.GetComponentData<GridPosition>(routedItem).Value);

@@ -29,11 +29,11 @@ DropCargo의 Target은 Entity.Null이며 건물 수령점 검사 대신 의도�
 
 ## 표시 기반 회수와 후속 범위
 
-방출에 성공한 동일 아이템 Entity에만 DroneRecoveryPending을 기록한다. 다음 Task Decision은 기존 한정 WorldItemRecovery 작업을 만들고 기존 이동/픽업/보관으로 회수한다. 보관처가 모두 가득 차면 월드 실물/표시와 미배정 회수 작업을 보존하고, 공간이 생기면 다시 배차한다. 픽업 성공 뒤 기존 Lifecycle이 표시를 제거한다. 일반 바닥/벨트 실물 전체를 자동 회수하지 않는다.
+안전 방출 성공 Entity에는 DroneRecoveryPending을 기록한다. [철거 계약](DroneDemolition.md)은 기존 반환/환급 Entity에 BuildingDemolition 출처의 같은 표시를 EndBuilding에 기록한다. 다음 Task Decision은 기존 한정 WorldItemRecovery 작업을 만들고 기존 이동/픽업/보관으로 회수한다. 보관처가 모두 가득 차면 월드 실물/표시와 미배정 회수 작업을 보존하고, 공간이 생기면 다시 배차한다. 픽업 성공 뒤 기존 Lifecycle이 표시를 제거한다. 일반 바닥/벨트 실물 전체를 자동 회수하지 않는다.
 
 기존 사용자 취소의 동일 키 자동 생성 차단은 유지한다. 취소한 월드 회수의 같은 아이템 Entity가 다시 방출되어도 기존 차단을 임의 해제하지 않으며 유효한 명시 생성이 해제한다.
 
-일반 바닥/사용자 범위 회수 확장은 Task 9.18, 드론 직접 철거/정거장 철거의 추가 Producer는 각 후속 Task, 공사 취소 통합은 Task 9.20에 남긴다.
+일반 건물 직접 철거는 철거 계약을 따른다. 일반 바닥/사용자 범위 회수 확장은 Task 9.18, 정거장 철거의 추가 Producer는 해당 후속 Task, 공사 취소 통합은 Task 9.20에 남긴다.
 
 ## 검증
 

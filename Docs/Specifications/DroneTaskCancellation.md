@@ -4,7 +4,7 @@
 
 2026-10-30 확정한 1A/2A/3A를 적용한다. 기존 SubmitCancel은 root 단위다. Open root뿐 아니라 실제 실행 중인 비종료 배정이 남은 Closed root도 취소한다. 회수 root는 픽업 후 Closed여도 납품 전일 수 있다. 완전히 종료된 Closed root와 활성 배정 없이 일반 운반 목표량을 이미 달성한 작업은 거부한다.
 
-지원 종류는 기존 ConstructionSupply/WorldItemRecovery/StorageImport/StorageExport다. 수동 우선순위와 일시 중단/재개는 추가하지 않는다. 실제 이동 실패/대상 무효/인계 성공 및 부족량은 기존 결과와 정산 경로를 재사용하며 새 추정 타임아웃이나 범용 실패 신고 API를 추가하지 않는다. 추가 작업 유형의 실제 Producer는 해당 후속 구현에서 연결한다.
+지원 종류는 ConstructionSupply/WorldItemRecovery/StorageImport/StorageExport와 [철거 계약](DroneDemolition.md)의 BuildingDemolition이다. 철거는 ExecutionConfirmed 공개 후 취소를 거부하며 확인 전 취소는 다음 Command에 건물 중단을 해제한다. 수동 우선순위와 일시 중단/재개는 추가하지 않는다. 실제 이동 실패/대상 무효/인계 성공 및 부족량은 기존 결과와 정산 경로를 재사용하며 새 추정 타임아웃이나 범용 실패 신고 API를 추가하지 않는다. 추가 작업 유형의 실제 Producer는 해당 후속 구현에서 연결한다.
 
 ## 같은 틱 우선순위
 
@@ -30,7 +30,7 @@ Cancelled는 원래 작업 중단 승인과 정산을 뜻한다. 화물이 이�
 
 목표 소멸/이동 에너지 실패는 기존 일반 무효화 경로를 유지한다. 실패 자체는 사용자 취소가 아니므로 영속 사용자 생성 차단을 만들지 않는다. 충전/귀환/미세 잔량은 기존 충전 및 Lifecycle 소유자를 따르며 취소 요청이 배터리를 환급하거나 복제하지 않는다.
 
-실제 자동 안전 방출/표시 기반 회수는 [화물 복구 계약](DroneCargoRecovery.md)에 연결했다. 추가 직접 작업은 해당 Producer, 공사 취소 통합은 Task 9.20에 남긴다. 기존 보관 복구는 재사용한다.
+실제 자동 안전 방출/표시 기반 회수는 [화물 복구 계약](DroneCargoRecovery.md)에 연결했다. 일반 건물 철거는 철거 계약에 연결했고 정거장/추가 직접 작업은 해당 Producer, 공사 취소 통합은 Task 9.20에 남긴다. 기존 보관 복구는 재사용한다.
 
 ## 검증
 

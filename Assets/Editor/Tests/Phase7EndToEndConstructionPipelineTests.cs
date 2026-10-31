@@ -44,6 +44,7 @@ public class Phase7EndToEndConstructionPipelineTests : EcsWorldTestFixture
         var reservationGroup = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
         var executionGroup = _world.GetOrCreateSystemManaged<BuildingExecutionGroup>();
         var stateApplyGroup = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
+        stateApplyGroup.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<ConfirmedBuildingDemolitionTestSystem>());
         var synchronizationGroup = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
 
         _simulationGroup.AddSystemToUpdateList(commandGroup);

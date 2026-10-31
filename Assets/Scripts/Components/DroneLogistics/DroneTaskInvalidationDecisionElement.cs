@@ -1,7 +1,7 @@
 using Unity.Entities;
 
 /// <summary>
-/// 역할/목적: 대상 무효/목표 달성의 상위 작업 닫기, 일반 무효화, 사용자 승인 취소의 배정 종료 의도를 구분한다.
+/// 역할/목적: 대상 무효/목표 달성/건물 결과 수신의 상위 작업 닫기와 일반 무효화/사용자 취소의 배정 종료 의도를 구분한다.
 /// 부착 엔티티: 열거형 자체는 부착하지 않으며 DroneTaskInvalidationDecisionElement.Kind에 포함한다.
 /// 생성·이용: DroneTaskDecisionSystem(Decision)이 판단하고 DroneTaskLifecycleApplySystem(StateApply)이 대상/현재 상태를 재검사하여 반영한다.
 /// 제거: 값을 담은 컴포넌트·판단·결과의 갱신/삭제 수명을 따른다. 별도 엔티티 수명을 갖지 않는다.
@@ -13,6 +13,7 @@ public enum DroneTaskInvalidationDecisionKindEnum : byte
     InvalidateAssignment,
     CompleteTransportTask,
     CancelAssignment,
+    FinishDemolitionTask,
     Count
 }
 

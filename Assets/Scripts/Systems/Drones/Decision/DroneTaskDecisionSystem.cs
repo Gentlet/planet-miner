@@ -56,6 +56,8 @@ public partial struct DroneTaskDecisionSystem : ISystem
         routeDecisions.Clear();
         var invalidationDecisions = manager.GetBuffer<DroneTaskInvalidationDecisionElement>(_candidates);
         invalidationDecisions.Clear();
+        var demolitionDecisions = manager.GetBuffer<DroneDemolitionDecisionElement>(_candidates);
+        demolitionDecisions.Clear();
         using var tasks = _tasks.ToEntityArray(Allocator.Temp);
         using var sites = _sites.ToEntityArray(Allocator.Temp);
         using var storages = _storages.ToEntityArray(Allocator.Temp);
@@ -80,6 +82,15 @@ public partial struct DroneTaskDecisionSystem : ISystem
         {
             if (DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, tasks[t])) continue;
             var task = manager.GetComponentData<DroneLogisticsTask>(tasks[t]);
+            if (task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition &&
+                manager.HasComponent<BuildingDemolitionResult>(tasks[t]))
+            {
+                invalidationDecisions.Add(new DroneTaskInvalidationDecisionElement
+                {
+                    Kind = DroneTaskInvalidationDecisionKindEnum.FinishDemolitionTask, Target = tasks[t]
+                });
+                continue;
+            }
             if (task.State == DroneLogisticsTaskStateEnum.Open && !DroneSchedulingUtility.IsTaskValid(manager, task, sites))
             {
                 invalidationDecisions.Add(new DroneTaskInvalidationDecisionElement
@@ -125,6 +136,16 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 continue;
             }
             busyWorkers.Add(assignment.Worker);
+            if (assignment.NextAction == DroneActionKindEnum.DemolishBuilding)
+            {
+                uint observed = manager.GetComponentData<DroneWorkerObservation>(assignment.Worker).Revision;
+                if (DroneDemolitionUtility.CanConfirm(manager, assignments[a], assignment.Revision, observed))
+                    demolitionDecisions.Add(new DroneDemolitionDecisionElement
+                    {
+                        Assignment = assignments[a], AssignmentRevision = assignment.Revision,
+                        WorkerObservationRevision = observed
+                    });
+            }
             if (assignment.NextAction == DroneActionKindEnum.RecoverWorldItem) claimedRecoveryItems.Add(assignment.Source);
         }
         FindInvalidRoutes(manager, routes, removedRoutes, carryingCapacity);
@@ -160,6 +181,28 @@ public partial struct DroneTaskDecisionSystem : ISystem
                     continue;
                 }
                 bool transport = DroneSchedulingUtility.IsTransportKind(task.Kind);
+                if (task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition)
+                {
+                    if (task.State != DroneLogisticsTaskStateEnum.Open) continue;
+                    bool assigned = false;
+                    foreach (Entity owner in assignments)
+                    {
+                        var current = manager.GetComponentData<DroneTaskAssignment>(owner);
+                        assigned |= current.Task == tasks[t] && !DroneSchedulingUtility.IsTerminal(current.State);
+                    }
+                    if (assigned) continue;
+                    Entity direct = FindOrRequestRoute(manager, worker, observation, Entity.Null, task.Target,
+                        routes, pendingRoutes, routeDecisions, removedRoutes, usedRoutes, carryingCapacity, demolition: true);
+                    if (direct == Entity.Null || !DroneSchedulingUtility.TryReadRoute(manager, direct, carryingCapacity,
+                        out bool directReachable, out _) || !directReachable) continue;
+                    candidates.Add(new DroneTaskCandidateDecisionElement
+                    {
+                        Worker = worker, Task = tasks[t], Destination = task.Target,
+                        RouteRequest = direct, ItemType = ItemTypeEnum.None,
+                        WorkerObservationRevision = observation.Revision, Quantity = 1
+                    });
+                    continue;
+                }
                 bool supply = task.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply;
                 bool sourceIsStorage = supply || task.Kind == DroneLogisticsTaskKindEnum.StorageImport;
                 if (transport && !sourceIsStorage && DroneSchedulingUtility.CountInventory(manager, task.Target, task.ItemType) <= 0)
@@ -301,7 +344,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         Entity source, Entity destination, NativeArray<Entity> routes,
         NativeList<DroneRouteEvaluationRequest> pending, DynamicBuffer<DroneRouteDecisionElement> routeDecisions,
         NativeHashSet<Entity> removedRoutes, NativeHashSet<Entity> usedRoutes, int carryingCapacity,
-        Entity assignment = default, uint assignmentRevision = 0, bool dropPositionSearch = false)
+        Entity assignment = default, uint assignmentRevision = 0, bool dropPositionSearch = false, bool demolition = false)
     {
         // 같은 관측·배정에 대한 기존 요청은 유지하고, 이번 틱 미게시 요청은 중복 생성하지 않는다.
         // 실제 거리 계산은 외부 평가자가 담당하므로 새 요청 의도를 만든 틱에는 후보를 확정하지 않는다.
@@ -336,7 +379,8 @@ public partial struct DroneTaskDecisionSystem : ISystem
             AssignmentRevision = assignmentRevision,
             EvaluationRevision = _evaluationRevision,
             WorkerObservationRevision = observation.Revision,
-            Kind = assignment == Entity.Null ? DroneRouteKindEnum.ViaSource : DroneRouteKindEnum.Direct,
+            Kind = demolition ? DroneRouteKindEnum.DirectToBuilding :
+                assignment == Entity.Null ? DroneRouteKindEnum.ViaSource : DroneRouteKindEnum.Direct,
             IsDropPositionSearch = dropPositionSearch,
             OriginPosition = observation.Position,
             Source = source,
@@ -683,8 +727,10 @@ public partial struct DroneTaskDecisionSystem : ISystem
             }
 
             var reason = manager.HasComponent<DroneRecoveryPending>(item)
-                ? DroneRecoveryReasonEnum.DroneDrop
+                ? manager.GetComponentData<DroneRecoveryPending>(item).Reason
                 : DroneRecoveryReasonEnum.None;
+            if (reason == DroneRecoveryReasonEnum.None && manager.HasComponent<DroneRecoveryPending>(item))
+                reason = DroneRecoveryReasonEnum.DroneDrop;
             if (reason == DroneRecoveryReasonEnum.None &&
                 IsInsideCreationSite(manager.GetComponentData<GridPosition>(item).Value, footprints))
             {

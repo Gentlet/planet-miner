@@ -5,9 +5,9 @@
 ## 지원 범위와 입력
 
 - `DroneTaskRequestUtility.SubmitCreate`는 공사 현장/품목별 ConstructionSupply, 현장 방해물 또는 DroneRecoveryPending 방출품의 WorldItemRecovery를 지원한다. StorageImport/StorageExport는 세 보관 건물과 양수 일회성 수량의 요청/계획 및 실제 운반을 지원한다. 공급은 현재 미충족 요구가 있어야 하고 회수는 현재 월드 Owner/품목/회수 사유가 유효해야 한다.
-- 일반 바닥 전체 회수/범위 회수/드론 직접 철거의 실제 지원은 후속 Task다. 일반 반입과 반출의 요청/계획은 [작업 계획 명세](DroneTaskPlanning.md)를 따르며 실제 운반은 픽업/납품 계약을 따른다. 지원하지 않는 Kind/Operation은 Unsupported, 대상/요구/회수 자격이 맞지 않으면 Rejected로 소비한다. 미지원 요청을 빈 작업이나 성공 결과로 남기지 않는다.
-- `SubmitCancel`은 Open root와 비종료 배정이 남은 Closed root를 대상으로 한다. 종류/대상/품목/일반 운반 수량 변경은 취소 후 새 생성 요청이며 공급 작업 취소는 공사 현장 취소와 다르다. 현장/요구량/아이템/배터리/화물 원본을 취소 요청이 변경하지 않는다.
-- 외부 접수는 시뮬레이션 전 메인 스레드다. 요청용 World Sequence는 실제 작업 CreationSequence와 독립이며 0/소진을 접수 전에 거부한다. 실제 새 작업을 기록할 때만 기존 Execution 소유자가 CreationSequence를 사용한다.
+- BuildingDemolition은 일반 완공 건물/ItemType=None/Quantity=0의 철거를 [철거 계약](DroneDemolition.md)으로 지원한다. 일반 바닥 전체/범위 회수는 후속이다. 일반 반입과 반출의 요청/계획은 [작업 계획 명세](DroneTaskPlanning.md)를 따르며 실제 운반은 픽업/납품 계약을 따른다. 지원하지 않는 Kind/Operation은 Unsupported, 대상/요구/회수 자격이 맞지 않으면 Rejected로 소비한다. 미지원 요청을 빈 작업이나 성공 결과로 남기지 않는다.
+- `SubmitCancel`은 Open root와 비종료 배정이 남은 Closed root를 대상으로 한다. 종류/대상/품목/일반 운반 수량 변경은 취소 후 새 생성 요청이며 공급 작업 취소는 공사 현장 취소와 다르다. 현장/요구량/아이템/배터리/화물 원본을 취소 요청이 변경하지 않는다. 철거는 확인 공개 전 취소 시 다음 Command가 건물 중단을 해제하며 ExecutionConfirmed 이후에는 거부한다.
+- 외부 접수는 시뮬레이션 전 메인 스레드다. 건물 Command의 기존 입력 어댑터도 같은 접수 API를 사용하고 자기 결과만 소비한다. 요청용 World Sequence는 실제 작업 CreationSequence와 독립이며 0/소진을 접수 전에 거부한다. 실제 새 작업을 기록할 때만 기존 Execution 소유자가 CreationSequence를 사용한다.
 
 ## 접수 순서와 중복
 

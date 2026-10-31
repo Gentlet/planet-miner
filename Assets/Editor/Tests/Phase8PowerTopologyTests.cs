@@ -59,6 +59,7 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         var reservation = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
         var execution = _world.GetOrCreateSystemManaged<BuildingExecutionGroup>();
         var apply = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
+        apply.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<ConfirmedBuildingDemolitionTestSystem>());
         var commit = _world.GetOrCreateSystemManaged<SimulationCommitGroup>();
         var sync = _world.GetOrCreateSystemManaged<SynchronizationGroup>();
         _simulation.AddSystemToUpdateList(command);
@@ -1336,6 +1337,7 @@ public class Phase8PowerTopologyTests : EcsWorldTestFixture
         var reservation = _world.GetOrCreateSystemManaged<BuildingReservationGroup>();
         reservation.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingStorageInputReservationSystem>());
         var apply = _world.GetOrCreateSystemManaged<BuildingStateApplyGroup>();
+        apply.AddSystemToUpdateList(_world.GetOrCreateSystemManaged<ConfirmedBuildingDemolitionTestSystem>());
         apply.AddSystemToUpdateList(_world.GetOrCreateSystem<BuildingItemStorageApplySystem>());
         apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemOwnershipApplySystem>());
         apply.AddSystemToUpdateList(_world.GetOrCreateSystem<ItemLifecycleApplySystem>());

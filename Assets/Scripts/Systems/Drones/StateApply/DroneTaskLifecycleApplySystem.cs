@@ -46,6 +46,7 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         var manager = state.EntityManager;
         var ecb = state.World.GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>().CreateCommandBuffer();
         ApplyActionTransfers(manager, ecb);
+        ApplyDemolitionDecisions(manager, ecb);
         // 행동 반영 뒤의 배정 상태로 무효화 의도를 재검사한다. 요청/결과 참조는 ECB 재생 전까지 남겨 삭제를 보류한다.
         using var tasks = _tasks.ToEntityArray(Allocator.Temp);
         using var sites = _sites.ToEntityArray(Allocator.Temp);
@@ -55,6 +56,28 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         ApplyInvalidationDecisions(manager, requests, results, ecb, sites);
         ApplyTaskRequests(manager, ecb);
         RetireEndedTasks(manager, tasks, assignments, ecb);
+    }
+
+    private void ApplyDemolitionDecisions(EntityManager manager, EntityCommandBuffer ecb)
+    {
+        var decisions = manager.GetBuffer<DroneDemolitionDecisionElement>(_candidates);
+        foreach (var decision in decisions)
+        {
+            if (!DroneDemolitionUtility.CanConfirm(manager, decision.Assignment, decision.AssignmentRevision,
+                decision.WorkerObservationRevision)) continue;
+            var assignment = manager.GetComponentData<DroneTaskAssignment>(decision.Assignment);
+            if (DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, assignment.Task)) continue;
+            var task = manager.GetComponentData<DroneLogisticsTask>(assignment.Task);
+            // 확인과 건물 삭제는 별도 공개 경계다. root는 건물 결과를 받을 때까지 보존한다.
+            task.State = DroneLogisticsTaskStateEnum.ExecutionConfirmed;
+            ecb.SetComponent(assignment.Task, task);
+            ecb.AddComponent<BuildingDemolitionExecutionRequest>(assignment.Task);
+            assignment.State = DroneTaskAssignmentStateEnum.Completed;
+            assignment.NextAction = DroneActionKindEnum.None;
+            manager.SetComponentData(decision.Assignment, assignment);
+            manager.SetComponentData(assignment.Worker, new DroneWorkerAssignment());
+        }
+        decisions.Clear();
     }
 
     private EntityQuery _taskRequests;
@@ -147,6 +170,15 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
                 if (!manager.HasComponent<DroneLogisticsTask>(decision.Target)) continue;
                 var task = manager.GetComponentData<DroneLogisticsTask>(decision.Target);
                 if (task.State != DroneLogisticsTaskStateEnum.Open || DroneSchedulingUtility.IsTaskValid(manager, task, sites)) continue;
+                task.State = DroneLogisticsTaskStateEnum.Closed;
+                manager.SetComponentData(decision.Target, task);
+            }
+            else if (decision.Kind == DroneTaskInvalidationDecisionKindEnum.FinishDemolitionTask)
+            {
+                if (!manager.HasComponent<BuildingDemolitionResult>(decision.Target)) continue;
+                var task = manager.GetComponentData<DroneLogisticsTask>(decision.Target);
+                if (task.Kind != DroneLogisticsTaskKindEnum.BuildingDemolition ||
+                    task.State != DroneLogisticsTaskStateEnum.ExecutionConfirmed) continue;
                 task.State = DroneLogisticsTaskStateEnum.Closed;
                 manager.SetComponentData(decision.Target, task);
             }
@@ -438,7 +470,8 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         if (!DroneSchedulingUtility.IsStorage(manager, assignment.Destination)) return 0;
         if (!ItemOwnershipApplySystem.CanTransferItem(manager, assignment.Source, assignment.ItemType, Entity.Null)) return 0;
         var task = manager.GetComponentData<DroneLogisticsTask>(assignment.Task);
-        if (task.RecoveryReason != DroneRecoveryReasonEnum.DroneDrop)
+        if (task.RecoveryReason != DroneRecoveryReasonEnum.DroneDrop &&
+            task.RecoveryReason != DroneRecoveryReasonEnum.BuildingDemolition)
         {
             // 현장 정리 회수는 아직 현장 아래 있는 실물에만 유효하다. 드론 배출품은 현장 밖에서도 회수 대상이다.
             if (task.RecoveryReason != DroneRecoveryReasonEnum.SiteClearance) return 0;

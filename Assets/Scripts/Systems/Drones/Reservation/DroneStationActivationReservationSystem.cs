@@ -114,10 +114,17 @@ public partial struct DroneStationActivationReservationSystem : ISystem
             foreach (Entity owner in AssignmentEntities)
             {
                 var assignment = Assignments[owner];
-                if (assignment.Source == task.Target && !DroneSchedulingUtility.IsTerminal(assignment.State)) return 0;
+                bool sameTarget = task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition
+                    ? assignment.Task == taskEntity : assignment.Source == task.Target;
+                if (sameTarget &&
+                    !DroneSchedulingUtility.IsTerminal(assignment.State)) return 0;
             }
             foreach (var pending in Pending[Candidates])
-                if (pending.Candidate.Source == task.Target && (pending.Quantity > 0 || pending.PublicationQueued)) return 0;
+            {
+                bool sameTarget = task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition
+                    ? pending.Candidate.Task == taskEntity : pending.Candidate.Source == task.Target;
+                if (sameTarget && (pending.Quantity > 0 || pending.PublicationQueued)) return 0;
+            }
             return 1;
         }
     }

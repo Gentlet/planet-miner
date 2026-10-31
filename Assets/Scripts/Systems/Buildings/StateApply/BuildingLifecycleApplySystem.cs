@@ -6,10 +6,10 @@ using Unity.Rendering;
 using Unity.Transforms;
 
 /// <summary>
-/// 역할·목적: 완공 건물의 직접 생성 요청과 Command에서 승인된 철거를 최종 반영한다.
-/// 처리 단계: StateApply, RoutingApplySystem/BuildingItemStorageApplySystem 이후. 입력은 SpawnBuildingRequest, 대상 건물의 PendingBuildingDemolition과 설정/프리팹 DB다.
+/// 역할/목적: 직접 생성 요청과 Command 승인/드론 확인이 공개된 일반 건물 철거를 최종 반영한다.
+/// 처리 단계: Building StateApply. 입력은 SpawnBuildingRequest, Pending 상태/연결 root의 실행 요청과 설정/프리팹 DB다.
 /// 출력·소유권: 보관/생산 실물의 월드 반환, 건축 비용 환급 Spawn, 철거 벨트 위 실물 정지, 건물 생성/삭제를 담당한다.
-/// 철거 정책은 Command의 승인 계약을 유지하고 여기서는 BuildingType 소실만 방어한다. 현장 취소/완공은 각각의 공사 소유자가 처리한다.
+/// 철거 정책은 Command 승인/드론 확인을 유지하며 대상 소실/환급 실패를 root 결과로 반환한다. 현장 취소/완공은 공사 소유자가 처리한다.
 /// 정리·가시화: 요청 소비와 건물/승인 상태 삭제 및 구조 변경은 EndBuilding에 확정한다. Job은 철거→벨트 정리→직접 생성 순서로 기록하며 전체 rollback은 보장하지 않는다.
 /// </summary>
 [UpdateInGroup(typeof(BuildingStateApplyGroup))]
@@ -19,6 +19,7 @@ public partial struct BuildingLifecycleApplySystem : ISystem
 {
 
     private EntityQuery _pendingDemolitionQuery;
+    private EntityQuery _demolitionRequests;
     private EntityQuery _spawnQuery;
     private EntityQuery _beltItemQuery;
     private EntityQuery _buildingPrefabDbQuery;
@@ -42,6 +43,7 @@ public partial struct BuildingLifecycleApplySystem : ISystem
             .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
             .Build();
 
+        _demolitionRequests = state.GetEntityQuery(typeof(BuildingDemolitionExecutionRequest), typeof(DroneLogisticsTask));
         _spawnQuery = SystemAPI.QueryBuilder()
             .WithAll<SpawnBuildingRequest>()
             .Build();
@@ -79,7 +81,7 @@ public partial struct BuildingLifecycleApplySystem : ISystem
 
     public void OnUpdate(ref SystemState state)
     {
-        bool hasPendingDemolition = !_pendingDemolitionQuery.IsEmptyIgnoreFilter;
+        bool hasPendingDemolition = !_demolitionRequests.IsEmptyIgnoreFilter;
         bool hasSpawnRequests = !_spawnQuery.IsEmptyIgnoreFilter;
 
         if (!hasPendingDemolition && !hasSpawnRequests)
@@ -136,7 +138,9 @@ public partial struct BuildingLifecycleApplySystem : ISystem
                 ProductBufferLookup = _productBufferLookup,
                 MaterialBufferLookup = _materialBufferLookup,
                 ItemPrefabBufferLookup = _itemPrefabBufferLookup,
-                DemolishedBeltPositions = demolishedBeltPositions
+                DemolishedBeltPositions = demolishedBeltPositions,
+                ExecutionRequests = state.GetComponentLookup<BuildingDemolitionExecutionRequest>(true),
+                RecoveryMarks = state.GetComponentLookup<DroneRecoveryPending>(true)
             };
             currentDep = demolishJob.Schedule(_pendingDemolitionQuery, currentDep);
 
@@ -145,10 +149,13 @@ public partial struct BuildingLifecycleApplySystem : ISystem
             {
                 DemolishedBeltPositions = demolishedBeltPositions,
                 DestroyRequestLookup = _destroyRequestLookup,
+                RecoveryMarks = state.GetComponentLookup<DroneRecoveryPending>(true),
                 ECB = ecb
             };
             currentDep = cleanupJob.Schedule(_beltItemQuery, currentDep);
             demolishedBeltPositions.Dispose(currentDep);
+            currentDep = new MissingDemolitionTargetResultJob
+            { Buildings = _buildingTypeLookup, ECB = ecb }.Schedule(_demolitionRequests, currentDep);
         }
 
         // 2단계: 스폰 요청 일괄 처리
@@ -179,6 +186,7 @@ public partial struct BuildingLifecycleApplySystem : ISystem
 [BurstCompile]
 public partial struct DemolishBeltItemCleanupJob : IJobEntity
 {
+    [ReadOnly] public ComponentLookup<DroneRecoveryPending> RecoveryMarks;
     [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyRequestLookup;
     [ReadOnly]
     public NativeList<int2> DemolishedBeltPositions;
@@ -197,6 +205,8 @@ public partial struct DemolishBeltItemCleanupJob : IJobEntity
             if (gridPos.Value.Equals(DemolishedBeltPositions[i]))
             {
                 ECB.SetComponentEnabled<BeltMovementState>(itemEntity, false);
+                if (!RecoveryMarks.HasComponent(itemEntity))
+                    ECB.AddComponent(itemEntity, new DroneRecoveryPending { Reason = DroneRecoveryReasonEnum.BuildingDemolition });
                 break;
             }
         }
@@ -204,11 +214,13 @@ public partial struct DemolishBeltItemCleanupJob : IJobEntity
 }
 
 /// <summary>
-/// PendingBuildingDemolition 상태를 소비하여 완공 건물을 철거하고 내용물 및 건설 재료를 반환하는 단일 워커 Burst Job.
+/// 드론 확인 요청이 공개된 PendingBuildingDemolition만 소비해 반환/환급/삭제와 root 결과를 기록하는 단일 Burst Job.
 /// </summary>
 [BurstCompile]
 public partial struct DemolishBuildingApplyJob : IJobEntity
 {
+    [ReadOnly] public ComponentLookup<BuildingDemolitionExecutionRequest> ExecutionRequests;
+    [ReadOnly] public ComponentLookup<DroneRecoveryPending> RecoveryMarks;
     [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyRequestLookup;
     public EntityCommandBuffer ECB;
     public bool HasConfig;
@@ -238,6 +250,8 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
 
     public void Execute(Entity buildingEntity, in PendingBuildingDemolition pending)
     {
+        if (!ExecutionRequests.HasComponent(pending.Task)) return;
+        bool refundFailed = false;
         // 정책 검증과 중복 제거는 Command에서 끝난다. 여기서는 대상 소실만 방어한다.
         if (!BuildingTypeLookup.HasComponent(buildingEntity))
         {
@@ -275,6 +289,8 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
                 }
 
                 ECB.SetComponent(item, ItemOwnership.WorldItem);
+                if (!RecoveryMarks.HasComponent(item))
+                    ECB.AddComponent(item, new DroneRecoveryPending { Reason = DroneRecoveryReasonEnum.BuildingDemolition });
                 ECB.RemoveComponent<DisableRendering>(item);
                 ECB.SetComponent(item, new GridPosition(sitePos));
                 ECB.SetComponent(item, LocalTransform.FromPosition(worldPos));
@@ -299,6 +315,8 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
                 }
 
                 ECB.SetComponent(item, ItemOwnership.WorldItem);
+                if (!RecoveryMarks.HasComponent(item))
+                    ECB.AddComponent(item, new DroneRecoveryPending { Reason = DroneRecoveryReasonEnum.BuildingDemolition });
                 ECB.RemoveComponent<DisableRendering>(item);
                 ECB.SetComponent(item, new GridPosition(sitePos));
                 ECB.SetComponent(item, LocalTransform.FromPosition(worldPos));
@@ -336,12 +354,14 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
                         msg.Append(itemType.ToFixedString());
                         msg.Append((FixedString128Bytes)"'. Refund spawning skipped.");
                         SimulationFailureUtility.Record(ref ECB, msg);
+                        refundFailed = true;
                         continue;
                     }
 
                     for (int q = 0; q < quantity; q++)
                     {
-                        ItemLifecycleUtility.SpawnPrefabItem(ref ECB, prefabEntity, itemType, sitePos, worldPos, ItemOwnership.WorldItem);
+                        Entity refund = ItemLifecycleUtility.SpawnPrefabItem(ref ECB, prefabEntity, itemType, sitePos, worldPos, ItemOwnership.WorldItem);
+                        ECB.AddComponent(refund, new DroneRecoveryPending { Reason = DroneRecoveryReasonEnum.BuildingDemolition });
                     }
 
                 }
@@ -349,6 +369,9 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
         }
 
         // 8. 건물 엔티티 파괴 (동일 틱 Phase 6 공간 동기화 시 건물 공간 점유 자동 해제)
+        ECB.AddComponent(pending.Task, new BuildingDemolitionResult
+        { Status = refundFailed ? BuildingDemolitionResultStatus.Failed : BuildingDemolitionResultStatus.Completed });
+        ECB.RemoveComponent<BuildingDemolitionExecutionRequest>(pending.Task);
         ECB.DestroyEntity(buildingEntity);
 
 
@@ -396,5 +419,19 @@ public partial struct SpawnBuildingApplyJob : IJobEntity
 
         // 요청 엔티티 소비 (Consume-on-Apply)
         ECB.DestroyEntity(requestEntity);
+    }
+}
+
+/// <summary>확인 뒤 대상이 소실된 root에 실패를 반환해 결과 대기가 남지 않게 한다.</summary>
+[BurstCompile]
+public partial struct MissingDemolitionTargetResultJob : IJobEntity
+{
+    [ReadOnly] public ComponentLookup<BuildingType> Buildings;
+    public EntityCommandBuffer ECB;
+    public void Execute(Entity taskEntity, in DroneLogisticsTask task, in BuildingDemolitionExecutionRequest request)
+    {
+        if (Buildings.HasComponent(task.Target)) return;
+        ECB.AddComponent(taskEntity, new BuildingDemolitionResult { Status = BuildingDemolitionResultStatus.Failed });
+        ECB.RemoveComponent<BuildingDemolitionExecutionRequest>(taskEntity);
     }
 }

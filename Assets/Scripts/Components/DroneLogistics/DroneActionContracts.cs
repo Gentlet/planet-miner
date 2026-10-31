@@ -15,6 +15,7 @@ public enum DroneActionKindEnum : byte
     SupplyConstructionSite,
     StoreCargo,
     DropCargo,
+    DemolishBuilding,
     Count
 }
 

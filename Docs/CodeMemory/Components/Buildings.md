@@ -126,18 +126,10 @@ Task 9.3의 `DroneStationStorageCapacity`는 종류/티어별 드론 전용 슬�
 
 ## DemolishBuildingRequest
 
-- **종류·부착 대상·목적:** 일반 IComponentData/IRequestComponent. 별도 요청 엔티티의 TargetBuilding으로 완공 건물 철거를 요청한다. 이름 변경 제안은 철회했으며 현장 취소의 CancelConstructionRequest와 분리한다.
-- **생성·검증:** 현재 제품 입력/UI Producer는 없고 테스트가 직접 만든다. Command 검증 전 실체화한다. Null/BuildingType 부재, Prefab 원형, None/ConstructionSite/MainFacility, IndestructibleBuilding과 이미 승인된 대상은 거부한다. 같은 업데이트의 승인 대상 HashSet으로 중복을 막는다.
-- **Producer→상태:** BuildingDemolitionCommandSystem이 승인 건물에 PendingBuildingDemolition 부착을 기록한다. Stored/Product 실물의 기존 Transfer 요청을 즉시 비활성화하고 이전 ProductResult를 Clear한다. EndCommand에서 상태 부착과 승인/거부/중복 요청 삭제를 확정한다.
-- **동작 경계:** EndCommand 이후 입고/생산/출고/벨트 이동·진입/분배·합류 계획을 만들지 않는다. 같은 틱 재배치는 기존 공간 인덱스 점유로 거부한다. Item Lifecycle/Ownership은 이 요청을 조회하거나 복사하지 않는다.
-- **수명·변경 금지:** 승인 대상과 철거 조건은 StateApply까지 유지한다. 구조적 삭제가 즉시 일어나는 것이 아니며 실제 반환/환급/철거는 승인 상태의 수명주기를 따른다. 거부된 요청은 자동 재시도하지 않는다.
-- **근거:** [요청 정의](../../../Assets/Scripts/Components/Buildings/BuildingRequests.cs), [Command 승인·소비](../../../Assets/Scripts/Systems/Command/BuildingDemolitionCommandSystem.cs), [핵심 회귀](../../../Assets/Editor/Tests/Phase7BuildingDemolishTests.cs), [생성 입고·생산 중단](../../../Assets/Editor/Tests/Phase7ItemCreationDemolitionTests.cs).
+별도 요청 Entity의 TargetBuilding으로 철거를 요청하는 기존 IRequestComponent다. 이름과 현장 취소 요청의 분리는 유지한다. Command는 일반 완공 건물/보호/이동 형태를 검증하고 EndCommand에 승인 중단을 게시하며 모든 레거시 요청을 삭제한다. 같은 World Task 접수 API로 철거 root 생성을 요청하고 자동 어댑터의 결과만 소비한다. 외부 Task 요청도 지원하며 실제 제품 입력/UI는 후속이다. [철거 계약](../../Specifications/DroneDemolition.md).
 
 ## PendingBuildingDemolition
 
-- **종류·부착 대상·목적:** 필드 없는 일반 IComponentData. Command에서 철거가 승인된 완공 건물에 붙어 요청과 승인 상태를 구분한다. 공사 현장에는 부착하지 않는다.
-- **Writer·게시:** BuildingDemolitionCommandSystem만 승인 태그를 기록하며 EndCommand부터 Reader에 보인다. 동기화 이전에도 ECS Lookup으로 상태를 읽을 수 있다. 같은 틱 재배치를 위해 공간 맵을 조기에 수정하지 않는다.
-- **Reader·중단:** 입고 Decision은 철거 목적지와 철거 출발 벨트를 제외한다. 저장/생산품 출고와 채굴/제작 Decision은 승인 건물의 이전 결정을 초기화하고 비활성화한다. 벨트 이동은 현재 철거 벨트에서 정지하고 다음 철거 벨트의 경계 직전까지만 접근한다. Splitter/Merger는 철거 라우터·입력/출력 벨트를 후보에서 제외한다. ItemSpawnAdmissionDecisionSystem은 해당 Storage/Product 요청을 비활성화해 생성 후보에서 빼고 EndBuilding에 삭제한다.
-- **StateApply·소비:** BuildingLifecycleApplySystem이 승인 태그로 대상을 조회하며 철거 정책을 재검증하지 않는다. BuildingType 소실만 방어하고 이 경우 태그만 제거한다. 유효 대상의 Stored/Product 실물 반환, 건축 비용 환급, 벨트 아이템 정지를 기록하고 EndBuilding에서 건물·태그를 함께 삭제한다. 기존 Disabled 대상의 적용 범위도 유지한다.
-- **반환·실패:** 실물은 새로 생성하지 않고 Owner/렌더/좌표를 건물 위치의 월드 상태로 되돌린다. 활성 Destroy는 반환하지 않는다. 환급은 설정된 비용을 신규 생성하며 프리팹 누락 실패 계약은 기존과 같다. 앞선 틱에 소비한 제작 재료·광물의 별도 보상이나 취소/승인 철회는 추가하지 않았다.
-- **근거:** [상태 정의](../../../Assets/Scripts/Components/Buildings/BuildingComponents.cs), [승인](../../../Assets/Scripts/Systems/Command/BuildingDemolitionCommandSystem.cs), [반환·철거](../../../Assets/Scripts/Systems/Buildings/StateApply/BuildingLifecycleApplySystem.cs), [생성 후보 차단](../../../Assets/Scripts/Systems/Items/Decision/ItemSpawnAdmissionDecisionSystem.cs).
+일반 건물의 승인 중단과 Task root 연결이다. Command만 EndCommand에 부착/취소 해제를 기록하고 Task Execution만 root 생성과 같은 EndSimulation ECB에서 Task 필드를 연결한다. 최초 Task는 Null이다. 기존 입고/생산/출고/벨트/전력/드론 물류 판단이 중단을 읽는다.
+
+건물 Lifecycle은 연결 root의 BuildingDemolitionExecutionRequest가 공개되어야 실제 반환/환급/삭제와 root 결과를 EndBuilding에 기록한다. 확인 전 Cancelled/Closed/소실 root의 중단은 다음 Command가 해제하며 새 root로 바뀐 연결에는 이전 취소를 적용하지 않는다. 실제 제거 전 공간 인덱스를 조기에 비우지 않는다. 승인/확인/건물 결과와 취소 경계는 [철거 계약](../../Specifications/DroneDemolition.md)을 따른다.

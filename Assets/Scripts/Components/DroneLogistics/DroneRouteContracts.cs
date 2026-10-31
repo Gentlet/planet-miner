@@ -2,7 +2,7 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 역할·목적: 공급원을 경유하는 전체 경로와 현재 위치에서 목적지로 가는 Direct 평가를 구분한다.
+/// 역할·목적: ViaSource 운반/Direct 적재 재배정/DirectToBuilding 빈 수행자의 철거 직접 경로를 구분한다.
 /// 부착 엔티티: 열거형 자체는 부착하지 않으며 DroneRouteEvaluationRequest.Kind에 포함한다.
 /// 생성·이용: DroneTaskDecisionSystem(Decision)이 선택하고 DroneTaskExecutionSystem(Execution)이 요청을 게시하며 DroneFlightDecisionSystem이 자유 비행/충전 경유 경로를 판단한다.
 /// 제거: 값을 담은 컴포넌트·판단·결과의 갱신/삭제 수명을 따른다. 별도 엔티티 수명을 갖지 않는다.
@@ -12,6 +12,7 @@ public enum DroneRouteKindEnum : byte
     None,
     ViaSource,
     Direct,
+    DirectToBuilding,
     Count
 }
 

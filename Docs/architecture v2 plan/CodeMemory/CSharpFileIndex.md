@@ -60,7 +60,7 @@
 | `Assets/Scripts/Common/DroneItemTransferUtility.cs` | 실물 조회는 기존 Ownership API에 위임하고 단일 품목 검사·현장 도착량/예약 정산을 공유한다. 원본 버퍼·위치·Owner를 직접 쓰지 않는다. |
 | `Assets/Scripts/Common/DroneItemTransferValidationUtility.cs` | 인계 Decision/Execution/StateApply가 공유하는 읽기 전용 배정·행동·관측 버전·출처 자격 검사. |
 | `Assets/Scripts/Components/DroneLogistics/DroneTaskSequence.cs` | 공급·회수 작업의 생성 순번 원본. |
-| `Assets/Scripts/Components/DroneLogistics/DroneRecoveryPending.cs` | 드론 방출 실물의 회수 필요 표시. DroneTaskLifecycleApplySystem이 방출 시 추가·회수 성공 시 제거를 EndSimulation에 기록한다. |
+| `Assets/Scripts/Components/DroneLogistics/DroneRecoveryPending.cs` | 안전 방출/철거 반환과 환급 실물의 한정 회수 출처 표시. DroneTaskLifecycleApplySystem이 방출 시 추가·회수 성공 시 제거를 EndSimulation에 기록한다. |
 | `Assets/Scripts/Components/DroneLogistics/DroneTaskCandidateDecisionElement.cs` | Decision이 계산한 신규 배정·적재품 재배정 후보를 한 틱 동안 보관한다. |
 | `Assets/Scripts/Components/DroneLogistics/DroneRouteDecisionElement.cs` | 경로 요청 Create/Retain/Remove 의도. Execution이 소비한다. |
 | `Assets/Scripts/Components/DroneLogistics/DroneTaskCreationDecisionElement.cs` | 공급·회수 작업 생성 의도. Execution이 순번을 부여하고 ECB에 기록한다. |
@@ -247,3 +247,10 @@
 - `Assets/Scripts/Systems/Drones/Execution/DroneChargingExecutionSystem.cs`: 확정 배정 한도 내 배터리/활동 갱신.
 
 - `Assets/Scripts/Common/DroneBatteryUtility.cs`: 배터리 입력 범위 검증과 이미 충전된 미세 잔량의 보존/가용값 게시.
+
+| 파일 | 철거 연결 역할 |
+| --- | --- |
+| `Assets/Scripts/Common/DroneDemolitionUtility.cs` | 일반 대상/root 연결/공개 도착의 철거 자격을 공유한다. |
+| `Assets/Scripts/Components/DroneLogistics/DroneDemolitionContracts.cs` | 도착 의도/건물 실행 요청/Command 어댑터 수명/실제 건물 결과를 구분한다. |
+| `Assets/Editor/Tests/DroneDemolitionTests.cs` | 실제 Command/이동/확인/건물 결과/취소/자동 출고/회수를 통합 검증한다. |
+| `Assets/Editor/Tests/TestSupport/ConfirmedBuildingDemolitionTestSystem.cs` | DisableAutoCreation 테스트 입력. 기존 코어 사례에 공개된 확인만 제공하며 실제 드론 수행 증거가 아니다. |
