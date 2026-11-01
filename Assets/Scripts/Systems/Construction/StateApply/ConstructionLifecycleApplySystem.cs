@@ -165,16 +165,7 @@ public partial struct ConstructionCompletionApplyJob : IJobEntity
         }
 
         int2 size = BuildingFootprintUtility.GetEffectiveSize(footprint.Size, dir.dir);
-        bool hasWorldItem = false;
-        for (int i = 0; i < WorldItemPositions.Length; i++)
-        {
-            int2 itemPosition = WorldItemPositions[i];
-            if (math.all(itemPosition >= pos.Value) && math.all(itemPosition < pos.Value + size))
-            {
-                hasWorldItem = true;
-                break;
-            }
-        }
+        bool hasWorldItem = ConstructionCompletionUtility.HasBlockingWorldItem(pos.Value, size, WorldItemPositions);
 
         if (hasWorldItem)
         {
@@ -192,13 +183,9 @@ public partial struct ConstructionCompletionApplyJob : IJobEntity
         }
 
         // 예약량은 도착량이 아니다. 실제 인계 성공분으로 갱신된 DeliveredQuantity만 완공 조건으로 사용한다.
-        for (int i = 0; i < requirements.Length; i++)
+        if (!ConstructionCompletionUtility.AreMaterialsSatisfied(requirements))
         {
-            if (!requirements[i].IsSatisfied)
-            {
-                // 자재 미충족 현장 -> 완공 보류
-                return;
-            }
+            return;
         }
 
         // 4. 완공 건물 엔티티 인스턴스화 및 컴포넌트 초기화 (BuildingLifecycleUtility 활용)

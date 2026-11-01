@@ -125,6 +125,18 @@ public static class BuildingPlacementRequestUtility
         }
     }
 
+    /// <summary>공통 생성 API를 직접 사용하는 소유자에게도 같은 World 접수 순서의 불변 표식을 발급한다.</summary>
+    public static PlacementStamp ReserveSpawnStamp(EntityManager manager)
+    {
+        Entity entity = GetOrCreateReceiptSequence(manager);
+        var sequence = manager.GetComponentData<BuildingPlacementReceiptSequence>(entity);
+        ValidateSequence(sequence);
+        var stamp = new PlacementStamp(sequence.CurrentTick, 0, sequence.NextValue);
+        sequence.NextValue++;
+        manager.SetComponentData(entity, sequence);
+        return stamp;
+    }
+
     public static Entity GetOrCreateReceiptSequence(EntityManager manager)
     {
         using var query = manager.CreateEntityQuery(ComponentType.ReadWrite<BuildingPlacementReceiptSequence>());
