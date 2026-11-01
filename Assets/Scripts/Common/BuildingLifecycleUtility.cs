@@ -222,6 +222,7 @@ public static class BuildingLifecycleUtility
                 break;
 
             case BuildingTypeEnum.ResearchBuilding:
+                ecb.AddComponent<ResearchCycleState>(building);
                 AttachPowerParticipantComponents(ref ecb, building);
                 AttachPowerConsumerComponents(ref ecb, building);
                 break;

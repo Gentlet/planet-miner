@@ -1,12 +1,4 @@
 {
-  "initiallyUnlockedBuildings": [
-    "Belt",
-    "Miner",
-    "Crafter",
-    "Storage",
-    "PowerPole",
-    "ResearchBuilding"
-  ],
   "initiallyUnlockedRecipeIds": [1, 2],
   "researches": [
     {
