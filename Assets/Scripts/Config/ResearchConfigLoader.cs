@@ -396,6 +396,32 @@ public static class ResearchConfigLoader
             }
         }
 
+        long researchSlots = 0;
+        foreach (var item in items)
+        {
+            int maximum = 0;
+            foreach (var ingredient in data.Ingredients)
+            {
+                if (ingredient.ItemType == item.ItemType && ingredient.Amount > maximum)
+                {
+                    maximum = ingredient.Amount;
+                }
+            }
+            if (maximum == 0)
+            {
+                continue;
+            }
+            if (item.MaxStack <= 0)
+            {
+                throw new ArgumentException("Research input layout requires positive configured item stack sizes.");
+            }
+            researchSlots += ResearchMaterialUtility.SlotCountForTwoCycles(maximum, item.MaxStack);
+        }
+        if (researchSlots > GameConstants.MaxStorageSlots)
+        {
+            throw new ArgumentException("Research input layout exceeds the supported storage slot limit.");
+        }
+
         var definitions = new Dictionary<FixedString32Bytes, ResearchDefinitionElement>();
         foreach (var definition in data.Definitions)
         {
@@ -415,6 +441,11 @@ public static class ResearchConfigLoader
         }
         foreach (var building in buildings)
         {
+            if (building.BuildingType == BuildingTypeEnum.ResearchBuilding &&
+                (!IsFinite(building.Speed) || building.Speed <= 0f))
+            {
+                throw new ArgumentException("Research building speed must be finite and positive.");
+            }
             if (building.RequiredResearch.IsEmpty)
             {
                 continue;
@@ -636,8 +667,8 @@ public static class ResearchConfigLoader
         }
     }
 
-    private static bool IsFinite(float value)
+    private static bool IsFinite(double value)
     {
-        return !float.IsNaN(value) && !float.IsInfinity(value);
+        return !double.IsNaN(value) && !double.IsInfinity(value);
     }
 }

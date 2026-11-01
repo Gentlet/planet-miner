@@ -23,7 +23,7 @@ public struct ResearchRegistry : IComponentData
 {
 }
 
-/// <summary>선택 Command가 EndCommand에 공개하는 활성 연구 ID다. 빈 ID는 미선택이며 초기화는 선택/진행을 실행하지 않는다.</summary>
+/// <summary>선택 Command는 EndCommand에 활성 ID를 공개하고 완료 Apply는 EndBuilding에 비운다. 빈 ID는 미선택이다.</summary>
 public struct ResearchState : IComponentData
 {
     public FixedString32Bytes ActiveResearchId;
@@ -79,16 +79,16 @@ public struct ResearchInitialRecipeUnlockElement : IBufferElementData
     public int RecipeId;
 }
 
-/// <summary>전역 진행/완료 소유자가 작성할 ID별 원본이다. 초기화는 0/미완료로 만들고 사전 등록 원본을 초기화하지 않는다.</summary>
+/// <summary>초기화는 0/미완료, ResearchProgressApply는 기여 합계/최소 완료를 EndBuilding에 공개한다. double로 병렬 float 기여의 초과 합계도 보존한다.</summary>
 [InternalBufferCapacity(0)]
 public struct ResearchProgressElement : IBufferElementData
 {
     public FixedString32Bytes ResearchId;
-    public float Progress;
+    public double Progress;
     public bool IsCompleted;
 }
 
-/// <summary>개별 연구건물의 로컬 주기 원본이다. 빈 ID는 주기 없음이며 선택 변경은 EndCommand에 초기화한다. 전역 진척/완료/해금을 복제하지 않는다.</summary>
+/// <summary>Execution이 선소비/전력 시간으로 진행하는 로컬 원본이다. 선택은 EndCommand, 전역 완료는 EndBuilding에 초기화한다. 빈 ID는 주기 없음이다.</summary>
 public struct ResearchCycleState : IComponentData
 {
     public FixedString32Bytes ResearchId;

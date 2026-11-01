@@ -223,6 +223,19 @@ public static class BuildingLifecycleUtility
 
             case BuildingTypeEnum.ResearchBuilding:
                 ecb.AddComponent<ResearchCycleState>(building);
+                ecb.AddComponent<ResearchInputConfigured>(building);
+                ecb.SetComponentEnabled<ResearchInputConfigured>(building, false);
+                ecb.AddComponent<ResearchWorkPreparation>(building);
+                ecb.SetComponentEnabled<ResearchWorkPreparation>(building, false);
+                ecb.AddComponent<ResearchDecision>(building);
+                ecb.SetComponentEnabled<ResearchDecision>(building, false);
+                ecb.AddComponent(building, new Storage(0));
+                ecb.AddComponent(building, new StorageFilter(StorageFilterMode.Whitelist));
+                ecb.AddBuffer<StoredItemElement>(building);
+                ecb.AddBuffer<BuildingInputSlotElement>(building);
+                ecb.AddBuffer<ResearchInputLimitElement>(building);
+                ecb.AddBuffer<ResearchRecoveryElement>(building);
+                ecb.AddBuffer<ResearchContributionElement>(building);
                 AttachPowerParticipantComponents(ref ecb, building);
                 AttachPowerConsumerComponents(ref ecb, building);
                 break;

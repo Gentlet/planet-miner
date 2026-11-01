@@ -207,7 +207,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 }
                 bool supply = task.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply;
                 bool sourceIsStorage = supply || task.Kind == DroneLogisticsTaskKindEnum.StorageImport;
-                if (transport && !sourceIsStorage && DroneSchedulingUtility.CountInventory(manager, task.Target, task.ItemType) <= 0)
+                if (transport && !sourceIsStorage && ResearchRecoveryUtility.CollectionQuantity(manager, task.Target, task.ItemType) <= 0)
                 {
                     continue;
                 }
@@ -281,7 +281,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
                         tasks[t], manager.GetComponentData<DroneTransportRequirement>(tasks[t]),
                         manager.GetComponentData<DroneTransportProgress>(tasks[t]), pendingTransport,
                         DroneTransportReservationUtility.ReadReleasingQuantity(manager, tasks[t], transportReservations, invalidationDecisions)));
-                    quantity = math.min(quantity, DroneSchedulingUtility.CountInventory(manager, selectedSource, task.ItemType));
+                    quantity = math.min(quantity, ResearchRecoveryUtility.CollectionQuantity(manager, selectedSource, task.ItemType));
                     quantity = DroneSchedulingUtility.CountStorageSpace(manager, selectedDestination, task.ItemType, registry, quantity);
                 }
                 if (quantity <= 0) continue;
@@ -589,9 +589,12 @@ public partial struct DroneTaskDecisionSystem : ISystem
     private EntityQuery _creationTasks;
     private EntityQuery _creationItems;
     private EntityQuery _creationFootprints;
+    private EntityQuery _creationResearch;
 
     private void InitializeCreationQueries(ref SystemState state)
     {
+        _creationResearch = state.GetEntityQuery(ComponentType.ReadOnly<ResearchRecoveryElement>(),
+            ComponentType.ReadOnly<StoredItemElement>(), ComponentType.ReadOnly<ResearchCycleState>());
         _creationSites = state.GetEntityQuery(
             ComponentType.ReadOnly<ConstructionSite>(),
             ComponentType.ReadOnly<GridPosition>(),
@@ -620,6 +623,48 @@ public partial struct DroneTaskDecisionSystem : ISystem
         }
         BuildSupplyCreationDecisions(manager, tasks.AsArray(), decisions);
         BuildRecoveryCreationDecisions(manager, tasks.AsArray(), decisions);
+        BuildResearchRecoveryCreationDecisions(manager, tasks.AsArray(), decisions);
+    }
+
+    private void BuildResearchRecoveryCreationDecisions(EntityManager manager,
+        NativeArray<DroneLogisticsTask> tasks, DynamicBuffer<DroneTaskCreationDecisionElement> decisions)
+    {
+        using var buildings = _creationResearch.ToEntityArray(Allocator.Temp);
+        foreach (Entity building in buildings)
+        {
+            if (!ResearchRecoveryUtility.IsSource(manager, building))
+            {
+                continue;
+            }
+            using var types = new NativeHashSet<int>(8, Allocator.Temp);
+            foreach (var item in manager.GetBuffer<StoredItemElement>(building, true))
+            {
+                if (!types.Add((int)item.ItemType))
+                {
+                    continue;
+                }
+                int quantity = ResearchRecoveryUtility.Count(manager, building, item.ItemType);
+                if (quantity == 0 || DroneTaskRequestDecisionUtility.IsBlocked(manager, _candidates,
+                    DroneTaskGenerationKey.From(DroneLogisticsTaskKindEnum.StorageExport, building, item.ItemType)))
+                {
+                    continue;
+                }
+                bool exists = false;
+                foreach (var task in tasks)
+                {
+                    exists |= task.Kind == DroneLogisticsTaskKindEnum.StorageExport && task.Target == building && task.ItemType == item.ItemType;
+                }
+                if (exists)
+                {
+                    continue;
+                }
+                decisions.Add(new DroneTaskCreationDecisionElement
+                {
+                    Kind = DroneLogisticsTaskKindEnum.StorageExport, Target = building,
+                    ItemType = item.ItemType, Quantity = quantity
+                });
+            }
+        }
     }
 
     private void BuildSupplyCreationDecisions(EntityManager manager,

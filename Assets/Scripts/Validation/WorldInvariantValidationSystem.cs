@@ -693,7 +693,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
             bool allowsZeroSlots = hasInputSlots && inputSlots.Length == 0 && buffer.Length == 0 &&
                                    hasFilter && filter.Mode == StorageFilterMode.Whitelist &&
                                    filter.Mask.Part0 == 0 && filter.Mask.Part1 == 0 &&
-                                   IsCrafterWithoutInputRequirements(storageEntity);
+                                   (IsCrafterWithoutInputRequirements(storageEntity) || IsResearchWithoutInputSlots(storageEntity));
             if (slotCount < 0 || slotCount > GameConstants.MaxStorageSlots ||
                 (slotCount == 0 && !allowsZeroSlots))
             {
@@ -913,6 +913,22 @@ public partial class WorldInvariantValidationSystem : SystemBase
             slotKvpArray.Dispose();
             slotTracker.Dispose();
         }
+    }
+
+    private bool IsResearchWithoutInputSlots(Entity building)
+    {
+        if (!EntityManager.HasComponent<ResearchCycleState>(building) ||
+            !EntityManager.HasComponent<ResearchInputConfigured>(building))
+        {
+            return false;
+        }
+        if (!EntityManager.IsComponentEnabled<ResearchInputConfigured>(building))
+        {
+            return true;
+        }
+        using var query = EntityManager.CreateEntityQuery(typeof(ResearchRegistry));
+        return query.CalculateEntityCount() == 1 &&
+            EntityManager.GetBuffer<ResearchIngredientElement>(query.GetSingletonEntity(), true).IsEmpty;
     }
 
     /// <summary>

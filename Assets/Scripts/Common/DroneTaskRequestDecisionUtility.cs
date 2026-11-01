@@ -94,7 +94,17 @@ internal static class DroneTaskRequestDecisionUtility
                         }
                     }
 
-                    controls.Add(new DroneTaskGenerationDecisionElement { Key = key, Blocked = false });
+                    // 유효한 기존/선행 root의 최초 목표량은 유지한다. 현재 회수 재고 상한은 새 root에만 적용한다.
+                    bool newResearchReturn = decision.Task == Entity.Null && decision.CreatingRequest == Entity.Null &&
+                        request.Kind == DroneLogisticsTaskKindEnum.StorageExport && ResearchRecoveryUtility.IsSource(manager, request.Target);
+                    if (newResearchReturn && request.Quantity > ResearchRecoveryUtility.Count(manager, request.Target, request.ItemType))
+                    {
+                        decision.Status = DroneTaskRequestStatusEnum.Rejected;
+                    }
+                    if (decision.Status == DroneTaskRequestStatusEnum.Created || decision.Status == DroneTaskRequestStatusEnum.Existing)
+                    {
+                        controls.Add(new DroneTaskGenerationDecisionElement { Key = key, Blocked = false });
+                    }
                 }
             }
             else if (request.Operation == DroneTaskRequestOperationEnum.Cancel)
@@ -178,6 +188,10 @@ internal static class DroneTaskRequestDecisionUtility
             if (request.Quantity <= 0)
             {
                 return DroneTaskRequestStatusEnum.Rejected;
+            }
+            if (request.Kind == DroneLogisticsTaskKindEnum.StorageExport && ResearchRecoveryUtility.IsSource(manager, request.Target))
+            {
+                return DroneTaskRequestStatusEnum.Created;
             }
             return DroneSchedulingUtility.IsStorage(manager, request.Target)
                 ? DroneTaskRequestStatusEnum.Created : DroneTaskRequestStatusEnum.Rejected;

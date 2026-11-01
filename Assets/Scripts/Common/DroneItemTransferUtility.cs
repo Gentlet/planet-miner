@@ -11,7 +11,7 @@ public static class DroneItemTransferUtility
 {
     public static int CollectionLimit(EntityManager manager, Entity entity, in DroneTaskAssignment assignment)
     {
-        if (!DroneSchedulingUtility.IsStorage(manager, assignment.Source))
+        if (!ResearchRecoveryUtility.IsCollectionSource(manager, assignment.Source))
         {
             return 0;
         }

@@ -174,6 +174,10 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
         {
             var entry = stored[i];
             if (entry.ItemType != type) continue;
+            if (!ResearchRecoveryUtility.PassesRecoveryFilter(manager, owner, entry.ItemEntity))
+            {
+                continue;
+            }
             if (!DroneItemTransferUtility.CanMove(manager, entry.ItemEntity, type, owner)) continue;
             bool duplicate = false;
             for (int j = 0; j < selected.Length; j++) duplicate |= selected[j].ItemEntity == entry.ItemEntity;

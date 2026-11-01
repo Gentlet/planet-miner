@@ -204,7 +204,8 @@ public partial struct DroneTaskExecutionSystem : ISystem
 
         if (DroneSchedulingUtility.IsTransportKind(decision.Kind))
         {
-            return DroneSchedulingUtility.IsStorage(manager, decision.Target);
+            return DroneSchedulingUtility.IsStorage(manager, decision.Target) ||
+                (decision.Kind == DroneLogisticsTaskKindEnum.StorageExport && ResearchRecoveryUtility.IsSource(manager, decision.Target));
         }
 
         if (decision.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery)

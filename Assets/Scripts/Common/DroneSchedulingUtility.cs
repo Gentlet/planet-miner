@@ -397,7 +397,8 @@ public static class DroneSchedulingUtility
 
         if (IsTransportKind(task.Kind))
         {
-            return IsStorage(manager, task.Target);
+            return IsStorage(manager, task.Target) ||
+                (task.Kind == DroneLogisticsTaskKindEnum.StorageExport && ResearchRecoveryUtility.HasTaskNeed(manager, task));
         }
 
         if (task.Kind != DroneLogisticsTaskKindEnum.WorldItemRecovery || !IsWorldItem(manager, task.Target, task.ItemType))
@@ -488,7 +489,9 @@ public static class DroneSchedulingUtility
             return task.Kind != DroneLogisticsTaskKindEnum.ConstructionSupply ||
                    task.Target != assignment.Destination || !IsSite(manager, assignment.Destination);
         if (assignment.NextAction == DroneActionKindEnum.CollectFromStorage)
-            return !IsStorage(manager, assignment.Source);
+            return !ResearchRecoveryUtility.IsCollectionSource(manager, assignment.Source) ||
+                (ResearchRecoveryUtility.IsSource(manager, assignment.Source) &&
+                 ResearchRecoveryUtility.Count(manager, assignment.Source, assignment.ItemType) == 0);
         if (assignment.NextAction == DroneActionKindEnum.RecoverWorldItem)
             return !IsWorldItem(manager, assignment.Source, assignment.ItemType) || !IsStorage(manager, assignment.Destination);
         return false;
@@ -771,7 +774,7 @@ public static class DroneSchedulingUtility
             {
                 return 0;
             }
-            if (!IsStorage(manager, candidate.Source))
+            if (!ResearchRecoveryUtility.IsCollectionSource(manager, candidate.Source))
             {
                 return 0;
             }
@@ -781,7 +784,7 @@ public static class DroneSchedulingUtility
             }
             // 선행 행동이 재고/공간을 바꿀 수 있다. 승인 상한을 늘리지 않고 현재 가능한 양만 최종 배차한다.
             int quantity = math.min(carryingCapacity, math.min(candidate.Quantity,
-                CountInventory(manager, candidate.Source, candidate.ItemType)));
+                ResearchRecoveryUtility.CollectionQuantity(manager, candidate.Source, candidate.ItemType)));
             return CountStorageSpace(manager, candidate.Destination, candidate.ItemType, registry, quantity);
         }
 

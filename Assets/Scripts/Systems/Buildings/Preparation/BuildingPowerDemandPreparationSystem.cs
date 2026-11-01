@@ -8,6 +8,7 @@ using Unity.Mathematics;
 [UpdateInGroup(typeof(SimulationPreparationGroup))]
 [UpdateAfter(typeof(MinerWorkPreparationSystem))]
 [UpdateAfter(typeof(CrafterWorkPreparationSystem))]
+[UpdateAfter(typeof(ResearchWorkPreparationSystem))]
 public partial struct BuildingPowerDemandPreparationSystem : ISystem
 {
     private EntityQuery _consumerQuery;
@@ -32,6 +33,7 @@ public partial struct BuildingPowerDemandPreparationSystem : ISystem
             ConfigLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
             MinerLookup = SystemAPI.GetComponentLookup<MinerWorkPreparation>(true),
             CrafterLookup = SystemAPI.GetComponentLookup<CrafterWorkPreparation>(true),
+            ResearchLookup = SystemAPI.GetComponentLookup<ResearchWorkPreparation>(true),
             ChargingLookup = SystemAPI.GetBufferLookup<DroneChargingPreparationElement>(true),
             DeltaTime = math.min(SystemAPI.Time.DeltaTime, GameConstants.MaxSimulationDeltaTime)
         }.ScheduleParallel(_consumerQuery, dependency);
@@ -49,6 +51,7 @@ internal partial struct PrepareBuildingPowerDemandJob : IJobEntity
     [ReadOnly] public BufferLookup<BuildingConfigElement> ConfigLookup;
     [ReadOnly] public ComponentLookup<MinerWorkPreparation> MinerLookup;
     [ReadOnly] public ComponentLookup<CrafterWorkPreparation> CrafterLookup;
+    [ReadOnly] public ComponentLookup<ResearchWorkPreparation> ResearchLookup;
     [ReadOnly] public BufferLookup<DroneChargingPreparationElement> ChargingLookup;
     public float DeltaTime;
 
@@ -89,8 +92,16 @@ internal partial struct PrepareBuildingPowerDemandJob : IJobEntity
                 foreach (var charging in ChargingLookup[entity]) chargingEnergy += charging.RequestedEnergy;
                 requestedEnergy = PowerFrameUtility.RoundEnergyUp(chargingEnergy);
                 break;
+            case BuildingTypeEnum.ResearchBuilding:
+                if (!ResearchLookup.IsComponentEnabled(entity))
+                {
+                    return;
+                }
+                var research = ResearchLookup[entity];
+                canWork = research.CanStartCycle || research.CanAdvance;
+                break;
         }
-        // 연구 수요는 후속이다. 충전은 준비된 부족분만 요청하며 대기 중 고정 소비를 만들지 않는다.
+        // 충전은 준비된 부족분만 요청한다. 생산/연구도 전력 외 작업 자격이 없으면 고정 대기 소비를 만들지 않는다.
         demand.RequestedEnergy = canWork ? config.Power.MaximumConsumption * DeltaTime : requestedEnergy;
         intent.ValueRW = demand.RequestedEnergy > 0f;
         prepared.ValueRW = true;

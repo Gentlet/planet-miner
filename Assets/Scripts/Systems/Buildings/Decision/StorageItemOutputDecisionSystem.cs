@@ -31,7 +31,7 @@ public partial struct StorageItemOutputDecisionSystem : ISystem
         _buildingQuery = SystemAPI.QueryBuilder()
             .WithAllRW<BuildingItemOutputDecision>()
             .WithAll<StoredItemElement, BuildingFootprint, GridPosition, Direction>()
-            .WithNone<ProductItemElement>()
+            .WithNone<ProductItemElement, ResearchCycleState>()
             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
             .Build();
     }

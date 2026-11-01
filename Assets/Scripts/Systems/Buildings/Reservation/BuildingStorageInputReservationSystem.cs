@@ -77,6 +77,7 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
             PreparingLookup = state.GetComponentLookup<PreparingStationDemolition>(true),
             StoredBufferLookup = _storedBufferLookup,
             InputSlotLookup = _inputSlotLookup,
+            ResearchLimits = state.GetBufferLookup<ResearchInputLimitElement>(true),
             ItemRegistryEntity = itemRegistryEntity,
             ItemConfigLookup = _itemConfigLookup,
             PendingAdditions = pendingAdditions
@@ -115,6 +116,8 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
 
     [ReadOnly]
     public BufferLookup<BuildingInputSlotElement> InputSlotLookup;
+
+    [ReadOnly] public BufferLookup<ResearchInputLimitElement> ResearchLimits;
 
     public Entity ItemRegistryEntity;
 
@@ -249,6 +252,34 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
         }
         int sameTypeSlot = -1;
         int firstEmptySlot = -1;
+
+        if (ResearchLimits.HasBuffer(building))
+        {
+            int maximum = 0;
+            foreach (var limit in ResearchLimits[building])
+            {
+                if (limit.ItemType == itemType)
+                {
+                    maximum = limit.MaximumQuantity;
+                    break;
+                }
+            }
+            int quantity = 0;
+            for (int i = 0; i < safeSlotCount; i++)
+            {
+                if (slotTypes[i] == itemType)
+                {
+                    quantity += slotOccupancy[i];
+                }
+            }
+            if (quantity >= maximum)
+            {
+                inputDecision.CanDeposit = false;
+                inputDecision.TargetSlotIndex = -1;
+                inputDecisionEnabled.ValueRW = false;
+                return;
+            }
+        }
 
         for (int s = 0; s < safeSlotCount; s++)
         {
