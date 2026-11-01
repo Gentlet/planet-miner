@@ -120,6 +120,7 @@ public static class ResearchConfigLoader
             {
                 progress.Add(new ResearchProgressElement { ResearchId = definition.StableId });
             }
+            ResearchRewardUtility.InitializeFromProgress(manager, created);
             return created;
         }
         catch
@@ -371,6 +372,11 @@ public static class ResearchConfigLoader
         var buildings = GetRegistryBuffer<BuildingConfig, BuildingConfigElement>(manager);
         var recipes = GetRegistryBuffer<RecipeRegistry, RecipeConfigElement>(manager);
         var items = GetRegistryBuffer<ItemRegistry, ItemConfigElement>(manager);
+        using var buildingState = manager.CreateEntityQuery(typeof(BuildingConfig), typeof(ResearchStatBonuses));
+        if (buildingState.CalculateEntityCount() != 1)
+        {
+            throw new ArgumentException("Building configuration requires its research bonus state before research publication.");
+        }
         var recipeIds = new HashSet<int>();
         foreach (var recipe in recipes)
         {
@@ -420,6 +426,39 @@ public static class ResearchConfigLoader
         if (researchSlots > GameConstants.MaxStorageSlots)
         {
             throw new ArgumentException("Research input layout exceeds the supported storage slot limit.");
+        }
+
+        // 양수 보너스만 지원하므로 전체 완료 합계가 모든 중간 완료 조합의 상한이다.
+        ResearchStatBonuses maximumBonuses = default;
+        foreach (var reward in data.Rewards)
+        {
+            if (reward.Type == ResearchRewardTypeEnum.StatModifier)
+            {
+                ResearchRewardUtility.AddBonus(ref maximumBonuses, reward);
+            }
+        }
+        foreach (var building in buildings)
+        {
+            double bonus;
+            float fallback;
+            switch (building.BuildingType)
+            {
+                case BuildingTypeEnum.Miner: bonus = maximumBonuses.MiningSpeed; fallback = 1f; break;
+                case BuildingTypeEnum.Crafter: bonus = maximumBonuses.CraftingSpeed; fallback = 1f; break;
+                case BuildingTypeEnum.Belt: bonus = maximumBonuses.BeltSpeed; fallback = 2f; break;
+                case BuildingTypeEnum.ResearchBuilding: bonus = maximumBonuses.ResearchSpeed; fallback = 1f; break;
+                default: continue;
+            }
+            double maximumEffectiveSpeed = (building.Speed > 0f ? building.Speed : fallback) * (1d + bonus);
+            if (!IsFinite(maximumEffectiveSpeed) || maximumEffectiveSpeed > float.MaxValue)
+            {
+                throw new ArgumentException("Research speed bonuses exceed the supported finite speed range.");
+            }
+            // 실행이 사용하는 float 최종 속도로 비교하여 안전한 상한 경계의 소수 보너스를 오거부하지 않는다.
+            if (building.BuildingType == BuildingTypeEnum.Belt && (float)maximumEffectiveSpeed > GameConstants.MaxBeltSpeed)
+            {
+                throw new ArgumentException("Research belt speed bonuses exceed the safe belt speed limit.");
+            }
         }
 
         var definitions = new Dictionary<FixedString32Bytes, ResearchDefinitionElement>();

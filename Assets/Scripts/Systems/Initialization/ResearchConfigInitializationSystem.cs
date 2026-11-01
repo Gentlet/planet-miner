@@ -45,6 +45,7 @@ public partial class ResearchConfigInitializationSystem : SystemBase
             {
                 Entity registered = query.GetSingletonEntity();
                 ResearchConfigLoader.ValidatePublishedConfig(manager, registered);
+                ResearchRewardUtility.InitializeFromProgress(manager, registered);
                 return registered;
             }
 

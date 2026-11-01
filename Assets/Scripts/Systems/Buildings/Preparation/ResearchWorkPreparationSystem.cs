@@ -11,6 +11,7 @@ public partial struct ResearchWorkPreparationSystem : ISystem
         state.RequireForUpdate<ResearchRegistry>();
         state.RequireForUpdate<ItemRegistry>();
         state.RequireForUpdate<BuildingConfig>();
+        state.RequireForUpdate<ResearchStatBonuses>();
     }
 
     public void OnUpdate(ref SystemState state)
@@ -20,6 +21,7 @@ public partial struct ResearchWorkPreparationSystem : ISystem
             Registry = SystemAPI.GetSingletonEntity<ResearchRegistry>(),
             Items = SystemAPI.GetSingletonEntity<ItemRegistry>(),
             Buildings = SystemAPI.GetSingletonEntity<BuildingConfig>(),
+            SpeedBonus = SystemAPI.GetSingleton<ResearchStatBonuses>().ResearchSpeed,
             State = SystemAPI.GetComponentLookup<ResearchState>(true),
             Definitions = SystemAPI.GetBufferLookup<ResearchDefinitionElement>(true),
             Ingredients = SystemAPI.GetBufferLookup<ResearchIngredientElement>(true),
@@ -39,6 +41,7 @@ internal partial struct PrepareResearchWorkJob : IJobEntity
     public Entity Registry;
     public Entity Items;
     public Entity Buildings;
+    public double SpeedBonus;
     [ReadOnly] public ComponentLookup<ResearchState> State;
     [ReadOnly] public BufferLookup<ResearchDefinitionElement> Definitions;
     [ReadOnly] public BufferLookup<ResearchIngredientElement> Ingredients;
@@ -134,7 +137,7 @@ internal partial struct PrepareResearchWorkJob : IJobEntity
             return;
         }
         preparation.DefinitionIndex = index;
-        preparation.Speed = config.Speed;
+        preparation.Speed = ResearchRewardUtility.EffectiveSpeed(config.Speed, SpeedBonus);
         preparation.CanAdvance = cycle.ResearchId == active && !active.IsEmpty;
         if (recovery.Length > 0)
         {

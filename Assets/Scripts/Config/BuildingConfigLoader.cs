@@ -570,6 +570,7 @@ public static class BuildingConfigLoader
         // 통합 설정과 호환 버퍼를 같은 입력에서 게시한다. 이후 게임 Reader가 managed JSON 목록을 원본으로 다시 읽지 않게 한다.
         var entity = entityManager.CreateEntity(
             typeof(BuildingConfig),
+            typeof(ResearchStatBonuses),
             typeof(BuildingRuntimeConfig),
             typeof(BuildingConfigElement),
             typeof(BuildingRuntimeConfigElement),

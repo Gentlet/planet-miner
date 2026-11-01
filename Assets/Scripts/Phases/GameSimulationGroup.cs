@@ -23,7 +23,8 @@ public partial class GameSimulationGroup : ComponentSystemGroup
         _readyQuery = GetEntityQuery(ComponentType.ReadOnly<PrefabDatabaseReady>());
         _fatalErrorQuery = GetEntityQuery(ComponentType.ReadOnly<SimulationFatalError>());
         _buildingConfigQuery = GetEntityQuery(ComponentType.ReadOnly<BuildingConfig>(),
-            ComponentType.ReadOnly<BuildingConfigElement>(), ComponentType.ReadOnly<BuildingConstructionMaterialElement>());
+            ComponentType.ReadOnly<BuildingConfigElement>(), ComponentType.ReadOnly<BuildingConstructionMaterialElement>(),
+            ComponentType.ReadOnly<ResearchStatBonuses>());
         _itemConfigQuery = GetEntityQuery(ComponentType.ReadOnly<ItemRegistry>(), ComponentType.ReadOnly<ItemConfigElement>());
         _recipeConfigQuery = GetEntityQuery(ComponentType.ReadOnly<RecipeRegistry>(), ComponentType.ReadOnly<RecipeConfigElement>(),
             ComponentType.ReadOnly<RecipeIngredientElement>(), ComponentType.ReadOnly<RecipeOutputElement>());

@@ -7,7 +7,7 @@ using Unity.Mathematics;
 /// 부착 엔티티: BuildingConfigElement/BuildingConstructionMaterialElement 및 기존 호환 버퍼를 함께 가진 World 단일 설정 엔티티다.
 /// 생성: BuildingConfigInitSystem(Initialization)이 BuildingConfigLoader.PublishConfig로 검증된 설정을 한 번 게시한다.
 /// 이용: BuildingPlacementCommandSystem(Command)이 해금·크기·비용을 읽고 BuildingLifecycleApplySystem/ConstructionLifecycleApplySystem(StateApply)은 공통 생성과 철거 비용 환급에 사용한다.
-/// 제거: 요청 처리로 소비하지 않는 World 설정이며 World 종료 시 함께 사라진다. 연구 완료로 IsUnlocked를 갱신하는 Writer는 아직 없다.
+/// 제거: 요청 처리로 소비하지 않는 World 설정이며 World 종료 시 함께 사라진다. 연구 초기화/완료 Apply가 IsUnlocked와 별도 ResearchStatBonuses를 게시한다.
 /// </summary>
 public struct BuildingConfig : IComponentData
 {
@@ -18,7 +18,7 @@ public struct BuildingConfig : IComponentData
 /// 부착 엔티티: BuildingConfig 통합 설정 엔티티의 버퍼다.
 /// 생성: BuildingConfigInitSystem(Initialization)이 BuildingConfigLoader로 로드·검증하여 게시한다.
 /// 이용: BuildingPlacementCommandSystem(Command)이 배치 해금·기본 크기를 읽고 BuildingLifecycleUtility가 StateApply 건물 생성의 타입별 상태를 초기화한다.
-/// 제거: 생성/배치 요청으로 항목을 소비하지 않는다. 버퍼는 설정 엔티티/World 수명을 따른다. 현재 연구 해금 Writer는 미구현이다.
+/// 제거: 생성/배치 요청으로 항목을 소비하지 않는다. 기본 스펙은 보존하고 제품 연구 경로는 초기화/완료 Apply에서 IsUnlocked를 갱신한다. 버퍼는 설정 엔티티/World 수명을 따른다.
 /// </summary>
 public struct BuildingConfigElement : IBufferElementData
 {

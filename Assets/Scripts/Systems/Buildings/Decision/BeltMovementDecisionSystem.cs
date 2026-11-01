@@ -22,6 +22,7 @@ public partial struct BeltMovementDecisionSystem : ISystem
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
+        state.RequireForUpdate<ResearchStatBonuses>();
         _beltMovementStateLookup = state.GetComponentLookup<BeltMovementState>(true);
         _itemOwnershipLookup = state.GetComponentLookup<ItemOwnership>(true);
         _pendingBuildingDemolitionLookup = state.GetComponentLookup<PendingBuildingDemolition>(true);
@@ -61,6 +62,7 @@ public partial struct BeltMovementDecisionSystem : ISystem
         var job = new BeltMovementDecisionJob
         {
             DeltaTime = dt,
+            SpeedBonus = SystemAPI.GetSingleton<ResearchStatBonuses>().BeltSpeed,
             BeltMap = beltIndex.Map,
             ItemMap = itemIndex.Map,
             BeltMovementStateLookup = _beltMovementStateLookup,
@@ -88,6 +90,7 @@ public partial struct BeltMovementDecisionSystem : ISystem
 public partial struct BeltMovementDecisionJob : IJobEntity
 {
     public float DeltaTime;
+    public double SpeedBonus;
 
     [ReadOnly]
     public NativeParallelHashMap<int2, BeltInfo> BeltMap;
@@ -135,7 +138,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
             return;
         }
 
-        float desiredMove = currentBelt.Speed * DeltaTime;
+        float desiredMove = ResearchRewardUtility.EffectiveSpeed(currentBelt.Speed, SpeedBonus) * DeltaTime;
         if (desiredMove <= 0.0f)
         {
             decision.PlannedProgress = 0.0f;

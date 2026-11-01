@@ -120,6 +120,12 @@ public partial struct CrafterRecipeCommandSystem : ISystem
                     }
 
                     var recipe = recipes[recipeIndex];
+                    if (!recipe.IsUnlocked)
+                    {
+                        // 잠긴 선택은 정상 거부다. 기존 주기/재료/필터는 변경하지 않는다.
+                        ecb.DestroyEntity(reqEntity);
+                        continue;
+                    }
                     if (!BuildingInputSlotUtility.TryCalculate(
                             _recipeIngredientLookup[recipeRegistryEntity], recipe.IngredientStart,
                             recipe.IngredientCount, _itemConfigLookup[itemRegistryEntity],

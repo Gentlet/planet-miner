@@ -20,6 +20,7 @@ public partial struct MinerExecutionSystem : ISystem
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
+        state.RequireForUpdate<ResearchStatBonuses>();
         _resourceNodeLookup = state.GetComponentLookup<ResourceNode>(false);
 
         _minerQuery = SystemAPI.QueryBuilder()
@@ -51,6 +52,7 @@ public partial struct MinerExecutionSystem : ISystem
         var job = new MinerExecutionJob
         {
             DeltaTime = dt,
+            SpeedBonus = SystemAPI.GetSingleton<ResearchStatBonuses>().MiningSpeed,
             DemandLookup = SystemAPI.GetComponentLookup<PowerDemand>(true),
             SupplyLookup = SystemAPI.GetComponentLookup<PowerSupplyResult>(true),
             IsResourceInfinite = isResourceInfinite,
@@ -72,6 +74,7 @@ public partial struct MinerExecutionSystem : ISystem
 public partial struct MinerExecutionJob : IJobEntity
 {
     public float DeltaTime;
+    public double SpeedBonus;
     [ReadOnly] public ComponentLookup<PowerDemand> DemandLookup;
     [ReadOnly] public ComponentLookup<PowerSupplyResult> SupplyLookup;
     public bool IsResourceInfinite;
@@ -108,7 +111,7 @@ public partial struct MinerExecutionJob : IJobEntity
 
         // 2. 채굴 진행도 누적
         float poweredDeltaTime = PowerFrameUtility.GetPoweredDeltaTime(building, DeltaTime, DemandLookup, SupplyLookup);
-        state.Progress += state.MiningSpeed * poweredDeltaTime;
+        state.Progress += ResearchRewardUtility.EffectiveSpeed(state.MiningSpeed, SpeedBonus) * poweredDeltaTime;
 
         // 3. 채굴 완료(Progress >= 1.0f) 시 같은 프레임 StateApply에서 소비할 생산 결과 기록
         if (state.Progress >= 1.0f)

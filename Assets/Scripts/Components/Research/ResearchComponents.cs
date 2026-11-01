@@ -29,6 +29,15 @@ public struct ResearchState : IComponentData
     public FixedString32Bytes ActiveResearchId;
 }
 
+/// <summary>BuildingConfig 엔티티의 완료 연구 보너스 합계다. 초기화가 재구성하고 완료 Apply가 EndBuilding에 갱신한다. 기본 속도와 소비 전력은 보존한다.</summary>
+public struct ResearchStatBonuses : IComponentData
+{
+    public double MiningSpeed;
+    public double CraftingSpeed;
+    public double BeltSpeed;
+    public double ResearchSpeed;
+}
+
 /// <summary>Registry의 읽기 전용 정의다. 각 범위는 같은 엔티티의 선행/재료/보상 버퍼를 가리키며 표시 순서를 보존한다.</summary>
 [InternalBufferCapacity(0)]
 public struct ResearchDefinitionElement : IBufferElementData
@@ -79,7 +88,7 @@ public struct ResearchInitialRecipeUnlockElement : IBufferElementData
     public int RecipeId;
 }
 
-/// <summary>초기화는 0/미완료, ResearchProgressApply는 기여 합계/최소 완료를 EndBuilding에 공개한다. double로 병렬 float 기여의 초과 합계도 보존한다.</summary>
+/// <summary>새 Registry는 0/미완료로 시작하고 유효한 사전 등록 진척도는 보존한다. ResearchProgressApply는 기여 합계/완료와 보상을 EndBuilding에 공개하며 double로 초과 합계도 보존한다.</summary>
 [InternalBufferCapacity(0)]
 public struct ResearchProgressElement : IBufferElementData
 {

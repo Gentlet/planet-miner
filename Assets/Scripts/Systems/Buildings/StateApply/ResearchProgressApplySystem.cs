@@ -15,6 +15,9 @@ public partial struct ResearchProgressApplySystem : ISystem
         _buildings = SystemAPI.QueryBuilder().WithAll<ResearchCycleState, ResearchContributionElement>()
             .WithOptions(EntityQueryOptions.IncludeDisabledEntities).Build();
         state.RequireForUpdate<ResearchRegistry>();
+        state.RequireForUpdate<BuildingConfig>();
+        state.RequireForUpdate<RecipeRegistry>();
+        state.RequireForUpdate<ResearchStatBonuses>();
     }
 
     public void OnUpdate(ref SystemState state)
@@ -28,6 +31,12 @@ public partial struct ResearchProgressApplySystem : ISystem
             Progress = SystemAPI.GetBufferLookup<ResearchProgressElement>(true),
             Definitions = SystemAPI.GetBufferLookup<ResearchDefinitionElement>(true),
             Results = SystemAPI.GetBufferLookup<ResearchContributionElement>(true),
+            ConfigEntity = SystemAPI.GetSingletonEntity<BuildingConfig>(),
+            RecipeEntity = SystemAPI.GetSingletonEntity<RecipeRegistry>(),
+            Configs = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
+            Recipes = SystemAPI.GetBufferLookup<RecipeConfigElement>(true),
+            Rewards = SystemAPI.GetBufferLookup<ResearchRewardElement>(true),
+            Bonuses = SystemAPI.GetComponentLookup<ResearchStatBonuses>(true),
             ECB = end.CreateCommandBuffer()
         }.Schedule(JobHandle.CombineDependencies(state.Dependency, ready));
         state.Dependency = buildings.Dispose(handle);
@@ -44,6 +53,12 @@ internal struct ApplyResearchProgressJob : IJob
     [ReadOnly] public BufferLookup<ResearchProgressElement> Progress;
     [ReadOnly] public BufferLookup<ResearchDefinitionElement> Definitions;
     [ReadOnly] public BufferLookup<ResearchContributionElement> Results;
+    public Entity ConfigEntity;
+    public Entity RecipeEntity;
+    [ReadOnly] public BufferLookup<BuildingConfigElement> Configs;
+    [ReadOnly] public BufferLookup<RecipeConfigElement> Recipes;
+    [ReadOnly] public BufferLookup<ResearchRewardElement> Rewards;
+    [ReadOnly] public ComponentLookup<ResearchStatBonuses> Bonuses;
     public EntityCommandBuffer ECB;
 
     public void Execute()
@@ -70,12 +85,12 @@ internal struct ApplyResearchProgressJob : IJob
         {
             return;
         }
-        float required = 0f;
+        ResearchDefinitionElement activeDefinition = default;
         foreach (var definition in Definitions[Registry])
         {
             if (definition.StableId == selected.ActiveResearchId)
             {
-                required = definition.RequiredProgress;
+                activeDefinition = definition;
                 break;
             }
         }
@@ -88,7 +103,7 @@ internal struct ApplyResearchProgressJob : IJob
             {
                 // 틱당 기여 수는 엔티티 수로 제한된다. double 합산으로 유효한 float 기여 여러 개의 합도 보존한다.
                 entry.Progress += contribution;
-                entry.IsCompleted = entry.Progress >= required;
+                entry.IsCompleted = entry.Progress >= activeDefinition.RequiredProgress;
                 completed = entry.IsCompleted;
             }
             published.Add(entry);
@@ -96,6 +111,36 @@ internal struct ApplyResearchProgressJob : IJob
         if (!completed)
         {
             return;
+        }
+        // 미완료에서 완료로 바뀐 이 경로만 효과를 누적한다. 완료/해금/보너스는 같은 Playback에 공개된다.
+        var rewards = Rewards[Registry];
+        var bonuses = Bonuses[ConfigEntity];
+        for (int i = 0; i < activeDefinition.RewardCount; i++)
+        {
+            var reward = rewards[activeDefinition.RewardStart + i];
+            if (reward.Type == ResearchRewardTypeEnum.StatModifier)
+            {
+                ResearchRewardUtility.AddBonus(ref bonuses, reward);
+            }
+        }
+        ECB.SetComponent(ConfigEntity, bonuses);
+        var publishedConfigs = ECB.SetBuffer<BuildingConfigElement>(ConfigEntity);
+        foreach (var previous in Configs[ConfigEntity])
+        {
+            var config = previous;
+            // 초기화에서 보상과 종류/티어별 RequiredResearch의 양방향 일치를 검증했다.
+            if (config.RequiredResearch == selected.ActiveResearchId)
+            {
+                config.IsUnlocked = true;
+            }
+            publishedConfigs.Add(config);
+        }
+        var publishedRecipes = ECB.SetBuffer<RecipeConfigElement>(RecipeEntity);
+        foreach (var previous in Recipes[RecipeEntity])
+        {
+            var recipe = previous;
+            recipe.IsUnlocked |= ResearchRewardUtility.UnlocksRecipe(activeDefinition, rewards, recipe.Id);
+            publishedRecipes.Add(recipe);
         }
         ECB.SetComponent(Registry, default(ResearchState));
         foreach (Entity building in Buildings)

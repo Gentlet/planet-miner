@@ -60,6 +60,10 @@ internal partial struct PrepareCrafterWorkJob : IJobEntity
         {
             return;
         }
+        if (!Recipes[Registry][recipeIndex].IsUnlocked)
+        {
+            return;
+        }
         if (state.IsCraftingActive)
         {
             preparation.CanAdvance = state.Progress < 1f;

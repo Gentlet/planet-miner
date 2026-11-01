@@ -56,6 +56,12 @@ public partial class BuildingConfigInitSystem : SystemBase
                 if (!BuildingConfigLoader.ValidatePublishedConfig(EntityManager, entity))
                 {
                     ReportFailure("Pre-registered BuildingConfig is incomplete.");
+                    return;
+                }
+                // 사전 등록 스펙은 보존하고 아직 없는 연구 효과의 초기 상태만 준비한다.
+                if (!EntityManager.HasComponent<ResearchStatBonuses>(entity))
+                {
+                    EntityManager.AddComponent<ResearchStatBonuses>(entity);
                 }
                 return;
             }

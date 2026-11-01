@@ -24,6 +24,7 @@ public partial struct CrafterExecutionSystem : ISystem
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
+        state.RequireForUpdate<ResearchStatBonuses>();
         _destroyItemRequestLookup = state.GetComponentLookup<DestroyItemRequest>(false);
         _recipeConfigLookup = state.GetBufferLookup<RecipeConfigElement>(true);
         _recipeIngredientLookup = state.GetBufferLookup<RecipeIngredientElement>(true);
@@ -71,6 +72,7 @@ public partial struct CrafterExecutionSystem : ISystem
         var job = new CrafterExecutionJob
         {
             DeltaTime = dt,
+            SpeedBonus = SystemAPI.GetSingleton<ResearchStatBonuses>().CraftingSpeed,
             DemandLookup = SystemAPI.GetComponentLookup<PowerDemand>(true),
             SupplyLookup = SystemAPI.GetComponentLookup<PowerSupplyResult>(true),
             RecipeRegistryEntity = recipeRegistryEntity,
@@ -90,6 +92,7 @@ public partial struct CrafterExecutionSystem : ISystem
 [BurstCompile]
 public partial struct CrafterExecutionJob : IJobEntity
 {
+    public double SpeedBonus;
     public float DeltaTime;
     [ReadOnly] public ComponentLookup<PowerDemand> DemandLookup;
     [ReadOnly] public ComponentLookup<PowerSupplyResult> SupplyLookup;
@@ -180,7 +183,7 @@ public partial struct CrafterExecutionJob : IJobEntity
         if (state.IsCraftingActive && decision.CanAdvance)
         {
             float craftTime = math.max(0.01f, recipe.CraftTime);
-            float deltaProgress = (poweredDeltaTime * state.Speed) / craftTime;
+            float deltaProgress = (poweredDeltaTime * ResearchRewardUtility.EffectiveSpeed(state.Speed, SpeedBonus)) / craftTime;
             state.Progress = math.min(1.0f, state.Progress + deltaProgress);
         }
 

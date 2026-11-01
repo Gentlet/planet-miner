@@ -47,12 +47,14 @@ public struct RecipeOutputElement : IBufferElementData
 /// 부착 엔티티: RecipeRegistry가 있는 World 단일 설정 엔티티의 레시피 버퍼다.
 /// 생성: RecipeInitSystem(Initialization)이 RecipeConfigLoader로 검증된 범위 시작/개수를 한 번 게시한다.
 /// 이용: CrafterRecipeCommandSystem(Command)이 레시피 선택/슬롯에 읽고 CrafterDecisionSystem(Decision)·CrafterExecutionSystem(Execution)이 재료/시간/출력 조건과 생산 결과에 사용한다.
-/// 제거: 레시피 선택 변경으로 전역 설정을 수정하거나 소비하지 않는다. 게시 후 읽기 전용이며 설정 엔티티/World 수명을 따른다.
+/// 제거: 레시피 선택 변경으로 전역 설정을 수정하거나 소비하지 않는다. 정의 필드는 읽기 전용이며 IsUnlocked만 연구 초기화/완료 Apply가 갱신한다. 설정 엔티티/World 수명을 따른다.
 /// </summary>
 [InternalBufferCapacity(0)]
 public struct RecipeConfigElement : IBufferElementData
 {
     public int Id;
+    /// <summary>연구 초기화가 초기 목록/완료 원본으로 구성하고 완료 Apply가 EndBuilding에 해금한다. Command의 선택 권위다.</summary>
+    public bool IsUnlocked;
     public float CraftTime;
     public byte ConditionFlags; // 현재 설정 로더는 0으로 게시하며 실행 조건을 해석하는 Consumer는 아직 없다.
     public int IngredientStart;
