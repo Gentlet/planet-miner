@@ -23,7 +23,7 @@ public struct ResearchRegistry : IComponentData
 {
 }
 
-/// <summary>전역 선택 소유자가 작성할 활성 연구 ID다. 빈 ID는 미선택이며 초기화는 선택/진행을 실행하지 않는다.</summary>
+/// <summary>선택 Command가 EndCommand에 공개하는 활성 연구 ID다. 빈 ID는 미선택이며 초기화는 선택/진행을 실행하지 않는다.</summary>
 public struct ResearchState : IComponentData
 {
     public FixedString32Bytes ActiveResearchId;
@@ -88,7 +88,7 @@ public struct ResearchProgressElement : IBufferElementData
     public bool IsCompleted;
 }
 
-/// <summary>개별 연구건물의 로컬 주기 원본이다. 빈 ID는 주기 없음이며 전역 진척/완료/해금을 복제하지 않는다.</summary>
+/// <summary>개별 연구건물의 로컬 주기 원본이다. 빈 ID는 주기 없음이며 선택 변경은 EndCommand에 초기화한다. 전역 진척/완료/해금을 복제하지 않는다.</summary>
 public struct ResearchCycleState : IComponentData
 {
     public FixedString32Bytes ResearchId;
