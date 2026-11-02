@@ -21,6 +21,8 @@ public sealed class WorldInputController : MonoBehaviour
     private InputActionAsset _ownedActions;
     private InputAction _move;
     private InputAction _speedBoost;
+    private InputActionMap _constructionMap;
+    private readonly WorldConstructionPointerFilter _constructionPointerFilter = new WorldConstructionPointerFilter();
     // Action 복제본의 수명과 분리하여 비활성화/재활성화에도 사용자가 적용한 키를 보존한다.
     private WorldInputBindingOverride[] _bindingOverrides = Array.Empty<WorldInputBindingOverride>();
     private WorldInputEventScope _eventScope;
@@ -41,6 +43,7 @@ public sealed class WorldInputController : MonoBehaviour
 
     public bool IsReady => _ownedActions != null && isActiveAndEnabled;
     public WorldInputFrame CurrentFrame { get; private set; }
+    public uint SettingsRevision { get; private set; }
     public event Action<WorldInputFrame> FrameReady;
 
     public WorldInputSettings GetSettings()
@@ -101,12 +104,14 @@ public sealed class WorldInputController : MonoBehaviour
             _ownedActions = actions;
             _move = move;
             _speedBoost = boost;
+            ObserveConstructionActions(actions.FindActionMap("Construction", true));
         }
         else
         {
             ReleaseActions(actions);
         }
         _bindingOverrides = replacements;
+        SettingsRevision++;
         GetComponent<CameraMovementController>().ApplyValidatedSettings(cameraSettings);
         ReleaseActions(previous);
         _awaitingButtonRelease = true;
@@ -133,6 +138,7 @@ public sealed class WorldInputController : MonoBehaviour
         _ownedActions = actions;
         _move = move;
         _speedBoost = boost;
+        ObserveConstructionActions(actions.FindActionMap("Construction", true));
         _eventScope = new WorldInputEventScope();
         InputSystem.onEvent += OnInputEvent;
     }
@@ -140,6 +146,7 @@ public sealed class WorldInputController : MonoBehaviour
     private void OnDisable()
     {
         InputSystem.onEvent -= OnInputEvent;
+        ObserveConstructionActions(null);
         PublishCancellation();
         _pointerWorld = null;
         ClearPointerSuppression();
@@ -149,6 +156,20 @@ public sealed class WorldInputController : MonoBehaviour
         _ownedActions = null;
         _move = null;
         _speedBoost = null;
+    }
+
+    private void ObserveConstructionActions(InputActionMap map)
+    {
+        if (_constructionMap != null)
+        {
+            _constructionMap.actionTriggered -= _constructionPointerFilter.RecordAction;
+        }
+        _constructionPointerFilter.ResetActions();
+        _constructionMap = map;
+        if (_constructionMap != null)
+        {
+            _constructionMap.actionTriggered += _constructionPointerFilter.RecordAction;
+        }
     }
 
     private bool TryCreateActions(WorldInputBindingOverride[] overrides, bool enable,
@@ -181,6 +202,11 @@ public sealed class WorldInputController : MonoBehaviour
                 error = "Player/Sprint가 없습니다.";
                 return false;
             }
+            var construction = candidate.FindActionMap("Construction");
+            if (!WorldConstructionInput.TryValidate(construction, out error))
+            {
+                return false;
+            }
             candidate.RemoveAllBindingOverrides();
             if (!WorldInputBindingUtility.TryApplyOverrides(candidate, overrides, out error))
             {
@@ -190,6 +216,7 @@ public sealed class WorldInputController : MonoBehaviour
             {
                 move.Enable();
                 boost.Enable();
+                construction.Enable();
             }
             actions = candidate;
             transferred = true;
@@ -266,6 +293,7 @@ public sealed class WorldInputController : MonoBehaviour
             if (previousContext)
             {
                 _awaitingButtonRelease = true;
+                _constructionPointerFilter.CancelGestures();
                 contextChanged = true;
             }
         }
@@ -308,7 +336,10 @@ public sealed class WorldInputController : MonoBehaviour
             mouse.leftButton.isPressed, mouse.leftButton.wasReleasedThisFrame);
         var secondary = _secondary.Advance(allowed && !_secondarySuppressed && !secondaryBlocked, mouse.rightButton.wasPressedThisFrame,
             mouse.rightButton.isPressed, mouse.rightButton.wasReleasedThisFrame);
-        CurrentFrame = new WorldInputFrame(Time.frameCount, hasPosition, pointer, worldPosition, cell, primary, secondary);
+        _constructionPointerFilter.BeginFrame(mouse, !hasPosition);
+        var construction = WorldConstructionInput.Read(_constructionMap, ui.BlocksAllInput, _constructionPointerFilter);
+        _constructionPointerFilter.EndFrame();
+        CurrentFrame = new WorldInputFrame(Time.frameCount, hasPosition, pointer, worldPosition, cell, primary, secondary, construction);
         FrameReady?.Invoke(CurrentFrame);
     }
 
@@ -406,6 +437,7 @@ public sealed class WorldInputController : MonoBehaviour
         {
             blocked = true;
         }
+        _constructionPointerFilter.RecordPointer(mouse, inputEvent, blocked);
         if (blocked)
         {
             if (primaryHeld || mouse.leftButton.isPressed)
@@ -434,6 +466,7 @@ public sealed class WorldInputController : MonoBehaviour
 
     private void ClearPointerSuppression()
     {
+        _constructionPointerFilter.CancelGestures();
         _primarySuppressed = false;
         _secondarySuppressed = false;
         _primaryBlockedThisFrame = false;

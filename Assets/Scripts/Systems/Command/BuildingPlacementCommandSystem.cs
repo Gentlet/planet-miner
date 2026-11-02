@@ -128,10 +128,15 @@ public partial struct BuildingPlacementCommandSystem : ISystem
             int count = candidateBuffer.Length;
             var candidates = new NativeArray<PlacementCandidate>(count, Allocator.Temp);
             var results = new NativeArray<PlacementValidationResult>(count, Allocator.Temp);
+            var settingsRejections = new NativeArray<PlacementValidationCode>(count, Allocator.Temp);
 
             for (int i = 0; i < count; i++)
             {
                 candidates[i] = candidateBuffer[i];
+                if (!BuildingSettingsUtility.IsAllowed(state.EntityManager, candidateBuffer[i].TargetType, candidateBuffer[i].Settings))
+                {
+                    settingsRejections[i] = PlacementValidationCode.InvalidBuildingSettings;
+                }
             }
 
             // 직전 동기화의 점유·앞 요청의 최종 승인·이 묶음 내부 후보 충돌을 검사한다.
@@ -144,7 +149,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                 itemMap.AsReadOnly(),
                 results,
                 configs,
-                approvedCells: approvedCells);
+                approvedCells: approvedCells, settingsRejections: settingsRejections);
 
             // 후보의 명시 Tick을 우선하되 버퍼 순서를 유지한다. 이 Stamp가 이후 최초 공급 우선순위의 근거가 된다.
             ulong defaultTick = request.RequestTick > 0
@@ -193,6 +198,10 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                     }
 
                     ecb.AddComponent(siteEntity, new ConstructionSite(candidate.TargetType, candidate.TargetTier, flags));
+                    if (candidateBuffer[i].Settings.HasValues)
+                    {
+                        ecb.AddComponent(siteEntity, candidateBuffer[i].Settings);
+                    }
                     ecb.AddComponent(siteEntity, new PlacementStamp(candidateTick, (uint)i, request.ReceiptSequence));
                     ecb.AddComponent(siteEntity, LocalTransform.FromPosition(candidate.OriginPosition.x, candidate.OriginPosition.y, 0f));
 
@@ -209,6 +218,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
 
             candidates.Dispose();
             results.Dispose();
+            settingsRejections.Dispose();
 
             // 요청 엔티티 소비 (Consume-on-Apply)
             ecb.DestroyEntity(entity);

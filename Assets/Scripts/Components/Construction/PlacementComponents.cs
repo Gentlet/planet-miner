@@ -68,7 +68,9 @@ public enum PlacementValidationCode : byte
     /// <summary>
     /// 연구가 아직 완료되지 않아 잠긴 건물임 (건설 거부).
     /// </summary>
-    BlockedByResearch = 7
+    BlockedByResearch = 7,
+    NotPlayerBuildable = 8,
+    InvalidBuildingSettings = 9
 }
 
 /// <summary>

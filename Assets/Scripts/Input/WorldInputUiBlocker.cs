@@ -26,6 +26,20 @@ public sealed class WorldInputUiBlocker : MonoBehaviour
     private static readonly Func<VisualElement, Rect> ReadWorldClip = CreateWorldClipReader();
 
     [SerializeField] private WorldInputController _worldInput;
+
+    /// <summary>런타임 UI도 비활성 상태에서 소유 입력을 지정한 뒤 기존 등록 수명을 사용한다.</summary>
+    public void Initialize(WorldInputController input)
+    {
+        if (input == null)
+        {
+            throw new System.ArgumentNullException(nameof(input));
+        }
+        if (isActiveAndEnabled)
+        {
+            throw new System.InvalidOperationException("UI 차단기는 활성화 전에 구성해야 합니다.");
+        }
+        _worldInput = input;
+    }
     private UIDocument _document;
 
     private void OnEnable()

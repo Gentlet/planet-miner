@@ -34,6 +34,10 @@ public static class BuildingPlacementValidationUtility
         in NativeParallelMultiHashMap<int2, Entity>.ReadOnly itemMap,
         bool isUnlocked = true)
     {
+        if (targetType == BuildingTypeEnum.MainFacility)
+        {
+            return new PlacementValidationResult(PlacementValidationCode.NotPlayerBuildable);
+        }
         if (!isUnlocked)
         {
             return new PlacementValidationResult(PlacementValidationCode.BlockedByResearch);
@@ -45,6 +49,11 @@ public static class BuildingPlacementValidationUtility
         }
 
         int2 effectiveSize = BuildingFootprintUtility.GetEffectiveSize(footprintSize, direction);
+        if ((long)originPosition.x + effectiveSize.x - 1 > int.MaxValue ||
+            (long)originPosition.y + effectiveSize.y - 1 > int.MaxValue)
+        {
+            return new PlacementValidationResult(PlacementValidationCode.InvalidFootprint);
+        }
 
         bool hasResource = false;
         bool hasGroundItems = false;
@@ -120,7 +129,8 @@ public static class BuildingPlacementValidationUtility
         in NativeParallelMultiHashMap<int2, Entity>.ReadOnly itemMap,
         NativeArray<PlacementValidationResult> results,
         Allocator allocator = Allocator.Temp,
-        NativeParallelHashSet<int2> approvedCells = default)
+        NativeParallelHashSet<int2> approvedCells = default,
+        NativeArray<PlacementValidationCode> settingsRejections = default)
     {
         var claimedCells = new NativeParallelHashSet<int2>(math.max(16, candidates.Length * 4), allocator);
         bool anyFailed = false;
@@ -128,6 +138,12 @@ public static class BuildingPlacementValidationUtility
         for (int i = 0; i < candidates.Length; i++)
         {
             var candidate = candidates[i];
+            if (settingsRejections.IsCreated && settingsRejections[i] != PlacementValidationCode.Success)
+            {
+                results[i] = new PlacementValidationResult(settingsRejections[i]);
+                anyFailed = true;
+                continue;
+            }
             var singleResult = ValidateSinglePlacement(
                 candidate.TargetType,
                 candidate.TargetTier,
@@ -213,7 +229,8 @@ public static class BuildingPlacementValidationUtility
         NativeArray<PlacementValidationResult> results,
         in DynamicBuffer<BuildingConfigElement> configBuffer,
         Allocator allocator = Allocator.Temp,
-        NativeParallelHashSet<int2> approvedCells = default)
+        NativeParallelHashSet<int2> approvedCells = default,
+        NativeArray<PlacementValidationCode> settingsRejections = default)
     {
         var claimedCells = new NativeParallelHashSet<int2>(math.max(16, candidates.Length * 4), allocator);
         bool anyFailed = false;
@@ -221,6 +238,12 @@ public static class BuildingPlacementValidationUtility
         for (int i = 0; i < candidates.Length; i++)
         {
             var candidate = candidates[i];
+            if (settingsRejections.IsCreated && settingsRejections[i] != PlacementValidationCode.Success)
+            {
+                results[i] = new PlacementValidationResult(settingsRejections[i]);
+                anyFailed = true;
+                continue;
+            }
             bool hasConfig = BuildingConfigLookupUtility.TryGetConfig(configBuffer, candidate.TargetType, candidate.TargetTier, out var config);
             bool isUnlocked = hasConfig && config.IsUnlocked;
             if (isUnlocked && !math.all(candidate.FootprintSize == config.Footprint))
@@ -310,7 +333,8 @@ public static class BuildingPlacementValidationUtility
         NativeArray<PlacementValidationResult> results,
         in NativeArray<BuildingConfigElement> configs,
         Allocator allocator = Allocator.Temp,
-        NativeParallelHashSet<int2> approvedCells = default)
+        NativeParallelHashSet<int2> approvedCells = default,
+        NativeArray<PlacementValidationCode> settingsRejections = default)
     {
         var claimedCells = new NativeParallelHashSet<int2>(math.max(16, candidates.Length * 4), allocator);
         bool anyFailed = false;
@@ -318,6 +342,12 @@ public static class BuildingPlacementValidationUtility
         for (int i = 0; i < candidates.Length; i++)
         {
             var candidate = candidates[i];
+            if (settingsRejections.IsCreated && settingsRejections[i] != PlacementValidationCode.Success)
+            {
+                results[i] = new PlacementValidationResult(settingsRejections[i]);
+                anyFailed = true;
+                continue;
+            }
             bool hasConfig = BuildingConfigLookupUtility.TryGetConfig(configs, candidate.TargetType, candidate.TargetTier, out var config);
             bool isUnlocked = hasConfig && config.IsUnlocked;
 

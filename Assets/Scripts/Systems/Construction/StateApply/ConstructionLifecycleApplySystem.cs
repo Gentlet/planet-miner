@@ -92,6 +92,7 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
             StampLookup = _stampLookup,
             PrefabBufferLookup = _prefabBufferLookup,
             ConfigBufferLookup = _configBufferLookup,
+            PlannedSettings = SystemAPI.GetComponentLookup<PlannedBuildingSettings>(true),
             WorldItemPositions = worldItemPositions.AsArray()
         };
         var completionHandle = completionJob.Schedule(_siteQuery, state.Dependency);
@@ -129,6 +130,7 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
 [BurstCompile]
 public partial struct ConstructionCompletionApplyJob : IJobEntity
 {
+    [ReadOnly] public ComponentLookup<PlannedBuildingSettings> PlannedSettings;
     public EntityCommandBuffer ECB;
     public bool HasPrefabDb;
     public Entity PrefabDbEntity;
@@ -215,6 +217,22 @@ public partial struct ConstructionCompletionApplyJob : IJobEntity
         {
             // 건물 생성이 거부되면 자재와 현장을 보존한다.
             return;
+        }
+
+        if (PlannedSettings.HasComponent(siteEntity))
+        {
+            var settings = PlannedSettings[siteEntity];
+            if (settings.HasStorageFilter)
+            {
+                // 일반 저장소는 생성과 같은 공개 경계에서 필터를 갖추어 이번 틱 드론 입고도 검사받는다.
+                ECB.SetComponent(building, settings.Filter);
+            }
+            if (settings.HasRecipe)
+            {
+                // 새 제작기는 다음 Command에서 기존 레시피 검증/입력 구성 경로를 사용한다.
+                Entity request = ECB.CreateEntity();
+                ECB.AddComponent(request, new ChangeCrafterRecipeRequest(building, settings.RecipeId));
+            }
         }
 
         // 생성 명령이 확보된 뒤에만 보관 실물과 현장을 소비한다. 프리팹 실패가 자재 손실로 이어지지 않게 한다.

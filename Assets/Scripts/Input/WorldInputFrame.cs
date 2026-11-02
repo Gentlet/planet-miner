@@ -22,9 +22,11 @@ public readonly struct WorldInputFrame
     public readonly int2 GridCell;
     public readonly WorldPointerButtonStateEnum Primary;
     public readonly WorldPointerButtonStateEnum Secondary;
+    public readonly WorldConstructionInput Construction;
 
     public WorldInputFrame(int frameNumber, bool hasWorldPosition, Vector2 screenPosition,
-        Vector3 worldPosition, int2 gridCell, WorldPointerButtonStateEnum primary, WorldPointerButtonStateEnum secondary)
+        Vector3 worldPosition, int2 gridCell, WorldPointerButtonStateEnum primary, WorldPointerButtonStateEnum secondary,
+        WorldConstructionInput construction = default)
     {
         FrameNumber = frameNumber;
         HasWorldPosition = hasWorldPosition;
@@ -33,6 +35,7 @@ public readonly struct WorldInputFrame
         GridCell = gridCell;
         Primary = primary;
         Secondary = secondary;
+        Construction = construction;
     }
 }
 

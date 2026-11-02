@@ -74,7 +74,11 @@ public struct PlacementRequestCandidateElement : IBufferElementData
         OriginPosition = originPosition;
         Direction = direction;
         RequestTick = requestTick;
+        Settings = default;
     }
+
+    /// <summary>현재 배치 후보와 같은 승인에서 검증할 설정 스냅샷이다.</summary>
+    public PlannedBuildingSettings Settings;
 
     public static implicit operator PlacementCandidate(PlacementRequestCandidateElement elem)
     {

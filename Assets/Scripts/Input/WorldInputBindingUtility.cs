@@ -2,10 +2,22 @@ using System;
 using System.Collections.Generic;
 using UnityEngine.InputSystem;
 
-/// <summary>현재 월드 카메라의 Move/Sprint 키만 다룬다. 원본 에셋은 조회하고 전달받은 비공개 복제본에만 override를 쓴다.</summary>
+/// <summary>월드 카메라/건설 동작의 버튼 바인딩을 다룬다. 원본 에셋은 조회하고 비공개 복제본에만 override를 쓴다.</summary>
 internal static class WorldInputBindingUtility
 {
-    private static readonly string[] ActionNames = { "Player/Move", "Player/Sprint" };
+    private static readonly string[] ActionNames = BuildActionNames();
+
+    private static string[] BuildActionNames()
+    {
+        var names = new string[WorldConstructionInput.ActionNames.Length + 2];
+        names[0] = "Player/Move";
+        names[1] = "Player/Sprint";
+        for (int i = 0; i < WorldConstructionInput.ActionNames.Length; i++)
+        {
+            names[i + 2] = "Construction/" + WorldConstructionInput.ActionNames[i];
+        }
+        return names;
+    }
 
     public static WorldInputBindingDescriptor[] Describe(InputActionAsset source, WorldInputBindingOverride[] overrides)
     {
@@ -49,7 +61,7 @@ internal static class WorldInputBindingUtility
             }
             if (!TryFindBinding(candidate, id, out var action, out int bindingIndex))
             {
-                error = "현재 Move/Sprint의 Keyboard&Mouse 바인딩에 없는 ID입니다.";
+                error = "현재 월드 입력의 Keyboard&Mouse 바인딩에 없는 ID입니다.";
                 return false;
             }
             if (replacement.OverridePath == null)

@@ -133,6 +133,9 @@ GameObject:
   - component: {fileID: 446882964}
   - component: {fileID: 446882969}
   - component: {fileID: 446882968}
+  - component: {fileID: 446882972}
+  - component: {fileID: 446882971}
+  - component: {fileID: 446882970}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -150,7 +153,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: 
   m_RenderShadows: 1
   m_RequiresDepthTextureOption: 2
@@ -288,6 +291,45 @@ MonoBehaviour:
   _zoomSpeed: 1
   _minOrthographicSize: 2
   _maxOrthographicSize: 20
+--- !u!114 &446882970
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 446882963}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: aa395b3b9036f0f4e919c78e09901b02, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::BuildingToolbarView
+--- !u!114 &446882971
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 446882963}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5b52301370ec8ce4db8961c65dd12ba4, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::BuildingToolPreview
+  _allowed: {r: 0.2, g: 1, b: 0.55, a: 0.8}
+  _blocked: {r: 1, g: 0.25, b: 0.25, a: 0.8}
+--- !u!114 &446882972
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 446882963}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2f3f8aea7342eae4f875d772e8c91115, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::WorldConstructionController
+  _maximumCandidates: 1024
 --- !u!1 &966265738
 GameObject:
   m_ObjectHideFlags: 0
@@ -315,7 +357,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: b7e1b88750b648e19aa558078bb368d6, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::V2FloorBiomePreview
   chunkRadius: 1
   grassColor: {r: 0.33, g: 0.65, b: 0.29, a: 1}
@@ -363,7 +405,7 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 45a335734b1572644a6a5d09d87adc65, type: 3}
-  m_Name: 
+  m_Name:
   m_EditorClassIdentifier: Unity.Scenes::Unity.Scenes.SubScene
   _SceneAsset: {fileID: 102900000, guid: e8fe413ce5bc138479ddc5bb7a3510e2, type: 3}
   _HierarchyColor: {r: 0.5, g: 0.5, b: 0.5, a: 1}
