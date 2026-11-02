@@ -7,4 +7,4 @@
 | StorageLimitConfig.json | [Resources/Config/ItemConfig.json](../../Resources/Config/ItemConfig.json)의 품목별 MaxStack |
 | ResourceGenerationConfig.json | [Resources/Config/WorldGenerationConfig.json](../../Resources/Config/WorldGenerationConfig.json)의 자원·바닥 통합 설정 |
 
-DroneConfig.json, ResearchConfig.json, StartingItemConfig.json은 후속 기능의 설정 입력이므로 Resources/Config에 유지한다. 제품 Reader가 아직 없다는 이유만으로 레거시 설정으로 분류하지 않는다.
+DroneConfig.json, ResearchConfig.json, StartingItemConfig.json은 각각 현재 초기화 시스템이 읽는 제품 입력이므로 Resources/Config에 유지한다. 설정의 로드/게시와 해당 기능 전체의 실행/검증은 구분한다.
