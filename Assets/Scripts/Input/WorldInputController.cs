@@ -21,6 +21,8 @@ public sealed class WorldInputController : MonoBehaviour
     private InputActionAsset _ownedActions;
     private InputAction _move;
     private InputAction _speedBoost;
+    // Action 복제본의 수명과 분리하여 비활성화/재활성화에도 사용자가 적용한 키를 보존한다.
+    private WorldInputBindingOverride[] _bindingOverrides = Array.Empty<WorldInputBindingOverride>();
     private WorldInputEventScope _eventScope;
     private Camera _camera;
     private CameraMovementController _movement;
@@ -41,6 +43,81 @@ public sealed class WorldInputController : MonoBehaviour
     public WorldInputFrame CurrentFrame { get; private set; }
     public event Action<WorldInputFrame> FrameReady;
 
+    public WorldInputSettings GetSettings()
+    {
+        return new WorldInputSettings
+        {
+            Camera = GetComponent<CameraMovementController>().GetSettings(),
+            BindingOverrides = (WorldInputBindingOverride[])_bindingOverrides.Clone()
+        };
+    }
+
+    public WorldInputBindingDescriptor[] GetRebindableBindings()
+    {
+        if (_inputActions == null)
+        {
+            throw new InvalidOperationException("Input Actions 참조가 필요합니다.");
+        }
+        return WorldInputBindingUtility.Describe(_inputActions, _bindingOverrides);
+    }
+
+    /// <summary>전체 스냅샷을 검증/준비한 후 교체한다. 잘못된 값은 기존 설정/입력을 보존해 거부하며 콜백의 외부 수명 변경은 되돌리지 않는다. 성공은 포인터 입력을 취소한다.</summary>
+    public bool TryApplySettings(WorldInputSettings settings, out string error)
+    {
+        error = null;
+        if (settings == null)
+        {
+            error = "입력 설정이 필요합니다.";
+            return false;
+        }
+        CameraMovementSettings cameraSettings = settings.Camera;
+        if (!cameraSettings.TryValidate(out error))
+        {
+            return false;
+        }
+        if (settings.BindingOverrides == null)
+        {
+            error = "키 설정 배열이 필요합니다. 기본 키는 빈 배열로 지정하세요.";
+            return false;
+        }
+        var replacements = (WorldInputBindingOverride[])settings.BindingOverrides.Clone();
+        // 활성 플래그만으로는 OnEnable의 준비 완료를 보장하지 않는다. 준비 전 호출은 키 프로필을 보관하고 수치만 적용한다.
+        bool replaceLive = IsReady;
+        var previous = _ownedActions;
+        if (!TryCreateActions(replacements, replaceLive, out var actions, out var move, out var boost, out error))
+        {
+            return false;
+        }
+
+        // Enable은 공개 동기 콜백을 발생시킨다. 그 사이 비활성화/재초기화된 소유자에게 후보를 인계하지 않는다.
+        if (replaceLive && (!IsReady || _ownedActions != previous))
+        {
+            ReleaseActions(actions);
+            error = "설정 준비 중 입력 수명이 변경되어 적용하지 않았습니다.";
+            return false;
+        }
+        if (replaceLive)
+        {
+            _ownedActions = actions;
+            _move = move;
+            _speedBoost = boost;
+        }
+        else
+        {
+            ReleaseActions(actions);
+        }
+        _bindingOverrides = replacements;
+        GetComponent<CameraMovementController>().ApplyValidatedSettings(cameraSettings);
+        ReleaseActions(previous);
+        _awaitingButtonRelease = true;
+        ClearPointerSuppression();
+        // 현재 입력 갱신에서 이미 끝난 클릭도 다음 프레임의 새 Press로 재접수하지 않는다.
+        _primaryBlockedThisFrame = true;
+        _secondaryBlockedThisFrame = true;
+        PublishCancellation();
+        return true;
+    }
+
     private void OnEnable()
     {
         _camera = GetComponent<Camera>();
@@ -48,31 +125,14 @@ public sealed class WorldInputController : MonoBehaviour
         _hasFocus = Application.isFocused;
         _awaitingButtonRelease = true;
         _pointerWorld = null;
-        if (_inputActions == null)
+        if (!TryCreateActions(_bindingOverrides, true, out var actions, out var move, out var boost, out string error))
         {
-            RejectConfiguration("Input Actions 참조가 필요합니다.");
+            RejectConfiguration(error);
             return;
         }
-
-        _ownedActions = Instantiate(_inputActions);
-        _ownedActions.hideFlags = HideFlags.HideAndDontSave;
-        _ownedActions.bindingMask = InputBinding.MaskByGroup("Keyboard&Mouse");
-        _move = _ownedActions.FindAction("Player/Move");
-        if (_move == null)
-        {
-            RejectConfiguration("Player/Move가 없습니다.");
-            return;
-        }
-
-        _speedBoost = _ownedActions.FindAction("Player/Sprint");
-        if (_speedBoost == null)
-        {
-            RejectConfiguration("Player/Sprint가 없습니다.");
-            return;
-        }
-
-        _move.Enable();
-        _speedBoost.Enable();
+        _ownedActions = actions;
+        _move = move;
+        _speedBoost = boost;
         _eventScope = new WorldInputEventScope();
         InputSystem.onEvent += OnInputEvent;
     }
@@ -85,24 +145,80 @@ public sealed class WorldInputController : MonoBehaviour
         ClearPointerSuppression();
         _eventScope?.Dispose();
         _eventScope = null;
-        if (_ownedActions == null)
-        {
-            return;
-        }
-
-        _ownedActions.Disable();
-        if (Application.isPlaying)
-        {
-            Destroy(_ownedActions);
-        }
-        else
-        {
-            DestroyImmediate(_ownedActions);
-        }
-
+        ReleaseActions(_ownedActions);
         _ownedActions = null;
         _move = null;
         _speedBoost = null;
+    }
+
+    private bool TryCreateActions(WorldInputBindingOverride[] overrides, bool enable,
+        out InputActionAsset actions, out InputAction move, out InputAction boost, out string error)
+    {
+        actions = null;
+        move = null;
+        boost = null;
+        error = null;
+        if (_inputActions == null)
+        {
+            error = "Input Actions 참조가 필요합니다.";
+            return false;
+        }
+        var candidate = Instantiate(_inputActions);
+        bool transferred = false;
+        try
+        {
+            candidate.hideFlags = HideFlags.HideAndDontSave;
+            candidate.bindingMask = InputBinding.MaskByGroup("Keyboard&Mouse");
+            move = candidate.FindAction("Player/Move");
+            if (move == null)
+            {
+                error = "Player/Move가 없습니다.";
+                return false;
+            }
+            boost = candidate.FindAction("Player/Sprint");
+            if (boost == null)
+            {
+                error = "Player/Sprint가 없습니다.";
+                return false;
+            }
+            candidate.RemoveAllBindingOverrides();
+            if (!WorldInputBindingUtility.TryApplyOverrides(candidate, overrides, out error))
+            {
+                return false;
+            }
+            if (enable)
+            {
+                move.Enable();
+                boost.Enable();
+            }
+            actions = candidate;
+            transferred = true;
+            return true;
+        }
+        finally
+        {
+            if (!transferred)
+            {
+                ReleaseActions(candidate);
+            }
+        }
+    }
+
+    private static void ReleaseActions(InputActionAsset actions)
+    {
+        if (actions == null)
+        {
+            return;
+        }
+        actions.Disable();
+        if (Application.isPlaying)
+        {
+            Destroy(actions);
+        }
+        else
+        {
+            DestroyImmediate(actions);
+        }
     }
 
     private void OnApplicationFocus(bool hasFocus)

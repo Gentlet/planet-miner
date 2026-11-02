@@ -35,14 +35,45 @@ public sealed class CameraMovementController : MonoBehaviour
             return;
         }
 
-        if (!float.IsFinite(_moveSpeed) || _moveSpeed < 0f ||
-            !float.IsFinite(_speedBoostMultiplier) || _speedBoostMultiplier < 1f ||
-            !float.IsFinite(_zoomSpeed) || _zoomSpeed <= 0f ||
-            !float.IsFinite(_minOrthographicSize) || _minOrthographicSize <= 0f ||
-            !float.IsFinite(_maxOrthographicSize) || _maxOrthographicSize < _minOrthographicSize)
+        if (!GetSettings().TryValidate(out string error))
         {
-            RejectConfiguration("이동/가속/줌 설정 범위를 확인하세요.");
+            RejectConfiguration(error);
         }
+    }
+
+    public CameraMovementSettings GetSettings()
+    {
+        return new CameraMovementSettings
+        {
+            MoveSpeed = _moveSpeed,
+            SpeedBoostMultiplier = _speedBoostMultiplier,
+            ZoomSpeed = _zoomSpeed,
+            MinOrthographicSize = _minOrthographicSize,
+            MaxOrthographicSize = _maxOrthographicSize
+        };
+    }
+
+    /// <summary>유효한 수치를 함께 적용한다. 범위 변경은 현재 줌을 새 범위에 맞추며 위치/진행 중 월드 명령은 소유하지 않는다.</summary>
+    public bool TryApplySettings(CameraMovementSettings settings, out string error)
+    {
+        if (!settings.TryValidate(out error))
+        {
+            return false;
+        }
+        ApplyValidatedSettings(settings);
+        return true;
+    }
+
+    /// <summary>호출자가 전체 설정 검증을 끝낸 뒤 사용하는 반영 경계다.</summary>
+    internal void ApplyValidatedSettings(CameraMovementSettings settings)
+    {
+        _moveSpeed = settings.MoveSpeed;
+        _speedBoostMultiplier = settings.SpeedBoostMultiplier;
+        _zoomSpeed = settings.ZoomSpeed;
+        _minOrthographicSize = settings.MinOrthographicSize;
+        _maxOrthographicSize = settings.MaxOrthographicSize;
+        var camera = GetComponent<Camera>();
+        camera.orthographicSize = Mathf.Clamp(camera.orthographicSize, _minOrthographicSize, _maxOrthographicSize);
     }
 
     public void ApplyInput(Vector2 movement, bool speedBoost, float scrollSteps, Vector2 pointer, float deltaTime)
