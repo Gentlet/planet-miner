@@ -168,6 +168,8 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
             OriginalTaskCreationSequence = manager.GetComponentData<DroneLogisticsTask>(candidate.Task).CreationSequence,
             Source = candidate.Source,
             Destination = candidate.Destination,
+            SourceArea = candidate.SourceArea,
+            DestinationArea = candidate.DestinationArea,
             ItemType = candidate.ItemType,
             AssignedQuantity = quantity,
             Revision = 1,
@@ -193,6 +195,8 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
         assignment.OriginalTaskCreationSequence = originalOrder;
         assignment.Source = Entity.Null;
         assignment.Destination = candidate.Destination;
+        assignment.SourceArea = candidate.SourceArea;
+        assignment.DestinationArea = candidate.DestinationArea;
         assignment.AssignedQuantity = quantity;
         assignment.LastAppliedActionSequence = 0;
         assignment.NextAction = candidate.NextAction;

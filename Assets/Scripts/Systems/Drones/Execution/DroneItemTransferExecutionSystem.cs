@@ -82,6 +82,7 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
         decision.Prepared = true;
         decision.WantedQuantity = 0;
         decision.MaximumQuantity = 0;
+        decision.InputQuantityLimit = int.MaxValue;
         if (!decision.CanExecute || manager.HasComponent<DroneItemTransferResult>(entity) ||
             !DroneItemTransferValidationUtility.TryValidate(manager, request, out var assignment))
         {
@@ -110,11 +111,19 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
             case DroneActionKindEnum.StoreCargo:
                 decision.WantedQuantity = manager.GetBuffer<StoredItemElement>(assignment.Worker, true).Length;
                 int capacity = CaptureStorageSlots(manager, assignment.Destination, assignment.ItemType,
-                    registry, slots, decision.WantedQuantity, request.Action.Assignment);
+                    registry, slots, decision.WantedQuantity, request.Action.Assignment, assignment.DestinationArea);
                 SelectStoredItems(manager, assignment.Worker, assignment.ItemType, items);
                 decision.MaximumQuantity = math.min(capacity, items.Length);
+                if (assignment.DestinationArea == DroneTransportAreaEnum.Input)
+                {
+                    decision.InputQuantityLimit = DroneTransportEndpointUtility.InputRemaining(manager, assignment.Destination, assignment.ItemType);
+                    decision.MaximumQuantity = math.min(decision.MaximumQuantity, decision.InputQuantityLimit);
+                }
                 if (manager.HasComponent<DroneTransportReservation>(request.Action.Assignment))
                 {
+                    var task = manager.GetComponentData<DroneLogisticsTask>(assignment.Task);
+                    decision.MaximumQuantity = math.min(decision.MaximumQuantity,
+                        DroneTransportEndpointUtility.DestinationSpace(manager, task, assignment.Destination, registry, decision.WantedQuantity));
                     decision.MaximumQuantity = math.min(decision.MaximumQuantity,
                         manager.GetComponentData<DroneTransportReservation>(request.Action.Assignment).RemainingQuantity);
                 }
@@ -133,7 +142,23 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
     {
         int limit = DroneItemTransferUtility.CollectionLimit(manager, entity, assignment);
         // 모든 기존 실물을 남겨 선행 드론이 일부를 가져간 뒤에도 다른 기존 실물을 선택할 수 있다.
-        SelectStoredItems(manager, assignment.Source, assignment.ItemType, items);
+        var task = manager.GetComponentData<DroneLogisticsTask>(assignment.Task);
+        if (assignment.SourceArea == DroneTransportAreaEnum.Product)
+        {
+            foreach (var product in manager.GetBuffer<ProductItemElement>(assignment.Source, true))
+            {
+                if (product.ItemType == assignment.ItemType && DroneItemTransferUtility.CanMove(manager, product.ItemEntity, product.ItemType, assignment.Source))
+                {
+                    items.Add(new DroneItemTransferItemDecisionElement { ItemEntity = product.ItemEntity });
+                }
+            }
+        }
+        else
+        {
+            SelectStoredItems(manager, assignment.Source, assignment.ItemType, items,
+                task.Purpose == DroneTransportPurposeEnum.ResearchRecovery,
+                DroneSchedulingUtility.IsTransportKind(task.Kind) && assignment.SourceArea == DroneTransportAreaEnum.GeneralStorage);
+        }
         return math.min(limit, items.Length);
     }
 
@@ -167,14 +192,19 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
     }
 
     private static void SelectStoredItems(EntityManager manager, Entity owner, ItemTypeEnum type,
-        DynamicBuffer<DroneItemTransferItemDecisionElement> selected)
+        DynamicBuffer<DroneItemTransferItemDecisionElement> selected, bool researchRecovery = false, bool generalOnly = false)
     {
         var stored = manager.GetBuffer<StoredItemElement>(owner, true);
+        int general = generalOnly ? manager.GetComponentData<Storage>(owner).SlotCount - StationStorageUtility.ReadDedicatedCount(manager, owner) : int.MaxValue;
         for (int i = 0; i < stored.Length; i++)
         {
             var entry = stored[i];
+            if (entry.SlotIndex >= general)
+            {
+                continue;
+            }
             if (entry.ItemType != type) continue;
-            if (!ResearchRecoveryUtility.PassesRecoveryFilter(manager, owner, entry.ItemEntity))
+            if (researchRecovery && !ResearchRecoveryUtility.PassesRecoveryFilter(manager, owner, entry.ItemEntity))
             {
                 continue;
             }
@@ -187,13 +217,17 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
     }
 
     private static int CaptureStorageSlots(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry,
-        DynamicBuffer<DroneItemTransferSlotDecisionElement> snapshot, int wanted, Entity deliveryAssignment)
+        DynamicBuffer<DroneItemTransferSlotDecisionElement> snapshot, int wanted, Entity deliveryAssignment,
+        DroneTransportAreaEnum area)
     {
         if (type == ItemTypeEnum.Drone && manager.HasComponent<PreparingStationDemolition>(storage) &&
             !DroneStationRelocationUtility.CanReceiveCommittedDroneCargo(manager, storage, deliveryAssignment)) return 0;
         // 이 슬롯 기록은 런타임 Storage의 복제 원본이 아니라 이번 행동에 허용할 공간 상한이다.
         // 뒤의 출고로 공간이 늘어도 상한을 확장하지 않고, 실제 성공분만 Lifecycle의 슬롯 예산에서 차감한다.
-        if (DroneSchedulingUtility.FindStorageSlot(manager, storage, type, registry) < 0) return 0;
+        if (DroneSchedulingUtility.FindStorageSlot(manager, storage, type, registry, area) < 0)
+        {
+            return 0;
+        }
         int maxStack = ItemRegistry.GetMaxStack(manager.GetBuffer<ItemConfigElement>(registry, true), type);
         int slotCount = math.min(manager.GetComponentData<Storage>(storage).SlotCount, GameConstants.MaxStorageSlots);
         var stored = manager.GetBuffer<StoredItemElement>(storage, true);

@@ -207,11 +207,11 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 }
                 bool supply = task.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply;
                 bool sourceIsStorage = supply || task.Kind == DroneLogisticsTaskKindEnum.StorageImport;
-                if (transport && !sourceIsStorage && ResearchRecoveryUtility.CollectionQuantity(manager, task.Target, task.ItemType) <= 0)
+                if (transport && !sourceIsStorage && DroneTransportEndpointUtility.SourceQuantity(manager, task, task.Target) <= 0)
                 {
                     continue;
                 }
-                if (transport && sourceIsStorage && !DroneSchedulingUtility.HasStorageSpace(manager, task.Target, task.ItemType, registry))
+                if (transport && sourceIsStorage && DroneTransportEndpointUtility.DestinationSpace(manager, task, task.Target, registry, 1) <= 0)
                 {
                     continue;
                 }
@@ -231,9 +231,22 @@ public partial struct DroneTaskDecisionSystem : ISystem
                     {
                         continue;
                     }
-                    if (sourceIsStorage)
+                    if (transport)
                     {
-                        if (DroneSchedulingUtility.CountInventory(manager, storage, task.ItemType) <= 0) continue;
+                        int available = sourceIsStorage
+                            ? DroneTransportEndpointUtility.SourceQuantity(manager, task, storage)
+                            : DroneTransportEndpointUtility.DestinationSpace(manager, task, storage, registry, 1);
+                        if (available <= 0)
+                        {
+                            continue;
+                        }
+                    }
+                    else if (sourceIsStorage)
+                    {
+                        if (DroneSchedulingUtility.CountInventory(manager, storage, task.ItemType) <= 0)
+                        {
+                            continue;
+                        }
                     }
                     else if (!DroneSchedulingUtility.HasStorageSpace(manager, storage, task.ItemType, registry))
                     {
@@ -281,8 +294,8 @@ public partial struct DroneTaskDecisionSystem : ISystem
                         tasks[t], manager.GetComponentData<DroneTransportRequirement>(tasks[t]),
                         manager.GetComponentData<DroneTransportProgress>(tasks[t]), pendingTransport,
                         DroneTransportReservationUtility.ReadReleasingQuantity(manager, tasks[t], transportReservations, invalidationDecisions)));
-                    quantity = math.min(quantity, ResearchRecoveryUtility.CollectionQuantity(manager, selectedSource, task.ItemType));
-                    quantity = DroneSchedulingUtility.CountStorageSpace(manager, selectedDestination, task.ItemType, registry, quantity);
+                    quantity = math.min(quantity, DroneTransportEndpointUtility.SourceQuantity(manager, task, selectedSource));
+                    quantity = DroneTransportEndpointUtility.DestinationSpace(manager, task, selectedDestination, registry, quantity);
                 }
                 if (quantity <= 0) continue;
                 var candidate = new DroneTaskCandidateDecisionElement
@@ -291,6 +304,8 @@ public partial struct DroneTaskDecisionSystem : ISystem
                     Task = tasks[t],
                     Source = selectedSource,
                     Destination = selectedDestination,
+                    SourceArea = transport && task.Kind == DroneLogisticsTaskKindEnum.StorageExport ? task.Area : default,
+                    DestinationArea = transport ? DroneTransportEndpointUtility.DestinationArea(task) : default,
                     RouteRequest = bestRoute,
                     ItemType = task.ItemType,
                     WorkerObservationRevision = observation.Revision,
@@ -645,14 +660,16 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 }
                 int quantity = ResearchRecoveryUtility.Count(manager, building, item.ItemType);
                 if (quantity == 0 || DroneTaskRequestDecisionUtility.IsBlocked(manager, _candidates,
-                    DroneTaskGenerationKey.From(DroneLogisticsTaskKindEnum.StorageExport, building, item.ItemType)))
+                    DroneTaskGenerationKey.From(DroneLogisticsTaskKindEnum.StorageExport, building, item.ItemType,
+                        DroneTransportAreaEnum.Input, DroneTransportPurposeEnum.ResearchRecovery)))
                 {
                     continue;
                 }
                 bool exists = false;
                 foreach (var task in tasks)
                 {
-                    exists |= task.Kind == DroneLogisticsTaskKindEnum.StorageExport && task.Target == building && task.ItemType == item.ItemType;
+                    exists |= task.Kind == DroneLogisticsTaskKindEnum.StorageExport && task.Target == building && task.ItemType == item.ItemType &&
+                        task.Area == DroneTransportAreaEnum.Input && task.Purpose == DroneTransportPurposeEnum.ResearchRecovery;
                 }
                 if (exists)
                 {
@@ -661,7 +678,8 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 decisions.Add(new DroneTaskCreationDecisionElement
                 {
                     Kind = DroneLogisticsTaskKindEnum.StorageExport, Target = building,
-                    ItemType = item.ItemType, Quantity = quantity
+                    ItemType = item.ItemType, Quantity = quantity,
+                    Area = DroneTransportAreaEnum.Input, Purpose = DroneTransportPurposeEnum.ResearchRecovery
                 });
             }
         }

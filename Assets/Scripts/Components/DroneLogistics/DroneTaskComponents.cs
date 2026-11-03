@@ -72,7 +72,7 @@ public enum DroneTaskAssignmentStateEnum : byte
 
 /// <summary>
 /// 역할·목적: 공급/회수/일반 운반 요구와 건물 철거를 수행자별 배정과 분리하는 상위 작업이다.
-/// 부착 엔티티: 현장·아이템·수행자·배정과 별도인 상위 작업 엔티티다. Target은 현장/회수 실물/고정 보관처/철거 건물이며 철거 ItemType은 None이다.
+/// 부착 엔티티: 현장/아이템/수행자/배정과 별도인 상위 작업이다. Target은 현장/회수 실물/고정 운반 건물/철거 건물이며 Area는 해당 건물의 실물 영역이다. 철거 ItemType은 None이다.
 /// 생성: Decision의 DroneTaskDecisionSystem이 의도를 작성하고 Execution의 DroneTaskExecutionSystem이 순번을 발급하여 EndSimulation에 생성한다.
 /// 이용: 다음 틱부터 Decision의 DroneTaskDecisionSystem이 후보를 판단하고 Reservation의 DroneTaskReservationSystem이 생성 순서·PlacementStamp에 따른 선두를 선택한다.
 /// StateApply의 AssignmentPublish는 배정에 작업을 연결하고 TaskLifecycle은 일반 종료 Closed/명시 취소 Cancelled를, 철거 확인은 EndSimulation의 ExecutionConfirmed를 기록한다. 건물 결과가 있어야 확인된 root를 닫는다.
@@ -86,6 +86,8 @@ public struct DroneLogisticsTask : IComponentData
     public Entity Target;
     public ItemTypeEnum ItemType;
     public ulong CreationSequence;
+    public DroneTransportAreaEnum Area;
+    public DroneTransportPurposeEnum Purpose;
     public DroneRecoveryReasonEnum RecoveryReason;
     /// <summary>
     /// 최초 RecoveryReason과 별개로 같은 실물 root에 합쳐진 승인된 사용자 회수 의도다.
@@ -114,6 +116,8 @@ public struct DroneTaskAssignment : IComponentData
     public ulong OriginalTaskCreationSequence; // 재배정으로 Task가 바뀌어도 적재 그룹의 최초 작업 순서를 유지한다.
     public Entity Source;
     public Entity Destination;
+    public DroneTransportAreaEnum SourceArea;
+    public DroneTransportAreaEnum DestinationArea;
     public ItemTypeEnum ItemType;
     public int AssignedQuantity;
     public uint Revision;

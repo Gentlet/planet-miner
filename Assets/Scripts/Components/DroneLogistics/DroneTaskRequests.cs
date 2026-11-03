@@ -26,6 +26,8 @@ public struct DroneTaskRequest : IRequestComponent
     public Entity Target;
     public ItemTypeEnum ItemType;
     public int Quantity;
+    public DroneTransportAreaEnum Area;
+    public DroneTransportPurposeEnum Purpose;
     public Entity Task;
     public ulong Sequence;
 }
@@ -58,18 +60,23 @@ public struct DroneTaskRequestSequence : IComponentData
     public ulong NextValue;
 }
 
-/// <summary>공급/일반 운반은 종류/대상/품목, 회수는 실물 Entity가 키다. 회수 ItemType은 None으로 정규화한다.</summary>
+/// <summary>일반 운반은 종류/대상/품목/영역/목적을 식별한다. 공급과 회수는 영역/목적을 무시하며 회수 품목은 None으로 정규화한다.</summary>
 public struct DroneTaskGenerationKey
 {
     public DroneLogisticsTaskKindEnum Kind;
     public Entity Target;
     public ItemTypeEnum ItemType;
-    public bool Equals(DroneTaskGenerationKey other) => Kind == other.Kind && Target == other.Target && ItemType == other.ItemType;
-    public static DroneTaskGenerationKey From(DroneLogisticsTaskKindEnum kind, Entity target, ItemTypeEnum itemType) => new DroneTaskGenerationKey
+    public DroneTransportAreaEnum Area;
+    public DroneTransportPurposeEnum Purpose;
+    public bool Equals(DroneTaskGenerationKey other) => Kind == other.Kind && Target == other.Target && ItemType == other.ItemType && Area == other.Area && Purpose == other.Purpose;
+    public static DroneTaskGenerationKey From(DroneLogisticsTaskKindEnum kind, Entity target, ItemTypeEnum itemType,
+        DroneTransportAreaEnum area = default, DroneTransportPurposeEnum purpose = default) => new DroneTaskGenerationKey
     {
         Kind = kind,
         Target = target,
-        ItemType = kind == DroneLogisticsTaskKindEnum.WorldItemRecovery ? ItemTypeEnum.None : itemType
+        ItemType = kind == DroneLogisticsTaskKindEnum.WorldItemRecovery ? ItemTypeEnum.None : itemType,
+        Area = DroneSchedulingUtility.IsTransportKind(kind) ? area : default,
+        Purpose = DroneSchedulingUtility.IsTransportKind(kind) ? purpose : default
     };
 }
 

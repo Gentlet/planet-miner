@@ -14,7 +14,26 @@ public static class DroneTaskRequestUtility
         return next == 0 ? 0 : ulong.MaxValue - next;
     }
 
-    public static Entity SubmitCreate(EntityManager manager, DroneLogisticsTaskKindEnum kind, Entity target, ItemTypeEnum type, int quantity = 0) => Submit(manager, new DroneTaskRequest { Operation = DroneTaskRequestOperationEnum.Create, Kind = kind, Target = target, ItemType = type, Quantity = quantity });
+    public static Entity SubmitCreate(EntityManager manager, DroneLogisticsTaskKindEnum kind, Entity target, ItemTypeEnum type, int quantity = 0)
+    {
+        bool recovery = kind == DroneLogisticsTaskKindEnum.StorageExport && ResearchRecoveryUtility.IsSource(manager, target);
+        return Submit(manager, new DroneTaskRequest
+        {
+            Operation = DroneTaskRequestOperationEnum.Create, Kind = kind, Target = target, ItemType = type, Quantity = quantity,
+            Area = recovery ? DroneTransportAreaEnum.Input : DroneTransportAreaEnum.GeneralStorage,
+            Purpose = recovery ? DroneTransportPurposeEnum.ResearchRecovery : DroneTransportPurposeEnum.Explicit
+        });
+    }
+
+    public static Entity SubmitTransport(EntityManager manager, DroneLogisticsTaskKindEnum kind, Entity target,
+        ItemTypeEnum type, int quantity, DroneTransportAreaEnum area)
+    {
+        return Submit(manager, new DroneTaskRequest
+        {
+            Operation = DroneTaskRequestOperationEnum.Create, Kind = kind, Target = target,
+            ItemType = type, Quantity = quantity, Area = area, Purpose = DroneTransportPurposeEnum.Explicit
+        });
+    }
     public static Entity SubmitCancel(EntityManager manager, Entity task) => Submit(manager, new DroneTaskRequest { Operation = DroneTaskRequestOperationEnum.Cancel, Task = task });
 
     /// <summary>

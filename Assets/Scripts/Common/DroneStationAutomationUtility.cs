@@ -151,11 +151,17 @@ internal static class DroneStationAutomationUtility
                 Entity destination = sourceStorage ? task.Target : storage;
                 int quantity = math.min(capacity, demand);
                 quantity = math.min(quantity, task.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery
-                    ? 1 : (task.Kind == DroneLogisticsTaskKindEnum.StorageExport
-                        ? ResearchRecoveryUtility.CollectionQuantity(manager, source, task.ItemType)
+                    ? 1 : (DroneSchedulingUtility.IsTransportKind(task.Kind)
+                        ? DroneTransportEndpointUtility.SourceQuantity(manager, task, source)
                         : DroneSchedulingUtility.CountInventory(manager, source, task.ItemType)));
-                if (task.Kind != DroneLogisticsTaskKindEnum.ConstructionSupply)
+                if (DroneSchedulingUtility.IsTransportKind(task.Kind))
+                {
+                    quantity = DroneTransportEndpointUtility.DestinationSpace(manager, task, destination, registry, quantity);
+                }
+                else if (task.Kind != DroneLogisticsTaskKindEnum.ConstructionSupply)
+                {
                     quantity = DroneSchedulingUtility.CountStorageSpace(manager, destination, task.ItemType, registry, quantity);
+                }
                 if (quantity <= 0 || !DroneTargetPointUtility.TryGetTargetPoint(manager, source, out float2 from) ||
                     !DroneTargetPointUtility.TryGetTargetPoint(manager, destination, out float2 to)) continue;
                 plans.Add(new DroneStationActivationPlan { Drone = drone, Station = station, Task = taskEntity,

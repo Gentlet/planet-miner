@@ -98,7 +98,7 @@ public partial struct ItemOwnershipApplySystem : ISystem
     /// </summary>
     public static bool TryTransferItem(EntityManager manager, Entity item, ItemTypeEnum type,
         Entity sourceOwner, Entity targetOwner, int slotIndex, int2 position, EntityCommandBuffer ecb,
-        Entity deliveryAssignment = default)
+        Entity deliveryAssignment = default, DroneTransportAreaEnum sourceArea = default)
     {
         if (sourceOwner == targetOwner) return false;
         if (!CanTransferItem(manager, item, type, sourceOwner)) return false;
@@ -109,8 +109,34 @@ public partial struct ItemOwnershipApplySystem : ISystem
         if (sourceOwner != Entity.Null)
         {
             if (!IsActiveTransferEntity(manager, sourceOwner)) return false;
-            if (!manager.HasBuffer<StoredItemElement>(sourceOwner)) return false;
-            sourceIndex = FindStoredItem(manager.GetBuffer<StoredItemElement>(sourceOwner, true), item, type);
+            if (sourceArea == DroneTransportAreaEnum.Product)
+            {
+                if (!manager.HasBuffer<ProductItemElement>(sourceOwner))
+                {
+                    return false;
+                }
+                var products = manager.GetBuffer<ProductItemElement>(sourceOwner, true);
+                for (int i = 0; i < products.Length; i++)
+                {
+                    if (products[i].ItemEntity != item || products[i].ItemType != type)
+                    {
+                        continue;
+                    }
+                    if (sourceIndex >= 0)
+                    {
+                        return false;
+                    }
+                    sourceIndex = i;
+                }
+            }
+            else
+            {
+                if (!manager.HasBuffer<StoredItemElement>(sourceOwner))
+                {
+                    return false;
+                }
+                sourceIndex = FindStoredItem(manager.GetBuffer<StoredItemElement>(sourceOwner, true), item, type);
+            }
             if (sourceIndex < 0) return false;
         }
         // 버퍼를 쓰기 전에 출발 참조의 유일성과 도착 버퍼/슬롯/중복을 모두 확인한다.
@@ -142,7 +168,16 @@ public partial struct ItemOwnershipApplySystem : ISystem
         // 아이템 엔티티를 재생성하지 않고 같은 실물의 출발/도착 참조와 Owner를 바꾼다.
         // 인계 수량은 이 API의 성공 횟수로 호출자가 정산하며 새 Transfer 요청을 중복 발행하지 않는다.
         if (sourceOwner != Entity.Null)
-            manager.GetBuffer<StoredItemElement>(sourceOwner).RemoveAt(sourceIndex);
+        {
+            if (sourceArea == DroneTransportAreaEnum.Product)
+            {
+                manager.GetBuffer<ProductItemElement>(sourceOwner).RemoveAt(sourceIndex);
+            }
+            else
+            {
+                manager.GetBuffer<StoredItemElement>(sourceOwner).RemoveAt(sourceIndex);
+            }
+        }
         if (targetOwner != Entity.Null)
         {
             manager.GetBuffer<StoredItemElement>(targetOwner).Add(new StoredItemElement

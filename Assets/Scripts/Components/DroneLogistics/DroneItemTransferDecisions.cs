@@ -13,6 +13,7 @@ public struct DroneItemTransferDecision : IComponentData
     public bool Prepared;
     public int WantedQuantity;
     public int MaximumQuantity;
+    public int InputQuantityLimit;
 }
 
 /// <summary>

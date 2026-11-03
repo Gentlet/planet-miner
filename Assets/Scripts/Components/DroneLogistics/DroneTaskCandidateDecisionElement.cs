@@ -21,6 +21,8 @@ public struct DroneTaskCandidateDecisionElement : IBufferElementData
     public Entity Task;
     public Entity Source;
     public Entity Destination;
+    public DroneTransportAreaEnum SourceArea;
+    public DroneTransportAreaEnum DestinationArea;
     public Entity RouteRequest;
     public ItemTypeEnum ItemType;
     public uint WorkerObservationRevision;

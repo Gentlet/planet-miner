@@ -66,8 +66,8 @@ public static class DroneItemTransferValidationUtility
                     {
                         return false;
                     }
-                    if (!ResearchRecoveryUtility.IsCollectionSource(manager, assignment.Source) ||
-                        !DroneSchedulingUtility.IsStorage(manager, assignment.Destination))
+                    if (!DroneTransportEndpointUtility.IsArea(manager, assignment.Source, assignment.SourceArea) ||
+                        !DroneTransportEndpointUtility.IsArea(manager, assignment.Destination, assignment.DestinationArea))
                     {
                         return false;
                     }
@@ -184,8 +184,10 @@ public static class DroneItemTransferValidationUtility
             return false;
         }
         Entity target = task.Kind == DroneLogisticsTaskKindEnum.StorageImport ? assignment.Destination : assignment.Source;
-        return task.Target == target && (DroneSchedulingUtility.IsStorage(manager, target) ||
-            (task.Kind == DroneLogisticsTaskKindEnum.StorageExport && ResearchRecoveryUtility.IsSource(manager, target)));
+        var sourceArea = task.Kind == DroneLogisticsTaskKindEnum.StorageExport ? task.Area : DroneTransportAreaEnum.GeneralStorage;
+        return task.Target == target && assignment.SourceArea == sourceArea &&
+            assignment.DestinationArea == DroneTransportEndpointUtility.DestinationArea(task) &&
+            DroneTransportEndpointUtility.IsTarget(manager, task);
     }
 
     private static bool ReservationMatches(EntityManager manager, Entity entity, in DroneTaskAssignment assignment)

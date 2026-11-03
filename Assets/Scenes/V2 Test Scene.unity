@@ -136,6 +136,10 @@ GameObject:
   - component: {fileID: 446882972}
   - component: {fileID: 446882971}
   - component: {fileID: 446882970}
+  - component: {fileID: 446882976}
+  - component: {fileID: 446882975}
+  - component: {fileID: 446882974}
+  - component: {fileID: 446882973}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -154,7 +158,7 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: a79441f348de89743a2939f4d699eac1, type: 3}
   m_Name:
-  m_EditorClassIdentifier: 
+  m_EditorClassIdentifier:
   m_RenderShadows: 1
   m_RequiresDepthTextureOption: 2
   m_RequiresOpaqueTextureOption: 2
@@ -330,6 +334,55 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::WorldConstructionController
   _maximumCandidates: 1024
+--- !u!114 &446882973
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 446882963}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fbdfd978e502b474cacee712cf219e98, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::BuildingInfoView
+--- !u!114 &446882974
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 446882963}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: d490777794933c045b3ad9a94c60afd7, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::BuildingInfoController
+--- !u!114 &446882975
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 446882963}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e46386519cc0d494ba807b277d21e68a, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::WorldInteractionController
+--- !u!114 &446882976
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 446882963}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3b7d514d6bb57af48b951735cdda2f25, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::WorldSelectionController
+  _droneSelectionRadius: 0.5
 --- !u!1 &966265738
 GameObject:
   m_ObjectHideFlags: 0

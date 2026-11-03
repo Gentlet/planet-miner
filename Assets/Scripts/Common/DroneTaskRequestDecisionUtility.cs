@@ -47,7 +47,7 @@ internal static class DroneTaskRequestDecisionUtility
                 decision.RecoveryReason = reason;
                 if (decision.Status == DroneTaskRequestStatusEnum.Created)
                 {
-                    var key = DroneTaskGenerationKey.From(request.Kind, request.Target, request.ItemType);
+                    var key = Key(request);
                     foreach (Entity taskEntity in tasks)
                     {
                         var task = manager.GetComponentData<DroneLogisticsTask>(taskEntity);
@@ -68,7 +68,7 @@ internal static class DroneTaskRequestDecisionUtility
                                 break;
                             }
 
-                            if (earlier.Request.Operation != DroneTaskRequestOperationEnum.Create || !key.Equals(DroneTaskGenerationKey.From(earlier.Request.Kind, earlier.Request.Target, earlier.Request.ItemType)))
+                            if (earlier.Request.Operation != DroneTaskRequestOperationEnum.Create || !key.Equals(Key(earlier.Request)))
                             {
                                 continue;
                             }
@@ -96,7 +96,7 @@ internal static class DroneTaskRequestDecisionUtility
 
                     // 유효한 기존/선행 root의 최초 목표량은 유지한다. 현재 회수 재고 상한은 새 root에만 적용한다.
                     bool newResearchReturn = decision.Task == Entity.Null && decision.CreatingRequest == Entity.Null &&
-                        request.Kind == DroneLogisticsTaskKindEnum.StorageExport && ResearchRecoveryUtility.IsSource(manager, request.Target);
+                        request.Purpose == DroneTransportPurposeEnum.ResearchRecovery;
                     if (newResearchReturn && request.Quantity > ResearchRecoveryUtility.Count(manager, request.Target, request.ItemType))
                     {
                         decision.Status = DroneTaskRequestStatusEnum.Rejected;
@@ -124,7 +124,8 @@ internal static class DroneTaskRequestDecisionUtility
         }
     }
 
-    public static DroneTaskGenerationKey Key(in DroneLogisticsTask task) => DroneTaskGenerationKey.From(task.Kind, task.Target, task.ItemType);
+    public static DroneTaskGenerationKey Key(in DroneLogisticsTask task) => DroneTaskGenerationKey.From(task.Kind, task.Target, task.ItemType, task.Area, task.Purpose);
+    public static DroneTaskGenerationKey Key(in DroneTaskRequest request) => DroneTaskGenerationKey.From(request.Kind, request.Target, request.ItemType, request.Area, request.Purpose);
     public static bool IsCancellationPlanned(EntityManager manager, Entity candidates, Entity task)
     {
         if (task == Entity.Null) return false;
@@ -189,12 +190,26 @@ internal static class DroneTaskRequestDecisionUtility
             {
                 return DroneTaskRequestStatusEnum.Rejected;
             }
-            if (request.Kind == DroneLogisticsTaskKindEnum.StorageExport && ResearchRecoveryUtility.IsSource(manager, request.Target))
+            if (!DroneTransportEndpointUtility.IsArea(manager, request.Target, request.Area))
             {
-                return DroneTaskRequestStatusEnum.Created;
+                return DroneTaskRequestStatusEnum.Rejected;
             }
-            return DroneSchedulingUtility.IsStorage(manager, request.Target)
-                ? DroneTaskRequestStatusEnum.Created : DroneTaskRequestStatusEnum.Rejected;
+            // 기존 root 검색 전에 생성 순번/이동 화물 수명을 검사하지 않는다. 새 회수 목표의 재고 상한은 이후에만 적용한다.
+            if (request.Purpose == DroneTransportPurposeEnum.ResearchRecovery)
+            {
+                return request.Kind == DroneLogisticsTaskKindEnum.StorageExport && request.Area == DroneTransportAreaEnum.Input &&
+                    ResearchRecoveryUtility.IsSource(manager, request.Target)
+                    ? DroneTaskRequestStatusEnum.Created : DroneTaskRequestStatusEnum.Rejected;
+            }
+            if (request.Purpose != DroneTransportPurposeEnum.Explicit)
+            {
+                return DroneTaskRequestStatusEnum.Rejected;
+            }
+            if (request.Kind == DroneLogisticsTaskKindEnum.StorageImport && request.Area == DroneTransportAreaEnum.Product)
+            {
+                return DroneTaskRequestStatusEnum.Rejected;
+            }
+            return DroneTaskRequestStatusEnum.Created;
         }
 
         if (request.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply)

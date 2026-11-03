@@ -11,13 +11,13 @@ public static class DroneItemTransferUtility
 {
     public static int CollectionLimit(EntityManager manager, Entity entity, in DroneTaskAssignment assignment)
     {
-        if (!ResearchRecoveryUtility.IsCollectionSource(manager, assignment.Source))
+        if (!DroneTransportEndpointUtility.IsArea(manager, assignment.Source, assignment.SourceArea))
         {
             return 0;
         }
         if (manager.HasComponent<DroneTransportReservation>(entity))
         {
-            if (!DroneSchedulingUtility.IsStorage(manager, assignment.Destination))
+            if (!DroneTransportEndpointUtility.IsArea(manager, assignment.Destination, assignment.DestinationArea))
             {
                 return 0;
             }

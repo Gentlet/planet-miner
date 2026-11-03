@@ -2,8 +2,8 @@ using System;
 using Unity.Entities;
 
 /// <summary>
-/// 역할·목적: 확정된 드론 공급/회수 생성 의도를 작업 엔티티와 World 생성 순번으로 기록한다.
-/// 입력·출력: DroneTaskExecutionSystem이 대상·품목·회수 이유와 순번 상태를 제공한다. 이 유틸리티는 작업 필요 여부/우선순위를 다시 판단하지 않는다.
+/// 역할/목적: 확정된 드론 공급/회수/일반 운반/철거 생성 의도를 작업 엔티티와 World 생성 순번으로 기록한다.
+/// 입력/출력: Execution이 대상/품목/회수 이유와 운반 목표량/영역/목적 및 순번 상태를 제공한다. 작업 필요 여부나 우선순위는 다시 판단하지 않는다.
 /// 수명·가시화: 순번 상태는 Execution OnCreate에서 준비해 World 동안 유지하고 작업 생성은 EndSimulation에 확정한다. 다음 시뮬레이션부터 배정 판단에 사용한다.
 /// 제거: 작업 종료·참조 정리·삭제는 DroneTaskLifecycleApplySystem이 담당하며 번호를 삭제된 작업에 맞춰 되돌리거나 재사용하지 않는다.
 /// </summary>
@@ -48,9 +48,11 @@ public static class DroneTaskCreationUtility
     }
 
     public static Entity CreateStorageTransportTask(EntityCommandBuffer ecb, Entity target, ItemTypeEnum itemType,
-        DroneLogisticsTaskKindEnum kind, int quantity, ref DroneTaskSequence sequence)
+        DroneLogisticsTaskKindEnum kind, int quantity, ref DroneTaskSequence sequence,
+        DroneTransportAreaEnum area = default, DroneTransportPurposeEnum purpose = default)
     {
-        Entity task = CreateTask(ecb, target, itemType, kind, DroneRecoveryReasonEnum.None, ref sequence);
+        Entity task = CreateTask(ecb, target, itemType, kind, DroneRecoveryReasonEnum.None, ref sequence,
+            area: area, purpose: purpose);
         ecb.AddComponent(task, new DroneTransportRequirement { Quantity = quantity });
         ecb.AddComponent(task, new DroneTransportProgress());
         return task;
@@ -81,7 +83,8 @@ public static class DroneTaskCreationUtility
         DroneLogisticsTaskKindEnum kind,
         DroneRecoveryReasonEnum recoveryReason,
         ref DroneTaskSequence sequence,
-        bool hasExplicitRecoveryIntent = false)
+        bool hasExplicitRecoveryIntent = false,
+        DroneTransportAreaEnum area = default, DroneTransportPurposeEnum purpose = default)
     {
         if (sequence.NextValue == 0)
         {
@@ -98,6 +101,8 @@ public static class DroneTaskCreationUtility
         ecb.AddComponent(task, new DroneLogisticsTask
         {
             Kind = kind,
+            Area = area,
+            Purpose = purpose,
             State = DroneLogisticsTaskStateEnum.Open,
             Target = target,
             ItemType = itemType,

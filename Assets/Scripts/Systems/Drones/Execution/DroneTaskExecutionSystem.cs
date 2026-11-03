@@ -122,7 +122,7 @@ public partial struct DroneTaskExecutionSystem : ISystem
                     creation.RecoveryReason, ref sequence, hasExplicitRecoveryIntent);
             default:
                 return DroneTaskCreationUtility.CreateStorageTransportTask(ecb, creation.Target, creation.ItemType,
-                    creation.Kind, creation.Quantity, ref sequence);
+                    creation.Kind, creation.Quantity, ref sequence, creation.Area, creation.Purpose);
         }
     }
 
@@ -146,7 +146,9 @@ public partial struct DroneTaskExecutionSystem : ISystem
                 Target = request.Target,
                 ItemType = request.ItemType,
                 RecoveryReason = decision.RecoveryReason,
-                Quantity = request.Quantity
+                Quantity = request.Quantity,
+                Area = request.Area,
+                Purpose = request.Purpose
             };
             bool accepted = status == DroneTaskRequestStatusEnum.Created || status == DroneTaskRequestStatusEnum.Existing;
             if (accepted && !IsCreationTargetValid(manager, creation))
@@ -204,8 +206,7 @@ public partial struct DroneTaskExecutionSystem : ISystem
 
         if (DroneSchedulingUtility.IsTransportKind(decision.Kind))
         {
-            return DroneSchedulingUtility.IsStorage(manager, decision.Target) ||
-                (decision.Kind == DroneLogisticsTaskKindEnum.StorageExport && ResearchRecoveryUtility.IsSource(manager, decision.Target));
+            return DroneTransportEndpointUtility.IsArea(manager, decision.Target, decision.Area);
         }
 
         if (decision.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery)
@@ -219,11 +220,11 @@ public partial struct DroneTaskExecutionSystem : ISystem
     private static bool HasRecordedCreation(NativeList<RecordedCreation> recorded,
         in DroneTaskCreationDecisionElement decision)
     {
+        var key = DroneTaskGenerationKey.From(decision.Kind, decision.Target, decision.ItemType, decision.Area, decision.Purpose);
         for (int i = 0; i < recorded.Length; i++)
         {
             var other = recorded[i].Creation;
-            if (other.Kind == decision.Kind && other.Target == decision.Target &&
-                (decision.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery || other.ItemType == decision.ItemType))
+            if (key.Equals(DroneTaskGenerationKey.From(other.Kind, other.Target, other.ItemType, other.Area, other.Purpose)))
             {
                 return true;
             }

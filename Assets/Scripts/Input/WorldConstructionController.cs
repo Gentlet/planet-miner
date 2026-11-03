@@ -42,7 +42,10 @@ public sealed class WorldConstructionController : MonoBehaviour
     private void OnEnable()
     {
         _input = GetComponent<WorldInputController>();
-        _input.FrameReady += OnFrame;
+        if (GetComponent<WorldInteractionController>() == null)
+        {
+            _input.FrameReady += OnFrame;
+        }
         RefreshWorld();
     }
 
@@ -219,6 +222,34 @@ public sealed class WorldConstructionController : MonoBehaviour
             }
         }
         ProcessPrimaryGesture(frame.Primary);
+    }
+
+    internal bool HandleFrame(WorldInputFrame frame)
+    {
+        bool consumed = Mode != BuildingToolModeEnum.None || _dragging || frame.Construction.SettingsModifier ||
+            frame.Secondary != WorldPointerButtonStateEnum.None || frame.Construction.SelectedSlot > 0 ||
+            frame.Construction.Has(WorldConstructionCommandEnum.Copy) ||
+            frame.Construction.Has(WorldConstructionCommandEnum.RangeDemolish) ||
+            frame.Construction.Has(WorldConstructionCommandEnum.Cancel);
+        OnFrame(frame);
+        return consumed || Mode != BuildingToolModeEnum.None;
+    }
+
+    internal void RouteExternally()
+    {
+        if (_input != null)
+        {
+            _input.FrameReady -= OnFrame;
+        }
+    }
+
+    internal void CancelGesture()
+    {
+        _dragging = false;
+        _hasPointer = false;
+        _preview.Clear();
+        _candidates.Clear();
+        Changed?.Invoke();
     }
 
     private void ProcessPrimaryGesture(WorldPointerButtonStateEnum buttons)

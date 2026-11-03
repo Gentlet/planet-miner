@@ -146,7 +146,7 @@ internal partial struct PrepareResearchWorkJob : IJobEntity
         for (int i = 0; i < definition.IngredientCount; i++)
         {
             var ingredient = ingredients[definition.IngredientStart + i];
-            limits.Add(new ResearchInputLimitElement { ItemType = ingredient.ItemType, MaximumQuantity = ingredient.Amount * 2 });
+            limits.Add(new ResearchInputLimitElement { ItemType = ingredient.ItemType, MaximumQuantity = ResearchMaterialUtility.MaximumBufferedQuantity(ingredient.Amount) });
         }
         preparation.CanStartCycle = cycle.ResearchId.IsEmpty && ResearchMaterialUtility.HasMaterials(
             definition, ingredients, stored, DestroyRequests);
@@ -191,7 +191,7 @@ internal partial struct PrepareResearchWorkJob : IJobEntity
             var ingredient = ingredients[definition.IngredientStart + i];
             if (ingredient.ItemType == type)
             {
-                return ingredient.Amount * 2;
+                return ResearchMaterialUtility.MaximumBufferedQuantity(ingredient.Amount);
             }
         }
         return 0;

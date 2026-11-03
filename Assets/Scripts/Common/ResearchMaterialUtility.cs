@@ -2,9 +2,16 @@ using Unity.Entities;
 
 public static class ResearchMaterialUtility
 {
+    public const int BufferedCycleCount = 2;
+
+    public static int MaximumBufferedQuantity(int amount)
+    {
+        return amount * BufferedCycleCount;
+    }
+
     public static long SlotCountForTwoCycles(int amount, int maximumStack)
     {
-        return ((long)amount * 2 + maximumStack - 1) / maximumStack;
+        return ((long)amount * BufferedCycleCount + maximumStack - 1) / maximumStack;
     }
 
     public static bool HasMaterials(in ResearchDefinitionElement definition,

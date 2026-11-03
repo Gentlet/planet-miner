@@ -1,5 +1,20 @@
 using Unity.Entities;
 
+/// <summary>실물 버퍼의 역할을 구분한다. 생산품은 반출만 허용하며 일반 보관처의 자동 탐색 범위는 유지한다.</summary>
+public enum DroneTransportAreaEnum : byte
+{
+    GeneralStorage,
+    Input,
+    Product
+}
+
+/// <summary>명시한 목표량과 연구의 불필요 재료 회수 수명을 분리한다.</summary>
+public enum DroneTransportPurposeEnum : byte
+{
+    Explicit,
+    ResearchRecovery
+}
+
 /// <summary>
 /// 일반 반입/반출의 일회성 목표량. 요청 승인 뒤 Execution이 작업과 같은 EndSimulation ECB에 최초 게시한다.
 /// 중복 요청으로 합산/변경하지 않는다. 완료량과 확보량은 별도 Progress가 소유한다.

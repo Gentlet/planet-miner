@@ -175,7 +175,7 @@ public static class BuildingToolWorld
         {
             Entity request = DroneTaskRequestUtility.SubmitCreate(manager, DroneLogisticsTaskKindEnum.BuildingDemolition,
                 target, ItemTypeEnum.None);
-            manager.AddComponent<WorldConstructionRequestOwner>(request);
+            manager.AddComponent<WorldUiRequestOwner>(request);
         }
     }
 
@@ -187,7 +187,7 @@ public static class BuildingToolWorld
         }
         foreach (Entity request in DroneTaskRequestUtility.SubmitRecoveryRange(manager, first, last))
         {
-            manager.AddComponent<WorldConstructionRequestOwner>(request);
+            manager.AddComponent<WorldUiRequestOwner>(request);
         }
     }
 
