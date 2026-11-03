@@ -140,6 +140,10 @@ GameObject:
   - component: {fileID: 446882975}
   - component: {fileID: 446882974}
   - component: {fileID: 446882973}
+  - component: {fileID: 446882980}
+  - component: {fileID: 446882979}
+  - component: {fileID: 446882978}
+  - component: {fileID: 446882977}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -383,6 +387,54 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::WorldSelectionController
   _droneSelectionRadius: 0.5
+--- !u!114 &446882977
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 446882963}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b721326a6e8650f41bfeef9dc8ca94fd, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::WorldTaskVisualView
+--- !u!114 &446882978
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 446882963}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9920a23360b5ff04989ee6d835685cb4, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::SimulationOverviewView
+--- !u!114 &446882979
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 446882963}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e78b4d70cc099974fb1bf7b9ca8b2c6f, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::TaskOverviewController
+--- !u!114 &446882980
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 446882963}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b157eb214f6b6bd41aaf8af0cfc7d78f, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::ResearchPanelController
 --- !u!1 &966265738
 GameObject:
   m_ObjectHideFlags: 0

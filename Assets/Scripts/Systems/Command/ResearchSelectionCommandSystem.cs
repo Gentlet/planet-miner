@@ -35,6 +35,7 @@ public partial struct ResearchSelectionCommandSystem : ISystem
             Registry = SystemAPI.GetSingletonEntity<ResearchRegistry>(),
             RequestLookup = state.GetComponentLookup<ResearchSelectionRequest>(true),
             States = state.GetComponentLookup<ResearchState>(true),
+            ResetResults = state.GetComponentLookup<ResearchCycleResetResult>(true),
             Definitions = state.GetBufferLookup<ResearchDefinitionElement>(true),
             Prerequisites = state.GetBufferLookup<ResearchPrerequisiteElement>(true),
             Progress = state.GetBufferLookup<ResearchProgressElement>(true),
@@ -66,6 +67,7 @@ public partial struct ResearchSelectionCommandSystem : ISystem
         public Entity Registry;
         [ReadOnly] public ComponentLookup<ResearchSelectionRequest> RequestLookup;
         [ReadOnly] public ComponentLookup<ResearchState> States;
+        [ReadOnly] public ComponentLookup<ResearchCycleResetResult> ResetResults;
         [ReadOnly] public BufferLookup<ResearchDefinitionElement> Definitions;
         [ReadOnly] public BufferLookup<ResearchPrerequisiteElement> Prerequisites;
         [ReadOnly] public BufferLookup<ResearchProgressElement> Progress;
@@ -108,6 +110,14 @@ public partial struct ResearchSelectionCommandSystem : ISystem
                 return;
             }
             ECB.SetComponent(Registry, selected);
+            // 표시 결과가 없는 유효한 사전 등록 Registry도 기존 연구 진행을 유지한다.
+            if (ResetResults.HasComponent(Registry))
+            {
+                var notice = ResetResults[Registry];
+                notice.Revision++;
+                notice.Reason = ResearchCycleResetReasonEnum.SelectionChanged;
+                ECB.SetComponent(Registry, notice);
+            }
             // 요청 사이에는 연구가 진행하지 않는다. A→B→A도 변경 이력을 보존해 건물별 주기를 한 번 초기화한다.
             foreach (Entity building in Cycles)
             {

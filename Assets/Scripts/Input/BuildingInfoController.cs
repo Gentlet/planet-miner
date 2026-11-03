@@ -54,6 +54,10 @@ public sealed class BuildingInfoController : MonoBehaviour
     private ulong _feedbackToken;
     private readonly HashSet<Entity> _pending = new HashSet<Entity>();
     private float _nextRefresh;
+    private bool _noticeInitialized;
+    private uint _observedResetRevision;
+    private float _resetNoticeUntil;
+    private ResearchCycleResetReasonEnum _resetReason;
     private readonly StringBuilder _text = new StringBuilder();
     public readonly List<BuildingInfoItemRow> Items = new List<BuildingInfoItemRow>();
     public readonly List<BuildingInfoTaskRow> Tasks = new List<BuildingInfoTaskRow>();
@@ -99,6 +103,8 @@ public sealed class BuildingInfoController : MonoBehaviour
 
     private void OnSelectionChanged()
     {
+        _noticeInitialized = false;
+        _resetNoticeUntil = 0f;
         _pending.Clear();
         Feedback = string.Empty;
         Refresh();
@@ -156,7 +162,8 @@ public sealed class BuildingInfoController : MonoBehaviour
         }
         else
         {
-            Title = manager.HasComponent<DroneWorker>(entity) ? "드론" : "선택 대상";
+            Title = manager.HasComponent<DroneWorker>(entity) ? "드론" :
+                (manager.HasComponent<ItemIdentity>(entity) ? manager.GetComponentData<ItemIdentity>(entity).Type.ToString() : "선택 대상");
         }
 
         if (manager.HasComponent<GridPosition>(entity))
@@ -187,6 +194,15 @@ public sealed class BuildingInfoController : MonoBehaviour
         }
 
         ReadBelt(manager, entity);
+        if (manager.HasComponent<ResearchCycleState>(entity))
+        {
+            ResearchStatusTextUtility.Append(manager, entity, _text);
+            ReadResearchResetNotice(manager);
+        }
+        if (manager.HasComponent<DroneWorker>(entity))
+        {
+            ReadDrone(manager, entity);
+        }
         if (manager.HasComponent<MinerState>(entity))
         {
             var state = manager.GetComponentData<MinerState>(entity);
@@ -236,6 +252,70 @@ public sealed class BuildingInfoController : MonoBehaviour
 
         Details = _text.ToString();
         Changed?.Invoke();
+    }
+
+    private void ReadResearchResetNotice(EntityManager manager)
+    {
+        using var query = manager.CreateEntityQuery(typeof(ResearchRegistry), typeof(ResearchCycleResetResult));
+        if (query.CalculateEntityCount() != 1)
+        {
+            return;
+        }
+        var notice = manager.GetComponentData<ResearchCycleResetResult>(query.GetSingletonEntity());
+        if (_noticeInitialized && notice.Revision != _observedResetRevision)
+        {
+            _resetNoticeUntil = Time.unscaledTime + 2.5f;
+            _resetReason = notice.Reason;
+        }
+        _noticeInitialized = true;
+        _observedResetRevision = notice.Revision;
+        if (Time.unscaledTime < _resetNoticeUntil)
+        {
+            _text.AppendLine(_resetReason == ResearchCycleResetReasonEnum.SelectionChanged
+                ? "연구 변경으로 로컬 주기 초기화" : "전역 연구 완료로 로컬 주기 초기화");
+        }
+    }
+
+    private void ReadDrone(EntityManager manager, Entity drone)
+    {
+        if (manager.HasComponent<DroneBatteryState>(drone))
+        {
+            using var maximum = manager.CreateEntityQuery(typeof(DroneBatteryConfig));
+            float current = manager.GetComponentData<DroneBatteryState>(drone).CurrentCharge;
+            string capacity = maximum.CalculateEntityCount() == 1
+                ? manager.GetComponentData<DroneBatteryConfig>(maximum.GetSingletonEntity()).MaximumCharge.ToString("F2") : "미준비";
+            _text.AppendLine("배터리 " + current.ToString("F2") + "/" + capacity);
+        }
+        if (manager.HasComponent<DroneActivityState>(drone))
+        {
+            _text.AppendLine("활동 " + manager.GetComponentData<DroneActivityState>(drone).Activity);
+        }
+        if (manager.HasComponent<DroneMovementDecision>(drone))
+        {
+            var movement = manager.GetComponentData<DroneMovementDecision>(drone);
+            _text.AppendLine(movement.Ready ? "이동 목적 " + movement.Purpose + " / 목표 " + movement.Target : "이동 판단 준비 중");
+        }
+        if (manager.HasComponent<DroneDocked>(drone))
+        {
+            _text.AppendLine("정박 " + manager.GetComponentData<DroneDocked>(drone).Station);
+        }
+        if (manager.HasComponent<DroneWorkerAssignment>(drone))
+        {
+            Entity assignment = manager.GetComponentData<DroneWorkerAssignment>(drone).Assignment;
+            if (manager.HasComponent<DroneTaskAssignment>(assignment))
+            {
+                var work = manager.GetComponentData<DroneTaskAssignment>(assignment);
+                _text.AppendLine("작업 " + work.Task + " / " + work.State + " / " + work.ItemType + " " + work.AssignedQuantity);
+            }
+            else
+            {
+                _text.AppendLine("배정 작업 없음");
+            }
+        }
+        if (manager.HasBuffer<StoredItemElement>(drone))
+        {
+            _text.AppendLine("실제 적재 " + manager.GetBuffer<StoredItemElement>(drone, true).Length + "개");
+        }
     }
 
     private void RegisterFeedback()
@@ -401,6 +481,38 @@ public sealed class BuildingInfoController : MonoBehaviour
         }
 
         _text.AppendLine("일반 슬롯 " + (manager.GetComponentData<Storage>(entity).SlotCount - dedicated) + " / 드론 전용 " + dedicated);
+        if (manager.HasBuffer<DockedDroneElement>(entity))
+        {
+            int charging = 0;
+            int waiting = 0;
+            int docked = 0;
+            foreach (var entry in manager.GetBuffer<DockedDroneElement>(entity, true))
+            {
+                if (!manager.HasComponent<DroneActivityState>(entry.Drone))
+                {
+                    continue;
+                }
+                docked++;
+                var activity = manager.GetComponentData<DroneActivityState>(entry.Drone).Activity;
+                if (activity == DroneActivityKind.Charging)
+                {
+                    charging++;
+                }
+                if (activity == DroneActivityKind.WaitingForCharge)
+                {
+                    waiting++;
+                }
+            }
+            int stored = 0;
+            foreach (var entry in manager.GetBuffer<StoredItemElement>(entity, true))
+            {
+                if (entry.ItemType == ItemTypeEnum.Drone)
+                {
+                    stored++;
+                }
+            }
+            _text.AppendLine("수납 " + stored + " / 정박 " + docked + " / 충전 " + charging + " / 충전 대기 " + waiting);
+        }
         foreach (var item in manager.GetBuffer<StoredItemElement>(entity, true))
         {
             if (item.ItemType == ItemTypeEnum.Drone)

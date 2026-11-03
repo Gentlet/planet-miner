@@ -28,6 +28,7 @@ public partial struct ResearchProgressApplySystem : ISystem
         {
             Buildings = buildings.AsDeferredJobArray(), Registry = SystemAPI.GetSingletonEntity<ResearchRegistry>(),
             State = SystemAPI.GetComponentLookup<ResearchState>(true),
+            ResetResults = SystemAPI.GetComponentLookup<ResearchCycleResetResult>(true),
             Progress = SystemAPI.GetBufferLookup<ResearchProgressElement>(true),
             Definitions = SystemAPI.GetBufferLookup<ResearchDefinitionElement>(true),
             Results = SystemAPI.GetBufferLookup<ResearchContributionElement>(true),
@@ -50,6 +51,7 @@ internal struct ApplyResearchProgressJob : IJob
     [ReadOnly] public NativeArray<Entity> Buildings;
     public Entity Registry;
     [ReadOnly] public ComponentLookup<ResearchState> State;
+    [ReadOnly] public ComponentLookup<ResearchCycleResetResult> ResetResults;
     [ReadOnly] public BufferLookup<ResearchProgressElement> Progress;
     [ReadOnly] public BufferLookup<ResearchDefinitionElement> Definitions;
     [ReadOnly] public BufferLookup<ResearchContributionElement> Results;
@@ -143,6 +145,13 @@ internal struct ApplyResearchProgressJob : IJob
             publishedRecipes.Add(recipe);
         }
         ECB.SetComponent(Registry, default(ResearchState));
+        if (ResetResults.HasComponent(Registry))
+        {
+            var notice = ResetResults[Registry];
+            notice.Revision++;
+            notice.Reason = ResearchCycleResetReasonEnum.ResearchCompleted;
+            ECB.SetComponent(Registry, notice);
+        }
         foreach (Entity building in Buildings)
         {
             ECB.SetComponent(building, default(ResearchCycleState));

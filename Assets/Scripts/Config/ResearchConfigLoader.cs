@@ -107,7 +107,7 @@ public static class ResearchConfigLoader
         // 공개 API의 입력은 호출자가 변경할 수 있으므로 참조까지 전체 검증한 뒤에만 구조를 변경한다.
         ValidateDefinitions(data);
         ValidateReferences(manager, data);
-        Entity created = manager.CreateEntity(typeof(ResearchRegistry), typeof(ResearchState));
+        Entity created = manager.CreateEntity(typeof(ResearchRegistry), typeof(ResearchState), typeof(ResearchCycleResetResult));
         try
         {
             AddBuffer(manager, created, data.Definitions);

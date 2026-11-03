@@ -103,3 +103,17 @@ public struct ResearchCycleState : IComponentData
     public FixedString32Bytes ResearchId;
     public float ElapsedTime;
 }
+
+public enum ResearchCycleResetReasonEnum : byte
+{
+    None,
+    SelectionChanged,
+    ResearchCompleted
+}
+
+/// <summary>Registry의 마지막 전체 주기 초기화 결과다. Command/완료 Apply가 각 종료 경계에 기록하며 UI가 새 revision만 잠깐 표시한다.</summary>
+public struct ResearchCycleResetResult : IComponentData
+{
+    public uint Revision;
+    public ResearchCycleResetReasonEnum Reason;
+}

@@ -18,6 +18,7 @@ public sealed class WorldSelectionController : MonoBehaviour
     private PlacementStamp _siteStamp;
     private bool _wasSite;
     private bool _wasWorker;
+    private bool _wasWorldItem;
     public World SelectedWorld => _world;
     public Entity Selected { get; private set; }
 
@@ -33,6 +34,7 @@ public sealed class WorldSelectionController : MonoBehaviour
         Selected = Entity.Null;
         _wasSite = false;
         _wasWorker = false;
+        _wasWorldItem = false;
         Changed?.Invoke();
     }
 
@@ -103,10 +105,50 @@ public sealed class WorldSelectionController : MonoBehaviour
         Select(manager, selected);
     }
 
+    public bool SelectEntity(World world, Entity entity)
+    {
+        if (!isActiveAndEnabled)
+        {
+            return false;
+        }
+        if (world == null)
+        {
+            return false;
+        }
+        if (!world.IsCreated)
+        {
+            return false;
+        }
+        if (!ReferenceEquals(world, World.DefaultGameObjectInjectionWorld))
+        {
+            return false;
+        }
+        var manager = world.EntityManager;
+        if (!DroneSchedulingUtility.IsActiveEntity(manager, entity))
+        {
+            return false;
+        }
+        bool item = manager.HasComponent<ItemIdentity>(entity) && manager.HasComponent<ItemOwnership>(entity) &&
+            manager.GetComponentData<ItemOwnership>(entity).IsWorldItem;
+        if (!manager.HasComponent<BuildingType>(entity) && !manager.HasComponent<DroneWorker>(entity) && !item)
+        {
+            return false;
+        }
+        if (manager.HasComponent<ConstructionSite>(entity) &&
+            (manager.GetComponentData<ConstructionSite>(entity).Flags & ConstructionSiteFlags.Cancelled) != 0)
+        {
+            return false;
+        }
+        _world = world;
+        Select(manager, entity);
+        return true;
+    }
+
     private void Select(EntityManager manager, Entity selected)
     {
         Selected = selected;
         _wasWorker = selected != Entity.Null && manager.HasComponent<DroneWorker>(selected);
+        _wasWorldItem = selected != Entity.Null && manager.HasComponent<ItemIdentity>(selected);
         _wasSite = selected != Entity.Null && manager.HasComponent<ConstructionSite>(selected);
         if (_wasSite)
         {
@@ -151,6 +193,11 @@ public sealed class WorldSelectionController : MonoBehaviour
         if (manager.Exists(Selected))
         {
             if (_wasWorker && !manager.HasComponent<DroneWorker>(Selected))
+            {
+                Clear();
+            }
+            else if (_wasWorldItem && (!manager.HasComponent<ItemOwnership>(Selected) ||
+                !manager.GetComponentData<ItemOwnership>(Selected).IsWorldItem))
             {
                 Clear();
             }
