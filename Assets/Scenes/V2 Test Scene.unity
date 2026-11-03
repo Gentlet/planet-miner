@@ -144,6 +144,7 @@ GameObject:
   - component: {fileID: 446882979}
   - component: {fileID: 446882978}
   - component: {fileID: 446882977}
+  - component: {fileID: 446882981}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -435,6 +436,19 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b157eb214f6b6bd41aaf8af0cfc7d78f, type: 3}
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::ResearchPanelController
+--- !u!114 &446882981
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 446882963}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 249bf20a852f0494f97eb6d632ae2edf, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::CameraChunkLoadController
+  _prefetchMarginInChunks: 1
 --- !u!1 &966265738
 GameObject:
   m_ObjectHideFlags: 0

@@ -1,5 +1,5 @@
 /// <summary>
-/// 역할·목적: 청크 규격, 벨트 아이템 간격/수용량/속도, 저장 슬롯과 시뮬레이션 시간의 공통 제한을 제공한다.
+/// 역할·목적: 청크 규격/카메라 요청량, 벨트 아이템 간격/수용량/속도, 저장 슬롯과 시뮬레이션 시간의 공통 제한을 제공한다.
 /// 이용: 격자 변환·배치/물류/생산·설정 검증이 같은 상수와 파생값을 읽는다. 벨트 속도 상한은 아이템 간격과 최대 delta time에서 계산한다.
 /// 수명·소유권: ECS에 부착하거나 초기화/연구로 갱신하는 상태가 아닌 코드 상수다. 개별 시스템에 같은 제한을 별도 숫자로 복제하지 않는다.
 /// </summary>
@@ -7,6 +7,9 @@ public static class GameConstants
 {
     public const int ChunkSize = 16;
     public const int ChunkCellCount = ChunkSize * ChunkSize;
+
+    // 카메라 Producer의 프레임당 신규 요청 상한이다. 초기 로딩/전체 생성 처리량의 상한은 아니다.
+    public const int MaxCameraChunkRequestsPerFrame = 4;
 
     // 현재 월드 생성의 지원 규모. 산술 표현 한계와 별개인 생성 작업량 정책이다.
     public const int MaxResourcePatchRadius = 2;
