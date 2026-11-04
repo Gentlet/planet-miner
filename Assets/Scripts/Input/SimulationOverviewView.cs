@@ -48,7 +48,7 @@ public sealed class SimulationOverviewView : MonoBehaviour
     private ResearchPanelController _research;
     private TaskOverviewController _tasks;
     private GameObject _rootObject;
-    private PanelSettings _settings;
+    [SerializeField] private PanelSettings _panelSettings;
     private VisualElement _panel;
     private VisualElement _researchPage;
     private VisualElement _taskPage;
@@ -68,17 +68,19 @@ public sealed class SimulationOverviewView : MonoBehaviour
 
     private void OnEnable()
     {
+        if (_panelSettings == null)
+        {
+            Debug.LogError($"{nameof(SimulationOverviewView)}: HUD 패널 설정 참조가 필요합니다.", this);
+            return;
+        }
+
         _research = GetComponent<ResearchPanelController>();
         _tasks = GetComponent<TaskOverviewController>();
-        _settings = ScriptableObject.CreateInstance<PanelSettings>();
-        _settings.hideFlags = HideFlags.HideAndDontSave;
-        _settings.scaleMode = PanelScaleMode.ScaleWithScreenSize;
-        _settings.referenceResolution = new Vector2Int(1920, 1080);
         _rootObject = new GameObject("Research and task overview") { hideFlags = HideFlags.DontSave };
         _rootObject.SetActive(false);
         _rootObject.transform.SetParent(transform, false);
         var document = _rootObject.AddComponent<UIDocument>();
-        document.panelSettings = _settings;
+        document.panelSettings = _panelSettings;
         document.sortingOrder = 15;
         _rootObject.AddComponent<WorldInputUiBlocker>().Initialize(GetComponent<WorldInputController>());
         _rootObject.SetActive(true);
@@ -322,10 +324,6 @@ public sealed class SimulationOverviewView : MonoBehaviour
         {
             _rootObject.SetActive(false);
             Release(_rootObject);
-        }
-        if (_settings != null)
-        {
-            Release(_settings);
         }
         _panel = null;
         _nodeButtons.Clear();

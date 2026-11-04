@@ -85,7 +85,25 @@ public sealed class WorldInputUiBlocker : MonoBehaviour
 
         Vector2 topLeftPosition = new Vector2(screenPosition.x, Screen.height - screenPosition.y);
         Vector2 panelPosition = RuntimePanelUtils.ScreenToPanel(root.panel, topLeftPosition);
-        return ReadPanelState(root, panelPosition);
+        WorldInputUiState state = ReadPanelState(root, panelPosition);
+        if (state.BlocksPointer)
+        {
+            return state;
+        }
+
+        // 화면 공간 드롭다운의 선택/닫기 영역은 UIDocument 바깥의 패널 루트에 붙는다.
+        var panelRoot = root.panel.visualTree;
+        for (int i = 0; i < panelRoot.hierarchy.childCount; i++)
+        {
+            var child = panelRoot.hierarchy[i];
+            if (child.ClassListContains(GenericDropdownMenu.ussClassName) &&
+                TryGetVisibleBounds(child, out Rect bounds) && bounds.Contains(panelPosition))
+            {
+                return new WorldInputUiState(true, false);
+            }
+        }
+
+        return state;
     }
 
     public static WorldInputUiState ReadPanelState(VisualElement root, Vector2 panelPosition)

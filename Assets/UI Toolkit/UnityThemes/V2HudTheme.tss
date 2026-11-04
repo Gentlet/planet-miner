@@ -1,0 +1,8 @@
+@import url("UnityDefaultRuntimeTheme.tss");
+
+#building-info .unity-base-text-field__input,
+#building-info .unity-base-text-field__input .unity-text-element,
+#building-info .unity-base-popup-field__text,
+#building-info .unity-button {
+    color: #20252c;
+}

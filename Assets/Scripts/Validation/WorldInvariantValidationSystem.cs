@@ -670,6 +670,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
         bool hasSpatialIndex = SystemAPI.TryGetSingleton<ItemSpatialIndex>(out var itemSpatialIndex);
         var storageFilterLookup = SystemAPI.GetComponentLookup<StorageFilter>(true);
         var inputSlotLookup = SystemAPI.GetBufferLookup<BuildingInputSlotElement>(true);
+        var buildingTypeLookup = SystemAPI.GetComponentLookup<BuildingType>(true);
 
         foreach (var (storage, buffer, storageEntity) in
                  SystemAPI.Query<RefRO<Storage>, DynamicBuffer<StoredItemElement>>()
@@ -690,6 +691,10 @@ public partial class WorldInvariantValidationSystem : SystemBase
 
             bool hasFilter = storageFilterLookup.HasComponent(storageEntity);
             StorageFilter filter = hasFilter ? storageFilterLookup[storageEntity] : default;
+            // 일반 창고의 현재 필터는 새 입고에만 적용하며, 변경 전에 보관한 실물은 출고할 수 있다.
+            bool validateStoredItemFilter = hasFilter &&
+                (!buildingTypeLookup.TryGetComponent(storageEntity, out var buildingType) ||
+                 buildingType.Type != BuildingTypeEnum.Storage);
             bool allowsZeroSlots = hasInputSlots && inputSlots.Length == 0 && buffer.Length == 0 &&
                                    hasFilter && filter.Mode == StorageFilterMode.Whitelist &&
                                    filter.Mask.Part0 == 0 && filter.Mask.Part1 == 0 &&
@@ -757,7 +762,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
                         $"Item {element.ItemType} does not match the assigned input type of slot {element.SlotIndex}.", storageEntity);
                 }
 
-                if (hasFilter && !filter.IsItemAllowed(element.ItemType))
+                if (validateStoredItemFilter && !filter.IsItemAllowed(element.ItemType))
                 {
                     ReportViolation(
                         "StorageInvariant",

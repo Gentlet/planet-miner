@@ -313,6 +313,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: aa395b3b9036f0f4e919c78e09901b02, type: 3}
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::BuildingToolbarView
+  _panelSettings: {fileID: 11400000, guid: bb186cb6d07118d42a96d88d898699ee, type: 2}
 --- !u!114 &446882971
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -352,6 +353,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fbdfd978e502b474cacee712cf219e98, type: 3}
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::BuildingInfoView
+  _panelSettings: {fileID: 11400000, guid: bb186cb6d07118d42a96d88d898699ee, type: 2}
 --- !u!114 &446882974
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -413,6 +415,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 9920a23360b5ff04989ee6d835685cb4, type: 3}
   m_Name:
   m_EditorClassIdentifier: Assembly-CSharp::SimulationOverviewView
+  _panelSettings: {fileID: 11400000, guid: bb186cb6d07118d42a96d88d898699ee, type: 2}
 --- !u!114 &446882979
 MonoBehaviour:
   m_ObjectHideFlags: 0

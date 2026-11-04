@@ -26,7 +26,7 @@ public sealed class BuildingInfoView : MonoBehaviour
 
     private BuildingInfoController _controller;
     private GameObject _rootObject;
-    private PanelSettings _panelSettings;
+    [SerializeField] private PanelSettings _panelSettings;
     private VisualElement _panel;
     private Label _title;
     private Label _details;
@@ -52,11 +52,13 @@ public sealed class BuildingInfoView : MonoBehaviour
     private bool _resetDraft = true;
     private void OnEnable()
     {
+        if (_panelSettings == null)
+        {
+            Debug.LogError($"{nameof(BuildingInfoView)}: HUD 패널 설정 참조가 필요합니다.", this);
+            return;
+        }
+
         _controller = GetComponent<BuildingInfoController>();
-        _panelSettings = ScriptableObject.CreateInstance<PanelSettings>();
-        _panelSettings.hideFlags = HideFlags.HideAndDontSave;
-        _panelSettings.scaleMode = PanelScaleMode.ScaleWithScreenSize;
-        _panelSettings.referenceResolution = new Vector2Int(1920, 1080);
         _rootObject = new GameObject("Building information")
         {
             hideFlags = HideFlags.DontSave
@@ -451,11 +453,6 @@ public sealed class BuildingInfoView : MonoBehaviour
         {
             _rootObject.SetActive(false);
             Release(_rootObject);
-        }
-
-        if (_panelSettings != null)
-        {
-            Release(_panelSettings);
         }
 
         _panel = null;

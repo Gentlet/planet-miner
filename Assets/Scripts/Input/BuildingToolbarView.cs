@@ -9,7 +9,7 @@ public sealed class BuildingToolbarView : MonoBehaviour
     private WorldConstructionController _tools;
     private WorldInputController _input;
     private GameObject _rootObject;
-    private PanelSettings _panel;
+    [SerializeField] private PanelSettings _panelSettings;
     private VisualElement _buttons;
     private Label _status;
     private int _catalogVersion = -1;
@@ -17,17 +17,19 @@ public sealed class BuildingToolbarView : MonoBehaviour
 
     private void OnEnable()
     {
+        if (_panelSettings == null)
+        {
+            Debug.LogError($"{nameof(BuildingToolbarView)}: HUD 패널 설정 참조가 필요합니다.", this);
+            return;
+        }
+
         _tools = GetComponent<WorldConstructionController>();
         _input = GetComponent<WorldInputController>();
-        _panel = ScriptableObject.CreateInstance<PanelSettings>();
-        _panel.hideFlags = HideFlags.HideAndDontSave;
-        _panel.scaleMode = PanelScaleMode.ScaleWithScreenSize;
-        _panel.referenceResolution = new Vector2Int(1920, 1080);
         _rootObject = new GameObject("Construction toolbar") { hideFlags = HideFlags.DontSave };
         _rootObject.SetActive(false);
         _rootObject.transform.SetParent(transform, false);
         var document = _rootObject.AddComponent<UIDocument>();
-        document.panelSettings = _panel;
+        document.panelSettings = _panelSettings;
         _rootObject.AddComponent<WorldInputUiBlocker>().Initialize(_input);
         _rootObject.SetActive(true);
         var root = document.rootVisualElement;
@@ -150,11 +152,6 @@ public sealed class BuildingToolbarView : MonoBehaviour
             _rootObject.SetActive(false);
             DestroyOwned(_rootObject);
             _rootObject = null;
-        }
-        if (_panel != null)
-        {
-            DestroyOwned(_panel);
-            _panel = null;
         }
     }
 
