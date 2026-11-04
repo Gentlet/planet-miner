@@ -11,6 +11,9 @@ public static class GameConstants
     // 카메라 Producer의 프레임당 신규 요청 상한이다. 초기 로딩/전체 생성 처리량의 상한은 아니다.
     public const int MaxCameraChunkRequestsPerFrame = 4;
 
+    // 바닥 표시의 메시 생성량은 카메라 청크 요청량과 별도로 제한한다.
+    public const int MaxFloorChunkBuildsPerFrame = 4;
+
     // 현재 월드 생성의 지원 규모. 산술 표현 한계와 별개인 생성 작업량 정책이다.
     public const int MaxResourcePatchRadius = 2;
     public const int DefaultInitialChunkSize = 3;

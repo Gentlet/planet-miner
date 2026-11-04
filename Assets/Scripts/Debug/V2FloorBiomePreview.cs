@@ -6,7 +6,7 @@ using UnityEngine;
 /// 역할·목적: V2 Test Scene에서 ECS 바닥 선택 결과를 하나의 색상 텍스처로 확인하는 진단 표시다.
 /// 부착 대상: 진단용 GameObject의 MonoBehaviour. Update는 기본 World의 월드/바닥 설정 singleton을 기다렸다가 한 번 생성한다.
 /// 입력·출력: FloorBiomeSampler의 결과를 Texture2D/Sprite/SpriteRenderer로 표시하며 ECS 셀 선택·월드 상태는 변경하지 않는다.
-/// 수명·제거: 임시 표시 오브젝트·Sprite·Texture는 OnDestroy에서 회수한다. 설정 변경을 매 프레임 재표시하거나 실제 바닥 청크를 렌더링하는 시스템은 아니다.
+/// 수명·제거: 비활성화할 때 표시 오브젝트/Sprite/Texture를 회수한다. 다시 켜면 현재 설정으로 진단 표시를 만든다.
 /// </summary>
 public sealed class V2FloorBiomePreview : MonoBehaviour
 {
@@ -98,10 +98,17 @@ public sealed class V2FloorBiomePreview : MonoBehaviour
         renderer.sortingOrder = -1000;
     }
 
-    private void OnDestroy()
+    private void OnDisable()
     {
-        if (sprite != null) Destroy(sprite);
-        if (texture != null) Destroy(texture);
-        if (previewObject != null) Destroy(previewObject);
+        if (previewObject != null)
+        {
+            previewObject.SetActive(false);
+            FloorChunkMeshBuilder.DestroyOwned(previewObject);
+        }
+        FloorChunkMeshBuilder.DestroyOwned(sprite);
+        FloorChunkMeshBuilder.DestroyOwned(texture);
+        previewObject = null;
+        sprite = null;
+        texture = null;
     }
 }

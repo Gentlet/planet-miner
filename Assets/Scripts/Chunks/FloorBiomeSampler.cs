@@ -22,7 +22,7 @@ public struct FloorTileSelection
 /// <summary>
 /// 역할·목적: 월드 셀에서 바이옴 경계/전이와 가중 바닥 변형을 시드 기반으로 결정한다.
 /// 입력·출력: 검증된 바닥 설정/바이옴/변형 버퍼를 읽어 FloorTileSelection 또는 선택 행을 반환한다.
-/// 이용: V2FloorBiomePreview와 바닥 생성 테스트가 호출한다. 실제 바닥 청크 렌더링/셀 엔티티 Writer는 후속이다.
+/// 이용: FloorChunkMeshBuilder는 제품 바닥 메시를, V2FloorBiomePreview는 진단 색상 텍스처를 구성할 때 호출한다.
 /// 수명·소유권: 전역 RNG/영속 캐시를 갱신하지 않는 순수 계산이다. 같은 시드·설정·셀은 호출 순서와 무관하게 같은 결과를 낸다.
 /// </summary>
 public static class FloorBiomeSampler
