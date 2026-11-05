@@ -313,10 +313,20 @@ public static class DroneSchedulingUtility
         return slots > 0;
     }
 
+    /// <summary>
+    /// 현재 수납 공간을 계산한다. 철거 준비 중 드론 화물은 기존 납품 배정의 자격이 확인된 경우에만 계산한다.
+    /// 신규 수요/예약 호출자는 배정 기본값을 사용해 기존 입고 차단을 유지한다.
+    /// </summary>
     public static int CountStorageSpace(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry, int limit,
-        DroneTransportAreaEnum area = default, bool generalOnly = false)
+        DroneTransportAreaEnum area = default, bool generalOnly = false, Entity deliveryAssignment = default)
     {
-        if (type == ItemTypeEnum.Drone && manager.HasComponent<PreparingStationDemolition>(storage)) return 0;
+        if (type == ItemTypeEnum.Drone && manager.HasComponent<PreparingStationDemolition>(storage))
+        {
+            if (!DroneStationRelocationUtility.CanReceiveCommittedDroneCargo(manager, storage, deliveryAssignment))
+            {
+                return 0;
+            }
+        }
         if (!TryReadStorageLimit(manager, storage, type, registry, out int slots, out int maxStack, area))
         {
             return 0;

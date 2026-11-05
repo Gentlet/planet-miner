@@ -195,7 +195,7 @@ public static class ResourceGenerationUtility
                 if (!occupied.Add(cell))
                     continue;
 
-                Entity entity = ecb.Instantiate(prefabEntity);
+                Entity entity = RuntimePrefabLifecycleUtility.Instantiate(ref ecb, prefabEntity);
                 ecb.SetComponent(entity, LocalTransform.FromPosition(new float3(cell.x, cell.y, 0f)));
                 ecb.AddComponent(entity, new GridPosition(cell));
                 ecb.AddComponent(entity, new ResourceNode(config.ResourceType, amount));

@@ -21,7 +21,7 @@ public sealed class WorldInputEventScope : IDisposable
             _ownedSettings = UnityEngine.Object.Instantiate(_previousSettings);
             _ownedSettings.hideFlags = HideFlags.HideAndDontSave;
             _ownedSettings.disableRedundantEventsMerging = true;
-            InputSystem.settings = _ownedSettings;
+            InstallOwnedSettings(_previousSettings, _ownedSettings);
         }
 
         _ownerCount++;
@@ -50,16 +50,42 @@ public sealed class WorldInputEventScope : IDisposable
             Debug.LogError("WorldInputEventScope: 활성 입력 수명 중 InputSettings 교체 소유권이 변경됐습니다.");
         }
 
-        if (Application.isPlaying)
+        // Input System 1.20은 이전 설정을 복원할 때 현재 복제본을 파괴할 수 있다.
+        if (_ownedSettings != null)
         {
-            UnityEngine.Object.Destroy(_ownedSettings);
-        }
-        else
-        {
-            UnityEngine.Object.DestroyImmediate(_ownedSettings);
+            if (Application.isPlaying)
+            {
+                UnityEngine.Object.Destroy(_ownedSettings);
+            }
+            else
+            {
+                UnityEngine.Object.DestroyImmediate(_ownedSettings);
+            }
         }
 
         _ownedSettings = null;
         _previousSettings = null;
+    }
+
+    private static void InstallOwnedSettings(InputSettings previousSettings, InputSettings ownedSettings)
+    {
+        HideFlags originalFlags = previousSettings.hideFlags;
+        if (originalFlags != HideFlags.HideAndDontSave)
+        {
+            InputSystem.settings = ownedSettings;
+            return;
+        }
+
+        // Input System 1.20은 현재 설정의 플래그가 정확히 HideAndDontSave이면 교체 시 파괴한다.
+        // 원본을 복원할 수 있도록 저장/언로드 플래그를 유지한 채 NotEditable만 잠시 해제한다.
+        previousSettings.hideFlags = originalFlags & ~HideFlags.NotEditable;
+        try
+        {
+            InputSystem.settings = ownedSettings;
+        }
+        finally
+        {
+            previousSettings.hideFlags = originalFlags;
+        }
     }
 }

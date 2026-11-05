@@ -31,7 +31,7 @@ public static class DroneSpawnUtility
         bool hasGridPosition = manager.HasComponent<GridPosition>(prefab);
         bool hasLocalToWorld = manager.HasComponent<LocalToWorld>(prefab);
         float4x4 postTransform = ReadPostTransform(manager, prefab);
-        drone = ecb.Instantiate(prefab);
+        drone = RuntimePrefabLifecycleUtility.Instantiate(ref ecb, prefab);
         RecordInitialState(ref ecb, drone, transform, position, cell, maximumBatteryCharge,
             hasGridPosition, hasLocalToWorld, false, postTransform);
         return true;

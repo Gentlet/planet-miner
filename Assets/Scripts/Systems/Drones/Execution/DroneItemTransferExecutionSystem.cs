@@ -123,7 +123,8 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
                 {
                     var task = manager.GetComponentData<DroneLogisticsTask>(assignment.Task);
                     decision.MaximumQuantity = math.min(decision.MaximumQuantity,
-                        DroneTransportEndpointUtility.DestinationSpace(manager, task, assignment.Destination, registry, decision.WantedQuantity));
+                        DroneTransportEndpointUtility.DestinationSpace(manager, task, assignment.Destination, registry,
+                            decision.WantedQuantity, request.Action.Assignment));
                     decision.MaximumQuantity = math.min(decision.MaximumQuantity,
                         manager.GetComponentData<DroneTransportReservation>(request.Action.Assignment).RemainingQuantity);
                 }

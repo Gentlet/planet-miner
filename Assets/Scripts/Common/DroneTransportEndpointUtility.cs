@@ -123,10 +123,12 @@ public static class DroneTransportEndpointUtility
         return task.Kind == DroneLogisticsTaskKindEnum.StorageImport ? task.Area : DroneTransportAreaEnum.GeneralStorage;
     }
 
-    public static int DestinationSpace(EntityManager manager, in DroneLogisticsTask task, Entity destination, Entity registry, int wanted)
+    public static int DestinationSpace(EntityManager manager, in DroneLogisticsTask task, Entity destination, Entity registry, int wanted,
+        Entity deliveryAssignment = default)
     {
         var area = DestinationArea(task);
-        int space = DroneSchedulingUtility.CountStorageSpace(manager, destination, task.ItemType, registry, wanted, area, generalOnly: area == DroneTransportAreaEnum.GeneralStorage);
+        int space = DroneSchedulingUtility.CountStorageSpace(manager, destination, task.ItemType, registry, wanted, area,
+            generalOnly: area == DroneTransportAreaEnum.GeneralStorage, deliveryAssignment: deliveryAssignment);
         return area == DroneTransportAreaEnum.Input ? math.min(space, InputRemaining(manager, destination, task.ItemType)) : space;
     }
 

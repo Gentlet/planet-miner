@@ -25,7 +25,7 @@ public static class ItemLifecycleUtility
         float3 worldPosition,
         ItemOwnership ownership)
     {
-        Entity item = ecb.Instantiate(prefab);
+        Entity item = RuntimePrefabLifecycleUtility.Instantiate(ref ecb, prefab);
         InitializeItemRole(ref ecb, item, itemType, gridPosition, worldPosition, ownership);
         return item;
     }
