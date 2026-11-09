@@ -368,9 +368,8 @@ public partial struct DroneTaskReservationSystem : ISystem
                 {
                     continue;
                 }
-                if (Progress.HasComponent(reservation.Task))
+                if (Progress.TryGetComponent(reservation.Task, out var progress))
                 {
-                    var progress = Progress[reservation.Task];
                     DroneTransportReservationUtility.Release(ref progress, ref reservation);
                     Progress[reservation.Task] = progress;
                 }
@@ -390,11 +389,10 @@ public partial struct DroneTaskReservationSystem : ISystem
                     continue;
                 }
                 // 원래 작업은 이전 EndSimulation에서 삭제됐을 수 있다. 반환 대상이 없으면 기록만 소비한다.
-                if (!Progress.HasComponent(reservation.Task))
+                if (!Progress.TryGetComponent(reservation.Task, out var progress))
                 {
                     continue;
                 }
-                var progress = Progress[reservation.Task];
                 DroneTransportReservationUtility.Release(ref progress, ref reservation);
                 Progress[reservation.Task] = progress;
             }

@@ -97,17 +97,14 @@ public partial struct RoutingApplyJob : IJobEntity
 
         if (item != Entity.Null && targetBelt != Entity.Null &&
             GridPositionLookup.HasComponent(item) &&
-            GridPositionLookup.HasComponent(targetBelt) &&
-            DirectionLookup.HasComponent(targetBelt))
+            GridPositionLookup.TryGetComponent(targetBelt, out var targetPosition) &&
+            DirectionLookup.TryGetComponent(targetBelt, out var targetDirection))
         {
-            int2 targetBeltPos = GridPositionLookup[targetBelt].Value;
-            DirectionEnum targetBeltDir = DirectionLookup[targetBelt].dir;
+            int2 targetBeltPos = targetPosition.Value;
+            DirectionEnum targetBeltDir = targetDirection.dir;
 
             // 1. 아이템 그리드 좌표 및 방향 갱신
-            if (GridPositionLookup.HasComponent(item))
-            {
-                GridPositionLookup[item] = new GridPosition(targetBeltPos);
-            }
+            GridPositionLookup[item] = new GridPosition(targetBeltPos);
 
             if (DirectionLookup.HasComponent(item))
             {
@@ -133,18 +130,18 @@ public partial struct RoutingApplyJob : IJobEntity
             // 실물 전달 조건을 통과했을 때만 기준선과 커서를 전진한다. 후보 생성/경합 탈락만으로 포트 순서를 소비하지 않는다.
             // 4. Splitter 영속 라우팅 상태 갱신
             if (SplitterRoutingStateLookup.HasComponent(routerEntity) &&
-                GridPositionLookup.HasComponent(routerEntity))
+                GridPositionLookup.TryGetComponent(routerEntity, out var splitterPosition))
             {
                 ref var splitterState = ref SplitterRoutingStateLookup.GetRefRW(routerEntity).ValueRW;
-                int2 routerPos = GridPositionLookup[routerEntity].Value;
+                int2 routerPos = splitterPosition.Value;
 
                 // 기준 입력 벨트 및 전방 방향 동기화
                 if (decision.SourceBelt != Entity.Null)
                 {
                     splitterState.InputBelt = decision.SourceBelt;
-                    if (DirectionLookup.HasComponent(decision.SourceBelt))
+                    if (DirectionLookup.TryGetComponent(decision.SourceBelt, out var sourceDirection))
                     {
-                        splitterState.ForwardDirection = DirectionLookup[decision.SourceBelt].dir;
+                        splitterState.ForwardDirection = sourceDirection.dir;
                     }
                 }
 
@@ -158,25 +155,20 @@ public partial struct RoutingApplyJob : IJobEntity
 
             // 5. Merger 영속 라우팅 상태 갱신
             if (MergerRoutingStateLookup.HasComponent(routerEntity) &&
-                GridPositionLookup.HasComponent(routerEntity))
+                GridPositionLookup.TryGetComponent(routerEntity, out var mergerPosition))
             {
                 ref var mergerState = ref MergerRoutingStateLookup.GetRefRW(routerEntity).ValueRW;
-                int2 routerPos = GridPositionLookup[routerEntity].Value;
+                int2 routerPos = mergerPosition.Value;
 
                 // 기준 출력 벨트 및 전방 방향 동기화
-                if (decision.TargetBelt != Entity.Null)
-                {
-                    mergerState.OutputBelt = decision.TargetBelt;
-                    if (DirectionLookup.HasComponent(decision.TargetBelt))
-                    {
-                        mergerState.ForwardDirection = DirectionLookup[decision.TargetBelt].dir;
-                    }
-                }
+                mergerState.OutputBelt = targetBelt;
+                mergerState.ForwardDirection = targetBeltDir;
 
                 // 유입된 포트 인덱스 역산 및 커서 전진
-                if (decision.SourceBelt != Entity.Null && GridPositionLookup.HasComponent(decision.SourceBelt))
+                if (decision.SourceBelt != Entity.Null &&
+                    GridPositionLookup.TryGetComponent(decision.SourceBelt, out var sourcePosition))
                 {
-                    int2 sourceBeltPos = GridPositionLookup[decision.SourceBelt].Value;
+                    int2 sourceBeltPos = sourcePosition.Value;
                     if (RoutingDirectionUtility.TryGetDirection(routerPos, sourceBeltPos, out DirectionEnum inRelativeDir))
                     {
                         byte portIndex = RoutingDirectionUtility.GetMergerPortIndex(mergerState.ForwardDirection, inRelativeDir);

@@ -52,8 +52,8 @@ internal struct ApplyStorageFiltersJob : Unity.Jobs.IJob
     private struct Entry : System.IComparable<Entry>
     {
         public Entity Entity;
-        public ulong Sequence;
-        public int CompareTo(Entry other) => Sequence.CompareTo(other.Sequence);
+        public ChangeStorageFilterRequest Request;
+        public int CompareTo(Entry other) => Request.Sequence.CompareTo(other.Request.Sequence);
     }
 
     public void Execute()
@@ -61,25 +61,25 @@ internal struct ApplyStorageFiltersJob : Unity.Jobs.IJob
         var ordered = new NativeList<Entry>(Requests.Length, Allocator.Temp);
         foreach (Entity entity in Requests)
         {
-            ordered.Add(new Entry { Entity = entity, Sequence = RequestLookup[entity].Sequence });
+            ordered.Add(new Entry { Entity = entity, Request = RequestLookup[entity] });
         }
         ordered.AsArray().Sort();
         for (int i = 0; i < ordered.Length; i++)
         {
             var entry = ordered[i];
-            var request = RequestLookup[entry.Entity];
+            var request = entry.Request;
             ECB.DestroyEntity(entry.Entity);
-            bool duplicate = (i > 0 && ordered[i - 1].Sequence == entry.Sequence) ||
-                (i + 1 < ordered.Length && ordered[i + 1].Sequence == entry.Sequence);
-            if (entry.Sequence == 0 || duplicate)
+            bool duplicate = (i > 0 && ordered[i - 1].Request.Sequence == request.Sequence) ||
+                (i + 1 < ordered.Length && ordered[i + 1].Request.Sequence == request.Sequence);
+            if (request.Sequence == 0 || duplicate)
             {
                 continue;
             }
-            if (!Types.HasComponent(request.Target) || !Filters.HasComponent(request.Target))
+            if (!Types.TryGetComponent(request.Target, out var buildingType) || !Filters.HasComponent(request.Target))
             {
                 continue;
             }
-            if (Types[request.Target].Type != BuildingTypeEnum.Storage || Disabled.HasComponent(request.Target) ||
+            if (buildingType.Type != BuildingTypeEnum.Storage || Disabled.HasComponent(request.Target) ||
                 Prefabs.HasComponent(request.Target) || Demolition.HasComponent(request.Target))
             {
                 continue;

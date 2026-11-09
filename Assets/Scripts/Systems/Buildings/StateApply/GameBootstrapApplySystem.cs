@@ -54,23 +54,23 @@ public partial struct GameBootstrapApplySystem : ISystem
             Requests = requests.AsDeferredJobArray(), Records = records.AsDeferredJobArray(),
             Buildings = buildings.AsDeferredJobArray(), Spawns = spawns.AsDeferredJobArray(),
             ItemEntities = itemEntities.AsDeferredJobArray(),
-            RequestData = state.GetComponentLookup<GameBootstrapRequest>(true),
-            RecordData = state.GetComponentLookup<GameBootstrapState>(true),
-            BuildingTypes = state.GetComponentLookup<BuildingType>(true),
-            Positions = state.GetComponentLookup<GridPosition>(true),
-            Footprints = state.GetComponentLookup<BuildingFootprint>(true),
-            Directions = state.GetComponentLookup<Direction>(true),
-            SpawnData = state.GetComponentLookup<SpawnBuildingRequest>(true),
-            Sites = state.GetComponentLookup<ConstructionSite>(true),
-            DisabledEntities = state.GetComponentLookup<Disabled>(true),
-            ItemOwners = state.GetComponentLookup<ItemOwnership>(true),
-            DestroyRequests = state.GetComponentLookup<DestroyItemRequest>(true),
-            Requirements = state.GetBufferLookup<ConstructionMaterialRequirementElement>(true),
-            BuildingConfigs = state.GetBufferLookup<BuildingConfigElement>(true),
-            ItemConfigs = state.GetBufferLookup<ItemConfigElement>(true),
-            Definitions = state.GetBufferLookup<StartingItemConfigElement>(true),
-            BuildingPrefabs = state.GetBufferLookup<BuildingPrefabElement>(true),
-            ItemPrefabs = state.GetBufferLookup<ItemPrefabElement>(true),
+            RequestData = SystemAPI.GetComponentLookup<GameBootstrapRequest>(true),
+            RecordData = SystemAPI.GetComponentLookup<GameBootstrapState>(true),
+            BuildingTypes = SystemAPI.GetComponentLookup<BuildingType>(true),
+            Positions = SystemAPI.GetComponentLookup<GridPosition>(true),
+            Footprints = SystemAPI.GetComponentLookup<BuildingFootprint>(true),
+            Directions = SystemAPI.GetComponentLookup<Direction>(true),
+            SpawnData = SystemAPI.GetComponentLookup<SpawnBuildingRequest>(true),
+            Sites = SystemAPI.GetComponentLookup<ConstructionSite>(true),
+            DisabledEntities = SystemAPI.GetComponentLookup<Disabled>(true),
+            ItemOwners = SystemAPI.GetComponentLookup<ItemOwnership>(true),
+            DestroyRequests = SystemAPI.GetComponentLookup<DestroyItemRequest>(true),
+            Requirements = SystemAPI.GetBufferLookup<ConstructionMaterialRequirementElement>(true),
+            BuildingConfigs = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
+            ItemConfigs = SystemAPI.GetBufferLookup<ItemConfigElement>(true),
+            Definitions = SystemAPI.GetBufferLookup<StartingItemConfigElement>(true),
+            BuildingPrefabs = SystemAPI.GetBufferLookup<BuildingPrefabElement>(true),
+            ItemPrefabs = SystemAPI.GetBufferLookup<ItemPrefabElement>(true),
             ConfigEntity = SystemAPI.GetSingletonEntity<BuildingConfig>(),
             ItemConfigEntity = SystemAPI.GetSingletonEntity<ItemRegistry>(),
             DefinitionEntity = SystemAPI.GetSingletonEntity<StartingItemConfig>(),
@@ -168,9 +168,9 @@ public struct ApplyGameBootstrapJob : IJob
             return;
         }
 
-        Entity main = BuildingLifecycleUtility.SpawnBuilding(ref ECB, BuildingTypeEnum.MainFacility, 1,
+        Entity main = BuildingLifecycleUtility.SpawnConfiguredBuilding(ref ECB, BuildingTypeEnum.MainFacility, 1,
             int2.zero, DirectionEnum.Up, config.Footprint, RequestData[request].Stamp,
-            true, BuildingDatabase, true, ConfigEntity, BuildingPrefabs, BuildingConfigs);
+            true, BuildingDatabase, config, BuildingPrefabs);
         if (main == Entity.Null)
         {
             ECB.DestroyEntity(request);
@@ -196,14 +196,15 @@ public struct ApplyGameBootstrapJob : IJob
 
     private bool IsValidRecord(Entity main)
     {
-        if (!BuildingTypes.HasComponent(main) || !Positions.HasComponent(main) || !Directions.HasComponent(main))
+        if (!BuildingTypes.TryGetComponent(main, out var type) ||
+            !Positions.TryGetComponent(main, out var position) ||
+            !Directions.TryGetComponent(main, out var direction))
         {
             return false;
         }
 
-        var type = BuildingTypes[main];
         if (type.Type != BuildingTypeEnum.MainFacility || type.Tier != 1 ||
-            !math.all(Positions[main].Value == int2.zero) || Directions[main].dir != DirectionEnum.Up)
+            !math.all(position.Value == int2.zero) || direction.dir != DirectionEnum.Up)
         {
             return false;
         }
@@ -247,26 +248,29 @@ public struct ApplyGameBootstrapJob : IJob
                 Fail("[GameBootstrapApplySystem] Existing main facility has no bootstrap record.");
                 return false;
             }
-            if (!Positions.HasComponent(building) || !Footprints.HasComponent(building) || !Directions.HasComponent(building))
+            if (!Positions.TryGetComponent(building, out var position) ||
+                !Footprints.TryGetComponent(building, out var footprint) ||
+                !Directions.TryGetComponent(building, out var direction))
             {
                 Fail("[GameBootstrapApplySystem] Existing building has incomplete placement data.");
                 return false;
             }
-            int2 occupiedSize = BuildingFootprintUtility.GetEffectiveSize(Footprints[building].Size, Directions[building].dir);
-            if (OverlapsStart(Positions[building].Value, occupiedSize, size))
+            int2 occupiedSize = BuildingFootprintUtility.GetEffectiveSize(footprint.Size, direction.dir);
+            int2 buildingPosition = position.Value;
+            if (OverlapsStart(buildingPosition, occupiedSize, size))
             {
                 Fail("[GameBootstrapApplySystem] Starting footprint is occupied by a building or site.");
                 return false;
             }
             // 다른 위치여도 같은 종료 경계에 실제 주 시설을 완공하면 부트스트랩과 중복 생성된다.
             // 미충족/바닥 차단/비활성/취소 현장은 완공 후보가 아니며 기존 공사 수명을 유지한다.
-            if (Sites.HasComponent(building) && Requirements.HasBuffer(building) && !DisabledEntities.HasComponent(building))
+            if (Sites.TryGetComponent(building, out var site) &&
+                Requirements.TryGetBuffer(building, out var requirements) && !DisabledEntities.HasComponent(building))
             {
-                var site = Sites[building];
                 if (site.TargetBuildingType == BuildingTypeEnum.MainFacility &&
                     (site.Flags & ConstructionSiteFlags.Cancelled) == 0 &&
-                    ConstructionCompletionUtility.AreMaterialsSatisfied(Requirements[building]) &&
-                    !ConstructionCompletionUtility.HasBlockingWorldItem(Positions[building].Value, occupiedSize, worldItemPositions))
+                    ConstructionCompletionUtility.AreMaterialsSatisfied(requirements) &&
+                    !ConstructionCompletionUtility.HasBlockingWorldItem(buildingPosition, occupiedSize, worldItemPositions))
                 {
                     Fail("[GameBootstrapApplySystem] Another main facility will complete at this building boundary.");
                     return false;

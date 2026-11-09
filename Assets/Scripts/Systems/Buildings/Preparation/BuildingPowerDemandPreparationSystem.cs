@@ -1,10 +1,11 @@
 using Unity.Burst;
+using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-/// <summary>소비 도메인의 프레임 초기화와 기존 작업 결정에 따른 수요 준비. 공급 여부로 작업 자격을 지우지 않는다.</summary>
+/// <summary>소비 전력 수요를 초기화하고 채굴/제작/연구의 전력 외 작업 자격과 드론 충전 부족분으로 작성한다. 공급 여부로 작업 자격을 지우지 않는다.</summary>
 [UpdateInGroup(typeof(SimulationPreparationGroup))]
 [UpdateAfter(typeof(MinerWorkPreparationSystem))]
 [UpdateAfter(typeof(CrafterWorkPreparationSystem))]
@@ -29,6 +30,10 @@ public partial struct BuildingPowerDemandPreparationSystem : ISystem
         Entity configEntity = SystemAPI.TryGetSingletonEntity<BuildingConfig>(out var config) ? config : Entity.Null;
         var prepare = new PrepareBuildingPowerDemandJob
         {
+            EntityHandle = SystemAPI.GetEntityTypeHandle(),
+            PowerDemandHandle = SystemAPI.GetComponentTypeHandle<PowerDemand>(false),
+            PowerConsumerHandle = SystemAPI.GetComponentTypeHandle<PowerConsumer>(false),
+            BuildingTypeHandle = SystemAPI.GetComponentTypeHandle<BuildingType>(true),
             Validation = validationOwner.Validation, ConfigEntity = configEntity,
             ConfigLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
             MinerLookup = SystemAPI.GetComponentLookup<MinerWorkPreparation>(true),
@@ -44,8 +49,39 @@ public partial struct BuildingPowerDemandPreparationSystem : ISystem
 }
 
 [BurstCompile]
-internal partial struct PrepareBuildingPowerDemandJob : IJobEntity
+internal partial struct PrepareBuildingPowerDemandJob : IJobChunk
 {
+    [ReadOnly] public EntityTypeHandle EntityHandle;
+    public ComponentTypeHandle<PowerDemand> PowerDemandHandle;
+    public ComponentTypeHandle<PowerConsumer> PowerConsumerHandle;
+    [ReadOnly] public ComponentTypeHandle<BuildingType> BuildingTypeHandle;
+
+    private struct RegistryReadContext
+    {
+        public RegistryBufferReadCache<BuildingConfigElement> ConfigLookup;
+    }
+
+    public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+    {
+        var entities = chunk.GetNativeArray(EntityHandle);
+        var powerDemandValues = chunk.GetNativeArray(ref PowerDemandHandle);
+        var powerDemandEnabled = chunk.GetEnabledMask(ref PowerDemandHandle);
+        var powerConsumerEnabled = chunk.GetEnabledMask(ref PowerConsumerHandle);
+        var buildingTypeValues = chunk.GetNativeArray(ref BuildingTypeHandle);
+        var registryRead = new RegistryReadContext();
+        var enumerator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+        while (enumerator.NextEntityIndex(out int index))
+        {
+            var demandRef = new RefRW<PowerDemand>(powerDemandValues, index);
+            var typeValue = buildingTypeValues[index];
+            ExecuteEntity(entities[index],
+                ref demandRef.ValueRW,
+                powerDemandEnabled.GetEnabledRefRW<PowerDemand>(index),
+                powerConsumerEnabled.GetEnabledRefRW<PowerConsumer>(index),
+                in typeValue, ref registryRead);
+        }
+    }
+
     [ReadOnly] public NativeReference<PowerValidationResult> Validation;
     public Entity ConfigEntity;
     [ReadOnly] public BufferLookup<BuildingConfigElement> ConfigLookup;
@@ -55,14 +91,14 @@ internal partial struct PrepareBuildingPowerDemandJob : IJobEntity
     [ReadOnly] public BufferLookup<DroneChargingPreparationElement> ChargingLookup;
     public float DeltaTime;
 
-    private void Execute(Entity entity, ref PowerDemand demand, EnabledRefRW<PowerDemand> prepared, EnabledRefRW<PowerConsumer> intent, in BuildingType type)
+    private void ExecuteEntity(Entity entity, ref PowerDemand demand, EnabledRefRW<PowerDemand> prepared, EnabledRefRW<PowerConsumer> intent, in BuildingType type, ref RegistryReadContext registryRead)
     {
         if (Validation.Value.HasError)
         {
             return;
         }
 
-        var configs = ConfigLookup[ConfigEntity];
+        var configs = registryRead.ConfigLookup.Read(ConfigLookup, ConfigEntity);
         if (!BuildingConfigLookupUtility.TryGetConfig(configs, type.Type, type.Tier, out var config))
         {
             return;

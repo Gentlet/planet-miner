@@ -38,7 +38,7 @@ public static class BeltEntryUtility
                 continue;
             }
 
-            if (!movementLookup.HasComponent(item))
+            if (!movementLookup.TryGetComponent(item, out var movement))
             {
                 continue;
             }
@@ -54,7 +54,7 @@ public static class BeltEntryUtility
                 return false;
             }
 
-            if (movementLookup[item].Progress < minimumGap)
+            if (movement.Progress < minimumGap)
             {
                 return false;
             }

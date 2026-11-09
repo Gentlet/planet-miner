@@ -58,6 +58,7 @@ public partial struct DroneStationActivationReservationSystem : ISystem
             using var records = new NativeList<DroneStationRequestRecord>(Requests.Length, Allocator.Temp);
             DroneStationLifecycleUtility.ReadSortedRequests(Requests, RequestLookup, Decisions, records);
             using var remaining = new NativeHashMap<Entity, int>(math.max(1, Requests.Length), Allocator.Temp);
+            DynamicBuffer<DroneTaskPendingPublicationElement> pending = default;
             foreach (var record in records)
             {
                 var automatic = Automatic[record.Entity];
@@ -75,7 +76,7 @@ public partial struct DroneStationActivationReservationSystem : ISystem
                 }
                 if (!remaining.TryGetValue(automatic.DemandTask, out int available))
                 {
-                    available = ReadRemaining(automatic.DemandTask);
+                    available = ReadRemaining(automatic.DemandTask, ref pending);
                     remaining.Add(automatic.DemandTask, available);
                 }
                 int taken = math.min(available, automatic.Quantity);
@@ -93,10 +94,12 @@ public partial struct DroneStationActivationReservationSystem : ISystem
                 }
             }
         }
-        private int ReadRemaining(Entity taskEntity)
+        private int ReadRemaining(Entity taskEntity, ref DynamicBuffer<DroneTaskPendingPublicationElement> pending)
         {
-            if (!Tasks.HasComponent(taskEntity)) return 0;
-            var task = Tasks[taskEntity];
+            if (!Tasks.TryGetComponent(taskEntity, out var task))
+            {
+                return 0;
+            }
             if (task.State != DroneLogisticsTaskStateEnum.Open) return 0;
             if (DroneSchedulingUtility.IsTransportKind(task.Kind))
             {
@@ -119,11 +122,15 @@ public partial struct DroneStationActivationReservationSystem : ISystem
                 if (sameTarget &&
                     !DroneSchedulingUtility.IsTerminal(assignment.State)) return 0;
             }
-            foreach (var pending in Pending[Candidates])
+            if (!pending.IsCreated)
+            {
+                pending = Pending[Candidates];
+            }
+            foreach (var publication in pending)
             {
                 bool sameTarget = task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition
-                    ? pending.Candidate.Task == taskEntity : pending.Candidate.Source == task.Target;
-                if (sameTarget && (pending.Quantity > 0 || pending.PublicationQueued)) return 0;
+                    ? publication.Candidate.Task == taskEntity : publication.Candidate.Source == task.Target;
+                if (sameTarget && (publication.Quantity > 0 || publication.PublicationQueued)) return 0;
             }
             return 1;
         }

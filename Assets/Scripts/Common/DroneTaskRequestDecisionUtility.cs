@@ -43,7 +43,7 @@ internal static class DroneTaskRequestDecisionUtility
             };
             if (request.Operation == DroneTaskRequestOperationEnum.Create)
             {
-                decision.Status = ValidateCreation(manager, request, sites, out var reason);
+                decision.Status = ValidateCreation(manager, request, sites, out var reason, out bool validatedRecoverySource);
                 decision.RecoveryReason = reason;
                 if (decision.Status == DroneTaskRequestStatusEnum.Created)
                 {
@@ -97,9 +97,15 @@ internal static class DroneTaskRequestDecisionUtility
                     // 유효한 기존/선행 root의 최초 목표량은 유지한다. 현재 회수 재고 상한은 새 root에만 적용한다.
                     bool newResearchReturn = decision.Task == Entity.Null && decision.CreatingRequest == Entity.Null &&
                         request.Purpose == DroneTransportPurposeEnum.ResearchRecovery;
-                    if (newResearchReturn && request.Quantity > ResearchRecoveryUtility.Count(manager, request.Target, request.ItemType))
+                    if (newResearchReturn)
                     {
-                        decision.Status = DroneTaskRequestStatusEnum.Rejected;
+                        int quantity = validatedRecoverySource
+                            ? ResearchRecoveryUtility.CountValidatedSource(manager, request.Target, request.ItemType)
+                            : ResearchRecoveryUtility.Count(manager, request.Target, request.ItemType);
+                        if (request.Quantity > quantity)
+                        {
+                            decision.Status = DroneTaskRequestStatusEnum.Rejected;
+                        }
                     }
                     if (decision.Status == DroneTaskRequestStatusEnum.Created || decision.Status == DroneTaskRequestStatusEnum.Existing)
                     {
@@ -129,7 +135,39 @@ internal static class DroneTaskRequestDecisionUtility
     public static bool IsCancellationPlanned(EntityManager manager, Entity candidates, Entity task)
     {
         if (task == Entity.Null) return false;
-        foreach (var decision in manager.GetBuffer<DroneTaskGenerationDecisionElement>(candidates, true))
+        return ContainsCancellation(manager.GetBuffer<DroneTaskGenerationDecisionElement>(candidates, true), task);
+    }
+
+    internal ref struct CancellationReadContext
+    {
+        private readonly EntityManager _manager;
+        private readonly Entity _candidates;
+        private DynamicBuffer<DroneTaskGenerationDecisionElement> _controls;
+
+        internal CancellationReadContext(EntityManager manager, Entity candidates)
+        {
+            _manager = manager;
+            _candidates = candidates;
+            _controls = default;
+        }
+
+        internal bool IsPlanned(Entity task)
+        {
+            if (task == Entity.Null)
+            {
+                return false;
+            }
+            if (!_controls.IsCreated)
+            {
+                _controls = _manager.GetBuffer<DroneTaskGenerationDecisionElement>(_candidates, true);
+            }
+            return ContainsCancellation(_controls, task);
+        }
+    }
+
+    private static bool ContainsCancellation(DynamicBuffer<DroneTaskGenerationDecisionElement> controls, Entity task)
+    {
+        foreach (var decision in controls)
         {
             if (decision.CancelledTask == task)
             {
@@ -162,9 +200,11 @@ internal static class DroneTaskRequestDecisionUtility
         return false;
     }
 
-    private static DroneTaskRequestStatusEnum ValidateCreation(EntityManager manager, in DroneTaskRequest request, NativeArray<Entity> sites, out DroneRecoveryReasonEnum reason)
+    private static DroneTaskRequestStatusEnum ValidateCreation(EntityManager manager, in DroneTaskRequest request,
+        NativeArray<Entity> sites, out DroneRecoveryReasonEnum reason, out bool validatedRecoverySource)
     {
         reason = DroneRecoveryReasonEnum.None;
+        validatedRecoverySource = false;
         if (request.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition)
             return request.ItemType == ItemTypeEnum.None && request.Quantity == 0 &&
                 DroneDemolitionUtility.IsApprovedTarget(manager, request.Target)
@@ -197,9 +237,9 @@ internal static class DroneTaskRequestDecisionUtility
             // 기존 root 검색 전에 생성 순번/이동 화물 수명을 검사하지 않는다. 새 회수 목표의 재고 상한은 이후에만 적용한다.
             if (request.Purpose == DroneTransportPurposeEnum.ResearchRecovery)
             {
-                return request.Kind == DroneLogisticsTaskKindEnum.StorageExport && request.Area == DroneTransportAreaEnum.Input &&
-                    ResearchRecoveryUtility.IsSource(manager, request.Target)
-                    ? DroneTaskRequestStatusEnum.Created : DroneTaskRequestStatusEnum.Rejected;
+                validatedRecoverySource = request.Kind == DroneLogisticsTaskKindEnum.StorageExport &&
+                    request.Area == DroneTransportAreaEnum.Input && ResearchRecoveryUtility.IsSource(manager, request.Target);
+                return validatedRecoverySource ? DroneTaskRequestStatusEnum.Created : DroneTaskRequestStatusEnum.Rejected;
             }
             if (request.Purpose != DroneTransportPurposeEnum.Explicit)
             {

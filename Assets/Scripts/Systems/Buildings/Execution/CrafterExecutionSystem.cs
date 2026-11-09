@@ -1,4 +1,5 @@
 using Unity.Burst;
+using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -71,10 +72,13 @@ public partial struct CrafterExecutionSystem : ISystem
 
         var job = new CrafterExecutionJob
         {
+            EntityHandle = SystemAPI.GetEntityTypeHandle(),
+            CrafterStateHandle = SystemAPI.GetComponentTypeHandle<CrafterState>(false),
+            StoredItemElementHandle = SystemAPI.GetBufferTypeHandle<StoredItemElement>(false),
+            ProductResultHandle = SystemAPI.GetBufferTypeHandle<ProductResult>(false),
+            CrafterDecisionHandle = SystemAPI.GetComponentTypeHandle<CrafterDecision>(true),
             DeltaTime = dt,
             SpeedBonus = SystemAPI.GetSingleton<ResearchStatBonuses>().CraftingSpeed,
-            DemandLookup = SystemAPI.GetComponentLookup<PowerDemand>(true),
-            SupplyLookup = SystemAPI.GetComponentLookup<PowerSupplyResult>(true),
             RecipeRegistryEntity = recipeRegistryEntity,
             RecipeConfigLookup = _recipeConfigLookup,
             RecipeIngredientLookup = _recipeIngredientLookup,
@@ -90,12 +94,46 @@ public partial struct CrafterExecutionSystem : ISystem
 /// 각 제작기의 재료 선소비, 진행도 누적, 생산 결과 기록을 처리하는 단일 워커 Burst Job.
 /// </summary>
 [BurstCompile]
-public partial struct CrafterExecutionJob : IJobEntity
+public partial struct CrafterExecutionJob : IJobChunk
 {
+    [ReadOnly] public EntityTypeHandle EntityHandle;
+    public ComponentTypeHandle<CrafterState> CrafterStateHandle;
+    public BufferTypeHandle<StoredItemElement> StoredItemElementHandle;
+    public BufferTypeHandle<ProductResult> ProductResultHandle;
+    [ReadOnly] public ComponentTypeHandle<CrafterDecision> CrafterDecisionHandle;
+
+    private struct RegistryReadContext
+    {
+        public RegistryBufferReadCache<RecipeConfigElement> RecipeConfigLookup;
+        public RegistryBufferReadCache<RecipeIngredientElement> RecipeIngredientLookup;
+        public RegistryBufferReadCache<RecipeOutputElement> RecipeOutputLookup;
+    }
+
+    public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+    {
+        var entities = chunk.GetNativeArray(EntityHandle);
+        var crafterStateValues = chunk.GetNativeArray(ref CrafterStateHandle);
+        var storedItemElementValues = chunk.GetBufferAccessorRW(ref StoredItemElementHandle);
+        var productResultValues = chunk.GetBufferAccessorRW(ref ProductResultHandle);
+        var crafterDecisionValues = chunk.GetNativeArray(ref CrafterDecisionHandle);
+        var registryRead = new RegistryReadContext();
+        var enumerator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+        while (enumerator.NextEntityIndex(out int index))
+        {
+            var stateRef = new RefRW<CrafterState>(crafterStateValues, index);
+            var storedItemsValue = storedItemElementValues[index];
+            var productResultsValue = productResultValues[index];
+            var decisionValue = crafterDecisionValues[index];
+            ExecuteEntity(entities[index],
+                ref stateRef.ValueRW,
+                ref storedItemsValue,
+                ref productResultsValue,
+                in decisionValue, ref registryRead);
+        }
+    }
+
     public double SpeedBonus;
     public float DeltaTime;
-    [ReadOnly] public ComponentLookup<PowerDemand> DemandLookup;
-    [ReadOnly] public ComponentLookup<PowerSupplyResult> SupplyLookup;
 
     public Entity RecipeRegistryEntity;
 
@@ -110,30 +148,29 @@ public partial struct CrafterExecutionJob : IJobEntity
 
     public ComponentLookup<DestroyItemRequest> DestroyItemRequestLookup;
 
-    public void Execute(
+    private void ExecuteEntity(
         Entity building,
         ref CrafterState state,
         ref DynamicBuffer<StoredItemElement> storedItems,
         ref DynamicBuffer<ProductResult> productResults,
-        in CrafterDecision decision)
+        in CrafterDecision decision, ref RegistryReadContext registryRead)
     {
-        var recipes = RecipeConfigLookup[RecipeRegistryEntity];
+        var recipes = registryRead.RecipeConfigLookup.Read(RecipeConfigLookup, RecipeRegistryEntity);
 
         // 유효 레시피 확인
-        if (state.SelectedRecipeId <= 0 ||
-            !RecipeConfigLookupUtility.TryGetRecipeIndex(recipes, state.SelectedRecipeId, out int recipeIdx))
+        if (state.SelectedRecipeId <= 0)
         {
             return;
         }
 
-        var recipe = recipes[recipeIdx];
-        var ingredients = RecipeIngredientLookup[RecipeRegistryEntity];
-        var outputs = RecipeOutputLookup[RecipeRegistryEntity];
+        var recipe = recipes[decision.RecipeIndex];
+        var ingredients = registryRead.RecipeIngredientLookup.Read(RecipeIngredientLookup, RecipeRegistryEntity);
+        var outputs = registryRead.RecipeOutputLookup.Read(RecipeOutputLookup, RecipeRegistryEntity);
 
         // =========================================================================
         // 2. 신규 제작 착수 및 재료 선소비
         // =========================================================================
-        float poweredDeltaTime = PowerFrameUtility.GetPoweredDeltaTime(building, DeltaTime, DemandLookup, SupplyLookup);
+        float poweredDeltaTime = DeltaTime * decision.PowerTimeRatio;
         if (decision.CanStartCraft && !state.IsCraftingActive)
         {
             if (poweredDeltaTime <= 0f)

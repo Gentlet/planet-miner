@@ -30,17 +30,16 @@ public partial struct PowerGridTopologyReservationSystem : ISystem
         var collect = new CollectPowerPolesJob
         {
             Entities = poles.AsDeferredJobArray(), ConfigEntity = configEntity,
-            BuildingTypeLookup = state.GetComponentLookup<BuildingType>(true),
-            ConfigLookup = state.GetBufferLookup<BuildingConfigElement>(true),
-            DisabledLookup = state.GetComponentLookup<Disabled>(true),
-            EntityStorageLookup = state.GetEntityStorageInfoLookup(),
-            GridPositionLookup = state.GetComponentLookup<GridPosition>(true),
-            PlacementStampLookup = state.GetComponentLookup<PlacementStamp>(true),
-            PowerGridConnectionLookup = state.GetComponentLookup<PowerGridConnection>(true),
-            PowerGridLookup = state.GetComponentLookup<PowerGrid>(true),
-            PowerGridTopologyDecisionLookup = state.GetComponentLookup<PowerGridTopologyDecision>(true),
-            PowerPoleLookup = state.GetComponentLookup<PowerPole>(true),
-            PrefabLookup = state.GetComponentLookup<Prefab>(true),
+            BuildingTypeLookup = SystemAPI.GetComponentLookup<BuildingType>(true),
+            ConfigLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
+            DisabledLookup = SystemAPI.GetComponentLookup<Disabled>(true),
+            GridPositionLookup = SystemAPI.GetComponentLookup<GridPosition>(true),
+            PlacementStampLookup = SystemAPI.GetComponentLookup<PlacementStamp>(true),
+            PowerGridConnectionLookup = SystemAPI.GetComponentLookup<PowerGridConnection>(true),
+            PowerGridLookup = SystemAPI.GetComponentLookup<PowerGrid>(true),
+            PowerGridTopologyDecisionLookup = SystemAPI.GetComponentLookup<PowerGridTopologyDecision>(true),
+            PowerPoleLookup = SystemAPI.GetComponentLookup<PowerPole>(true),
+            PrefabLookup = SystemAPI.GetComponentLookup<Prefab>(true),
             Poles = snapshots,
             Validation = validationOwner.Validation
         }.Schedule(JobHandle.CombineDependencies(polesReady, state.Dependency));
@@ -55,7 +54,6 @@ public partial struct PowerGridTopologyReservationSystem : ISystem
 
     internal static bool TryReadPole(ComponentLookup<BuildingType> buildingTypeLookup,
         ComponentLookup<Disabled> disabledLookup,
-        EntityStorageInfoLookup entityStorageLookup,
         ComponentLookup<GridPosition> gridPositionLookup,
         ComponentLookup<PlacementStamp> placementStampLookup,
         ComponentLookup<PowerGridConnection> powerGridConnectionLookup,
@@ -66,14 +64,14 @@ public partial struct PowerGridTopologyReservationSystem : ISystem
         DynamicBuffer<BuildingConfigElement> configs, out PowerPoleSnapshot snapshot)
     {
         snapshot = default;
-        if (!buildingTypeLookup.HasComponent(entity) || !gridPositionLookup.HasComponent(entity) ||
-            !powerGridConnectionLookup.HasComponent(entity) ||
+        if (!buildingTypeLookup.TryGetComponent(entity, out var type) ||
+            !gridPositionLookup.TryGetComponent(entity, out var position) ||
+            !powerGridConnectionLookup.TryGetComponent(entity, out var connection) ||
             !powerGridTopologyDecisionLookup.HasComponent(entity))
         {
             return false;
         }
 
-        var type = buildingTypeLookup[entity];
         if (type.Type != BuildingTypeEnum.PowerPole && type.Type != BuildingTypeEnum.MainFacility)
         {
             return false;
@@ -83,31 +81,29 @@ public partial struct PowerGridTopologyReservationSystem : ISystem
             return false;
         }
 
-        var connection = powerGridConnectionLookup[entity];
         if (connection.PowerPole != entity)
         {
             return false;
         }
-        if (!IsPublishedGridValid(disabledLookup, entityStorageLookup, powerGridLookup, powerPoleLookup, prefabLookup, connection.Grid))
+        if (!IsPublishedGridValid(disabledLookup, powerGridLookup, powerPoleLookup, prefabLookup, connection.Grid))
         {
             return false;
         }
 
-        bool hasStamp = placementStampLookup.HasComponent(entity);
+        bool hasStamp = placementStampLookup.TryGetComponent(entity, out var stamp);
         snapshot = new PowerPoleSnapshot
         {
             Entity = entity,
-            Position = gridPositionLookup[entity].Value,
+            Position = position.Value,
             ConnectionRange = config.Power.ConnectionRange,
             ExistingGrid = connection.Grid,
             HasStamp = hasStamp,
-            Stamp = hasStamp ? placementStampLookup[entity] : default
+            Stamp = stamp
         };
         return true;
     }
 
     private static bool IsPublishedGridValid(ComponentLookup<Disabled> disabledLookup,
-        EntityStorageInfoLookup entityStorageLookup,
         ComponentLookup<PowerGrid> powerGridLookup,
         ComponentLookup<PowerPole> powerPoleLookup,
         ComponentLookup<Prefab> prefabLookup, Entity grid)
@@ -115,10 +111,6 @@ public partial struct PowerGridTopologyReservationSystem : ISystem
         if (grid == Entity.Null)
         {
             return true;
-        }
-        if (!entityStorageLookup.Exists(grid))
-        {
-            return false;
         }
         if (!powerGridLookup.HasComponent(grid))
         {
@@ -271,7 +263,6 @@ internal struct CollectPowerPolesJob : IJob
     [ReadOnly] public ComponentLookup<BuildingType> BuildingTypeLookup;
     [ReadOnly] public BufferLookup<BuildingConfigElement> ConfigLookup;
     [ReadOnly] public ComponentLookup<Disabled> DisabledLookup;
-    [ReadOnly] public EntityStorageInfoLookup EntityStorageLookup;
     [ReadOnly] public ComponentLookup<GridPosition> GridPositionLookup;
     [ReadOnly] public ComponentLookup<PlacementStamp> PlacementStampLookup;
     [ReadOnly] public ComponentLookup<PowerGridConnection> PowerGridConnectionLookup;
@@ -283,16 +274,22 @@ internal struct CollectPowerPolesJob : IJob
     public NativeReference<PowerValidationResult> Validation;
     public void Execute()
     {
-        if (Validation.Value.HasError)
+        if (Validation.Value.HasError || Entities.Length == 0)
         {
+            return;
+        }
+        if (!ConfigLookup.TryGetBuffer(ConfigEntity, out var configs))
+        {
+            PowerValidationUtility.Fail(Validation,
+                "[PowerGridTopologyReservationSystem] Invalid pole configuration or published connection.");
             return;
         }
         foreach (Entity entity in Entities)
         {
-            if (!PowerValidationUtility.HasConfiguration(ConfigEntity, ConfigLookup) || !PowerGridTopologyReservationSystem.TryReadPole(
-                BuildingTypeLookup, DisabledLookup, EntityStorageLookup, GridPositionLookup, PlacementStampLookup,
+            if (!PowerGridTopologyReservationSystem.TryReadPole(
+                BuildingTypeLookup, DisabledLookup, GridPositionLookup, PlacementStampLookup,
                 PowerGridConnectionLookup, PowerGridLookup, PowerGridTopologyDecisionLookup, PowerPoleLookup,
-                PrefabLookup, entity, ConfigLookup[ConfigEntity], out var snapshot))
+                PrefabLookup, entity, configs, out var snapshot))
             {
                 PowerValidationUtility.Fail(Validation,
                     "[PowerGridTopologyReservationSystem] Invalid pole configuration or published connection.");

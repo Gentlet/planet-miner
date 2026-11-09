@@ -13,7 +13,7 @@ public partial struct DroneMovementApplySystem : ISystem
         var end = state.World.GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>();
         var handle = new ApplyArrivalsJob
         {
-            Assignments = state.GetComponentLookup<DroneTaskAssignment>(true),
+            Assignments = SystemAPI.GetComponentLookup<DroneTaskAssignment>(true),
             ECB = end.CreateCommandBuffer().AsParallelWriter()
         }.ScheduleParallel(state.Dependency);
         state.Dependency = handle;
@@ -37,11 +37,10 @@ public partial struct DroneMovementApplySystem : ISystem
             {
                 return;
             }
-            if (!Assignments.HasComponent(result.Assignment))
+            if (!Assignments.TryGetComponent(result.Assignment, out var assignment))
             {
                 return;
             }
-            var assignment = Assignments[result.Assignment];
             if (assignment.Revision != result.AssignmentRevision || assignment.NextAction != result.Action)
             {
                 return;

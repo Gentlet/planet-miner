@@ -59,7 +59,6 @@ public static class ConstructionSupplyReservationUtility
     public static void Release(EntityManager manager, Entity site, ItemTypeEnum type, int quantity)
     {
         if (site == Entity.Null) return;
-        if (!manager.Exists(site)) return;
         if (!manager.HasBuffer<ConstructionMaterialRequirementElement>(site)) return;
         var rows = manager.GetBuffer<ConstructionMaterialRequirementElement>(site);
         int remaining = math.max(0, quantity);

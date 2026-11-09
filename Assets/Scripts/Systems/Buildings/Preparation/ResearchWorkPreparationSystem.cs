@@ -1,4 +1,5 @@
 using Unity.Burst;
+using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Entities;
 
@@ -6,8 +7,11 @@ using Unity.Entities;
 [UpdateBefore(typeof(BuildingPowerDemandPreparationSystem))]
 public partial struct ResearchWorkPreparationSystem : ISystem
 {
+    private EntityQuery _workQuery;
     public void OnCreate(ref SystemState state)
     {
+        _workQuery = SystemAPI.QueryBuilder().WithAll<BuildingType>().WithAll<ResearchCycleState>().WithAllRW<ResearchWorkPreparation>().WithAllRW<ResearchInputConfigured>().WithAllRW<Storage>().WithAllRW<StorageFilter>().WithAllRW<BuildingInputSlotElement>().WithAllRW<ResearchInputLimitElement>().WithAllRW<ResearchRecoveryElement>().WithAll<StoredItemElement>().WithAll<ResearchContributionElement>().WithOptions(EntityQueryOptions.IgnoreComponentEnabledState).Build();
+
         state.RequireForUpdate<ResearchRegistry>();
         state.RequireForUpdate<ItemRegistry>();
         state.RequireForUpdate<BuildingConfig>();
@@ -18,6 +22,18 @@ public partial struct ResearchWorkPreparationSystem : ISystem
     {
         state.Dependency = new PrepareResearchWorkJob
         {
+            EntityHandle = SystemAPI.GetEntityTypeHandle(),
+            BuildingTypeHandle = SystemAPI.GetComponentTypeHandle<BuildingType>(true),
+            ResearchCycleStateHandle = SystemAPI.GetComponentTypeHandle<ResearchCycleState>(true),
+            ResearchWorkPreparationHandle = SystemAPI.GetComponentTypeHandle<ResearchWorkPreparation>(false),
+            ResearchInputConfiguredHandle = SystemAPI.GetComponentTypeHandle<ResearchInputConfigured>(false),
+            StorageHandle = SystemAPI.GetComponentTypeHandle<Storage>(false),
+            StorageFilterHandle = SystemAPI.GetComponentTypeHandle<StorageFilter>(false),
+            BuildingInputSlotElementHandle = SystemAPI.GetBufferTypeHandle<BuildingInputSlotElement>(false),
+            ResearchInputLimitElementHandle = SystemAPI.GetBufferTypeHandle<ResearchInputLimitElement>(false),
+            ResearchRecoveryElementHandle = SystemAPI.GetBufferTypeHandle<ResearchRecoveryElement>(false),
+            StoredItemElementHandle = SystemAPI.GetBufferTypeHandle<StoredItemElement>(true),
+            ResearchContributionElementHandle = SystemAPI.GetBufferTypeHandle<ResearchContributionElement>(true),
             Registry = SystemAPI.GetSingletonEntity<ResearchRegistry>(),
             Items = SystemAPI.GetSingletonEntity<ItemRegistry>(),
             Buildings = SystemAPI.GetSingletonEntity<BuildingConfig>(),
@@ -30,14 +46,81 @@ public partial struct ResearchWorkPreparationSystem : ISystem
             BuildingConfigs = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
             DestroyRequests = SystemAPI.GetComponentLookup<DestroyItemRequest>(true),
             Demolition = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true)
-        }.ScheduleParallel(state.Dependency);
+        }.ScheduleParallel(_workQuery, state.Dependency);
     }
 }
 
 /// <summary>실물 소유권/수량은 변경하지 않고 입력 허용/회수 분류와 전력 외 자격만 준비한다.</summary>
-[BurstCompile, WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)]
-internal partial struct PrepareResearchWorkJob : IJobEntity
+[BurstCompile]
+internal partial struct PrepareResearchWorkJob : IJobChunk
 {
+    [ReadOnly] public EntityTypeHandle EntityHandle;
+    [ReadOnly] public ComponentTypeHandle<BuildingType> BuildingTypeHandle;
+    [ReadOnly] public ComponentTypeHandle<ResearchCycleState> ResearchCycleStateHandle;
+    public ComponentTypeHandle<ResearchWorkPreparation> ResearchWorkPreparationHandle;
+    public ComponentTypeHandle<ResearchInputConfigured> ResearchInputConfiguredHandle;
+    public ComponentTypeHandle<Storage> StorageHandle;
+    public ComponentTypeHandle<StorageFilter> StorageFilterHandle;
+    public BufferTypeHandle<BuildingInputSlotElement> BuildingInputSlotElementHandle;
+    public BufferTypeHandle<ResearchInputLimitElement> ResearchInputLimitElementHandle;
+    public BufferTypeHandle<ResearchRecoveryElement> ResearchRecoveryElementHandle;
+    [ReadOnly] public BufferTypeHandle<StoredItemElement> StoredItemElementHandle;
+    [ReadOnly] public BufferTypeHandle<ResearchContributionElement> ResearchContributionElementHandle;
+
+    private struct RegistryReadContext
+    {
+        public RegistryBufferReadCache<ResearchDefinitionElement> Definitions;
+        public RegistryBufferReadCache<ResearchIngredientElement> Ingredients;
+        public RegistryBufferReadCache<ResearchProgressElement> Progress;
+        public RegistryBufferReadCache<ItemConfigElement> ItemConfigs;
+        public RegistryBufferReadCache<BuildingConfigElement> BuildingConfigs;
+    }
+
+    public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+    {
+        var entities = chunk.GetNativeArray(EntityHandle);
+        var buildingTypeValues = chunk.GetNativeArray(ref BuildingTypeHandle);
+        var researchCycleStateValues = chunk.GetNativeArray(ref ResearchCycleStateHandle);
+        var researchWorkPreparationValues = chunk.GetNativeArray(ref ResearchWorkPreparationHandle);
+        var researchWorkPreparationEnabled = chunk.GetEnabledMask(ref ResearchWorkPreparationHandle);
+        var researchInputConfiguredEnabled = chunk.GetEnabledMask(ref ResearchInputConfiguredHandle);
+        var storageValues = chunk.GetNativeArray(ref StorageHandle);
+        var storageFilterValues = chunk.GetNativeArray(ref StorageFilterHandle);
+        var buildingInputSlotElementValues = chunk.GetBufferAccessorRW(ref BuildingInputSlotElementHandle);
+        var researchInputLimitElementValues = chunk.GetBufferAccessorRW(ref ResearchInputLimitElementHandle);
+        var researchRecoveryElementValues = chunk.GetBufferAccessorRW(ref ResearchRecoveryElementHandle);
+        var storedItemElementValues = chunk.GetBufferAccessorRO(ref StoredItemElementHandle);
+        var researchContributionElementValues = chunk.GetBufferAccessorRO(ref ResearchContributionElementHandle);
+        var registryRead = new RegistryReadContext();
+        var enumerator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+        while (enumerator.NextEntityIndex(out int index))
+        {
+            var typeValue = buildingTypeValues[index];
+            var cycleValue = researchCycleStateValues[index];
+            var preparationRef = new RefRW<ResearchWorkPreparation>(researchWorkPreparationValues, index);
+            var storageRef = new RefRW<Storage>(storageValues, index);
+            var filterRef = new RefRW<StorageFilter>(storageFilterValues, index);
+            var slotsValue = buildingInputSlotElementValues[index];
+            var limitsValue = researchInputLimitElementValues[index];
+            var recoveryValue = researchRecoveryElementValues[index];
+            var storedValue = storedItemElementValues[index];
+            var resultsValue = researchContributionElementValues[index];
+            ExecuteEntity(entities[index],
+                in typeValue,
+                in cycleValue,
+                ref preparationRef.ValueRW,
+                researchWorkPreparationEnabled.GetEnabledRefRW<ResearchWorkPreparation>(index),
+                researchInputConfiguredEnabled.GetEnabledRefRW<ResearchInputConfigured>(index),
+                ref storageRef.ValueRW,
+                ref filterRef.ValueRW,
+                ref slotsValue,
+                ref limitsValue,
+                ref recoveryValue,
+                in storedValue,
+                in resultsValue, ref registryRead);
+        }
+    }
+
     public Entity Registry;
     public Entity Items;
     public Entity Buildings;
@@ -51,20 +134,20 @@ internal partial struct PrepareResearchWorkJob : IJobEntity
     [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyRequests;
     [ReadOnly] public ComponentLookup<PendingBuildingDemolition> Demolition;
 
-    private void Execute(Entity entity, in BuildingType type, in ResearchCycleState cycle,
+    private void ExecuteEntity(Entity entity, in BuildingType type, in ResearchCycleState cycle,
         ref ResearchWorkPreparation preparation, EnabledRefRW<ResearchWorkPreparation> prepared,
         EnabledRefRW<ResearchInputConfigured> configured, ref Storage storage, ref StorageFilter filter,
         ref DynamicBuffer<BuildingInputSlotElement> slots, ref DynamicBuffer<ResearchInputLimitElement> limits,
         ref DynamicBuffer<ResearchRecoveryElement> recovery, in DynamicBuffer<StoredItemElement> stored,
-        in DynamicBuffer<ResearchContributionElement> results)
+        in DynamicBuffer<ResearchContributionElement> results, ref RegistryReadContext registryRead)
     {
         preparation = new ResearchWorkPreparation { DefinitionIndex = -1 };
         prepared.ValueRW = true;
         limits.Clear();
-        var ingredients = Ingredients[Registry];
+        var ingredients = registryRead.Ingredients.Read(Ingredients, Registry);
         if (!configured.ValueRO)
         {
-            ConfigureSlots(ingredients, ItemConfigs[Items], slots);
+            ConfigureSlots(ingredients, registryRead.ItemConfigs.Read(ItemConfigs, Items), slots);
             storage = new Storage(slots.Length);
             filter = new StorageFilter(StorageFilterMode.Whitelist);
             foreach (var slot in slots)
@@ -75,7 +158,7 @@ internal partial struct PrepareResearchWorkJob : IJobEntity
         }
 
         var active = State[Registry].ActiveResearchId;
-        var definitions = Definitions[Registry];
+        var definitions = registryRead.Definitions.Read(Definitions, Registry);
         int index = -1;
         for (int i = 0; i < definitions.Length; i++)
         {
@@ -100,22 +183,35 @@ internal partial struct PrepareResearchWorkJob : IJobEntity
 
         var definition = definitions[index];
         recovery.Clear();
-        var kept = new NativeHashMap<int, int>(definition.IngredientCount, Allocator.Temp);
+        var kept = new NativeHashMap<int, ResearchItemLimit>(definition.IngredientCount, Allocator.Temp);
+        bool hasReadMaximums = false;
         foreach (var item in stored)
         {
             if (!RecipeConfigLookupUtility.CanConsumeStoredItem(item.ItemEntity, DestroyRequests))
             {
                 continue;
             }
-            int maximum = MaximumForItem(definition, ingredients, item.ItemType);
-            kept.TryGetValue((int)item.ItemType, out int quantity);
-            if (quantity >= maximum)
+            if (!hasReadMaximums)
+            {
+                for (int i = 0; i < definition.IngredientCount; i++)
+                {
+                    var ingredient = ingredients[definition.IngredientStart + i];
+                    kept.TryAdd((int)ingredient.ItemType, new ResearchItemLimit
+                    {
+                        Maximum = ResearchMaterialUtility.MaximumBufferedQuantity(ingredient.Amount)
+                    });
+                }
+                hasReadMaximums = true;
+            }
+            kept.TryGetValue((int)item.ItemType, out var limit);
+            if (limit.KeptCount >= limit.Maximum)
             {
                 recovery.Add(new ResearchRecoveryElement { Item = item.ItemEntity });
             }
             else
             {
-                kept[(int)item.ItemType] = quantity + 1;
+                limit.KeptCount++;
+                kept[(int)item.ItemType] = limit;
             }
         }
         kept.Dispose();
@@ -123,7 +219,7 @@ internal partial struct PrepareResearchWorkJob : IJobEntity
         {
             return;
         }
-        foreach (var progress in Progress[Registry])
+        foreach (var progress in registryRead.Progress.Read(Progress, Registry))
         {
             if (progress.ResearchId == active && progress.IsCompleted)
             {
@@ -131,7 +227,7 @@ internal partial struct PrepareResearchWorkJob : IJobEntity
             }
         }
 
-        if (!BuildingConfigLookupUtility.TryGetConfig(BuildingConfigs[Buildings], type.Type, type.Tier, out var config))
+        if (!BuildingConfigLookupUtility.TryGetConfig(registryRead.BuildingConfigs.Read(BuildingConfigs, Buildings), type.Type, type.Tier, out var config))
         {
             prepared.ValueRW = false;
             return;
@@ -183,18 +279,10 @@ internal partial struct PrepareResearchWorkJob : IJobEntity
         }
     }
 
-    private static int MaximumForItem(in ResearchDefinitionElement definition,
-        DynamicBuffer<ResearchIngredientElement> ingredients, ItemTypeEnum type)
+    private struct ResearchItemLimit
     {
-        for (int i = 0; i < definition.IngredientCount; i++)
-        {
-            var ingredient = ingredients[definition.IngredientStart + i];
-            if (ingredient.ItemType == type)
-            {
-                return ResearchMaterialUtility.MaximumBufferedQuantity(ingredient.Amount);
-            }
-        }
-        return 0;
+        public int Maximum;
+        public int KeptCount;
     }
 
     private static bool ContainsStored(DynamicBuffer<StoredItemElement> stored, Entity item)

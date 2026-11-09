@@ -39,17 +39,23 @@ public static class DroneStationRelocationUtility
 
     public static bool IsReserved(BufferLookup<DroneStationReservedSlotElement> reservations, Entity station, int slot, Entity except = default)
     {
-        if (!reservations.HasBuffer(station)) return false;
-        return IsReserved(reservations[station], slot, except);
+        if (!reservations.TryGetBuffer(station, out var buffer))
+        {
+            return false;
+        }
+        return IsReserved(buffer, slot, except);
     }
 
     public static int ReservedSlot(BufferLookup<DroneStationReservedSlotElement> reservations, Entity station, Entity drone)
     {
-        if (!reservations.HasBuffer(station)) return -1;
-        return ReservedSlot(reservations[station], drone);
+        if (!reservations.TryGetBuffer(station, out var buffer))
+        {
+            return -1;
+        }
+        return ReservedSlot(buffer, drone);
     }
 
-    private static bool IsReserved(DynamicBuffer<DroneStationReservedSlotElement> reservations, int slot, Entity except)
+    internal static bool IsReserved(DynamicBuffer<DroneStationReservedSlotElement> reservations, int slot, Entity except = default)
     {
         foreach (var row in reservations)
         {
@@ -58,7 +64,7 @@ public static class DroneStationRelocationUtility
         return false;
     }
 
-    private static int ReservedSlot(DynamicBuffer<DroneStationReservedSlotElement> reservations, Entity drone)
+    internal static int ReservedSlot(DynamicBuffer<DroneStationReservedSlotElement> reservations, Entity drone)
     {
         foreach (var row in reservations)
         {

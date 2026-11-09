@@ -35,36 +35,36 @@ public partial struct DroneFlightDecisionSystem : ISystem
         {
             StationOwners = stationOwners.AsDeferredJobArray(), SiteOwners = siteOwners.AsDeferredJobArray(),
             Stations = stations, Sites = sites,
-            Positions = state.GetComponentLookup<GridPosition>(true),
-            Footprints = state.GetComponentLookup<BuildingFootprint>(true),
-            Directions = state.GetComponentLookup<Direction>(true),
-            Networks = state.GetComponentLookup<DroneStationNetworkDecision>(true),
-            Demolitions = state.GetComponentLookup<PendingBuildingDemolition>(true),
-            Preparing = state.GetComponentLookup<PreparingStationDemolition>(true),
-            Reserved = state.GetBufferLookup<DroneStationReservedSlotElement>(true),
-            Stamps = state.GetComponentLookup<PlacementStamp>(true),
-            Construction = state.GetComponentLookup<ConstructionSite>(true),
-            Storages = state.GetComponentLookup<Storage>(true),
-            Items = state.GetBufferLookup<StoredItemElement>(true), Docks = state.GetBufferLookup<DockedDroneElement>(true)
+            Positions = SystemAPI.GetComponentLookup<GridPosition>(true),
+            Footprints = SystemAPI.GetComponentLookup<BuildingFootprint>(true),
+            Directions = SystemAPI.GetComponentLookup<Direction>(true),
+            Networks = SystemAPI.GetComponentLookup<DroneStationNetworkDecision>(true),
+            Demolitions = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true),
+            Preparing = SystemAPI.GetComponentLookup<PreparingStationDemolition>(true),
+            Reserved = SystemAPI.GetBufferLookup<DroneStationReservedSlotElement>(true),
+            Stamps = SystemAPI.GetComponentLookup<PlacementStamp>(true),
+            Construction = SystemAPI.GetComponentLookup<ConstructionSite>(true),
+            Storages = SystemAPI.GetComponentLookup<Storage>(true),
+            Items = SystemAPI.GetBufferLookup<StoredItemElement>(true), Docks = SystemAPI.GetBufferLookup<DockedDroneElement>(true)
         }.Schedule(JobHandle.CombineDependencies(state.Dependency, stationOwnersReady, siteOwnersReady));
         var config = SystemAPI.GetSingleton<DroneMovementConfig>();
         float maximum = SystemAPI.GetSingleton<DroneBatteryConfig>().MaximumCharge;
         var routes = new EvaluateFlightRoutesJob
         {
             Stations = stations, Sites = sites, Config = config, Maximum = maximum,
-            Positions = state.GetComponentLookup<GridPosition>(true),
-            Footprints = state.GetComponentLookup<BuildingFootprint>(true),
-            Directions = state.GetComponentLookup<Direction>(true),
-            Batteries = state.GetComponentLookup<DroneBatteryState>(true)
+            Positions = SystemAPI.GetComponentLookup<GridPosition>(true),
+            Footprints = SystemAPI.GetComponentLookup<BuildingFootprint>(true),
+            Directions = SystemAPI.GetComponentLookup<Direction>(true),
+            Batteries = SystemAPI.GetComponentLookup<DroneBatteryState>(true)
         }.ScheduleParallel(build);
         var movements = new PrepareMovementJob
         {
             Stations = stations, Sites = sites, Config = config, Maximum = maximum,
-            Positions = state.GetComponentLookup<GridPosition>(true),
-            Footprints = state.GetComponentLookup<BuildingFootprint>(true),
-            Directions = state.GetComponentLookup<Direction>(true),
-            Assignments = state.GetComponentLookup<DroneTaskAssignment>(true),
-            Relocations = state.GetComponentLookup<DroneStationRelocation>(true)
+            Positions = SystemAPI.GetComponentLookup<GridPosition>(true),
+            Footprints = SystemAPI.GetComponentLookup<BuildingFootprint>(true),
+            Directions = SystemAPI.GetComponentLookup<Direction>(true),
+            Assignments = SystemAPI.GetComponentLookup<DroneTaskAssignment>(true),
+            Relocations = SystemAPI.GetComponentLookup<DroneStationRelocation>(true)
         }.ScheduleParallel(build);
         var readers = JobHandle.CombineDependencies(routes, movements);
         var ownerDisposal = JobHandle.CombineDependencies(stationOwners.Dispose(build), siteOwners.Dispose(build));
@@ -100,19 +100,26 @@ public partial struct DroneFlightDecisionSystem : ISystem
                 {
                     continue;
                 }
-                float2 position = Positions[entity].Value;
-                if (Footprints.HasComponent(entity) && Directions.HasComponent(entity))
+                int2 anchor = Positions[entity].Value;
+                float2 position = anchor;
+                if (Footprints.TryGetComponent(entity, out var footprint) && Directions.TryGetComponent(entity, out var direction))
                 {
-                    position += (float2)Footprints[entity].GetEffectiveSize(Directions[entity].dir) * 0.5f;
+                    position += (float2)footprint.GetEffectiveSize(direction.dir) * 0.5f;
                 }
                 bool canDock = false;
-                if (Storages.HasComponent(entity) && Items.HasBuffer(entity) && Docks.HasBuffer(entity))
+                if (Storages.TryGetComponent(entity, out var storage) && Items.TryGetBuffer(entity, out var items) &&
+                    Docks.TryGetBuffer(entity, out var docks) &&
+                    !Preparing.HasComponent(entity))
                 {
-                    var items = Items[entity];
-                    var docks = Docks[entity];
-                    for (int slot = 0; slot < Storages[entity].SlotCount; slot++)
+                    int slotCount = storage.SlotCount;
+                    DynamicBuffer<DroneStationReservedSlotElement> reservations = default;
+                    if (slotCount > 0)
                     {
-                        bool occupied = DroneStationRelocationUtility.IsReserved(Reserved, entity, slot);
+                        Reserved.TryGetBuffer(entity, out reservations);
+                    }
+                    for (int slot = 0; slot < slotCount; slot++)
+                    {
+                        bool occupied = reservations.IsCreated && DroneStationRelocationUtility.IsReserved(reservations, slot);
                         for (int item = 0; item < items.Length; item++)
                         {
                             occupied |= items[item].SlotIndex == slot;
@@ -121,18 +128,20 @@ public partial struct DroneFlightDecisionSystem : ISystem
                         {
                             occupied |= docks[dock].SlotIndex == slot;
                         }
-                        if (!occupied && !Preparing.HasComponent(entity))
+                        if (!occupied)
                         {
                             canDock = true;
                             break;
                         }
                     }
                 }
+                var network = Networks[entity];
+                bool hasStamp = Stamps.TryGetComponent(entity, out var stamp);
                 Stations.Add(new DroneFlightStation
                 {
-                    Entity = entity, Network = Networks[entity].RepresentativeStation,
-                    Bounds = Networks[entity].ActivityBounds, Position = position, Anchor = Positions[entity].Value,
-                    HasStamp = Stamps.HasComponent(entity), Stamp = Stamps.HasComponent(entity) ? Stamps[entity] : default,
+                    Entity = entity, Network = network.RepresentativeStation,
+                    Bounds = network.ActivityBounds, Position = position, Anchor = anchor,
+                    HasStamp = hasStamp, Stamp = stamp,
                     CanDock = canDock
                 });
             }
@@ -167,7 +176,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
         private void Execute(in DroneRouteEvaluationRequest request, ref DroneRouteEvaluationDecision decision)
         {
             decision = default;
-            if (!Batteries.HasComponent(request.Worker))
+            if (!Batteries.TryGetComponent(request.Worker, out var battery))
             {
                 return;
             }
@@ -193,7 +202,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
                 decision = new DroneRouteEvaluationDecision { Ready = true, Result = result };
                 return;
             }
-            float charge = Batteries[request.Worker].CurrentCharge;
+            float charge = battery.CurrentCharge;
             DroneFlightPlan plan;
             if (request.Kind == DroneRouteKindEnum.ViaSource)
             {
@@ -237,8 +246,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
             // 재배치 개체의 의도는 전용 Decision만 작성한다. 실제 이동 Writer는 공유한다.
             if (Relocations.HasComponent(entity)) return;
             decision = new DroneMovementDecision { Ready = true, Target = transform.Position.xy };
-            bool hasAssignment = Assignments.HasComponent(link.Assignment);
-            DroneTaskAssignment assignment = hasAssignment ? Assignments[link.Assignment] : default;
+            bool hasAssignment = Assignments.TryGetComponent(link.Assignment, out var assignment);
             bool failureSettled = !hasAssignment || assignment.Revision != previous.AssignmentRevision ||
                 assignment.State == DroneTaskAssignmentStateEnum.Retargeting || DroneSchedulingUtility.IsTerminal(assignment.State);
             decision.ClearFailure = failureSettled;

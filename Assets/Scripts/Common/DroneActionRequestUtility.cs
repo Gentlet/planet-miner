@@ -40,11 +40,6 @@ public static class DroneActionRequestUtility
             return false;
         }
 
-        if (!manager.Exists(entity))
-        {
-            return false;
-        }
-
         if (manager.HasComponent<DroneActionReadyRequest>(entity))
         {
             return false;

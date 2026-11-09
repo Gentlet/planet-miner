@@ -27,7 +27,12 @@ public static class ResearchRecoveryUtility
         {
             return true;
         }
-        foreach (var entry in manager.GetBuffer<ResearchRecoveryElement>(source, true))
+        return ContainsRecoveryItem(manager.GetBuffer<ResearchRecoveryElement>(source, true), item);
+    }
+
+    private static bool ContainsRecoveryItem(DynamicBuffer<ResearchRecoveryElement> recovery, Entity item)
+    {
+        foreach (var entry in recovery)
         {
             if (entry.Item == item)
             {
@@ -43,21 +48,69 @@ public static class ResearchRecoveryUtility
         {
             return 0;
         }
-        int count = 0;
-        foreach (var item in manager.GetBuffer<StoredItemElement>(source, true))
+        return CountValidatedSource(manager, source, type);
+    }
+
+    internal static int CountValidatedSource(EntityManager manager, Entity source, ItemTypeEnum type)
+    {
+        var read = new ValidatedSourceReadContext(manager, source);
+        return read.Count(type);
+    }
+
+    // IsSource 검증을 마친 출발지 하나에서 버퍼를 지연 취득해 품목별 재고 검사에 공유한다.
+    internal ref struct ValidatedSourceReadContext
+    {
+        private readonly EntityManager _manager;
+        private readonly Entity _source;
+        private DynamicBuffer<StoredItemElement> _storedItems;
+        private DynamicBuffer<ResearchRecoveryElement> _recovery;
+
+        internal ValidatedSourceReadContext(EntityManager manager, Entity source)
         {
-            if ((type == ItemTypeEnum.None || item.ItemType == type) && PassesRecoveryFilter(manager, source, item.ItemEntity) &&
-                ItemOwnershipApplySystem.CanTransferItem(manager, item.ItemEntity, item.ItemType, source))
+            _manager = manager;
+            _source = source;
+            _storedItems = default;
+            _recovery = default;
+        }
+
+        internal DynamicBuffer<StoredItemElement> StoredItems
+        {
+            get
             {
-                count++;
+                if (!_storedItems.IsCreated)
+                {
+                    _storedItems = _manager.GetBuffer<StoredItemElement>(_source, true);
+                }
+                return _storedItems;
             }
         }
-        return count;
+
+        internal int Count(ItemTypeEnum type)
+        {
+            int count = 0;
+            foreach (var item in StoredItems)
+            {
+                if (type != ItemTypeEnum.None && item.ItemType != type)
+                {
+                    continue;
+                }
+                if (!_recovery.IsCreated)
+                {
+                    _recovery = _manager.GetBuffer<ResearchRecoveryElement>(_source, true);
+                }
+                if (ContainsRecoveryItem(_recovery, item.ItemEntity) &&
+                    ItemOwnershipApplySystem.CanTransferItem(_manager, item.ItemEntity, item.ItemType, _source))
+                {
+                    count++;
+                }
+            }
+            return count;
+        }
     }
 
     public static int CollectionQuantity(EntityManager manager, Entity source, ItemTypeEnum type)
     {
-        return IsSource(manager, source) ? Count(manager, source, type) : DroneSchedulingUtility.CountInventory(manager, source, type);
+        return IsSource(manager, source) ? CountValidatedSource(manager, source, type) : DroneSchedulingUtility.CountInventory(manager, source, type);
     }
 
     public static bool HasTaskNeed(EntityManager manager, in DroneLogisticsTask task)
@@ -66,7 +119,7 @@ public static class ResearchRecoveryUtility
         {
             return false;
         }
-        if (Count(manager, task.Target, task.ItemType) > 0)
+        if (CountValidatedSource(manager, task.Target, task.ItemType) > 0)
         {
             return true;
         }

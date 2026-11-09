@@ -161,13 +161,12 @@ public struct BeltDestinationReservationJob : Unity.Jobs.IJob
         for (int i = 0; i < BuildingOutputEntities.Length; i++)
         {
             Entity buildingEntity = BuildingOutputEntities[i];
-            if (!BuildingOutputDecisionLookup.HasComponent(buildingEntity) ||
+            if (!BuildingOutputDecisionLookup.TryGetComponent(buildingEntity, out var decision) ||
                 !BuildingOutputDecisionLookup.IsComponentEnabled(buildingEntity))
             {
                 continue;
             }
 
-            var decision = BuildingOutputDecisionLookup[buildingEntity];
             if (!decision.CanOutput || decision.ItemToOutput == Entity.Null)
             {
                 continue;
@@ -205,20 +204,24 @@ public struct BeltDestinationReservationJob : Unity.Jobs.IJob
         for (int i = 0; i < RoutingTransferEntities.Length; i++)
         {
             Entity routingEntity = RoutingTransferEntities[i];
-            if (!RoutingTransferDecisionLookup.HasComponent(routingEntity) ||
+            if (!RoutingTransferDecisionLookup.TryGetComponent(routingEntity, out var decision) ||
                 !RoutingTransferDecisionLookup.IsComponentEnabled(routingEntity))
             {
                 continue;
             }
 
-            var decision = RoutingTransferDecisionLookup[routingEntity];
-            if (decision.TargetBelt == Entity.Null || !GridPositionLookup.HasComponent(decision.TargetBelt))
+            if (decision.TargetBelt == Entity.Null)
+            {
+                RoutingTransferDecisionLookup.SetComponentEnabled(routingEntity, false);
+                continue;
+            }
+            if (!GridPositionLookup.TryGetComponent(decision.TargetBelt, out var targetPosition))
             {
                 RoutingTransferDecisionLookup.SetComponentEnabled(routingEntity, false);
                 continue;
             }
 
-            int2 targetPos = GridPositionLookup[decision.TargetBelt].Value;
+            int2 targetPos = targetPosition.Value;
             if (!BeltMap.ContainsKey(targetPos))
             {
                 // 대상 위치에 벨트가 없으면 라우팅 요청 비활성화
@@ -331,20 +334,14 @@ public struct BeltDestinationReservationJob : Unity.Jobs.IJob
         switch (cand.Type)
         {
             case DestinationCandidateType.BuildingOutput:
-                if (BuildingOutputDecisionLookup.HasComponent(cand.SourceEntity))
-                {
-                    var decision = BuildingOutputDecisionLookup[cand.SourceEntity];
-                    decision.CanOutput = false;
-                    BuildingOutputDecisionLookup[cand.SourceEntity] = decision;
-                    BuildingOutputDecisionLookup.SetComponentEnabled(cand.SourceEntity, false);
-                }
+                var decision = BuildingOutputDecisionLookup[cand.SourceEntity];
+                decision.CanOutput = false;
+                BuildingOutputDecisionLookup[cand.SourceEntity] = decision;
+                BuildingOutputDecisionLookup.SetComponentEnabled(cand.SourceEntity, false);
                 break;
 
             case DestinationCandidateType.RoutingTransfer:
-                if (RoutingTransferDecisionLookup.HasComponent(cand.SourceEntity))
-                {
-                    RoutingTransferDecisionLookup.SetComponentEnabled(cand.SourceEntity, false);
-                }
+                RoutingTransferDecisionLookup.SetComponentEnabled(cand.SourceEntity, false);
                 break;
         }
     }

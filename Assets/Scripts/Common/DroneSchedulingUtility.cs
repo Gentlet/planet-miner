@@ -228,11 +228,12 @@ public static class DroneSchedulingUtility
     public static int FindStorageSlot(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry,
         DroneTransportAreaEnum area = default)
     {
-        if (!TryReadStorageLimit(manager, storage, type, registry, out int slots, out int maxStack, area)) return -1;
+        var storageRead = StationStorageUtility.StorageReadContext.Create(manager, storage);
+        if (!TryReadStorageLimit(manager, storage, type, registry, ref storageRead, out int slots, out int maxStack, area)) return -1;
         for (int slot = 0; slot < slots; slot++)
         {
-            int candidate = StationStorageUtility.SearchSlot(slot, slots, StationStorageUtility.ReadDedicatedCount(manager, storage), type);
-            if (SlotHasRoom(manager, storage, type, candidate, maxStack)) return candidate;
+            int candidate = StationStorageUtility.SearchSlot(slot, slots, storageRead.DedicatedSlotCount, type);
+            if (ReadSlotFreeQuantity(ref storageRead, type, candidate, maxStack) > 0) return candidate;
         }
         return -1;
     }
@@ -240,12 +241,13 @@ public static class DroneSchedulingUtility
     public static bool CanReceiveStorageItem(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry,
         DroneTransportAreaEnum area = default)
     {
-        if (!TryReadStorageLimit(manager, storage, type, registry, out int slots, out _, area))
+        var storageRead = StationStorageUtility.StorageReadContext.Create(manager, storage);
+        if (!TryReadStorageLimit(manager, storage, type, registry, ref storageRead, out int slots, out _, area))
         {
             return false;
         }
-        int dedicated = StationStorageUtility.ReadDedicatedCount(manager, storage);
-        bool hasInputs = manager.HasBuffer<BuildingInputSlotElement>(storage);
+        int dedicated = storageRead.DedicatedSlotCount;
+        bool hasInputs = storageRead.HasInputSlots;
         for (int slot = 0; slot < slots; slot++)
         {
             if (!StationStorageUtility.IsItemSlotAllowed(slot, slots, dedicated, type))
@@ -254,7 +256,7 @@ public static class DroneSchedulingUtility
             }
             if (hasInputs)
             {
-                var inputs = manager.GetBuffer<BuildingInputSlotElement>(storage, true);
+                var inputs = storageRead.InputSlots;
                 if (slot >= inputs.Length || inputs[slot].ItemType != type)
                 {
                     continue;
@@ -269,13 +271,14 @@ public static class DroneSchedulingUtility
     public static bool CanStoreInSlot(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry, int slot,
         DroneTransportAreaEnum area = default)
     {
-        if (!TryReadStorageLimit(manager, storage, type, registry, out int slots, out int maxStack, area)) return false;
+        var storageRead = StationStorageUtility.StorageReadContext.Create(manager, storage);
+        if (!TryReadStorageLimit(manager, storage, type, registry, ref storageRead, out int slots, out int maxStack, area)) return false;
         if (slot < 0 || slot >= slots) return false;
-        return SlotHasRoom(manager, storage, type, slot, maxStack);
+        return ReadSlotFreeQuantity(ref storageRead, type, slot, maxStack) > 0;
     }
 
     private static bool TryReadStorageLimit(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry,
-        out int slots, out int maxStack, DroneTransportAreaEnum area = default)
+        ref StationStorageUtility.StorageReadContext storageRead, out int slots, out int maxStack, DroneTransportAreaEnum area)
     {
         slots = 0;
         maxStack = 0;
@@ -289,7 +292,6 @@ public static class DroneSchedulingUtility
             return false;
         }
 
-        if (!manager.Exists(registry)) return false;
         if (!manager.HasComponent<ItemRegistry>(registry)) return false;
         if (!manager.HasBuffer<ItemConfigElement>(registry)) return false;
 
@@ -309,8 +311,43 @@ public static class DroneSchedulingUtility
         {
             return false;
         }
-        slots = math.min(manager.GetComponentData<Storage>(storage).SlotCount, GameConstants.MaxStorageSlots);
+        slots = math.min(storageRead.SlotCount, GameConstants.MaxStorageSlots);
         return slots > 0;
+    }
+
+    // StoreCargo의 고정 한도는 공유한다. 목적지 자격은 슬롯마다 확인하고 점유는 이번 탐색의 컨텍스트에서 읽는다.
+    internal static bool CanStoreInSlot(EntityManager manager, Entity storage, ItemTypeEnum type, int slot,
+        int maxStack, ref int slotCount, ref int dedicatedSlotCount, ref bool hasReadSlots, DroneTransportAreaEnum area,
+        ref StationStorageUtility.StorageReadContext storageRead)
+    {
+        if (area == DroneTransportAreaEnum.Product || !DroneTransportEndpointUtility.IsArea(manager, storage, area))
+        {
+            return false;
+        }
+        if (manager.HasComponent<StorageFilter>(storage) &&
+            !manager.GetComponentData<StorageFilter>(storage).IsItemAllowed(type))
+        {
+            return false;
+        }
+        if (area == DroneTransportAreaEnum.Input && DroneTransportEndpointUtility.InputMaximum(manager, storage, type) <= 0)
+        {
+            return false;
+        }
+        if (maxStack <= 0)
+        {
+            return false;
+        }
+        if (!hasReadSlots)
+        {
+            slotCount = storageRead.SlotCount;
+            dedicatedSlotCount = storageRead.DedicatedSlotCount;
+            hasReadSlots = true;
+        }
+        if (slot < 0 || slot >= math.min(slotCount, GameConstants.MaxStorageSlots))
+        {
+            return false;
+        }
+        return ReadSlotFreeQuantity(ref storageRead, type, slot, maxStack, slotCount, dedicatedSlotCount) > 0;
     }
 
     /// <summary>
@@ -327,7 +364,8 @@ public static class DroneSchedulingUtility
                 return 0;
             }
         }
-        if (!TryReadStorageLimit(manager, storage, type, registry, out int slots, out int maxStack, area))
+        var storageRead = StationStorageUtility.StorageReadContext.Create(manager, storage);
+        if (!TryReadStorageLimit(manager, storage, type, registry, ref storageRead, out int slots, out int maxStack, area))
         {
             return 0;
         }
@@ -335,34 +373,36 @@ public static class DroneSchedulingUtility
         int available = 0;
         if (generalOnly)
         {
-            slots -= StationStorageUtility.ReadDedicatedCount(manager, storage);
+            slots -= storageRead.DedicatedSlotCount;
         }
         for (int slot = 0; slot < slots && available < limit; slot++)
         {
-            available += math.min(limit - available, ReadSlotFreeQuantity(manager, storage, type, slot, maxStack));
+            available += math.min(limit - available, ReadSlotFreeQuantity(ref storageRead, type, slot, maxStack));
         }
         return available;
     }
 
-    private static bool SlotHasRoom(EntityManager manager, Entity storage, ItemTypeEnum type, int slot, int maxStack) =>
-        ReadSlotFreeQuantity(manager, storage, type, slot, maxStack) > 0;
-
-    private static int ReadSlotFreeQuantity(EntityManager manager, Entity storage, ItemTypeEnum type, int slot, int maxStack)
+    private static int ReadSlotFreeQuantity(ref StationStorageUtility.StorageReadContext storageRead,
+        ItemTypeEnum type, int slot, int maxStack)
     {
-        if (!StationStorageUtility.IsItemSlotAllowed(slot, manager.GetComponentData<Storage>(storage).SlotCount,
-            StationStorageUtility.ReadDedicatedCount(manager, storage), type))
+        return ReadSlotFreeQuantity(ref storageRead, type, slot, maxStack, storageRead.SlotCount, storageRead.DedicatedSlotCount);
+    }
+
+    private static int ReadSlotFreeQuantity(ref StationStorageUtility.StorageReadContext storageRead,
+        ItemTypeEnum type, int slot, int maxStack, int slotCount, int dedicatedSlotCount)
+    {
+        if (!StationStorageUtility.IsItemSlotAllowed(slot, slotCount, dedicatedSlotCount, type))
         {
             return 0;
         }
-        if (StationStorageUtility.IsDockOccupied(manager, storage, slot) ||
-            DroneStationRelocationUtility.IsReserved(manager, storage, slot))
+        if (storageRead.IsDockOccupied(slot) || storageRead.IsReserved(slot))
         {
             return 0;
         }
-        var items = manager.GetBuffer<StoredItemElement>(storage, true);
-        if (manager.HasBuffer<BuildingInputSlotElement>(storage))
+        var items = storageRead.StoredItems;
+        if (storageRead.HasInputSlots)
         {
-            var inputs = manager.GetBuffer<BuildingInputSlotElement>(storage, true);
+            var inputs = storageRead.InputSlots;
             if (slot >= inputs.Length || inputs[slot].ItemType != type) return 0;
         }
         int count = 0;
@@ -556,7 +596,6 @@ public static class DroneSchedulingUtility
     {
         if (assignment.OriginalTaskCreationSequence > 0) return assignment.OriginalTaskCreationSequence;
         if (assignment.Task == Entity.Null) return 0;
-        if (!manager.Exists(assignment.Task)) return 0;
         if (!manager.HasComponent<DroneLogisticsTask>(assignment.Task)) return 0;
         return manager.GetComponentData<DroneLogisticsTask>(assignment.Task).CreationSequence;
     }

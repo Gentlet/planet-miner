@@ -81,6 +81,9 @@ public partial struct CrafterRecipeCommandSystem : ISystem
         bool hasRecipeConfig = hasRecipeRegistry && _recipeConfigLookup.HasBuffer(recipeRegistryEntity) &&
                                _recipeIngredientLookup.HasBuffer(recipeRegistryEntity);
         bool hasItemConfig = hasItemRegistry && _itemConfigLookup.HasBuffer(itemRegistryEntity);
+        DynamicBuffer<RecipeConfigElement> recipes = default;
+        DynamicBuffer<RecipeIngredientElement> ingredients = default;
+        DynamicBuffer<ItemConfigElement> itemConfigs = default;
 
         var requestEntities = _requestQuery.ToEntityArray(Allocator.Temp);
         var requests = _requestQuery.ToComponentDataArray<ChangeCrafterRecipeRequest>(Allocator.Temp);
@@ -92,9 +95,9 @@ public partial struct CrafterRecipeCommandSystem : ISystem
             Entity crafter = req.TargetCrafter;
             int newRecipeId = math.max(0, req.NewRecipeId);
 
-            if (state.EntityManager.Exists(crafter) && _crafterStateLookup.HasComponent(crafter))
+            if (_crafterStateLookup.TryGetComponent(crafter, out var crafterState))
             {
-                if (!HasInputConfiguration(crafter))
+                if (!TryGetInputConfiguration(crafter, out var inputSlots, out var storedItems, out var productItems))
                 {
                     UnityEngine.Debug.LogError("[CrafterRecipeCommandSystem] Missing Crafter input configuration. Recipe change rejected.");
                     ecb.DestroyEntity(reqEntity);
@@ -111,7 +114,10 @@ public partial struct CrafterRecipeCommandSystem : ISystem
                         continue;
                     }
 
-                    var recipes = _recipeConfigLookup[recipeRegistryEntity];
+                    if (!recipes.IsCreated)
+                    {
+                        recipes = _recipeConfigLookup[recipeRegistryEntity];
+                    }
                     if (!RecipeConfigLookupUtility.TryGetRecipeIndex(recipes, newRecipeId, out int recipeIndex))
                     {
                         UnityEngine.Debug.LogError($"[CrafterRecipeCommandSystem] Unknown recipe {newRecipeId}. Recipe change rejected.");
@@ -126,9 +132,14 @@ public partial struct CrafterRecipeCommandSystem : ISystem
                         ecb.DestroyEntity(reqEntity);
                         continue;
                     }
+                    if (!ingredients.IsCreated)
+                    {
+                        ingredients = _recipeIngredientLookup[recipeRegistryEntity];
+                        itemConfigs = _itemConfigLookup[itemRegistryEntity];
+                    }
                     if (!BuildingInputSlotUtility.TryCalculate(
-                            _recipeIngredientLookup[recipeRegistryEntity], recipe.IngredientStart,
-                            recipe.IngredientCount, _itemConfigLookup[itemRegistryEntity],
+                            ingredients, recipe.IngredientStart,
+                            recipe.IngredientCount, itemConfigs,
                             out slots, out var error))
                     {
                         UnityEngine.Debug.LogError($"[CrafterRecipeCommandSystem] Invalid input slots for recipe {newRecipeId}: {error}. Recipe change rejected.");
@@ -137,16 +148,11 @@ public partial struct CrafterRecipeCommandSystem : ISystem
                     }
                 }
 
-                var crafterState = _crafterStateLookup[crafter];
-
                 // 1. 제작 진행도 리셋
                 crafterState.Progress = 0.0f;
                 crafterState.IsCraftingActive = false;
 
                 // 2. StoredItemElement -> ProductItemElement 잔여 재료 Byproduct 배출 (Slot 1+)
-                var storedItems = _storedBufferLookup[crafter];
-                var productItems = _productBufferLookup[crafter];
-
                 if (storedItems.Length > 0)
                 {
                     int maxExistingSlot = 0;
@@ -182,7 +188,6 @@ public partial struct CrafterRecipeCommandSystem : ISystem
                 }
 
                 // 3. 입력 용량/품목별 슬롯/필터를 동일 Command 경계에서 갱신.
-                var inputSlots = _inputSlotLookup[crafter];
                 inputSlots.Clear();
                 var filter = new StorageFilter(StorageFilterMode.Whitelist);
                 for (int slot = 0; slot < slots.Length; slot++)
@@ -213,10 +218,17 @@ public partial struct CrafterRecipeCommandSystem : ISystem
         }
     }
 
-    private bool HasInputConfiguration(Entity crafter)
+    private bool TryGetInputConfiguration(Entity crafter,
+        out DynamicBuffer<BuildingInputSlotElement> inputSlots,
+        out DynamicBuffer<StoredItemElement> storedItems,
+        out DynamicBuffer<ProductItemElement> productItems)
     {
+        inputSlots = default;
+        storedItems = default;
+        productItems = default;
         return _storageLookup.HasComponent(crafter) && _filterLookup.HasComponent(crafter) &&
-               _inputSlotLookup.HasBuffer(crafter) && _storedBufferLookup.HasBuffer(crafter) &&
-               _productBufferLookup.HasBuffer(crafter);
+               _inputSlotLookup.TryGetBuffer(crafter, out inputSlots) &&
+               _storedBufferLookup.TryGetBuffer(crafter, out storedItems) &&
+               _productBufferLookup.TryGetBuffer(crafter, out productItems);
     }
 }

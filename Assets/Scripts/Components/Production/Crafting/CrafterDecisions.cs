@@ -16,6 +16,7 @@ public struct CrafterDecision : IComponentData, IEnableableComponent
     public bool CanProduceOutput;   // 1.0f 완료 후 출력 버퍼에 여유가 있어 배출 가능
     public int RecipeId;
     public int RecipeIndex;         // 전역 RecipeConfigElement 버퍼 내의 인덱스
+    public float PowerTimeRatio;    // 같은 틱 전력 결과에서 계산한 진행 비율. 경과 시간은 Execution이 적용한다.
 
     public CrafterDecision(bool canCraft, int recipeId, int recipeIndex = -1)
     {
@@ -25,6 +26,7 @@ public struct CrafterDecision : IComponentData, IEnableableComponent
         CanProduceOutput = false;
         RecipeId = recipeId;
         RecipeIndex = recipeIndex;
+        PowerTimeRatio = 0f;
     }
 }
 

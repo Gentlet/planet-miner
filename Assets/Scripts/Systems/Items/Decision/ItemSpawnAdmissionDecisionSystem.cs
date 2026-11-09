@@ -31,8 +31,8 @@ public partial struct ItemSpawnAdmissionDecisionSystem : ISystem
         var job = new ItemSpawnAdmissionDecisionJob
         {
             PendingLookup = _pendingLookup,
-            Preparing = state.GetComponentLookup<PreparingStationDemolition>(true),
-            Reserved = state.GetBufferLookup<DroneStationReservedSlotElement>(true),
+            Preparing = SystemAPI.GetComponentLookup<PreparingStationDemolition>(true),
+            Reserved = SystemAPI.GetBufferLookup<DroneStationReservedSlotElement>(true),
             ConstructionFootprints = footprints,
             ECB = ecbSystem.CreateCommandBuffer()
         };

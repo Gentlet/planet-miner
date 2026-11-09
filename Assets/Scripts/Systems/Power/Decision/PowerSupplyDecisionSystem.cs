@@ -1,4 +1,5 @@
 using Unity.Burst;
+using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
@@ -26,6 +27,10 @@ public partial struct PowerSupplyDecisionSystem : ISystem
         Entity configEntity = SystemAPI.TryGetSingletonEntity<BuildingConfig>(out var config) ? config : Entity.Null;
         var prepare = new PreparePowerAvailabilityJob
         {
+            EntityHandle = SystemAPI.GetEntityTypeHandle(),
+            PlanHandle = SystemAPI.GetComponentTypeHandle<PowerGeneratorSupplyPlan>(false),
+            GeneratorHandle = SystemAPI.GetComponentTypeHandle<PowerGenerator>(false),
+            BuildingTypeHandle = SystemAPI.GetComponentTypeHandle<BuildingType>(true),
             Validation = validationOwner.Validation, ConfigEntity = configEntity,
             ConfigLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
             FuelLookup = SystemAPI.GetComponentLookup<FuelEnergyState>(true),
@@ -39,8 +44,12 @@ public partial struct PowerSupplyDecisionSystem : ISystem
 }
 
 [BurstCompile]
-internal partial struct PreparePowerAvailabilityJob : IJobEntity
+internal struct PreparePowerAvailabilityJob : IJobChunk
 {
+    [ReadOnly] public EntityTypeHandle EntityHandle;
+    public ComponentTypeHandle<PowerGeneratorSupplyPlan> PlanHandle;
+    public ComponentTypeHandle<PowerGenerator> GeneratorHandle;
+    [ReadOnly] public ComponentTypeHandle<BuildingType> BuildingTypeHandle;
     [ReadOnly] public NativeReference<PowerValidationResult> Validation;
     public Entity ConfigEntity;
     [ReadOnly] public BufferLookup<BuildingConfigElement> ConfigLookup;
@@ -48,15 +57,33 @@ internal partial struct PreparePowerAvailabilityJob : IJobEntity
     [ReadOnly] public BufferLookup<StoredItemElement> StoredLookup;
     public float DeltaTime;
 
-    private void Execute(Entity entity, ref PowerGeneratorSupplyPlan plan,
-        EnabledRefRW<PowerGeneratorSupplyPlan> prepared, EnabledRefRW<PowerGenerator> available, in BuildingType type)
+    public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+    {
+        var entities = chunk.GetNativeArray(EntityHandle);
+        var plans = chunk.GetNativeArray(ref PlanHandle);
+        var planEnabled = chunk.GetEnabledMask(ref PlanHandle);
+        var generatorEnabled = chunk.GetEnabledMask(ref GeneratorHandle);
+        var buildingTypes = chunk.GetNativeArray(ref BuildingTypeHandle);
+        RegistryBufferReadCache<BuildingConfigElement> configs = default;
+        var enumerator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+        while (enumerator.NextEntityIndex(out int index))
+        {
+            var plan = new RefRW<PowerGeneratorSupplyPlan>(plans, index);
+            Prepare(entities[index], ref plan.ValueRW, planEnabled.GetEnabledRefRW<PowerGeneratorSupplyPlan>(index),
+                generatorEnabled.GetEnabledRefRW<PowerGenerator>(index), buildingTypes[index], ref configs);
+        }
+    }
+
+    private void Prepare(Entity entity, ref PowerGeneratorSupplyPlan plan,
+        EnabledRefRW<PowerGeneratorSupplyPlan> prepared, EnabledRefRW<PowerGenerator> available, in BuildingType type,
+        ref RegistryBufferReadCache<BuildingConfigElement> configs)
     {
         if (Validation.Value.HasError)
         {
             return;
         }
 
-        if (!BuildingConfigLookupUtility.TryGetConfig(ConfigLookup[ConfigEntity], type.Type, type.Tier, out var config))
+        if (!BuildingConfigLookupUtility.TryGetConfig(configs.Read(ConfigLookup, ConfigEntity), type.Type, type.Tier, out var config))
         {
             return;
         }

@@ -6,7 +6,7 @@ using Unity.Mathematics;
 using Unity.Rendering;
 using Unity.Transforms;
 
-/// <summary>최종 데이터 처리는 Burst Job, RenderMeshArray 기록은 완료된 승인 목록을 읽는 관리형 경계다.</summary>
+/// <summary>최종 데이터 처리는 Burst Job, RenderMeshArray 기록은 완료된 승인 목록을 읽는 메인 스레드 경계다.</summary>
 [UpdateInGroup(typeof(DroneStateApplyGroup), OrderLast = true)]
 [UpdateAfter(typeof(DroneTaskAssignmentPublishSystem))]
 public partial struct DroneStationLifecycleApplySystem : ISystem
@@ -20,6 +20,7 @@ public partial struct DroneStationLifecycleApplySystem : ISystem
     private EntityQueryMask _stationMask;
     private EntityQueryMask _itemMask;
     private EntityQueryMask _workerMask;
+    private DroneStationEligibility _eligibility;
 
     public void OnCreate(ref SystemState state)
     {
@@ -31,6 +32,7 @@ public partial struct DroneStationLifecycleApplySystem : ISystem
         _droneDatabase = state.GetEntityQuery(ComponentType.ReadOnly<DronePrefabDatabase>(), ComponentType.ReadOnly<DronePrefab>());
         _itemDatabase = state.GetEntityQuery(ComponentType.ReadOnly<ItemPrefabDatabase>(), ComponentType.ReadOnly<ItemPrefabElement>());
         DroneStationEligibility.CreateMasks(ref state, out _stationMask, out _itemMask, out _workerMask);
+        _eligibility = DroneStationEligibility.Create(ref state, _stationMask, _itemMask, _workerMask);
         state.RequireForUpdate<PrefabDatabaseReady>();
         state.RequireForUpdate<DroneBatteryConfig>();
         state.RequireForUpdate<ItemRegistry>();
@@ -44,7 +46,7 @@ public partial struct DroneStationLifecycleApplySystem : ISystem
         {
             var dockRelease = new ReleaseLostRelocationDockJob
             {
-                Entities = state.GetEntityStorageInfoLookup(), ECB = owner.CreateCommandBuffer()
+                Entities = SystemAPI.GetEntityStorageInfoLookup(), ECB = owner.CreateCommandBuffer()
             }.Schedule(_relocationDocks, state.Dependency);
             state.Dependency = dockRelease;
             owner.AddJobHandleForProducer(dockRelease);
@@ -58,20 +60,19 @@ public partial struct DroneStationLifecycleApplySystem : ISystem
         using var actions = _actions.ToEntityListAsync(Allocator.TempJob, state.Dependency, out var actionsReady);
         using var visuals = new NativeList<DroneStationVisualChange>(Allocator.TempJob);
         var dependency = JobHandle.CombineDependencies(requestsReady, pendingReady, actionsReady);
+        _eligibility.Update(ref state);
         var handle = new DroneStationLifecycleApplyJob
         {
             Requests = requests.AsDeferredJobArray(), PendingOwners = pending.AsDeferredJobArray(), Actions = actions.AsDeferredJobArray(),
-            RequestLookup = state.GetComponentLookup<DroneStationRequest>(true),
-            Decisions = state.GetComponentLookup<DroneStationDecision>(true),
-            Automatic = SystemAPI.GetComponentLookup<DroneAutomaticStationRequest>(true),
-            RelocationRequests = SystemAPI.GetComponentLookup<DroneStationRelocationRequest>(true),
-            PendingLookup = state.GetBufferLookup<DroneTaskPendingPublicationElement>(true),
-            TransportPendingLookup = state.GetBufferLookup<DroneTransportPendingReservationElement>(true),
-            ActionLookup = state.GetComponentLookup<DroneActionReadyRequest>(true),
-            Eligibility = DroneStationEligibility.Create(ref state, _stationMask, _itemMask, _workerMask),
-            Dedicated = state.GetComponentLookup<DroneStationStorage>(true),
-            PostTransforms = state.GetComponentLookup<PostTransformMatrix>(true),
-            Meshes = state.GetComponentLookup<MaterialMeshInfo>(true), Bounds = state.GetComponentLookup<RenderBounds>(true),
+            RequestLookup = SystemAPI.GetComponentLookup<DroneStationRequest>(true),
+            Decisions = SystemAPI.GetComponentLookup<DroneStationDecision>(true),
+            PendingLookup = SystemAPI.GetBufferLookup<DroneTaskPendingPublicationElement>(true),
+            TransportPendingLookup = SystemAPI.GetBufferLookup<DroneTransportPendingReservationElement>(true),
+            ActionLookup = SystemAPI.GetComponentLookup<DroneActionReadyRequest>(true),
+            Eligibility = _eligibility,
+            Dedicated = SystemAPI.GetComponentLookup<DroneStationStorage>(true),
+            PostTransforms = SystemAPI.GetComponentLookup<PostTransformMatrix>(true),
+            Meshes = SystemAPI.GetComponentLookup<MaterialMeshInfo>(true), Bounds = SystemAPI.GetComponentLookup<RenderBounds>(true),
             MaximumCharge = SystemAPI.GetSingleton<DroneBatteryConfig>().MaximumCharge,
             MaximumStack = ItemRegistry.GetMaxStack(SystemAPI.GetSingletonBuffer<ItemConfigElement>(true), ItemTypeEnum.Drone),
             DronePrefab = dronePrefab, ItemPrefab = itemPrefab, ECB = owner.CreateCommandBuffer(), Visuals = visuals
@@ -79,9 +80,9 @@ public partial struct DroneStationLifecycleApplySystem : ISystem
         state.Dependency = handle;
         owner.AddJobHandleForProducer(handle);
 
-        // 관리형 shared component는 Job에서 읽거나 기록하지 않는다. 승인 목록을 읽는 이 지점에서만 완료를 기다린다.
+        // Job이 작성한 승인 목록을 메인 스레드에서 읽고 별도 표시 ECB에 기록하기 전에 완료를 기다린다.
         handle.Complete();
-        DroneStationLifecycleUtility.RecordManagedAppearance(state.EntityManager, owner.CreateCommandBuffer(), visuals.AsArray());
+        DroneStationLifecycleUtility.RecordAppearance(state.EntityManager, owner.CreateCommandBuffer(), visuals.AsArray());
     }
 
     /// <summary>소실된 정거장의 재배치 정박만 해제한다. 위치/배터리와 실제 이동의 소유자는 유지한다.</summary>
@@ -115,8 +116,6 @@ internal struct DroneStationLifecycleApplyJob : IJob
     [ReadOnly] public NativeArray<Entity> Actions;
     [ReadOnly] public ComponentLookup<DroneStationRequest> RequestLookup;
     [ReadOnly] public ComponentLookup<DroneStationDecision> Decisions;
-    [ReadOnly] public ComponentLookup<DroneAutomaticStationRequest> Automatic;
-    [ReadOnly] public ComponentLookup<DroneStationRelocationRequest> RelocationRequests;
     [ReadOnly] public BufferLookup<DroneTaskPendingPublicationElement> PendingLookup;
     [ReadOnly] public BufferLookup<DroneTransportPendingReservationElement> TransportPendingLookup;
     [ReadOnly] public ComponentLookup<DroneActionReadyRequest> ActionLookup;
@@ -151,7 +150,8 @@ internal struct DroneStationLifecycleApplyJob : IJob
             var status = decision.Status;
             if (decision.Approved)
             {
-                status = Eligibility.Validate(request, MaximumCharge, Automatic.HasComponent(record.Entity) || RelocationRequests.HasComponent(record.Entity), RelocationRequests.HasComponent(record.Entity));
+                bool relocationRequest = decision.IsRelocationRequest;
+                status = Eligibility.Validate(request, MaximumCharge, decision.IsAutomaticRequest || relocationRequest, relocationRequest);
                 if (status == DroneStationRequestStatus.Applied && busy.Contains(request.Drone))
                 {
                     status = DroneStationRequestStatus.Busy;
@@ -206,16 +206,17 @@ internal struct DroneStationLifecycleApplyJob : IJob
             if (Eligibility.ItemTypes.HasComponent(drone))
             {
                 int2 anchor = Eligibility.Positions[request.Station].Value;
-                float3 position = new float3(anchor.x, anchor.y, Eligibility.Transforms[DronePrefab].Position.z);
+                var prefabTransform = Eligibility.Transforms[DronePrefab];
+                float3 position = new float3(anchor.x, anchor.y, prefabTransform.Position.z);
                 if (!DroneSpawnUtility.TryReadGridCell(position, out int2 cell))
                 {
                     return false;
                 }
-                bool hasBattery = Eligibility.Batteries.HasComponent(drone);
-                float charge = hasBattery ? Eligibility.Batteries[drone].CurrentCharge : MaximumCharge;
+                bool hasBattery = Eligibility.Batteries.TryGetComponent(drone, out var battery);
+                float charge = hasBattery ? battery.CurrentCharge : MaximumCharge;
                 DroneSpawnUtility.RecordWorkerRole(ref ECB, drone, position, charge, hasBattery);
                 ECB.AddComponent(drone, new GridPosition(cell));
-                RecordNativeAppearance(drone, DronePrefab, position);
+                RecordNativeAppearance(drone, DronePrefab, prefabTransform, position);
                 activatedItem = true;
                 ECB.RemoveComponent<ItemIdentity>(drone);
                 ECB.RemoveComponent<ItemOwnership>(drone);
@@ -237,7 +238,8 @@ internal struct DroneStationLifecycleApplyJob : IJob
             return true;
         }
         int2 stationPosition = Eligibility.Positions[request.Station].Value;
-        float3 itemPosition = new float3(stationPosition.x, stationPosition.y, Eligibility.Transforms[ItemPrefab].Position.z);
+        var itemPrefabTransform = Eligibility.Transforms[ItemPrefab];
+        float3 itemPosition = new float3(stationPosition.x, stationPosition.y, itemPrefabTransform.Position.z);
         ECB.RemoveComponent<DroneDocked>(drone);
         ECB.RemoveComponent<DroneWorker>(drone);
         ECB.RemoveComponent<DroneWorkerObservation>(drone);
@@ -249,35 +251,33 @@ internal struct DroneStationLifecycleApplyJob : IJob
         ECB.RemoveComponent<DroneMovementResult>(drone);
         ECB.RemoveComponent<StoredItemElement>(drone);
         ItemLifecycleUtility.InitializeItemRole(ref ECB, drone, ItemTypeEnum.Drone, stationPosition, itemPosition, ItemOwnership.Stored(request.Station));
-        RecordNativeAppearance(drone, ItemPrefab, itemPosition);
+        RecordNativeAppearance(drone, ItemPrefab, itemPrefabTransform, itemPosition);
         return true;
     }
 
-    private void RecordNativeAppearance(Entity actor, Entity prefab, float3 position)
+    private void RecordNativeAppearance(Entity actor, Entity prefab, LocalTransform transform, float3 position)
     {
-        var transform = Eligibility.Transforms[prefab];
         transform.Position = position;
         ECB.AddComponent(actor, transform);
         float4x4 post = float4x4.identity;
-        if (PostTransforms.HasComponent(prefab))
+        if (PostTransforms.TryGetComponent(prefab, out var postTransform))
         {
-            var value = PostTransforms[prefab];
-            post = value.Value;
-            ECB.AddComponent(actor, value);
+            post = postTransform.Value;
+            ECB.AddComponent(actor, postTransform);
         }
         else
         {
             ECB.RemoveComponent<PostTransformMatrix>(actor);
         }
         ECB.AddComponent(actor, new LocalToWorld { Value = math.mul(transform.ToMatrix(), post) });
-        if (Meshes.HasComponent(prefab))
+        if (Meshes.TryGetComponent(prefab, out var mesh))
         {
-            ECB.AddComponent(actor, Meshes[prefab]);
+            ECB.AddComponent(actor, mesh);
             ECB.SetComponentEnabled<MaterialMeshInfo>(actor, true);
         }
-        if (Bounds.HasComponent(prefab))
+        if (Bounds.TryGetComponent(prefab, out var bounds))
         {
-            ECB.AddComponent(actor, Bounds[prefab]);
+            ECB.AddComponent(actor, bounds);
         }
         Visuals.Add(new DroneStationVisualChange { Actor = actor, Prefab = prefab });
     }

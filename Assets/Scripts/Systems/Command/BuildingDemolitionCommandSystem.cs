@@ -56,32 +56,34 @@ public partial struct BuildingDemolitionCommandSystem : ISystem
         using var legacyTargets = new NativeQueue<Entity>(Allocator.TempJob);
         using var legacySequenceBudget = new NativeReference<ulong>(
             DroneTaskRequestUtility.ReadAvailableRequestSequenceCount(state.EntityManager), Allocator.TempJob);
+        var tasks = SystemAPI.GetComponentLookup<DroneLogisticsTask>(true);
+        var confirmations = SystemAPI.GetComponentLookup<BuildingDemolitionExecutionRequest>(true);
         var release = new ReleaseEndedBuildingDemolitionJob
         {
-            Tasks = state.GetComponentLookup<DroneLogisticsTask>(true),
-            Confirmations = state.GetComponentLookup<BuildingDemolitionExecutionRequest>(true),
+            Tasks = tasks,
+            Confirmations = confirmations,
             Released = released, ECB = ecb
         }.Schedule(_pending, state.Dependency);
         release = new ReleaseEndedStationDemolitionJob
         {
-            Tasks = state.GetComponentLookup<DroneLogisticsTask>(true),
-            Confirmations = state.GetComponentLookup<BuildingDemolitionExecutionRequest>(true),
+            Tasks = tasks,
+            Confirmations = confirmations,
             Released = released, ECB = ecb
         }.Schedule(_preparing, release);
         var handle = new ValidateBuildingDemolitionJob
         {
             ECB = ecb,
-            Legacy = state.GetComponentLookup<DemolishBuildingRequest>(true),
-            Requests = state.GetComponentLookup<DroneTaskRequest>(true),
-            Buildings = state.GetComponentLookup<BuildingType>(true),
-            Indestructible = state.GetComponentLookup<IndestructibleBuilding>(true),
-            Prefabs = state.GetComponentLookup<Prefab>(true),
-            Pending = state.GetComponentLookup<PendingBuildingDemolition>(true),
-            Preparing = state.GetComponentLookup<PreparingStationDemolition>(true),
-            Transfers = state.GetComponentLookup<TransferOwnershipRequest>(),
-            Stored = state.GetBufferLookup<StoredItemElement>(true),
-            Products = state.GetBufferLookup<ProductItemElement>(true),
-            Results = state.GetBufferLookup<ProductResult>(),
+            Legacy = SystemAPI.GetComponentLookup<DemolishBuildingRequest>(true),
+            Requests = SystemAPI.GetComponentLookup<DroneTaskRequest>(true),
+            Buildings = SystemAPI.GetComponentLookup<BuildingType>(true),
+            Indestructible = SystemAPI.GetComponentLookup<IndestructibleBuilding>(true),
+            Prefabs = SystemAPI.GetComponentLookup<Prefab>(true),
+            Pending = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true),
+            Preparing = SystemAPI.GetComponentLookup<PreparingStationDemolition>(true),
+            Transfers = SystemAPI.GetComponentLookup<TransferOwnershipRequest>(),
+            Stored = SystemAPI.GetBufferLookup<StoredItemElement>(true),
+            Products = SystemAPI.GetBufferLookup<ProductItemElement>(true),
+            Results = SystemAPI.GetBufferLookup<ProductResult>(),
             TargetShape = _targetsWithGeometry.GetEntityQueryMask(),
             StationShape = _stationTargets.GetEntityQueryMask(),
             Released = released, Accepted = accepted, LegacyTargets = legacyTargets, LegacySequenceBudget = legacySequenceBudget
@@ -110,9 +112,9 @@ public partial struct ReleaseEndedBuildingDemolitionJob : IJobEntity
     public void Execute(Entity entity, in PendingBuildingDemolition pending)
     {
         if (pending.Task == Entity.Null || Confirmations.HasComponent(pending.Task)) return;
-        if (Tasks.HasComponent(pending.Task))
+        if (Tasks.TryGetComponent(pending.Task, out var task))
         {
-            var state = Tasks[pending.Task].State;
+            var state = task.State;
             if (state != DroneLogisticsTaskStateEnum.Cancelled && state != DroneLogisticsTaskStateEnum.Closed) return;
         }
         Released.Add(entity);
@@ -144,11 +146,11 @@ public partial struct ValidateBuildingDemolitionJob : IJobEntity
 
     public void Execute(Entity entity)
     {
-        bool legacy = Legacy.HasComponent(entity);
+        bool legacy = Legacy.TryGetComponent(entity, out var legacyRequest);
         Entity target;
         if (legacy)
         {
-            target = Legacy[entity].TargetBuilding;
+            target = legacyRequest.TargetBuilding;
             ECB.DestroyEntity(entity);
         }
         else
@@ -159,10 +161,17 @@ public partial struct ValidateBuildingDemolitionJob : IJobEntity
                 request.Quantity != 0) return;
             target = request.Target;
         }
-        if (target == Entity.Null || !Buildings.HasComponent(target)) return;
+        if (target == Entity.Null)
+        {
+            return;
+        }
+        if (!Buildings.TryGetComponent(target, out var buildingType))
+        {
+            return;
+        }
         if (!TargetShape.MatchesIgnoreFilter(target)) return;
         if (Prefabs.HasComponent(target) || Indestructible.HasComponent(target)) return;
-        var type = Buildings[target].Type;
+        var type = buildingType.Type;
         if (type == BuildingTypeEnum.None || type == BuildingTypeEnum.ConstructionSite || type == BuildingTypeEnum.MainFacility) return;
         if (type == BuildingTypeEnum.DroneStation && !StationShape.MatchesIgnoreFilter(target)) return;
         if (Pending.HasComponent(target) && !Released.Contains(target)) return;
@@ -177,11 +186,24 @@ public partial struct ValidateBuildingDemolitionJob : IJobEntity
             if (legacy) LegacyTargets.Enqueue(target);
             return;
         }
-        if (Stored.HasBuffer(target))
-            foreach (var item in Stored[target]) CancelTransfer(item.ItemEntity);
-        if (Products.HasBuffer(target))
-            foreach (var item in Products[target]) CancelTransfer(item.ItemEntity);
-        if (Results.HasBuffer(target)) Results[target].Clear();
+        if (Stored.TryGetBuffer(target, out var storedItems))
+        {
+            foreach (var item in storedItems)
+            {
+                CancelTransfer(item.ItemEntity);
+            }
+        }
+        if (Products.TryGetBuffer(target, out var productItems))
+        {
+            foreach (var item in productItems)
+            {
+                CancelTransfer(item.ItemEntity);
+            }
+        }
+        if (Results.TryGetBuffer(target, out var results))
+        {
+            results.Clear();
+        }
         ECB.AddComponent<PendingBuildingDemolition>(target);
         if (legacy) LegacyTargets.Enqueue(target);
     }
@@ -204,9 +226,9 @@ public partial struct ReleaseEndedStationDemolitionJob : IJobEntity
     public void Execute(Entity entity, in PreparingStationDemolition preparing)
     {
         if (preparing.Task == Entity.Null || Confirmations.HasComponent(preparing.Task)) return;
-        if (Tasks.HasComponent(preparing.Task))
+        if (Tasks.TryGetComponent(preparing.Task, out var task))
         {
-            var state = Tasks[preparing.Task].State;
+            var state = task.State;
             if (state != DroneLogisticsTaskStateEnum.Cancelled && state != DroneLogisticsTaskStateEnum.Closed) return;
         }
         Released.Add(entity);

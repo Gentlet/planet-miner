@@ -88,13 +88,12 @@ public partial struct CancelConstructionCommandJob : IJobEntity
             return;
         }
 
-        if (!SiteLookup.HasComponent(request.TargetSite))
+        if (!SiteLookup.TryGetComponent(request.TargetSite, out var site))
         {
             ECB.DestroyEntity(requestEntity);
             return;
         }
 
-        var site = SiteLookup[request.TargetSite];
         if ((site.Flags & ConstructionSiteFlags.Cancelled) != 0)
         {
             // 이미 동일 프레임 앞선 요청에 의해 취소 처리됨 (중복 취소 방지)
@@ -108,17 +107,16 @@ public partial struct CancelConstructionCommandJob : IJobEntity
 
         // 3. 현장 위치 확인
         int2 sitePos = int2.zero;
-        if (GridPosLookup.HasComponent(request.TargetSite))
+        if (GridPosLookup.TryGetComponent(request.TargetSite, out var position))
         {
-            sitePos = GridPosLookup[request.TargetSite].Value;
+            sitePos = position.Value;
         }
         float3 worldPos = new float3(sitePos.x, sitePos.y, 0f);
 
         // 현장에 도착한 실물만 반환한다. 미도착 요구량이나 다른 드론의 적재품은 여기서 새로 생성/이전하지 않는다.
         // Owner·좌표·렌더를 같은 ECB에 기록해 현장 삭제와 반환이 EndCommand에서 함께 확정되게 한다.
-        if (StoredBufferLookup.HasBuffer(request.TargetSite))
+        if (StoredBufferLookup.TryGetBuffer(request.TargetSite, out var storedItems))
         {
-            var storedItems = StoredBufferLookup[request.TargetSite];
             for (int i = 0; i < storedItems.Length; i++)
             {
                 Entity item = storedItems[i].ItemEntity;

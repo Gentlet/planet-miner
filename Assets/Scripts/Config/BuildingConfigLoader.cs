@@ -459,6 +459,7 @@ public static class BuildingConfigLoader
         }
         if (materials != null)
         {
+            var materialKeys = new HashSet<(BuildingTypeEnum Type, int Tier, ItemTypeEnum ItemType)>();
             foreach (var material in materials)
             {
                 if (!keys.Contains((material.BuildingType, material.Tier)))
@@ -474,6 +475,12 @@ public static class BuildingConfigLoader
                 if (material.Quantity <= 0)
                 {
                     Debug.LogError("[BuildingConfigLoader] Construction material quantity must be positive.");
+                    return false;
+                }
+                // 한 건물/티어의 품목별 비용은 한 행으로 유지해 런타임 요구량 합산의 오버플로를 막는다.
+                if (!materialKeys.Add((material.BuildingType, material.Tier, material.ItemType)))
+                {
+                    Debug.LogError($"[BuildingConfigLoader] Duplicate construction material '{material.ItemType}' for building {material.BuildingType}/{material.Tier}.");
                     return false;
                 }
             }

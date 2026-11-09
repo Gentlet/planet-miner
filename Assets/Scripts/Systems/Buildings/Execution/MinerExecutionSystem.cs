@@ -53,8 +53,6 @@ public partial struct MinerExecutionSystem : ISystem
         {
             DeltaTime = dt,
             SpeedBonus = SystemAPI.GetSingleton<ResearchStatBonuses>().MiningSpeed,
-            DemandLookup = SystemAPI.GetComponentLookup<PowerDemand>(true),
-            SupplyLookup = SystemAPI.GetComponentLookup<PowerSupplyResult>(true),
             IsResourceInfinite = isResourceInfinite,
             ResourceNodeLookup = _resourceNodeLookup,
             ECB = ecb
@@ -75,8 +73,6 @@ public partial struct MinerExecutionJob : IJobEntity
 {
     public float DeltaTime;
     public double SpeedBonus;
-    [ReadOnly] public ComponentLookup<PowerDemand> DemandLookup;
-    [ReadOnly] public ComponentLookup<PowerSupplyResult> SupplyLookup;
     public bool IsResourceInfinite;
 
     public ComponentLookup<ResourceNode> ResourceNodeLookup;
@@ -98,19 +94,18 @@ public partial struct MinerExecutionJob : IJobEntity
             return;
         }
 
-        if (!ResourceNodeLookup.HasComponent(decision.TargetResource))
+        if (!ResourceNodeLookup.TryGetComponent(decision.TargetResource, out var resNode))
         {
             return;
         }
 
-        ResourceNode resNode = ResourceNodeLookup[decision.TargetResource];
         if (resNode.Amount <= 0)
         {
             return;
         }
 
         // 2. 채굴 진행도 누적
-        float poweredDeltaTime = PowerFrameUtility.GetPoweredDeltaTime(building, DeltaTime, DemandLookup, SupplyLookup);
+        float poweredDeltaTime = DeltaTime * decision.PowerTimeRatio;
         state.Progress += ResearchRewardUtility.EffectiveSpeed(state.MiningSpeed, SpeedBonus) * poweredDeltaTime;
 
         // 3. 채굴 완료(Progress >= 1.0f) 시 같은 프레임 StateApply에서 소비할 생산 결과 기록

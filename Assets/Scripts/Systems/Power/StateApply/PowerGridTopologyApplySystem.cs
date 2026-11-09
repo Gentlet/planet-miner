@@ -40,11 +40,12 @@ public partial struct PowerGridTopologyApplySystem : ISystem
 
         var publications = new NativeList<PowerGridTopologyPublication>(Allocator.TempJob);
         var ready = new NativeReference<bool>(Allocator.TempJob);
+        var connectionDecisions = SystemAPI.GetComponentLookup<PowerGridConnectionDecision>(true);
         var collect = new CollectPowerPublicationsJob
         {
             Poles = poles.AsDeferredJobArray(), Participants = participants.AsDeferredJobArray(),
-            PowerGridTopologyDecisionLookup = state.GetComponentLookup<PowerGridTopologyDecision>(true),
-            PowerGridConnectionDecisionLookup = state.GetComponentLookup<PowerGridConnectionDecision>(true),
+            PowerGridTopologyDecisionLookup = SystemAPI.GetComponentLookup<PowerGridTopologyDecision>(true),
+            PowerGridConnectionDecisionLookup = connectionDecisions,
             Publications = publications, Ready = ready,
             Validation = validationOwner.Validation
         }.Schedule(JobHandle.CombineDependencies(JobHandle.CombineDependencies(polesReady, participantsReady), state.Dependency));
@@ -54,7 +55,7 @@ public partial struct PowerGridTopologyApplySystem : ISystem
             Validation = validationOwner.Validation, ActivePoles = poles.AsDeferredJobArray(), Publications = publications, Ready = ready,
             ConnectionEntities = connections.AsDeferredJobArray(), ExistingGrids = grids.AsDeferredJobArray(),
             ConnectionLookup = SystemAPI.GetComponentLookup<PowerGridConnection>(true),
-            ConnectionDecisionLookup = SystemAPI.GetComponentLookup<PowerGridConnectionDecision>(true),
+            ConnectionDecisionLookup = connectionDecisions,
             PowerPoleLookup = SystemAPI.GetComponentLookup<PowerPole>(true),
             DisabledLookup = SystemAPI.GetComponentLookup<Disabled>(true),
             DemolitionLookup = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true),
@@ -175,15 +176,12 @@ internal struct ApplyPowerGridTopologyJob : IJob
         {
             return previousPole;
         }
-        if (!ConnectionDecisionLookup.HasComponent(participant))
+        if (!ConnectionDecisionLookup.TryGetComponent(participant, out var decision))
         {
             return previousPole;
         }
-        if (!ConnectionDecisionLookup.IsComponentEnabled(participant))
-        {
-            return previousPole;
-        }
-        return ConnectionDecisionLookup[participant].PowerPole;
+        // Ready는 활성 참가자의 연결 결정이 모두 enable된 뒤에만 게시된다.
+        return decision.PowerPole;
     }
 
     private void DeleteUnusedGrids(NativeParallelHashSet<Entity> retainedGrids)

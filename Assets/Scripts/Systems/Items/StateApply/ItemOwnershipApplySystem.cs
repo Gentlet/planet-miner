@@ -77,6 +77,13 @@ public partial struct ItemOwnershipApplySystem : ISystem
     /// <summary>계획의 실물이 아직 존재하며 예상 소유자에게 있는지 확인한다.</summary>
     public static bool CanTransferItem(EntityManager manager, Entity item, ItemTypeEnum type, Entity expectedOwner)
     {
+        return TryReadTransferEligibility(manager, item, type, expectedOwner, out _);
+    }
+
+    private static bool TryReadTransferEligibility(EntityManager manager, Entity item, ItemTypeEnum type,
+        Entity expectedOwner, out Entity committedOwner)
+    {
+        committedOwner = Entity.Null;
         if (!IsActiveTransferEntity(manager, item)) return false;
         if (manager.HasComponent<DroneStationRelocation>(item)) return false;
         if (type == ItemTypeEnum.Drone && expectedOwner != Entity.Null &&
@@ -86,8 +93,68 @@ public partial struct ItemOwnershipApplySystem : ISystem
         if (!manager.HasComponent<GridPosition>(item)) return false;
         if (manager.HasComponent<DestroyItemRequest>(item) &&
             manager.IsComponentEnabled<DestroyItemRequest>(item)) return false;
-        return manager.GetComponentData<ItemIdentity>(item).Type == type &&
-               EffectiveOwner(manager, item) == expectedOwner;
+        if (manager.GetComponentData<ItemIdentity>(item).Type != type)
+        {
+            return false;
+        }
+        if (manager.HasComponent<TransferOwnershipRequest>(item) &&
+            manager.IsComponentEnabled<TransferOwnershipRequest>(item))
+        {
+            if (manager.GetComponentData<TransferOwnershipRequest>(item).TargetOwner != expectedOwner)
+            {
+                return false;
+            }
+            committedOwner = manager.GetComponentData<ItemOwnership>(item).Owner;
+            return true;
+        }
+        committedOwner = manager.GetComponentData<ItemOwnership>(item).Owner;
+        return committedOwner == expectedOwner;
+    }
+
+    // StoreCargo의 검증과 전송 사이에는 읽기 전용 슬롯 탐색만 허용한다.
+    // 이 호출 한정 값은 실제 목적지/슬롯/버퍼 검사를 대신하지 않는다.
+    internal ref struct StoreCargoTransferValidation
+    {
+        private readonly Entity _item;
+        private readonly ItemTypeEnum _type;
+        private readonly Entity _expectedOwner;
+        private readonly Entity _committedOwner;
+        private readonly bool _valid;
+        private bool _consumed;
+
+        private StoreCargoTransferValidation(Entity item, ItemTypeEnum type, Entity expectedOwner, Entity committedOwner)
+        {
+            _item = item;
+            _type = type;
+            _expectedOwner = expectedOwner;
+            _committedOwner = committedOwner;
+            _valid = true;
+            _consumed = false;
+        }
+
+        internal static bool TryCreate(EntityManager manager, Entity item, ItemTypeEnum type,
+            Entity expectedOwner, out StoreCargoTransferValidation validation)
+        {
+            validation = default;
+            if (!TryReadTransferEligibility(manager, item, type, expectedOwner, out var committedOwner))
+            {
+                return false;
+            }
+            validation = new StoreCargoTransferValidation(item, type, expectedOwner, committedOwner);
+            return true;
+        }
+
+        internal bool TryConsume(Entity item, ItemTypeEnum type, Entity sourceOwner, out Entity committedOwner)
+        {
+            committedOwner = Entity.Null;
+            if (!_valid || _consumed || item != _item || type != _type || sourceOwner != _expectedOwner)
+            {
+                return false;
+            }
+            _consumed = true;
+            committedOwner = _committedOwner;
+            return true;
+        }
     }
 
     /// <summary>
@@ -101,10 +168,40 @@ public partial struct ItemOwnershipApplySystem : ISystem
         Entity deliveryAssignment = default, DroneTransportAreaEnum sourceArea = default)
     {
         if (sourceOwner == targetOwner) return false;
-        if (!CanTransferItem(manager, item, type, sourceOwner)) return false;
-        var ownership = manager.GetComponentData<ItemOwnership>(item);
+        if (!TryReadTransferEligibility(manager, item, type, sourceOwner, out var committedOwner))
+        {
+            return false;
+        }
+        return TryTransferValidatedItem(manager, item, type, sourceOwner, targetOwner, slotIndex, position, ecb,
+            committedOwner, deliveryAssignment, sourceArea);
+    }
+
+    internal static bool TryTransferStoreCargoItem(EntityManager manager, Entity item, ItemTypeEnum type,
+        Entity sourceOwner, Entity targetOwner, int slotIndex, int2 position, EntityCommandBuffer ecb,
+        ref StoreCargoTransferValidation validation, Entity deliveryAssignment = default,
+        DroneTransportAreaEnum sourceArea = default)
+    {
+        if (sourceOwner == targetOwner)
+        {
+            return false;
+        }
+        if (!validation.TryConsume(item, type, sourceOwner, out var committedOwner))
+        {
+            return false;
+        }
+        return TryTransferValidatedItem(manager, item, type, sourceOwner, targetOwner, slotIndex, position, ecb,
+            committedOwner, deliveryAssignment, sourceArea);
+    }
+
+    private static bool TryTransferValidatedItem(EntityManager manager, Entity item, ItemTypeEnum type,
+        Entity sourceOwner, Entity targetOwner, int slotIndex, int2 position, EntityCommandBuffer ecb,
+        Entity committedOwner, Entity deliveryAssignment, DroneTransportAreaEnum sourceArea)
+    {
         // 조회용 예정 소유자만 일치하는 상태는 아직 공통 반영 경계를 지난 실물이 아니다.
-        if (ownership.Owner != sourceOwner) return false;
+        if (committedOwner != sourceOwner)
+        {
+            return false;
+        }
         int sourceIndex = -1;
         if (sourceOwner != Entity.Null)
         {

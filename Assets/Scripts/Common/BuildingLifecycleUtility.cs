@@ -11,6 +11,12 @@ using Unity.Transforms;
 /// </summary>
 public static class BuildingLifecycleUtility
 {
+    internal struct SpawnRegistryReadContext
+    {
+        internal RegistryBufferReadCache<BuildingConfigElement> Configs;
+        internal RegistryBufferReadCache<BuildingPrefabElement> Prefabs;
+    }
+
     public static Entity SpawnBuilding(
         ref EntityCommandBuffer ecb,
         BuildingTypeEnum targetType,
@@ -25,6 +31,27 @@ public static class BuildingLifecycleUtility
         Entity configEntity,
         in BufferLookup<BuildingPrefabElement> prefabBufferLookup,
         in BufferLookup<BuildingConfigElement> configBufferLookup)
+    {
+        var registryRead = new SpawnRegistryReadContext();
+        return SpawnBuilding(ref ecb, targetType, targetTier, position, direction, footprintSize, stamp,
+            hasPrefabDb, prefabDbEntity, hasConfig, configEntity, prefabBufferLookup, configBufferLookup, ref registryRead);
+    }
+
+    internal static Entity SpawnBuilding(
+        ref EntityCommandBuffer ecb,
+        BuildingTypeEnum targetType,
+        int targetTier,
+        int2 position,
+        DirectionEnum direction,
+        int2 footprintSize,
+        PlacementStamp stamp,
+        bool hasPrefabDb,
+        Entity prefabDbEntity,
+        bool hasConfig,
+        Entity configEntity,
+        in BufferLookup<BuildingPrefabElement> prefabBufferLookup,
+        in BufferLookup<BuildingConfigElement> configBufferLookup,
+        ref SpawnRegistryReadContext registryRead)
     {
         if (targetType == BuildingTypeEnum.None || targetType == BuildingTypeEnum.ConstructionSite)
         {
@@ -43,17 +70,53 @@ public static class BuildingLifecycleUtility
         {
             return RejectMissingConfiguration(ref ecb, targetType, targetTier);
         }
-        if (!configBufferLookup.HasBuffer(configEntity))
+        if (!registryRead.Configs.TryRead(configBufferLookup, configEntity, out var configBuffer))
         {
             return RejectMissingConfiguration(ref ecb, targetType, targetTier);
         }
 
-        var configBuffer = configBufferLookup[configEntity];
         if (!BuildingConfigLookupUtility.TryGetConfig(configBuffer, targetType, targetTier, out var config))
         {
             return RejectMissingConfiguration(ref ecb, targetType, targetTier);
         }
 
+        return SpawnConfiguredBuilding(ref ecb, targetType, targetTier, position, direction, footprintSize,
+            stamp, hasPrefabDb, prefabDbEntity, config, prefabBufferLookup, ref registryRead);
+    }
+
+    // 같은 실행에서 검증한 설정을 전달하며, 독립 호출의 설정 검증은 SpawnBuilding이 소유한다.
+    internal static Entity SpawnConfiguredBuilding(
+        ref EntityCommandBuffer ecb,
+        BuildingTypeEnum targetType,
+        int targetTier,
+        int2 position,
+        DirectionEnum direction,
+        int2 footprintSize,
+        PlacementStamp stamp,
+        bool hasPrefabDb,
+        Entity prefabDbEntity,
+        in BuildingConfigElement config,
+        in BufferLookup<BuildingPrefabElement> prefabBufferLookup)
+    {
+        var registryRead = new SpawnRegistryReadContext();
+        return SpawnConfiguredBuilding(ref ecb, targetType, targetTier, position, direction, footprintSize,
+            stamp, hasPrefabDb, prefabDbEntity, config, prefabBufferLookup, ref registryRead);
+    }
+
+    private static Entity SpawnConfiguredBuilding(
+        ref EntityCommandBuffer ecb,
+        BuildingTypeEnum targetType,
+        int targetTier,
+        int2 position,
+        DirectionEnum direction,
+        int2 footprintSize,
+        PlacementStamp stamp,
+        bool hasPrefabDb,
+        Entity prefabDbEntity,
+        in BuildingConfigElement config,
+        in BufferLookup<BuildingPrefabElement> prefabBufferLookup,
+        ref SpawnRegistryReadContext registryRead)
+    {
         // Config가 유일한 크기 원본이다. 전달 크기는 승인된 현장/요청의 일치 확인용이며 덮어쓰기 입력이 아니다.
         int2 baseFootprint = config.Footprint;
         float speed = config.Speed;
@@ -75,9 +138,8 @@ public static class BuildingLifecycleUtility
 
         Entity prefabEntity = Entity.Null;
 
-        if (hasPrefabDb && prefabDbEntity != Entity.Null && prefabBufferLookup.HasBuffer(prefabDbEntity))
+        if (hasPrefabDb && prefabDbEntity != Entity.Null && registryRead.Prefabs.TryRead(prefabBufferLookup, prefabDbEntity, out var buffer))
         {
-            var buffer = prefabBufferLookup[prefabDbEntity];
             PrefabLookupUtility.TryGetBuildingPrefab(buffer, targetType, targetTier, out prefabEntity);
         }
 

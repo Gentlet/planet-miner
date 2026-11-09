@@ -29,6 +29,12 @@ public static class BuildingSettingsUtility
 
     public static bool IsAllowed(EntityManager manager, BuildingTypeEnum type, in PlannedBuildingSettings settings)
     {
+        var read = new SettingsReadContext(manager);
+        return IsAllowed(type, settings, ref read);
+    }
+
+    internal static bool IsAllowed(BuildingTypeEnum type, in PlannedBuildingSettings settings, ref SettingsReadContext read)
+    {
         if (settings.HasRecipe)
         {
             if (type != BuildingTypeEnum.Crafter || settings.RecipeId < 0)
@@ -37,13 +43,8 @@ public static class BuildingSettingsUtility
             }
             if (settings.RecipeId > 0)
             {
-                using var recipes = manager.CreateEntityQuery(typeof(RecipeRegistry), typeof(RecipeConfigElement));
-                if (recipes.CalculateEntityCount() != 1)
-                {
-                    return false;
-                }
-                var entries = manager.GetBuffer<RecipeConfigElement>(recipes.GetSingletonEntity(), true);
-                if (!RecipeConfigLookupUtility.TryGetRecipeIndex(entries, settings.RecipeId, out int index))
+                var entries = read.Recipes;
+                if (!entries.IsCreated || !RecipeConfigLookupUtility.TryGetRecipeIndex(entries, settings.RecipeId, out int index))
                 {
                     return false;
                 }
@@ -59,13 +60,7 @@ public static class BuildingSettingsUtility
             {
                 return false;
             }
-            using var items = manager.CreateEntityQuery(typeof(ItemRegistry), typeof(ItemConfigElement));
-            if (items.CalculateEntityCount() != 1)
-            {
-                return false;
-            }
-            var mask = RegisteredItems(manager.GetBuffer<ItemConfigElement>(items.GetSingletonEntity(), true));
-            if (!IsValidFilter(settings.Filter, mask))
+            if (!read.TryReadItemMask(out var mask) || !IsValidFilter(settings.Filter, mask))
             {
                 return false;
             }
@@ -73,12 +68,57 @@ public static class BuildingSettingsUtility
         return true;
     }
 
+    internal ref struct SettingsReadContext
+    {
+        private readonly EntityManager _manager;
+        private bool _recipesRead;
+        private DynamicBuffer<RecipeConfigElement> _recipes;
+        private bool _itemMaskRead;
+        private bool _hasItemMask;
+        private FixedBitSet _itemMask;
+
+        internal SettingsReadContext(EntityManager manager)
+        {
+            this = default;
+            _manager = manager;
+        }
+
+        internal DynamicBuffer<RecipeConfigElement> Recipes
+        {
+            get
+            {
+                if (!_recipesRead)
+                {
+                    using var query = _manager.CreateEntityQuery(typeof(RecipeRegistry), typeof(RecipeConfigElement));
+                    if (query.CalculateEntityCount() == 1)
+                    {
+                        _recipes = _manager.GetBuffer<RecipeConfigElement>(query.GetSingletonEntity(), true);
+                    }
+                    _recipesRead = true;
+                }
+                return _recipes;
+            }
+        }
+
+        internal bool TryReadItemMask(out FixedBitSet mask)
+        {
+            if (!_itemMaskRead)
+            {
+                using var query = _manager.CreateEntityQuery(typeof(ItemRegistry), typeof(ItemConfigElement));
+                if (query.CalculateEntityCount() == 1)
+                {
+                    _itemMask = RegisteredItems(_manager.GetBuffer<ItemConfigElement>(query.GetSingletonEntity(), true));
+                    _hasItemMask = true;
+                }
+                _itemMaskRead = true;
+            }
+            mask = _itemMask;
+            return _hasItemMask;
+        }
+    }
+
     public static Entity Submit(EntityManager manager, Entity target, in PlannedBuildingSettings settings)
     {
-        if (!manager.Exists(target))
-        {
-            return Entity.Null;
-        }
         if (!manager.HasComponent<BuildingType>(target))
         {
             return Entity.Null;

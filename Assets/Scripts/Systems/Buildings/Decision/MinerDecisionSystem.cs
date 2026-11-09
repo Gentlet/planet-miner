@@ -36,7 +36,7 @@ internal partial struct DecideMinerExecutionJob : IJobEntity
         {
             return;
         }
-        if (!Preparation.HasComponent(entity))
+        if (!Preparation.TryGetComponent(entity, out var preparation))
         {
             return;
         }
@@ -44,9 +44,8 @@ internal partial struct DecideMinerExecutionJob : IJobEntity
         {
             return;
         }
-        var preparation = Preparation[entity];
         decision.TargetResource = preparation.TargetResource;
-        bool canProgress = PowerFrameUtility.HasAllocatedPower(entity, Demands, Supplies);
+        bool canProgress = PowerFrameUtility.HasAllocatedPower(entity, Demands, Supplies, out decision.PowerTimeRatio);
         decision.CanMine = preparation.CanMine && (canProgress || state.Progress >= 1f);
         enabled.ValueRW = decision.CanMine;
     }

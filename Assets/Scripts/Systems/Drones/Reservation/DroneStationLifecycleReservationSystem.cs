@@ -33,15 +33,15 @@ public partial struct DroneStationLifecycleReservationSystem : ISystem
         var handle = new DroneStationLifecycleReservationJob
         {
             Requests = requests.AsDeferredJobArray(), PendingOwners = pending.AsDeferredJobArray(), Actions = actions.AsDeferredJobArray(),
-            RequestLookup = state.GetComponentLookup<DroneStationRequest>(true),
-            Decisions = state.GetComponentLookup<DroneStationDecision>(false),
-            PendingLookup = state.GetBufferLookup<DroneTaskPendingPublicationElement>(true),
-            TransportPendingLookup = state.GetBufferLookup<DroneTransportPendingReservationElement>(true),
-            ActionLookup = state.GetComponentLookup<DroneActionReadyRequest>(true),
-            Storages = state.GetComponentLookup<Storage>(true), Dedicated = state.GetComponentLookup<DroneStationStorage>(true),
-            Items = state.GetBufferLookup<StoredItemElement>(true), Docked = state.GetBufferLookup<DockedDroneElement>(true),
-            Docks = state.GetComponentLookup<DroneDocked>(true),
-            Reserved = state.GetBufferLookup<DroneStationReservedSlotElement>(true),
+            RequestLookup = SystemAPI.GetComponentLookup<DroneStationRequest>(true),
+            Decisions = SystemAPI.GetComponentLookup<DroneStationDecision>(false),
+            PendingLookup = SystemAPI.GetBufferLookup<DroneTaskPendingPublicationElement>(true),
+            TransportPendingLookup = SystemAPI.GetBufferLookup<DroneTransportPendingReservationElement>(true),
+            ActionLookup = SystemAPI.GetComponentLookup<DroneActionReadyRequest>(true),
+            Storages = SystemAPI.GetComponentLookup<Storage>(true), Dedicated = SystemAPI.GetComponentLookup<DroneStationStorage>(true),
+            Items = SystemAPI.GetBufferLookup<StoredItemElement>(true), Docked = SystemAPI.GetBufferLookup<DockedDroneElement>(true),
+            Docks = SystemAPI.GetComponentLookup<DroneDocked>(true),
+            Reserved = SystemAPI.GetBufferLookup<DroneStationReservedSlotElement>(true),
             MaximumStack = ItemRegistry.GetMaxStack(SystemAPI.GetSingletonBuffer<ItemConfigElement>(true), ItemTypeEnum.Drone)
         }.Schedule(JobHandle.CombineDependencies(state.Dependency, dependency));
         state.Dependency = JobHandle.CombineDependencies(requests.Dispose(handle), pending.Dispose(handle), actions.Dispose(handle));
@@ -98,7 +98,7 @@ internal struct DroneStationLifecycleReservationJob : IJob
             }
             else if (MaximumStack > 0)
             {
-                int preferred = Docks.HasComponent(request.Drone) ? Docks[request.Drone].SlotIndex : -1;
+                int preferred = Docks.TryGetComponent(request.Drone, out var dock) ? dock.SlotIndex : -1;
                 decision.SlotIndex = DroneStationLifecycleUtility.ReserveSlot(request.Station, request.Drone, request.Operation,
                     preferred, MaximumStack, Storages, Dedicated, Items, Docked, ranges, slots, Reserved);
                 decision.Approved = decision.SlotIndex >= 0;

@@ -18,15 +18,16 @@ public static class PowerFuelUtility
             {
                 return false;
             }
-            if (!itemIdentityLookup.HasComponent(item) || !itemOwnershipLookup.HasComponent(item))
+            if (!itemIdentityLookup.TryGetComponent(item, out var identity) ||
+                !itemOwnershipLookup.TryGetComponent(item, out var ownership))
             {
                 return false;
             }
-            if (items[i].ItemType != ItemTypeEnum.Coal || itemIdentityLookup[item].Type != ItemTypeEnum.Coal)
+            if (items[i].ItemType != ItemTypeEnum.Coal || identity.Type != ItemTypeEnum.Coal)
             {
                 return false;
             }
-            if (itemOwnershipLookup[item].Owner != generator)
+            if (ownership.Owner != generator)
             {
                 return false;
             }

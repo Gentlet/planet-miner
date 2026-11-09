@@ -35,10 +35,6 @@ public static class DroneStationRequestUtility
         {
             return false;
         }
-        if (!manager.Exists(request))
-        {
-            return false;
-        }
         if (!manager.HasComponent<DroneStationResult>(request))
         {
             return false;

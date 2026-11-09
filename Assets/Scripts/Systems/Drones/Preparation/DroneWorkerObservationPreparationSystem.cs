@@ -18,8 +18,8 @@ public partial struct DroneWorkerObservationPreparationSystem : ISystem
     {
         state.Dependency = new PrepareObservationsJob
         {
-            Docks = state.GetComponentLookup<DroneDocked>(true),
-            Relocations = state.GetComponentLookup<DroneStationRelocation>(true)
+            Docks = SystemAPI.GetComponentLookup<DroneDocked>(true),
+            Relocations = SystemAPI.GetComponentLookup<DroneStationRelocation>(true)
         }.ScheduleParallel(state.Dependency);
     }
 

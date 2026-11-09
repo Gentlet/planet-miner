@@ -166,21 +166,20 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
         }
 
         // 5. 대상 건물이 아이템을 보관할 수 있는 건물(Storage)인지 확인
-        if (!StorageLookup.HasComponent(buildingInfo.Entity))
+        if (!StorageLookup.TryGetComponent(buildingInfo.Entity, out var storage))
         {
             // 보관 기능이 없는 건물 (예: 전신주 등)
             return;
         }
 
-        if (StorageLookup[buildingInfo.Entity].SlotCount <= 0)
+        if (storage.SlotCount <= 0)
         {
             return;
         }
 
         // 5.5 제작기(Crafter) 상태 검사: WaitingForByproductOutput 상태인 경우 재료 입고 완전 차단
-        if (CrafterStateLookup.HasComponent(buildingInfo.Entity))
+        if (CrafterStateLookup.TryGetComponent(buildingInfo.Entity, out var crafterState))
         {
-            var crafterState = CrafterStateLookup[buildingInfo.Entity];
             if (crafterState.Status == CrafterStatusEnum.WaitingForByproductOutput)
             {
                 return;
@@ -188,9 +187,8 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
         }
 
         // 6. StorageFilter 검사 (필터가 부착된 경우)
-        if (StorageFilterLookup.HasComponent(buildingInfo.Entity))
+        if (StorageFilterLookup.TryGetComponent(buildingInfo.Entity, out var filter))
         {
-            var filter = StorageFilterLookup[buildingInfo.Entity];
             if (!filter.IsItemAllowed(itemIdentity.Type))
             {
                 // 필터로 인해 입고 거부

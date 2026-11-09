@@ -1,4 +1,5 @@
 using Unity.Burst;
+using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -63,6 +64,14 @@ public partial struct MinerWorkPreparationSystem : ISystem
 
         var job = new MinerWorkPreparationJob
         {
+            EntityHandle = SystemAPI.GetEntityTypeHandle(),
+            MinerWorkPreparationHandle = SystemAPI.GetComponentTypeHandle<MinerWorkPreparation>(false),
+            ProductItemElementHandle = SystemAPI.GetBufferTypeHandle<ProductItemElement>(true),
+            ProductResultHandle = SystemAPI.GetBufferTypeHandle<ProductResult>(true),
+            MinerStateHandle = SystemAPI.GetComponentTypeHandle<MinerState>(true),
+            BuildingFootprintHandle = SystemAPI.GetComponentTypeHandle<BuildingFootprint>(true),
+            GridPositionHandle = SystemAPI.GetComponentTypeHandle<GridPosition>(true),
+            DirectionHandle = SystemAPI.GetComponentTypeHandle<Direction>(true),
             ResourceMap = resIndex.Map,
             ResourceNodeLookup = _resourceNodeLookup,
             PendingDemolitionLookup = _pendingDemolitionLookup,
@@ -83,8 +92,56 @@ public partial struct MinerWorkPreparationSystem : ISystem
 /// 각 채굴기의 채굴 조건을 병렬로 판정하는 Burst Job.
 /// </summary>
 [BurstCompile]
-public partial struct MinerWorkPreparationJob : IJobEntity
+public partial struct MinerWorkPreparationJob : IJobChunk
 {
+    [ReadOnly] public EntityTypeHandle EntityHandle;
+    public ComponentTypeHandle<MinerWorkPreparation> MinerWorkPreparationHandle;
+    [ReadOnly] public BufferTypeHandle<ProductItemElement> ProductItemElementHandle;
+    [ReadOnly] public BufferTypeHandle<ProductResult> ProductResultHandle;
+    [ReadOnly] public ComponentTypeHandle<MinerState> MinerStateHandle;
+    [ReadOnly] public ComponentTypeHandle<BuildingFootprint> BuildingFootprintHandle;
+    [ReadOnly] public ComponentTypeHandle<GridPosition> GridPositionHandle;
+    [ReadOnly] public ComponentTypeHandle<Direction> DirectionHandle;
+
+    private struct RegistryReadContext
+    {
+        public RegistryBufferReadCache<ItemConfigElement> ItemConfigLookup;
+    }
+
+    public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+    {
+        var entities = chunk.GetNativeArray(EntityHandle);
+        var minerWorkPreparationValues = chunk.GetNativeArray(ref MinerWorkPreparationHandle);
+        var minerWorkPreparationEnabled = chunk.GetEnabledMask(ref MinerWorkPreparationHandle);
+        var productItemElementValues = chunk.GetBufferAccessorRO(ref ProductItemElementHandle);
+        var productResultValues = chunk.GetBufferAccessorRO(ref ProductResultHandle);
+        var minerStateValues = chunk.GetNativeArray(ref MinerStateHandle);
+        var buildingFootprintValues = chunk.GetNativeArray(ref BuildingFootprintHandle);
+        var gridPositionValues = chunk.GetNativeArray(ref GridPositionHandle);
+        var directionValues = chunk.GetNativeArray(ref DirectionHandle);
+        var registryRead = new RegistryReadContext();
+        var enumerator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+        while (enumerator.NextEntityIndex(out int index))
+        {
+            var preparationRef = new RefRW<MinerWorkPreparation>(minerWorkPreparationValues, index);
+            var productItemsValue = productItemElementValues[index];
+            var productResultsValue = productResultValues[index];
+            var stateValue = minerStateValues[index];
+            var footprintValue = buildingFootprintValues[index];
+            var gridPosValue = gridPositionValues[index];
+            var dirValue = directionValues[index];
+            ExecuteEntity(entities[index],
+                ref preparationRef.ValueRW,
+                minerWorkPreparationEnabled.GetEnabledRefRW<MinerWorkPreparation>(index),
+                in productItemsValue,
+                in productResultsValue,
+                in stateValue,
+                in footprintValue,
+                in gridPosValue,
+                in dirValue, ref registryRead);
+        }
+    }
+
     [ReadOnly]
     public NativeParallelHashMap<int2, Entity> ResourceMap;
 
@@ -99,7 +156,7 @@ public partial struct MinerWorkPreparationJob : IJobEntity
     [ReadOnly]
     public BufferLookup<ItemConfigElement> ItemConfigLookup;
 
-    public void Execute(
+    private void ExecuteEntity(
         Entity building,
         ref MinerWorkPreparation decision,
         EnabledRefRW<MinerWorkPreparation> decisionEnabled,
@@ -108,7 +165,7 @@ public partial struct MinerWorkPreparationJob : IJobEntity
         in MinerState state,
         in BuildingFootprint footprint,
         in GridPosition gridPos,
-        in Direction dir)
+        in Direction dir, ref RegistryReadContext registryRead)
     {
         if (PendingDemolitionLookup.HasComponent(building))
         {
@@ -133,10 +190,10 @@ public partial struct MinerWorkPreparationJob : IJobEntity
                 int2 cell = anchor + new int2(x, y);
                 if (ResourceMap.TryGetValue(cell, out Entity resEntity) && resEntity != Entity.Null)
                 {
-                    if (ResourceNodeLookup.HasComponent(resEntity) && ResourceNodeLookup[resEntity].Amount > 0)
+                    if (ResourceNodeLookup.TryGetComponent(resEntity, out var resource) && resource.Amount > 0)
                     {
                         targetResource = resEntity;
-                        resourceType = ResourceNodeLookup[resEntity].ResourceType;
+                        resourceType = resource.ResourceType;
                         foundResource = true;
                     }
                 }
@@ -145,9 +202,9 @@ public partial struct MinerWorkPreparationJob : IJobEntity
 
         // 2. 내부 출력 버퍼(ProductItemElement) 여유 공간 확인 (1스택 한도)
         int maxStack = 0;
-        if (resourceType != ItemTypeEnum.None && ItemConfigLookup.HasBuffer(ItemRegistryEntity))
+        if (resourceType != ItemTypeEnum.None && registryRead.ItemConfigLookup.TryRead(ItemConfigLookup, ItemRegistryEntity, out var itemConfigs))
         {
-            maxStack = ItemRegistry.GetMaxStack(ItemConfigLookup[ItemRegistryEntity], resourceType);
+            maxStack = ItemRegistry.GetMaxStack(itemConfigs, resourceType);
         }
 
         bool sameItemType = true;

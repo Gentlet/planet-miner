@@ -1,4 +1,5 @@
 using Unity.Burst;
+using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -75,6 +76,13 @@ public partial struct CrafterDecisionSystem : ISystem
 
         var job = new CrafterDecisionJob
         {
+            EntityHandle = SystemAPI.GetEntityTypeHandle(),
+            CrafterDecisionHandle = SystemAPI.GetComponentTypeHandle<CrafterDecision>(false),
+            CrafterStateDecisionHandle = SystemAPI.GetComponentTypeHandle<CrafterStateDecision>(false),
+            CrafterStateHandle = SystemAPI.GetComponentTypeHandle<CrafterState>(true),
+            StoredItemElementHandle = SystemAPI.GetBufferTypeHandle<StoredItemElement>(true),
+            ProductItemElementHandle = SystemAPI.GetBufferTypeHandle<ProductItemElement>(true),
+            ProductResultHandle = SystemAPI.GetBufferTypeHandle<ProductResult>(true),
             RecipeRegistryEntity = recipeRegistryEntity,
             PendingDemolitionLookup = _pendingDemolitionLookup,
             DestroyItemRequestLookup = _destroyItemRequestLookup,
@@ -96,8 +104,57 @@ public partial struct CrafterDecisionSystem : ISystem
 /// 각 제작기의 제작 조건을 병렬로 판정하는 Safe Burst Job.
 /// </summary>
 [BurstCompile]
-public partial struct CrafterDecisionJob : IJobEntity
+public partial struct CrafterDecisionJob : IJobChunk
 {
+    [ReadOnly] public EntityTypeHandle EntityHandle;
+    public ComponentTypeHandle<CrafterDecision> CrafterDecisionHandle;
+    public ComponentTypeHandle<CrafterStateDecision> CrafterStateDecisionHandle;
+    [ReadOnly] public ComponentTypeHandle<CrafterState> CrafterStateHandle;
+    [ReadOnly] public BufferTypeHandle<StoredItemElement> StoredItemElementHandle;
+    [ReadOnly] public BufferTypeHandle<ProductItemElement> ProductItemElementHandle;
+    [ReadOnly] public BufferTypeHandle<ProductResult> ProductResultHandle;
+
+    private struct RegistryReadContext
+    {
+        public RegistryBufferReadCache<RecipeConfigElement> RecipeConfigLookup;
+        public RegistryBufferReadCache<RecipeIngredientElement> RecipeIngredientLookup;
+        public RegistryBufferReadCache<RecipeOutputElement> RecipeOutputLookup;
+        public RegistryBufferReadCache<ItemConfigElement> ItemConfigLookup;
+    }
+
+    public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+    {
+        var entities = chunk.GetNativeArray(EntityHandle);
+        var crafterDecisionValues = chunk.GetNativeArray(ref CrafterDecisionHandle);
+        var crafterDecisionEnabled = chunk.GetEnabledMask(ref CrafterDecisionHandle);
+        var crafterStateDecisionValues = chunk.GetNativeArray(ref CrafterStateDecisionHandle);
+        var crafterStateDecisionEnabled = chunk.GetEnabledMask(ref CrafterStateDecisionHandle);
+        var crafterStateValues = chunk.GetNativeArray(ref CrafterStateHandle);
+        var storedItemElementValues = chunk.GetBufferAccessorRO(ref StoredItemElementHandle);
+        var productItemElementValues = chunk.GetBufferAccessorRO(ref ProductItemElementHandle);
+        var productResultValues = chunk.GetBufferAccessorRO(ref ProductResultHandle);
+        var registryRead = new RegistryReadContext();
+        var enumerator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+        while (enumerator.NextEntityIndex(out int index))
+        {
+            var decisionRef = new RefRW<CrafterDecision>(crafterDecisionValues, index);
+            var stateDecisionRef = new RefRW<CrafterStateDecision>(crafterStateDecisionValues, index);
+            var stateValue = crafterStateValues[index];
+            var storedItemsValue = storedItemElementValues[index];
+            var productItemsValue = productItemElementValues[index];
+            var productResultsValue = productResultValues[index];
+            ExecuteEntity(entities[index],
+                ref decisionRef.ValueRW,
+                crafterDecisionEnabled.GetEnabledRefRW<CrafterDecision>(index),
+                ref stateDecisionRef.ValueRW,
+                crafterStateDecisionEnabled.GetEnabledRefRW<CrafterStateDecision>(index),
+                in stateValue,
+                in storedItemsValue,
+                in productItemsValue,
+                in productResultsValue, ref registryRead);
+        }
+    }
+
     [ReadOnly] public ComponentLookup<CrafterWorkPreparation> Preparations;
     [ReadOnly] public ComponentLookup<PowerDemand> Demands;
     [ReadOnly] public ComponentLookup<PowerSupplyResult> Supplies;
@@ -123,7 +180,7 @@ public partial struct CrafterDecisionJob : IJobEntity
     [ReadOnly]
     public BufferLookup<ItemConfigElement> ItemConfigLookup;
 
-    public void Execute(
+    private void ExecuteEntity(
         Entity building,
         ref CrafterDecision decision,
         EnabledRefRW<CrafterDecision> decisionEnabled,
@@ -132,8 +189,9 @@ public partial struct CrafterDecisionJob : IJobEntity
         in CrafterState state,
         in DynamicBuffer<StoredItemElement> storedItems,
         in DynamicBuffer<ProductItemElement> productItems,
-        in DynamicBuffer<ProductResult> productResults)
+        in DynamicBuffer<ProductResult> productResults, ref RegistryReadContext registryRead)
     {
+        decision.PowerTimeRatio = 0f;
         if (PendingDemolitionLookup.HasComponent(building))
         {
             decision.CanCraft = false;
@@ -185,7 +243,7 @@ public partial struct CrafterDecisionJob : IJobEntity
             return;
         }
 
-        var recipes = RecipeConfigLookup[RecipeRegistryEntity];
+        var recipes = registryRead.RecipeConfigLookup.Read(RecipeConfigLookup, RecipeRegistryEntity);
         if (!RecipeConfigLookupUtility.TryGetRecipeIndex(recipes, state.SelectedRecipeId, out int recipeIdx))
         {
             decision.CanCraft = false;
@@ -203,8 +261,8 @@ public partial struct CrafterDecisionJob : IJobEntity
         decision.RecipeId = state.SelectedRecipeId;
         decision.RecipeIndex = recipeIdx;
         var recipe = recipes[recipeIdx];
-        var ingredients = RecipeIngredientLookup[RecipeRegistryEntity];
-        var outputs = RecipeOutputLookup[RecipeRegistryEntity];
+        var ingredients = registryRead.RecipeIngredientLookup.Read(RecipeIngredientLookup, RecipeRegistryEntity);
+        var outputs = registryRead.RecipeOutputLookup.Read(RecipeOutputLookup, RecipeRegistryEntity);
 
         // StateApply 미소비 생산 결과 존재 시 새 제작/출력 차단
         // 정상 프레임에서는 같은 프레임 StateApply에서 비워지지만, Phase 누락/지연 시 중복 생산을 방지하는 안전장치.
@@ -223,7 +281,7 @@ public partial struct CrafterDecisionJob : IJobEntity
         // 2. 출력 버퍼 여유 공간 검사 (다중 부산물 지원 및 All-or-Nothing 정책)
         // Slot 0: 주완성품, Slot 1..N: 각 부산물
         bool canProduceOutput = true;
-        bool hasItemRegistry = ItemConfigLookup.HasBuffer(ItemRegistryEntity);
+        bool hasItemRegistry = registryRead.ItemConfigLookup.TryRead(ItemConfigLookup, ItemRegistryEntity, out var itemConfigs);
 
         for (int outIdx = 0; outIdx < recipe.OutputCount; outIdx++)
         {
@@ -243,7 +301,7 @@ public partial struct CrafterDecisionJob : IJobEntity
             }
 
             int maxStack = (hasItemRegistry && output.ItemType != ItemTypeEnum.None)
-                ? ItemRegistry.GetMaxStack(ItemConfigLookup[ItemRegistryEntity], output.ItemType)
+                ? ItemRegistry.GetMaxStack(itemConfigs, output.ItemType)
                 : 0;
 
             if (countInSlot + output.Amount > maxStack)
@@ -255,9 +313,13 @@ public partial struct CrafterDecisionJob : IJobEntity
 
         // 이번 Execution에서 처음 완료될 진행도도 현재 Decision에서는 진행 중이다.
         // 출력 승인은 Progress가 완료된 상태를 다음 Decision이 읽을 때 정하며, 출력 전체 공간을 확보한 뒤 결과를 기록한다.
-        bool prepared = Preparations.HasComponent(building) && Preparations.IsComponentEnabled(building);
-        var preparation = prepared ? Preparations[building] : default;
-        bool powered = PowerFrameUtility.HasAllocatedPower(building, Demands, Supplies);
+        bool prepared = Preparations.TryGetComponent(building, out var preparation) &&
+                        Preparations.IsComponentEnabled(building);
+        if (!prepared)
+        {
+            preparation = default;
+        }
+        bool powered = PowerFrameUtility.HasAllocatedPower(building, Demands, Supplies, out decision.PowerTimeRatio);
         // 3. 준비된 자격과 공급으로 실행/표시 결정을 작성한다.
         if (state.IsCraftingActive)
         {

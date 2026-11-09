@@ -326,7 +326,7 @@ public sealed class WorldTaskVisualView : MonoBehaviour
             {
                 continue;
             }
-            var meshes = manager.GetSharedComponentManaged<RenderMeshArray>(entity);
+            var meshes = manager.GetSharedComponent<RenderMeshArray>(entity);
             var info = manager.GetComponentData<MaterialMeshInfo>(entity);
             Mesh mesh = meshes.GetMesh(info);
             if (mesh == null)

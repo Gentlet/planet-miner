@@ -1,4 +1,5 @@
 using Unity.Burst;
+using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -139,8 +140,8 @@ public partial struct BuildingLifecycleApplySystem : ISystem
                 MaterialBufferLookup = _materialBufferLookup,
                 ItemPrefabBufferLookup = _itemPrefabBufferLookup,
                 DemolishedBeltPositions = demolishedBeltPositions,
-                ExecutionRequests = state.GetComponentLookup<BuildingDemolitionExecutionRequest>(true),
-                RecoveryMarks = state.GetComponentLookup<DroneRecoveryPending>(true)
+                ExecutionRequests = SystemAPI.GetComponentLookup<BuildingDemolitionExecutionRequest>(true),
+                RecoveryMarks = SystemAPI.GetComponentLookup<DroneRecoveryPending>(true)
             };
             currentDep = demolishJob.Schedule(_pendingDemolitionQuery, currentDep);
 
@@ -149,7 +150,7 @@ public partial struct BuildingLifecycleApplySystem : ISystem
             {
                 DemolishedBeltPositions = demolishedBeltPositions,
                 DestroyRequestLookup = _destroyRequestLookup,
-                RecoveryMarks = state.GetComponentLookup<DroneRecoveryPending>(true),
+                RecoveryMarks = SystemAPI.GetComponentLookup<DroneRecoveryPending>(true),
                 ECB = ecb
             };
             currentDep = cleanupJob.Schedule(_beltItemQuery, currentDep);
@@ -163,6 +164,8 @@ public partial struct BuildingLifecycleApplySystem : ISystem
         {
             var spawnJob = new SpawnBuildingApplyJob
             {
+                EntityHandle = SystemAPI.GetEntityTypeHandle(),
+                SpawnBuildingRequestHandle = SystemAPI.GetComponentTypeHandle<SpawnBuildingRequest>(true),
                 ECB = ecb,
                 HasPrefabDb = hasBuildingPrefabDb,
                 PrefabDbEntity = buildingPrefabDbEntity,
@@ -181,7 +184,7 @@ public partial struct BuildingLifecycleApplySystem : ISystem
 
 /// <summary>
 /// 철거된 벨트 좌표에 위치한 아이템의 BeltMovementState를 비활성화하여 정적 바닥 아이템으로 보존하는 Burst Job.
-/// ItemSpatialIndex 대신 아이템의 최신 GridPosition을 직접 대조하여 타이밍 불일치(Phase 4 이동 vs Phase 6 동기화)를 원천 차단.
+/// BuildingStateApply에서 아이템의 최신 GridPosition을 직접 대조한다. ItemSpatialIndex는 최종 Commit 뒤 Synchronization에서 재구축된다.
 /// </summary>
 [BurstCompile]
 public partial struct DemolishBeltItemCleanupJob : IJobEntity
@@ -253,28 +256,26 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
         if (!ExecutionRequests.HasComponent(pending.Task)) return;
         bool refundFailed = false;
         // 정책 검증과 중복 제거는 Command에서 끝난다. 여기서는 대상 소실만 방어한다.
-        if (!BuildingTypeLookup.HasComponent(buildingEntity))
+        if (!BuildingTypeLookup.TryGetComponent(buildingEntity, out var buildingDefinition))
         {
             ECB.RemoveComponent<PendingBuildingDemolition>(buildingEntity);
             return;
         }
 
-        var buildingDefinition = BuildingTypeLookup[buildingEntity];
         var buildingType = buildingDefinition.Type;
 
         // 3. 건물 좌표 확인
         int2 sitePos = int2.zero;
-        if (GridPosLookup.HasComponent(buildingEntity))
+        if (GridPosLookup.TryGetComponent(buildingEntity, out var gridPosition))
         {
-            sitePos = GridPosLookup[buildingEntity].Value;
+            sitePos = gridPosition.Value;
         }
         float3 worldPos = new float3(sitePos.x, sitePos.y, 0f);
 
         // 기존 보관품은 새 환급품으로 대체하지 않는다. 같은 실물을 건물 위치에 반환하고
         // 활성 Destroy 실물은 반환에서 제외해 소비 예정 아이템을 되살리지 않는다.
-        if (StoredBufferLookup.HasBuffer(buildingEntity))
+        if (StoredBufferLookup.TryGetBuffer(buildingEntity, out var storedItems))
         {
-            var storedItems = StoredBufferLookup[buildingEntity];
             for (int i = 0; i < storedItems.Length; i++)
             {
                 Entity item = storedItems[i].ItemEntity;
@@ -298,9 +299,8 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
         }
 
         // 5. 건물 내부 생산품(ProductItemElement) 전수 반환 (WorldItem 전환, DisableRendering 제거, 바닥 방출)
-        if (ProductBufferLookup.HasBuffer(buildingEntity))
+        if (ProductBufferLookup.TryGetBuffer(buildingEntity, out var productItems))
         {
-            var productItems = ProductBufferLookup[buildingEntity];
             for (int i = 0; i < productItems.Length; i++)
             {
                 Entity item = productItems[i].ItemEntity;
@@ -323,7 +323,7 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
             }
         }
 
-        // 6. 벨트 철거 시 좌표 수집 (Phase 5 내 DemolishBeltItemCleanupJob을 통해 최신 GridPosition 아이템의 BeltMovementState 비활성화)
+        // 6. 벨트 철거 좌표를 모아 같은 BuildingStateApply의 DemolishBeltItemCleanupJob이 최신 GridPosition으로 정리하도록 한다.
         if (buildingType == BuildingTypeEnum.Belt)
         {
             DemolishedBeltPositions.Add(sitePos);
@@ -331,9 +331,12 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
 
         // 기존 내용물 반환과 건축 비용 환급을 구분한다. 비용만 설정 수량대로 새 실물을 만들며
         // 이전 틱에 생산 과정에서 선소비한 재료까지 추가 보상하지 않는다.
-        if (HasConfig && ConfigEntity != Entity.Null && MaterialBufferLookup.HasBuffer(ConfigEntity))
+        if (HasConfig &&
+            MaterialBufferLookup.TryGetBuffer(ConfigEntity, out var materialDb))
         {
-            var materialDb = MaterialBufferLookup[ConfigEntity];
+            bool prefabBufferChecked = false;
+            bool hasPrefabBuffer = false;
+            DynamicBuffer<ItemPrefabElement> prefabBuffer = default;
             for (int i = 0; i < materialDb.Length; i++)
             {
                 if (materialDb[i].BuildingType == buildingType && materialDb[i].Tier == buildingDefinition.Tier)
@@ -341,10 +344,16 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
                     ItemTypeEnum itemType = materialDb[i].ItemType;
                     int quantity = materialDb[i].Quantity;
 
-                    Entity prefabEntity = Entity.Null;
-                    if (HasItemPrefabDb && ItemPrefabDbEntity != Entity.Null && ItemPrefabBufferLookup.HasBuffer(ItemPrefabDbEntity))
+                    if (!prefabBufferChecked)
                     {
-                        PrefabLookupUtility.TryGetItemPrefab(ItemPrefabBufferLookup[ItemPrefabDbEntity], itemType, out prefabEntity);
+                        hasPrefabBuffer = HasItemPrefabDb &&
+                            ItemPrefabBufferLookup.TryGetBuffer(ItemPrefabDbEntity, out prefabBuffer);
+                        prefabBufferChecked = true;
+                    }
+                    Entity prefabEntity = Entity.Null;
+                    if (hasPrefabBuffer)
+                    {
+                        PrefabLookupUtility.TryGetItemPrefab(prefabBuffer, itemType, out prefabEntity);
                     }
                     if (prefabEntity == Entity.Null)
                     {
@@ -368,7 +377,7 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
             }
         }
 
-        // 8. 건물 엔티티 파괴 (동일 틱 Phase 6 공간 동기화 시 건물 공간 점유 자동 해제)
+        // 8. EndBuilding에 건물 삭제를 확정하고 최종 Commit 뒤 Synchronization에서 건물 공간 점유를 재구축한다.
         ECB.AddComponent(pending.Task, new BuildingDemolitionResult
         { Status = refundFailed ? BuildingDemolitionResultStatus.Failed : BuildingDemolitionResultStatus.Completed });
         ECB.RemoveComponent<BuildingDemolitionExecutionRequest>(pending.Task);
@@ -385,8 +394,30 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
 /// SpawnBuildingRequest를 소비하여 완공 건물 엔티티를 생성하고 컴포넌트를 초기화하는 단일 워커 Burst Job.
 /// </summary>
 [BurstCompile]
-public partial struct SpawnBuildingApplyJob : IJobEntity
+public partial struct SpawnBuildingApplyJob : IJobChunk
 {
+    [ReadOnly] public EntityTypeHandle EntityHandle;
+    [ReadOnly] public ComponentTypeHandle<SpawnBuildingRequest> SpawnBuildingRequestHandle;
+
+    private struct RegistryReadContext
+    {
+        public BuildingLifecycleUtility.SpawnRegistryReadContext Spawn;
+    }
+
+    public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+    {
+        var entities = chunk.GetNativeArray(EntityHandle);
+        var spawnBuildingRequestValues = chunk.GetNativeArray(ref SpawnBuildingRequestHandle);
+        var registryRead = new RegistryReadContext();
+        var enumerator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+        while (enumerator.NextEntityIndex(out int index))
+        {
+            var requestValue = spawnBuildingRequestValues[index];
+            ExecuteEntity(entities[index],
+                in requestValue, ref registryRead);
+        }
+    }
+
     public EntityCommandBuffer ECB;
     public bool HasPrefabDb;
     public Entity PrefabDbEntity;
@@ -399,7 +430,7 @@ public partial struct SpawnBuildingApplyJob : IJobEntity
     [ReadOnly]
     public BufferLookup<BuildingConfigElement> ConfigBufferLookup;
 
-    public void Execute(Entity requestEntity, in SpawnBuildingRequest request)
+    private void ExecuteEntity(Entity requestEntity, in SpawnBuildingRequest request, ref RegistryReadContext registryRead)
     {
         BuildingLifecycleUtility.SpawnBuilding(
             ref ECB,
@@ -414,7 +445,8 @@ public partial struct SpawnBuildingApplyJob : IJobEntity
             HasConfig,
             ConfigEntity,
             in PrefabBufferLookup,
-            in ConfigBufferLookup
+            in ConfigBufferLookup,
+            ref registryRead.Spawn
         );
 
         // 요청 엔티티 소비 (Consume-on-Apply)

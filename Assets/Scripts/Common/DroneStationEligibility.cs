@@ -6,6 +6,7 @@ using Unity.Transforms;
 /// <summary>
 /// Decision과 최종 Apply가 공유하는 출고/정박/수납 자격 검사다.
 /// 역할 구성은 QueryMask로 확인하고 값은 필요한 RO Lookup에서 직접 읽는다. ECS 상태를 복제하지 않는다.
+/// 소유 시스템의 OnCreate에서 생성하고, 사용할 때마다 Update로 Lookup의 접근 정보를 갱신한다.
 /// </summary>
 internal struct DroneStationEligibility
 {
@@ -83,6 +84,31 @@ internal struct DroneStationEligibility
         };
     }
 
+    public void Update(ref SystemState state)
+    {
+        Entities.Update(ref state);
+        BuildingTypes.Update(ref state);
+        ItemTypes.Update(ref state);
+        Owners.Update(ref state);
+        Batteries.Update(ref state);
+        Activities.Update(ref state);
+        Assignments.Update(ref state);
+        Cargo.Update(ref state);
+        Docks.Update(ref state);
+        Movements.Update(ref state);
+        DestroyRequests.Update(ref state);
+        Storages.Update(ref state);
+        Positions.Update(ref state);
+        Transforms.Update(ref state);
+        Footprints.Update(ref state);
+        Directions.Update(ref state);
+        Items.Update(ref state);
+        Docked.Update(ref state);
+        Preparing.Update(ref state);
+        Relocations.Update(ref state);
+        Reserved.Update(ref state);
+    }
+
     public DroneStationRequestStatus Validate(in DroneStationRequest request, float maximum, bool automatic = false,
         bool relocationRequest = false)
     {
@@ -104,40 +130,69 @@ internal struct DroneStationEligibility
         {
             return DroneStationRequestStatus.Rejected;
         }
-        bool relocating = Relocations.HasComponent(drone);
+        bool relocating = Relocations.TryGetComponent(drone, out var relocation);
         if (relocating && !relocationRequest) return DroneStationRequestStatus.Busy;
         if (relocationRequest && !relocating) return DroneStationRequestStatus.Rejected;
+        bool hasReadReservedSlot = false;
+        int reservedSlot = -1;
         if (relocating)
         {
-            var relocation = Relocations[drone];
             if (request.Operation == DroneStationOperation.Store && station != relocation.Destination)
                 return DroneStationRequestStatus.Rejected;
-            if (request.Operation != DroneStationOperation.Activate && station == relocation.Destination &&
-                DroneStationRelocationUtility.ReservedSlot(Reserved, station, drone) != relocation.SlotIndex)
-                return DroneStationRequestStatus.NoSpace;
+            if (request.Operation != DroneStationOperation.Activate && station == relocation.Destination)
+            {
+                reservedSlot = DroneStationRelocationUtility.ReservedSlot(Reserved, station, drone);
+                hasReadReservedSlot = true;
+                if (reservedSlot != relocation.SlotIndex)
+                {
+                    return DroneStationRequestStatus.NoSpace;
+                }
+            }
         }
+        bool hasDock = Docks.TryGetComponent(drone, out var dock);
+        bool hasReadWorkerCargo = false;
+        DroneWorkerAssignment workerAssignment = default;
+        DynamicBuffer<StoredItemElement> workerItems = default;
         if (Preparing.HasComponent(station))
         {
-            bool ownsDock = Docks.HasComponent(drone) && Docks[drone].Station == station;
-            bool promisedArrival = relocating &&
-                (Relocations[drone].Source == station || DroneStationRelocationUtility.ReservedSlot(Reserved, station, drone) >= 0);
+            bool ownsDock = hasDock && dock.Station == station;
+            bool promisedArrival = relocating && relocation.Source == station;
+            if (relocating && !promisedArrival)
+            {
+                if (!hasReadReservedSlot)
+                {
+                    reservedSlot = DroneStationRelocationUtility.ReservedSlot(Reserved, station, drone);
+                }
+                promisedArrival = reservedSlot >= 0;
+            }
             if (!promisedArrival && !ownsDock) return DroneStationRequestStatus.Busy;
             // 준비 중 기존 정박은 충전/기존 작업 이탈만 계속하며 새 수납으로 계획 입력을 바꾸지 않는다.
             if (!promisedArrival && request.Operation == DroneStationOperation.Store) return DroneStationRequestStatus.Busy;
-            if (ownsDock && (!Assignments.HasComponent(drone) || !Items.HasBuffer(drone))) return DroneStationRequestStatus.Rejected;
-            if (!promisedArrival && !relocating && request.Operation == DroneStationOperation.Activate &&
-                Assignments[drone].Assignment == Entity.Null && Items[drone].IsEmpty) return DroneStationRequestStatus.Busy;
+            if (ownsDock)
+            {
+                if (!Assignments.TryGetComponent(drone, out workerAssignment) ||
+                    !Items.TryGetBuffer(drone, out workerItems))
+                {
+                    return DroneStationRequestStatus.Rejected;
+                }
+                hasReadWorkerCargo = true;
+                if (!promisedArrival && !relocating && request.Operation == DroneStationOperation.Activate &&
+                    workerAssignment.Assignment == Entity.Null && workerItems.IsEmpty)
+                {
+                    return DroneStationRequestStatus.Busy;
+                }
+            }
         }
-        if (request.Operation == DroneStationOperation.Activate && ItemTypes.HasComponent(drone))
+        if (request.Operation == DroneStationOperation.Activate && ItemTypes.TryGetComponent(drone, out var itemType))
         {
-            if (!ItemMask.MatchesIgnoreFilter(drone) || ItemTypes[drone].Type != ItemTypeEnum.Drone ||
+            if (!ItemMask.MatchesIgnoreFilter(drone) || itemType.Type != ItemTypeEnum.Drone ||
                 Owners[drone].Owner != station || !ContainsItem(Items[station], drone))
             {
                 return DroneStationRequestStatus.Rejected;
             }
-            if (Batteries.HasComponent(drone))
+            if (Batteries.TryGetComponent(drone, out var battery))
             {
-                if (!DroneBatteryUtility.IsValid(Batteries[drone], maximum))
+                if (!DroneBatteryUtility.IsValid(battery, maximum))
                 {
                     return DroneStationRequestStatus.Rejected;
                 }
@@ -148,18 +203,18 @@ internal struct DroneStationEligibility
         {
             return DroneStationRequestStatus.Rejected;
         }
-        bool chargingActivity = Activities[drone].Activity == DroneActivityKind.WaitingForCharge ||
-            Activities[drone].Activity == DroneActivityKind.Charging;
+        var activity = Activities[drone].Activity;
+        bool chargingActivity = activity == DroneActivityKind.WaitingForCharge ||
+            activity == DroneActivityKind.Charging;
         // 명시적 Dock은 이동 목적지가 없어도 유효하다. 정박 관계가 없을 때만 도착 목적지를 사용한다.
-        Entity chargingStation = Docks.HasComponent(drone) ? Docks[drone].Station : Movements[drone].ChargingStation;
+        Entity chargingStation = hasDock ? dock.Station : Movements[drone].ChargingStation;
         bool chargingAtStation = automatic && chargingActivity && chargingStation == station && IsAtStation(drone, station);
-        if (Activities[drone].Activity != DroneActivityKind.Idle && !chargingAtStation)
+        if (activity != DroneActivityKind.Idle && !chargingAtStation)
         {
             return DroneStationRequestStatus.Busy;
         }
-        if (Docks.HasComponent(drone))
+        if (hasDock)
         {
-            var dock = Docks[drone];
             int matches = 0;
             foreach (var entry in Docked[station])
             {
@@ -175,18 +230,27 @@ internal struct DroneStationEligibility
         }
         if (request.Operation == DroneStationOperation.Activate)
         {
-            return Docks.HasComponent(drone) ? DroneStationRequestStatus.Applied : DroneStationRequestStatus.Rejected;
+            return hasDock ? DroneStationRequestStatus.Applied : DroneStationRequestStatus.Rejected;
         }
-        if (!IsAtStation(drone, station))
+        if (!chargingAtStation && !IsAtStation(drone, station))
         {
             return DroneStationRequestStatus.Rejected;
         }
         if (request.Operation == DroneStationOperation.Dock)
         {
-            return Docks.HasComponent(drone) ? DroneStationRequestStatus.Rejected : DroneStationRequestStatus.Applied;
+            return hasDock ? DroneStationRequestStatus.Rejected : DroneStationRequestStatus.Applied;
         }
-        if (Batteries[drone].CurrentCharge != maximum || Assignments[drone].Assignment != Entity.Null ||
-            !Items[drone].IsEmpty || Cargo[drone].Origin != DroneCargoOriginEnum.None)
+        if (Batteries[drone].CurrentCharge != maximum)
+        {
+            return DroneStationRequestStatus.Busy;
+        }
+        Entity assignment = hasReadWorkerCargo ? workerAssignment.Assignment : Assignments[drone].Assignment;
+        if (assignment != Entity.Null)
+        {
+            return DroneStationRequestStatus.Busy;
+        }
+        var carriedItems = hasReadWorkerCargo ? workerItems : Items[drone];
+        if (!carriedItems.IsEmpty || Cargo[drone].Origin != DroneCargoOriginEnum.None)
         {
             return DroneStationRequestStatus.Busy;
         }
@@ -208,7 +272,9 @@ internal struct DroneStationEligibility
 
     private bool IsAtStation(Entity drone, Entity station)
     {
-        if (!Footprints.HasComponent(station) || !Directions.HasComponent(station) || !Positions.HasComponent(drone))
+        if (!Footprints.TryGetComponent(station, out var footprint) ||
+            !Directions.TryGetComponent(station, out var direction) ||
+            !Positions.TryGetComponent(drone, out var dronePosition))
         {
             return false;
         }
@@ -217,9 +283,9 @@ internal struct DroneStationEligibility
         {
             return false;
         }
-        int2 cell = Positions[drone].Value;
+        int2 cell = dronePosition.Value;
         int2 anchor = Positions[station].Value;
-        int2 size = Footprints[station].GetEffectiveSize(Directions[station].dir);
+        int2 size = footprint.GetEffectiveSize(direction.dir);
         return math.all(math.floor(position.xy) == cell) && math.all(cell >= anchor) &&
             (long)cell.x < (long)anchor.x + size.x && (long)cell.y < (long)anchor.y + size.y;
     }

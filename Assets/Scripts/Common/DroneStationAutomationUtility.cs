@@ -26,26 +26,41 @@ internal static class DroneStationAutomationUtility
     {
         foreach (Entity station in owners)
         {
-            if (!DroneTargetPointUtility.TryGetTargetPoint(manager, station, out float2 point)) continue;
+            if (!DroneTargetPointUtility.TryGetTargetPoint(manager, station, out float2 point, out int2 anchor)) continue;
             var network = manager.GetComponentData<DroneStationNetworkDecision>(station);
             var items = manager.GetBuffer<StoredItemElement>(station, true);
             var docks = manager.GetBuffer<DockedDroneElement>(station, true);
+            int slotCount = manager.GetComponentData<Storage>(station).SlotCount;
+            bool hasReservations = slotCount > 0 && manager.HasBuffer<DroneStationReservedSlotElement>(station);
+            var reservations = hasReservations ? manager.GetBuffer<DroneStationReservedSlotElement>(station, true) : default;
+            bool hasReadPreparing = false;
+            bool preparing = false;
             bool canDock = false;
-            for (int slot = 0; slot < manager.GetComponentData<Storage>(station).SlotCount; slot++)
+            for (int slot = 0; slot < slotCount; slot++)
             {
-                bool occupied = DroneStationRelocationUtility.IsReserved(manager, station, slot);
+                bool occupied = hasReservations && DroneStationRelocationUtility.IsReserved(reservations, slot);
                 foreach (var item in items) occupied |= item.SlotIndex == slot;
                 foreach (var dock in docks) occupied |= dock.SlotIndex == slot;
-                if (!occupied && !manager.HasComponent<PreparingStationDemolition>(station))
+                if (occupied)
+                {
+                    continue;
+                }
+                if (!hasReadPreparing)
+                {
+                    preparing = manager.HasComponent<PreparingStationDemolition>(station);
+                    hasReadPreparing = true;
+                }
+                if (!preparing)
                 {
                     canDock = true;
                     break;
                 }
             }
+            bool hasStamp = manager.HasComponent<PlacementStamp>(station);
             flights.Add(new DroneFlightStation { Entity = station, Position = point, Network = network.RepresentativeStation,
-                Bounds = network.ActivityBounds, Anchor = manager.GetComponentData<GridPosition>(station).Value,
-                CanDock = canDock, HasStamp = manager.HasComponent<PlacementStamp>(station),
-                Stamp = manager.HasComponent<PlacementStamp>(station) ? manager.GetComponentData<PlacementStamp>(station) : default });
+                Bounds = network.ActivityBounds, Anchor = anchor,
+                CanDock = canDock, HasStamp = hasStamp,
+                Stamp = hasStamp ? manager.GetComponentData<PlacementStamp>(station) : default });
         }
     }
 

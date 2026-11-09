@@ -145,9 +145,8 @@ internal struct ApplyResearchProgressJob : IJob
             publishedRecipes.Add(recipe);
         }
         ECB.SetComponent(Registry, default(ResearchState));
-        if (ResetResults.HasComponent(Registry))
+        if (ResetResults.TryGetComponent(Registry, out var notice))
         {
-            var notice = ResetResults[Registry];
             notice.Revision++;
             notice.Reason = ResearchCycleResetReasonEnum.ResearchCompleted;
             ECB.SetComponent(Registry, notice);

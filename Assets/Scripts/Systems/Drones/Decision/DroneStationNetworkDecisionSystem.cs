@@ -2,6 +2,7 @@ using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
+using Unity.Mathematics;
 
 /// <summary>
 /// EndBuilding 이후 원본 정거장의 활동 영역으로 연결 성분과 대표를 판단한다.
@@ -37,13 +38,13 @@ public partial struct DroneStationNetworkDecisionSystem : ISystem
         {
             Stations = stations.AsDeferredJobArray(), Bounds = bounds, Parents = parents,
             Config = SystemAPI.GetSingletonEntity<BuildingConfig>(),
-            ConfigLookup = state.GetBufferLookup<BuildingConfigElement>(true),
-            TypeLookup = state.GetComponentLookup<BuildingType>(true),
-            PositionLookup = state.GetComponentLookup<GridPosition>(true),
-            DirectionLookup = state.GetComponentLookup<Direction>(true),
-            FootprintLookup = state.GetComponentLookup<BuildingFootprint>(true),
-            StampLookup = state.GetComponentLookup<PlacementStamp>(true),
-            DecisionLookup = state.GetComponentLookup<DroneStationNetworkDecision>(),
+            ConfigLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
+            TypeLookup = SystemAPI.GetComponentLookup<BuildingType>(true),
+            PositionLookup = SystemAPI.GetComponentLookup<GridPosition>(true),
+            DirectionLookup = SystemAPI.GetComponentLookup<Direction>(true),
+            FootprintLookup = SystemAPI.GetComponentLookup<BuildingFootprint>(true),
+            StampLookup = SystemAPI.GetComponentLookup<PlacementStamp>(true),
+            DecisionLookup = SystemAPI.GetComponentLookup<DroneStationNetworkDecision>(),
             ECB = ecbSystem.CreateCommandBuffer()
         }.Schedule(entitiesReady);
         state.Dependency = JobHandle.CombineDependencies(stations.Dispose(handle), bounds.Dispose(handle), parents.Dispose(handle));
@@ -83,6 +84,7 @@ internal struct DecideDroneStationNetworkJob : IJob
         Bounds.ResizeUninitialized(Stations.Length);
         Parents.ResizeUninitialized(Stations.Length);
         var configs = ConfigLookup[Config];
+        StationComparisonKey leftRootKey = default;
         for (int i = 0; i < Stations.Length; i++)
         {
             Entity station = Stations[i];
@@ -93,7 +95,8 @@ internal struct DecideDroneStationNetworkJob : IJob
                 return;
             }
             Parents[i] = i;
-            Bounds[i] = DroneStationRangeUtility.GetActivityBounds(PositionLookup[station].Value,
+            int2 position = PositionLookup[station].Value;
+            Bounds[i] = DroneStationRangeUtility.GetActivityBounds(position,
                 FootprintLookup[station].Size, DirectionLookup[station].dir, config.DroneStationRangeInChunks);
         }
         for (int i = 0; i < Stations.Length; i++)
@@ -104,8 +107,14 @@ internal struct DecideDroneStationNetworkJob : IJob
                 int left = FindRoot(i);
                 int right = FindRoot(j);
                 if (left == right) continue;
-                if (CompareStations(Stations[left], Stations[right]) <= 0) Parents[right] = left;
-                else Parents[left] = right;
+                if (CompareStations(Stations[left], Stations[right], ref leftRootKey) <= 0)
+                {
+                    Parents[right] = left;
+                }
+                else
+                {
+                    Parents[left] = right;
+                }
             }
         }
         for (int i = 0; i < Stations.Length; i++)
@@ -130,11 +139,24 @@ internal struct DecideDroneStationNetworkJob : IJob
         return index;
     }
 
-    private int CompareStations(Entity left, Entity right)
+    private struct StationComparisonKey
     {
-        bool hasLeft = StampLookup.HasComponent(left);
-        bool hasRight = StampLookup.HasComponent(right);
-        return PlacementStamp.Compare(hasLeft, hasLeft ? StampLookup[left] : default, PositionLookup[left].Value,
-            hasRight, hasRight ? StampLookup[right] : default, PositionLookup[right].Value);
+        public Entity Station;
+        public int2 Position;
+        public bool HasStamp;
+        public PlacementStamp Stamp;
+    }
+
+    private int CompareStations(Entity left, Entity right, ref StationComparisonKey leftRootKey)
+    {
+        if (leftRootKey.Station != left)
+        {
+            leftRootKey.Station = left;
+            leftRootKey.HasStamp = StampLookup.TryGetComponent(left, out leftRootKey.Stamp);
+            leftRootKey.Position = PositionLookup[left].Value;
+        }
+        bool hasRight = StampLookup.TryGetComponent(right, out var rightStamp);
+        return PlacementStamp.Compare(leftRootKey.HasStamp, leftRootKey.Stamp, leftRootKey.Position,
+            hasRight, rightStamp, PositionLookup[right].Value);
     }
 }

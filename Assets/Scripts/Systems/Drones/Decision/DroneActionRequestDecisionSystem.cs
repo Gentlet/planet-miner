@@ -131,11 +131,10 @@ public partial struct DroneActionRequestDecisionSystem : ISystem
             {
                 return;
             }
-            if (!Assignments.HasComponent(link.Assignment))
+            if (!Assignments.TryGetComponent(link.Assignment, out var assignment))
             {
                 return;
             }
-            var assignment = Assignments[link.Assignment];
             if (assignment.Worker != entity || assignment.LastAppliedActionSequence == ulong.MaxValue)
             {
                 return;

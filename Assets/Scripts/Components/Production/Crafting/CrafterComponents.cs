@@ -27,7 +27,7 @@ public enum CrafterStatusEnum : byte
 public struct CrafterState : IComponentData
 {
     public int SelectedRecipeId; // 현재 지정된 레시피 ID
-    public int ActiveRecipeId;   // 현재 동기화되어 가동 중인 레시피 ID (변경 감지용)
+    public int ActiveRecipeId;   // 생성/레시피 변경 때 SelectedRecipeId와 함께 기록하는 값. 현재 실행 경로에서는 읽지 않는다.
     public float Progress;       // 0.0f ~ 1.0f
     public float Speed;          // 제작 기본 속도 배율 (기본 1.0f)
     public CrafterStatusEnum Status;

@@ -1,4 +1,3 @@
-#if UNITY_EDITOR || DEVELOPMENT_BUILD
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -63,6 +62,12 @@ public partial class WorldInvariantValidationSystem : SystemBase
     protected override void OnCreate()
     {
         base.OnCreate();
+        // 관리 코드 variant와 무관하게 기존 Editor/Development Player의 진단 범위를 유지한다.
+        Enabled = Debug.isDebugBuild;
+        if (!Enabled)
+        {
+            return;
+        }
         // Logs/InvariantErrors/ 경로 설정 (프로젝트 루트 기준)
         _logDirectory = Path.GetFullPath(Path.Combine(Application.dataPath, "..", "Logs", "InvariantErrors"));
         _reportSessionId = Guid.NewGuid().ToString("N");
@@ -100,17 +105,20 @@ public partial class WorldInvariantValidationSystem : SystemBase
             resourceFenceRw.ValueRW.Complete();
         }
 
+        bool hasItemSpatialIndex = SystemAPI.TryGetSingleton<ItemSpatialIndex>(out var itemSpatialIndex);
+        ComponentLookup<BeltMovementState>? beltMovementLookup = null;
+
         // 월드 실물과 공간 인덱스의 양방향 정합성.
-        ValidateItemAndSpatialInvariants();
+        ValidateItemAndSpatialInvariants(hasItemSpatialIndex, itemSpatialIndex);
 
         // 정상 소비돼야 하는 일반 이전/삭제 요청의 잔류 검사. 여기서 대신 소비하지 않는다.
         ValidateRequestLifecycleInvariants();
 
         // 벨트 이동 계획 소비와 위치/간격 검사.
-        ValidateBeltInvariants();
+        ValidateBeltInvariants(hasItemSpatialIndex, itemSpatialIndex, ref beltMovementLookup);
 
         // 소유 버퍼/Owner 참조와 보관 슬롯 규칙 검사.
-        ValidateStorageInvariants();
+        ValidateStorageInvariants(hasItemSpatialIndex, itemSpatialIndex, ref beltMovementLookup);
         ValidateDroneStationInvariants();
 
         // 승인된 입출고/라우팅 결정의 잔류 검사.
@@ -123,9 +131,9 @@ public partial class WorldInvariantValidationSystem : SystemBase
     /// <summary>
     /// Item 도메인 및 공간 인덱스(ItemSpatialIndex) 간의 양방향 정합성을 검증.
     /// </summary>
-    private void ValidateItemAndSpatialInvariants()
+    private void ValidateItemAndSpatialInvariants(bool hasSpatialIndex, in ItemSpatialIndex spatialIndex)
     {
-        if (!SystemAPI.TryGetSingleton<ItemSpatialIndex>(out var spatialIndex) || !spatialIndex.Map.IsCreated)
+        if (!hasSpatialIndex || !spatialIndex.Map.IsCreated)
         {
             return;
         }
@@ -198,7 +206,8 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 }
 
                 // 필수 컴포넌트 보유 확인
-                if (!SystemAPI.HasComponent<ItemOwnership>(itemEntity) || !SystemAPI.HasComponent<GridPosition>(itemEntity))
+                if (!SystemAPI.TryGetComponent<ItemOwnership>(itemEntity, out var ownership) ||
+                    !SystemAPI.TryGetComponent<GridPosition>(itemEntity, out var gridPos))
                 {
                     ReportViolation(
                         "SpatialIndex",
@@ -207,9 +216,6 @@ public partial class WorldInvariantValidationSystem : SystemBase
                     );
                     continue;
                 }
-
-                var ownership = SystemAPI.GetComponent<ItemOwnership>(itemEntity);
-                var gridPos = SystemAPI.GetComponent<GridPosition>(itemEntity);
 
                 // 보관(Stored) 아이템이 잘못 등록되었는지 확인
                 if (!ownership.IsWorldItem)
@@ -275,19 +281,15 @@ public partial class WorldInvariantValidationSystem : SystemBase
     /// - 3. GameConstants의 타일 수용량 초과 및 ItemSpacing 침범 감시
     /// - 4. 연속된 타일 경계 횡단 간격(Boundary Gap) 침범 감시
     /// </summary>
-    private void ValidateBeltInvariants()
+    private void ValidateBeltInvariants(bool hasSpatialIndex, in ItemSpatialIndex itemSpatialIndex,
+        ref ComponentLookup<BeltMovementState>? sharedBeltMovementLookup)
     {
-        if (SystemAPI.TryGetSingletonRW<BeltSpatialIndexFence>(out var beltFenceRw))
-        {
-            beltFenceRw.ValueRW.Complete();
-        }
-
         if (!SystemAPI.TryGetSingleton<BeltSpatialIndex>(out var beltIndex) || !beltIndex.Map.IsCreated)
         {
             return;
         }
 
-        if (!SystemAPI.TryGetSingleton<ItemSpatialIndex>(out var itemSpatialIndex) || !itemSpatialIndex.Map.IsCreated)
+        if (!hasSpatialIndex || !itemSpatialIndex.Map.IsCreated)
         {
             return;
         }
@@ -331,7 +333,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
         var beltKvpArray = beltIndex.Map.GetKeyValueArrays(Allocator.Temp);
         try
         {
-            var beltMovementLookup = SystemAPI.GetComponentLookup<BeltMovementState>(true);
+            var beltMovementLookup = sharedBeltMovementLookup ??= SystemAPI.GetComponentLookup<BeltMovementState>(true);
             var itemOwnershipLookup = SystemAPI.GetComponentLookup<ItemOwnership>(true);
 
             var progressList = new NativeList<float>(16, Allocator.Temp);
@@ -350,13 +352,12 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 {
                     do
                     {
-                        if (SystemAPI.Exists(itemEntity) &&
-                            itemOwnershipLookup.HasComponent(itemEntity) &&
-                            itemOwnershipLookup[itemEntity].IsWorldItem &&
-                            beltMovementLookup.HasComponent(itemEntity) &&
+                        if (itemOwnershipLookup.TryGetComponent(itemEntity, out var ownership) &&
+                            ownership.IsWorldItem &&
+                            beltMovementLookup.TryGetComponent(itemEntity, out var movement) &&
                             beltMovementLookup.IsComponentEnabled(itemEntity))
                         {
-                            progressList.Add(beltMovementLookup[itemEntity].Progress);
+                            progressList.Add(movement.Progress);
                             entityList.Add(itemEntity);
                         }
                     } while (itemSpatialIndex.TryGetNextItem(out itemEntity, ref it));
@@ -417,13 +418,12 @@ public partial class WorldInvariantValidationSystem : SystemBase
                     {
                         do
                         {
-                            if (SystemAPI.Exists(nextItem) &&
-                                itemOwnershipLookup.HasComponent(nextItem) &&
-                                itemOwnershipLookup[nextItem].IsWorldItem &&
-                                beltMovementLookup.HasComponent(nextItem) &&
+                            if (itemOwnershipLookup.TryGetComponent(nextItem, out var nextOwnership) &&
+                                nextOwnership.IsWorldItem &&
+                                beltMovementLookup.TryGetComponent(nextItem, out var nextMovement) &&
                                 beltMovementLookup.IsComponentEnabled(nextItem))
                             {
-                                float prog = beltMovementLookup[nextItem].Progress;
+                                float prog = nextMovement.Progress;
                                 if (prog < minNextProgress)
                                 {
                                     minNextProgress = prog;
@@ -531,21 +531,21 @@ public partial class WorldInvariantValidationSystem : SystemBase
     /// 소유권 양방향 무결성 및 월드 상태 비활성화를 검사하고,
     /// Storage에만 슬롯 범위·품목·정원·필터 규칙을 적용한다.
     /// </summary>
-    private void ValidateStorageInvariants()
+    private void ValidateStorageInvariants(bool hasSpatialIndex, in ItemSpatialIndex itemSpatialIndex,
+        ref ComponentLookup<BeltMovementState>? sharedBeltMovementLookup)
     {
+        StorageValidationRegistryContext registryContext = default;
         // 참조 무결성은 Storage 용량과 독립적이다. 공사 현장의 보관 버퍼도 검사한다.
         ValidateOwnedBufferReferences();
 
         // 1. [정방향 검증] Stored Item -> Storage Buffer
-        var itemIdentityLookup = SystemAPI.GetComponentLookup<ItemIdentity>(true);
-        var beltMovementLookup = SystemAPI.GetComponentLookup<BeltMovementState>(true);
+        var beltMovementLookup = sharedBeltMovementLookup ??= SystemAPI.GetComponentLookup<BeltMovementState>(true);
         var inputDecisionLookup = SystemAPI.GetComponentLookup<BuildingItemInputDecision>(true);
         var storedBufferLookup = SystemAPI.GetBufferLookup<StoredItemElement>(true);
         var productBufferLookup = SystemAPI.GetBufferLookup<ProductItemElement>(true);
 
-        foreach (var (ownership, entity) in
-                 SystemAPI.Query<RefRO<ItemOwnership>>()
-                          .WithAll<ItemIdentity>()
+        foreach (var (ownership, identity, entity) in
+                 SystemAPI.Query<RefRO<ItemOwnership>, RefRO<ItemIdentity>>()
                           .WithEntityAccess())
         {
             if (ownership.ValueRO.IsWorldItem)
@@ -555,8 +555,9 @@ public partial class WorldInvariantValidationSystem : SystemBase
 
             Entity owner = ownership.ValueRO.Owner;
 
-            // A. Owner 엔티티 실존 여부 확인
-            if (!SystemAPI.Exists(owner))
+            // A. 첫 버퍼 조회로 Owner의 생존 여부를 확인한다.
+            bool hasStoredBuffer = storedBufferLookup.TryGetBuffer(owner, out var buffer, out bool ownerExists);
+            if (!ownerExists)
             {
                 ReportViolation(
                     "StorageInvariant",
@@ -567,8 +568,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
             }
 
             // B. Owner 엔티티의 StoredItemElement 또는 ProductItemElement 버퍼 보유 여부 확인
-            bool hasStoredBuffer = storedBufferLookup.HasBuffer(owner);
-            bool hasProductBuffer = productBufferLookup.HasBuffer(owner);
+            bool hasProductBuffer = productBufferLookup.TryGetBuffer(owner, out var prodBuffer);
 
             if (!hasStoredBuffer && !hasProductBuffer)
             {
@@ -586,7 +586,6 @@ public partial class WorldInvariantValidationSystem : SystemBase
 
             if (hasProductBuffer)
             {
-                var prodBuffer = productBufferLookup[owner];
                 for (int i = 0; i < prodBuffer.Length; i++)
                 {
                     if (prodBuffer[i].ItemEntity == entity)
@@ -600,7 +599,6 @@ public partial class WorldInvariantValidationSystem : SystemBase
             
             if (!foundInBuffer && hasStoredBuffer)
             {
-                var buffer = storedBufferLookup[owner];
                 for (int i = 0; i < buffer.Length; i++)
                 {
                     if (buffer[i].ItemEntity == entity)
@@ -623,17 +621,14 @@ public partial class WorldInvariantValidationSystem : SystemBase
             else
             {
                 // D. 아이템 타입 일치 확인
-                if (itemIdentityLookup.HasComponent(entity))
+                var itemType = identity.ValueRO.Type;
+                if (bufferItemType != itemType)
                 {
-                    var itemType = itemIdentityLookup[entity].Type;
-                    if (bufferItemType != itemType)
-                    {
-                        ReportViolation(
-                            "StorageInvariant",
-                            $"Item type mismatch: Item entity ({entity.Index}:{entity.Version}) is {itemType}, but buffer in Storage ({owner.Index}:{owner.Version}) records {bufferItemType}.",
-                            entity
-                        );
-                    }
+                    ReportViolation(
+                        "StorageInvariant",
+                        $"Item type mismatch: Item entity ({entity.Index}:{entity.Version}) is {itemType}, but buffer in Storage ({owner.Index}:{owner.Version}) records {bufferItemType}.",
+                        entity
+                    );
                 }
             }
 
@@ -661,13 +656,8 @@ public partial class WorldInvariantValidationSystem : SystemBase
         DynamicBuffer<ItemConfigElement> itemConfigs = default;
         bool hasItemRegistry = SystemAPI.TryGetSingletonEntity<ItemRegistry>(out var itemRegistryEntity);
         var itemConfigLookup = SystemAPI.GetBufferLookup<ItemConfigElement>(true);
-        bool hasItemConfig = hasItemRegistry && itemConfigLookup.HasBuffer(itemRegistryEntity);
-        if (hasItemConfig)
-        {
-            itemConfigs = itemConfigLookup[itemRegistryEntity];
-        }
+        bool hasItemConfig = hasItemRegistry && itemConfigLookup.TryGetBuffer(itemRegistryEntity, out itemConfigs);
 
-        bool hasSpatialIndex = SystemAPI.TryGetSingleton<ItemSpatialIndex>(out var itemSpatialIndex);
         var storageFilterLookup = SystemAPI.GetComponentLookup<StorageFilter>(true);
         var inputSlotLookup = SystemAPI.GetBufferLookup<BuildingInputSlotElement>(true);
         var buildingTypeLookup = SystemAPI.GetComponentLookup<BuildingType>(true);
@@ -677,11 +667,9 @@ public partial class WorldInvariantValidationSystem : SystemBase
                           .WithEntityAccess())
         {
             int slotCount = storage.ValueRO.SlotCount;
-            bool hasInputSlots = inputSlotLookup.HasBuffer(storageEntity);
-            DynamicBuffer<BuildingInputSlotElement> inputSlots = default;
+            bool hasInputSlots = inputSlotLookup.TryGetBuffer(storageEntity, out var inputSlots);
             if (hasInputSlots)
             {
-                inputSlots = inputSlotLookup[storageEntity];
                 if (inputSlots.Length != slotCount)
                 {
                     ReportViolation("StorageInvariant",
@@ -689,8 +677,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 }
             }
 
-            bool hasFilter = storageFilterLookup.HasComponent(storageEntity);
-            StorageFilter filter = hasFilter ? storageFilterLookup[storageEntity] : default;
+            bool hasFilter = storageFilterLookup.TryGetComponent(storageEntity, out var filter);
             // 일반 창고의 현재 필터는 새 입고에만 적용하며, 변경 전에 보관한 실물은 출고할 수 있다.
             bool validateStoredItemFilter = hasFilter &&
                 (!buildingTypeLookup.TryGetComponent(storageEntity, out var buildingType) ||
@@ -698,7 +685,8 @@ public partial class WorldInvariantValidationSystem : SystemBase
             bool allowsZeroSlots = hasInputSlots && inputSlots.Length == 0 && buffer.Length == 0 &&
                                    hasFilter && filter.Mode == StorageFilterMode.Whitelist &&
                                    filter.Mask.Part0 == 0 && filter.Mask.Part1 == 0 &&
-                                   (IsCrafterWithoutInputRequirements(storageEntity) || IsResearchWithoutInputSlots(storageEntity));
+                                   (IsCrafterWithoutInputRequirements(storageEntity, ref registryContext) ||
+                                    IsResearchWithoutInputSlots(storageEntity, ref registryContext));
             if (slotCount < 0 || slotCount > GameConstants.MaxStorageSlots ||
                 (slotCount == 0 && !allowsZeroSlots))
             {
@@ -723,9 +711,10 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 }
 
                 // C. 보관된 아이템이 ItemSpatialIndex에 잘못 등록되어 있는지 확인
-                if (hasSpatialIndex && itemSpatialIndex.Map.IsCreated && SystemAPI.HasComponent<GridPosition>(itemEntity))
+                if (hasSpatialIndex && itemSpatialIndex.Map.IsCreated &&
+                    SystemAPI.TryGetComponent<GridPosition>(itemEntity, out var position))
                 {
-                    int2 gridPos = SystemAPI.GetComponent<GridPosition>(itemEntity).Value;
+                    int2 gridPos = position.Value;
                     if (itemSpatialIndex.TryGetFirstItem(gridPos, out Entity foundItem, out var it))
                     {
                         do
@@ -839,9 +828,10 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 }
 
                 // C. 보관된 아이템이 ItemSpatialIndex에 잘못 등록되어 있는지 확인
-                if (hasSpatialIndex && itemSpatialIndex.Map.IsCreated && SystemAPI.HasComponent<GridPosition>(itemEntity))
+                if (hasSpatialIndex && itemSpatialIndex.Map.IsCreated &&
+                    SystemAPI.TryGetComponent<GridPosition>(itemEntity, out var position))
                 {
-                    int2 gridPos = SystemAPI.GetComponent<GridPosition>(itemEntity).Value;
+                    int2 gridPos = position.Value;
                     if (itemSpatialIndex.TryGetFirstItem(gridPos, out Entity foundItem, out var it))
                     {
                         do
@@ -920,7 +910,16 @@ public partial class WorldInvariantValidationSystem : SystemBase
         }
     }
 
-    private bool IsResearchWithoutInputSlots(Entity building)
+    private struct StorageValidationRegistryContext
+    {
+        public bool HasReadRecipes;
+        public bool HasRecipes;
+        public DynamicBuffer<RecipeConfigElement> Recipes;
+        public bool HasReadResearchIngredients;
+        public bool ResearchIngredientsEmpty;
+    }
+
+    private bool IsResearchWithoutInputSlots(Entity building, ref StorageValidationRegistryContext context)
     {
         if (!EntityManager.HasComponent<ResearchCycleState>(building) ||
             !EntityManager.HasComponent<ResearchInputConfigured>(building))
@@ -931,40 +930,48 @@ public partial class WorldInvariantValidationSystem : SystemBase
         {
             return true;
         }
-        using var query = EntityManager.CreateEntityQuery(typeof(ResearchRegistry));
-        return query.CalculateEntityCount() == 1 &&
-            EntityManager.GetBuffer<ResearchIngredientElement>(query.GetSingletonEntity(), true).IsEmpty;
+        if (!context.HasReadResearchIngredients)
+        {
+            using var query = EntityManager.CreateEntityQuery(typeof(ResearchRegistry));
+            context.ResearchIngredientsEmpty = query.CalculateEntityCount() == 1 &&
+                EntityManager.GetBuffer<ResearchIngredientElement>(query.GetSingletonEntity(), true).IsEmpty;
+            context.HasReadResearchIngredients = true;
+        }
+        return context.ResearchIngredientsEmpty;
     }
 
     /// <summary>
     /// 레시피 미선택 또는 무재료 레시피의 유효한 0슬롯 구성을 확인.
     /// </summary>
-    private bool IsCrafterWithoutInputRequirements(Entity building)
+    private bool IsCrafterWithoutInputRequirements(Entity building, ref StorageValidationRegistryContext context)
     {
-        if (!SystemAPI.HasComponent<CrafterState>(building))
+        if (!SystemAPI.TryGetComponent<CrafterState>(building, out var crafterState))
         {
             return false;
         }
 
-        int recipeId = SystemAPI.GetComponent<CrafterState>(building).SelectedRecipeId;
+        int recipeId = crafterState.SelectedRecipeId;
         if (recipeId <= 0)
         {
             return true;
         }
 
         // 유효한 무재료 레시피도 계산 결과가 0슬롯이다.
-        if (!SystemAPI.TryGetSingletonEntity<RecipeRegistry>(out var recipeRegistryEntity))
+        if (!context.HasReadRecipes)
+        {
+            if (SystemAPI.TryGetSingletonEntity<RecipeRegistry>(out var recipeRegistryEntity))
+            {
+                var recipeConfigLookup = SystemAPI.GetBufferLookup<RecipeConfigElement>(true);
+                context.HasRecipes = recipeConfigLookup.TryGetBuffer(recipeRegistryEntity, out context.Recipes);
+            }
+            context.HasReadRecipes = true;
+        }
+        if (!context.HasRecipes)
         {
             return false;
         }
 
-        var recipeConfigLookup = SystemAPI.GetBufferLookup<RecipeConfigElement>(true);
-        if (!recipeConfigLookup.HasBuffer(recipeRegistryEntity))
-        {
-            return false;
-        }
-
-        var recipes = recipeConfigLookup[recipeRegistryEntity];
+        var recipes = context.Recipes;
         if (!RecipeConfigLookupUtility.TryGetRecipeIndex(recipes, recipeId, out int recipeIndex))
         {
             return false;
@@ -1013,7 +1020,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
             foreach (var entry in docked)
             {
                 bool valid = registered.Add(entry.Drone) && slots.Add(entry.SlotIndex) &&
-                    entry.SlotIndex >= 0 && entry.SlotIndex < total && EntityManager.Exists(entry.Drone) &&
+                    entry.SlotIndex >= 0 && entry.SlotIndex < total &&
                     EntityManager.HasComponent<DroneDocked>(entry.Drone) && EntityManager.HasComponent<DroneWorker>(entry.Drone) &&
                     !EntityManager.HasComponent<ItemIdentity>(entry.Drone);
                 if (valid)
@@ -1145,7 +1152,8 @@ public partial class WorldInvariantValidationSystem : SystemBase
                     continue;
                 }
 
-                if (!SystemAPI.HasComponent<ResourceNode>(resourceEntity) || !SystemAPI.HasComponent<GridPosition>(resourceEntity))
+                if (!SystemAPI.HasComponent<ResourceNode>(resourceEntity) ||
+                    !SystemAPI.TryGetComponent<GridPosition>(resourceEntity, out var position))
                 {
                     ReportViolation(
                         "ResourceSpatial",
@@ -1155,7 +1163,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
                     continue;
                 }
 
-                int2 nodePos = SystemAPI.GetComponent<GridPosition>(resourceEntity).Value;
+                int2 nodePos = position.Value;
                 if (!nodePos.Equals(pos))
                 {
                     ReportViolation(
@@ -1227,4 +1235,3 @@ public partial class WorldInvariantValidationSystem : SystemBase
         Debug.Break();
     }
 }
-#endif

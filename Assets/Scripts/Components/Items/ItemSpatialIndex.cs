@@ -7,7 +7,7 @@ using Unity.Mathematics;
 /// 역할·목적: 한 셀의 복수 월드 아이템을 조회하는 파생 공간 인덱스다. ECS 좌표/소유권 원본을 대체하지 않는다.
 /// 부착 엔티티: ItemSpatialIndexFence와 함께 있는 World 단일 인덱스 엔티티다.
 /// 생성: ItemSpatialSyncSystem.OnCreate가 Persistent Native 맵을 생성하여 붙인다.
-/// 이용: ItemSpatialSyncSystem(Synchronization)이 매 틱 Clear 후 현재 ECS 원본을 재등록하고 BuildingPlacementCommandSystem(Command), 벨트·출고·라우팅 Decision, BeltDestinationReservationSystem(Reservation), BuildingLifecycleApplySystem(StateApply)이 읽는다.
+/// 이용: ItemSpatialSyncSystem(Synchronization)이 매 틱 Clear 후 현재 ECS 원본을 재등록하고 BuildingPlacementCommandSystem(Command), 벨트·출고·라우팅 Decision, BeltDestinationReservationSystem(Reservation)이 읽는다.
 /// 제거: 엔티티 개별 삭제를 즉시 맵에서 반영하지 않고 다음 Synchronization에 재구축한다. SyncSystem.OnDestroy가 Fence 완료 후 Native 맵을 Dispose한다.
 /// 동일 틱 구조 변경은 아직 이 맵에 없을 수 있으며 Reader는 ItemSpatialIndexFence 의존성을 등록해야 한다.
 /// </summary>

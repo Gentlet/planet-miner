@@ -71,5 +71,8 @@ public struct DroneStationRelocationIntentElement : IBufferElementData
     public bool SetDeparturePosition;
 }
 
-/// <summary>재배치 소유자의 정거장 요청 표식이다. 자기 결과만 소비하며 일반 자동 요청과 섞지 않는다.</summary>
+/// <summary>
+/// 재배치 소유자가 요청 생성 시 부착하고 결과 소비로 요청이 삭제될 때까지 유지하는 분류 표식이다.
+/// Lifecycle Decision이 존재 여부를 기록하고 최종 Apply가 재사용한다. 자기 결과만 소비하며 일반 자동 요청과 섞지 않는다.
+/// </summary>
 public struct DroneStationRelocationRequest : IComponentData { }

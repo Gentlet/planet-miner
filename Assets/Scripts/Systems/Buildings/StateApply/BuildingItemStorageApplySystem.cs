@@ -141,7 +141,7 @@ public partial struct BuildingItemInputApplyJob : IJobEntity
         }
 
         Entity building = inputDecision.TargetBuilding;
-        if (!StoredBufferLookup.HasBuffer(building))
+        if (!StoredBufferLookup.TryGetBuffer(building, out var buffer))
         {
             inputDecision.CanDeposit = false;
             inputDecision.TargetSlotIndex = -1;
@@ -149,7 +149,6 @@ public partial struct BuildingItemInputApplyJob : IJobEntity
             return;
         }
 
-        var buffer = StoredBufferLookup[building];
         buffer.Add(new StoredItemElement(entity, itemIdentity.Type, inputDecision.TargetSlotIndex));
 
         // 벨트 이동 상태 비활성화 (보관 상태로 진입)
@@ -219,13 +218,12 @@ public partial struct BuildingItemOutputApplyJob : IJobEntity
         }
 
         // 생산물 버퍼 또는 창고 버퍼에서 아이템 제거
-        if (ProductBufferLookup.HasBuffer(buildingEntity))
+        if (ProductBufferLookup.TryGetBuffer(buildingEntity, out var productBuffer))
         {
-            var buffer = ProductBufferLookup[buildingEntity];
             int removeIndex = -1;
-            for (int i = 0; i < buffer.Length; i++)
+            for (int i = 0; i < productBuffer.Length; i++)
             {
-                if (buffer[i].ItemEntity == itemToOutput)
+                if (productBuffer[i].ItemEntity == itemToOutput)
                 {
                     removeIndex = i;
                     break;
@@ -234,16 +232,15 @@ public partial struct BuildingItemOutputApplyJob : IJobEntity
 
             if (removeIndex != -1)
             {
-                buffer.RemoveAt(removeIndex);
+                productBuffer.RemoveAt(removeIndex);
             }
         }
-        else if (StoredBufferLookup.HasBuffer(buildingEntity))
+        else if (StoredBufferLookup.TryGetBuffer(buildingEntity, out var storedBuffer))
         {
-            var buffer = StoredBufferLookup[buildingEntity];
             int removeIndex = -1;
-            for (int i = 0; i < buffer.Length; i++)
+            for (int i = 0; i < storedBuffer.Length; i++)
             {
-                if (buffer[i].ItemEntity == itemToOutput)
+                if (storedBuffer[i].ItemEntity == itemToOutput)
                 {
                     removeIndex = i;
                     break;
@@ -252,7 +249,7 @@ public partial struct BuildingItemOutputApplyJob : IJobEntity
 
             if (removeIndex != -1)
             {
-                buffer.RemoveAt(removeIndex);
+                storedBuffer.RemoveAt(removeIndex);
             }
         }
 

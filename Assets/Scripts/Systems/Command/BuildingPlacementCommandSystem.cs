@@ -84,14 +84,11 @@ public partial struct BuildingPlacementCommandSystem : ISystem
         NativeArray<BuildingConfigElement> configs = default;
         NativeArray<BuildingConstructionMaterialElement> materials = default;
 
-        if (hasConfig)
-        {
-            var rawConfigs = state.EntityManager.GetBuffer<BuildingConfigElement>(configEntity);
-            configs = rawConfigs.ToNativeArray(Allocator.Temp);
+        var rawConfigs = state.EntityManager.GetBuffer<BuildingConfigElement>(configEntity);
+        configs = rawConfigs.ToNativeArray(Allocator.Temp);
 
-            var rawMaterials = state.EntityManager.GetBuffer<BuildingConstructionMaterialElement>(configEntity);
-            materials = rawMaterials.ToNativeArray(Allocator.Temp);
-        }
+        var rawMaterials = state.EntityManager.GetBuffer<BuildingConstructionMaterialElement>(configEntity);
+        materials = rawMaterials.ToNativeArray(Allocator.Temp);
 
         // 쿼리/Entity 순서는 접수 순서가 아니다. 후보 버퍼는 구조 변경 없이 처리 직전에 다시 얻는다.
         using var orderedRequests = new NativeList<PendingPlacement>(Allocator.Temp);
@@ -105,6 +102,9 @@ public partial struct BuildingPlacementCommandSystem : ISystem
         orderedRequests.AsArray().Sort(new ReceiptComparer());
         // 묶음 내부의 임시 선점과 구분한다. 최종 승인 뒤에만 쓰므로 Strict 실패가 후속 요청을 막지 않는다.
         using var approvedCells = new NativeParallelHashSet<int2>(16, Allocator.Temp);
+        var settingsRead = new BuildingSettingsUtility.SettingsReadContext(state.EntityManager);
+        ulong currentTick = 0;
+        bool currentTickRead = false;
         for (int requestIndex = 0; requestIndex < orderedRequests.Length; requestIndex++)
         {
             var pending = orderedRequests[requestIndex];
@@ -132,8 +132,9 @@ public partial struct BuildingPlacementCommandSystem : ISystem
 
             for (int i = 0; i < count; i++)
             {
-                candidates[i] = candidateBuffer[i];
-                if (!BuildingSettingsUtility.IsAllowed(state.EntityManager, candidateBuffer[i].TargetType, candidateBuffer[i].Settings))
+                var candidate = candidateBuffer[i];
+                candidates[i] = candidate;
+                if (!BuildingSettingsUtility.IsAllowed(candidate.TargetType, candidate.Settings, ref settingsRead))
                 {
                     settingsRejections[i] = PlacementValidationCode.InvalidBuildingSettings;
                 }
@@ -152,9 +153,16 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                 approvedCells: approvedCells, settingsRejections: settingsRejections);
 
             // 후보의 명시 Tick을 우선하되 버퍼 순서를 유지한다. 이 Stamp가 이후 최초 공급 우선순위의 근거가 된다.
-            ulong defaultTick = request.RequestTick > 0
-                ? request.RequestTick
-                : SystemAPI.GetSingleton<BuildingPlacementReceiptSequence>().CurrentTick;
+            ulong defaultTick = request.RequestTick;
+            if (defaultTick == 0)
+            {
+                if (!currentTickRead)
+                {
+                    currentTick = SystemAPI.GetSingleton<BuildingPlacementReceiptSequence>().CurrentTick;
+                    currentTickRead = true;
+                }
+                defaultTick = currentTick;
+            }
 
             for (int i = 0; i < count; i++)
             {
@@ -224,10 +232,13 @@ public partial struct BuildingPlacementCommandSystem : ISystem
             ecb.DestroyEntity(entity);
         }
 
-        if (hasConfig)
+        if (configs.IsCreated)
         {
-            if (configs.IsCreated) configs.Dispose();
-            if (materials.IsCreated) materials.Dispose();
+            configs.Dispose();
+        }
+        if (materials.IsCreated)
+        {
+            materials.Dispose();
         }
 
         BuildingPlacementRequestUtility.AdvanceTick(state.EntityManager);

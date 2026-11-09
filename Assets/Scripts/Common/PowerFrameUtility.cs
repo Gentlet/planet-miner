@@ -5,7 +5,6 @@ using Unity.Mathematics;
 public static class PowerFrameUtility
 {
     internal static bool TryGetRepresentative(ComponentLookup<Disabled> disabledLookup,
-        EntityStorageInfoLookup entityStorageLookup,
         ComponentLookup<PendingBuildingDemolition> pendingBuildingDemolitionLookup,
         ComponentLookup<PowerGridConnectionDecision> powerGridConnectionDecisionLookup,
         ComponentLookup<PowerGridTopologyDecision> powerGridTopologyDecisionLookup,
@@ -14,9 +13,10 @@ public static class PowerFrameUtility
     {
         representative = Entity.Null;
         Entity pole = entity;
-        if (!powerPoleLookup.HasComponent(entity))
+        bool isPowerPole = powerPoleLookup.HasComponent(entity);
+        if (!isPowerPole)
         {
-            if (!powerGridConnectionDecisionLookup.HasComponent(entity))
+            if (!powerGridConnectionDecisionLookup.TryGetComponent(entity, out var connection))
             {
                 return false;
             }
@@ -24,17 +24,17 @@ public static class PowerFrameUtility
             {
                 return false;
             }
-            pole = powerGridConnectionDecisionLookup[entity].PowerPole;
+            pole = connection.PowerPole;
             if (pole == Entity.Null)
             {
                 return true;
             }
         }
-        if (!entityStorageLookup.Exists(pole))
+        if (!isPowerPole && !powerPoleLookup.HasComponent(pole))
         {
             return false;
         }
-        if (!powerPoleLookup.HasComponent(pole) || !powerGridTopologyDecisionLookup.HasComponent(pole))
+        if (!powerGridTopologyDecisionLookup.TryGetComponent(pole, out var topology))
         {
             return false;
         }
@@ -43,17 +43,17 @@ public static class PowerFrameUtility
         {
             return false;
         }
-        representative = powerGridTopologyDecisionLookup[pole].RepresentativePole;
+        representative = topology.RepresentativePole;
         if (representative == Entity.Null)
         {
             return false;
         }
-        if (!entityStorageLookup.Exists(representative))
+        if (representative == pole)
         {
-            return false;
+            return true;
         }
         if (!powerPoleLookup.HasComponent(representative) ||
-            !powerGridTopologyDecisionLookup.HasComponent(representative))
+            !powerGridTopologyDecisionLookup.TryGetComponent(representative, out var representativeTopology))
         {
             return false;
         }
@@ -62,7 +62,7 @@ public static class PowerFrameUtility
         {
             return false;
         }
-        return powerGridTopologyDecisionLookup[representative].RepresentativePole == representative;
+        return representativeTopology.RepresentativePole == representative;
     }
 
     public static Entity GetRepresentative(Entity entity, ComponentLookup<PowerPole> poles,
@@ -80,7 +80,7 @@ public static class PowerFrameUtility
     public static bool HasAllocatedPower(Entity entity,
         ComponentLookup<PowerDemand> demands, ComponentLookup<PowerSupplyResult> supplies)
     {
-        if (!demands.HasComponent(entity) || !supplies.HasComponent(entity))
+        if (!demands.TryGetComponent(entity, out var demand) || !supplies.TryGetComponent(entity, out var supply))
         {
             return false;
         }
@@ -88,15 +88,34 @@ public static class PowerFrameUtility
         {
             return false;
         }
-        var supply = supplies[entity];
-        return demands[entity].RequestedEnergy > 0f && supply.AllocatedEnergy > 0f && supply.SupplyRatio > 0f;
+        return demand.RequestedEnergy > 0f && supply.AllocatedEnergy > 0f && supply.SupplyRatio > 0f;
+    }
+
+    public static bool HasAllocatedPower(Entity entity,
+        ComponentLookup<PowerDemand> demands, ComponentLookup<PowerSupplyResult> supplies, out float powerTimeRatio)
+    {
+        powerTimeRatio = 0f;
+        if (!demands.TryGetComponent(entity, out var demand) || !supplies.TryGetComponent(entity, out var supply))
+        {
+            return false;
+        }
+        if (!demands.IsComponentEnabled(entity))
+        {
+            return false;
+        }
+        float requested = demand.RequestedEnergy;
+        if (!(requested <= 0f || supply.AllocatedEnergy <= 0f || supply.SupplyRatio <= 0f))
+        {
+            powerTimeRatio = math.min(supply.SupplyRatio, supply.AllocatedEnergy / requested);
+        }
+        return requested > 0f && supply.AllocatedEnergy > 0f && supply.SupplyRatio > 0f;
     }
 
     /// <summary>공통 시간에 확정 공급률과 배정/요청 비율을 반영한 진행 가능 시간.</summary>
     public static float GetPoweredDeltaTime(Entity entity, float deltaTime,
         ComponentLookup<PowerDemand> demands, ComponentLookup<PowerSupplyResult> supplies)
     {
-        if (!demands.HasComponent(entity) || !supplies.HasComponent(entity))
+        if (!demands.TryGetComponent(entity, out var demand) || !supplies.TryGetComponent(entity, out var supply))
         {
             return 0f;
         }
@@ -104,8 +123,7 @@ public static class PowerFrameUtility
         {
             return 0f;
         }
-        float requested = demands[entity].RequestedEnergy;
-        var supply = supplies[entity];
+        float requested = demand.RequestedEnergy;
         if (requested <= 0f || supply.AllocatedEnergy <= 0f || supply.SupplyRatio <= 0f)
         {
             return 0f;

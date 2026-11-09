@@ -26,9 +26,9 @@ public partial struct DroneMovementExecutionSystem : ISystem
             Config = SystemAPI.GetSingleton<DroneMovementConfig>(), DeltaTime = SystemAPI.Time.DeltaTime,
             MaximumCharge = SystemAPI.GetSingleton<DroneBatteryConfig>().MaximumCharge,
             Candidates = _candidates.GetSingletonEntity(),
-            Invalidations = state.GetBufferLookup<DroneTaskInvalidationDecisionElement>(true),
-            ReturnReservations = state.GetBufferLookup<DroneReturnReservationElement>(true),
-            PostTransforms = state.GetComponentLookup<PostTransformMatrix>(true)
+            Invalidations = SystemAPI.GetBufferLookup<DroneTaskInvalidationDecisionElement>(true),
+            ReturnReservations = SystemAPI.GetBufferLookup<DroneReturnReservationElement>(true),
+            PostTransforms = SystemAPI.GetComponentLookup<PostTransformMatrix>(true)
         }.ScheduleParallel(state.Dependency);
     }
 
@@ -54,7 +54,8 @@ public partial struct DroneMovementExecutionSystem : ISystem
                 return;
             }
             // 이번 틱 승인된 취소만 멈춘다. 다음 판단에서 빈 드론 재배차/화물 복구를 재개한다.
-            foreach (var invalidation in Invalidations[Candidates])
+            var invalidations = Invalidations[Candidates];
+            foreach (var invalidation in invalidations)
             {
                 if (invalidation.Kind == DroneTaskInvalidationDecisionKindEnum.CancelAssignment &&
                     invalidation.Target == link.Assignment)
@@ -65,9 +66,8 @@ public partial struct DroneMovementExecutionSystem : ISystem
                     return;
                 }
             }
-            if (ReturnReservations.HasBuffer(Candidates))
+            if (ReturnReservations.TryGetBuffer(Candidates, out var reservations))
             {
-                var reservations = ReturnReservations[Candidates];
                 for (int i = 0; i < reservations.Length; i++)
                 {
                     if (reservations[i].Worker != entity)
@@ -85,7 +85,6 @@ public partial struct DroneMovementExecutionSystem : ISystem
             }
             if (decision.Purpose == DroneFlightPurposeEnum.Task || decision.Purpose == DroneFlightPurposeEnum.ChargingStop)
             {
-                var invalidations = Invalidations[Candidates];
                 for (int i = 0; i < invalidations.Length; i++)
                 {
                     var invalidation = invalidations[i];
@@ -166,7 +165,7 @@ public partial struct DroneMovementExecutionSystem : ISystem
             }
             transform.Position = new float3(next, transform.Position.z);
             position.Value = new int2((int)cellX, (int)cellY);
-            var post = PostTransforms.HasComponent(entity) ? PostTransforms[entity].Value : float4x4.identity;
+            var post = PostTransforms.TryGetComponent(entity, out var postTransform) ? postTransform.Value : float4x4.identity;
             world.Value = math.mul(transform.ToMatrix(), post);
             activity.Activity = DroneActivityKind.Moving;
             if (math.all(next == decision.Target))

@@ -32,17 +32,17 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
         var handle = new ReserveRelocationsJob
         {
             CandidateOwner = _candidates, Stations = stations,
-            Candidates = state.GetBufferLookup<DroneStationRelocationCandidateElement>(true),
-            Preparations = state.GetComponentLookup<PreparingStationDemolition>(),
-            Relocations = state.GetComponentLookup<DroneStationRelocation>(),
-            Reserved = state.GetBufferLookup<DroneStationReservedSlotElement>(),
-            Positions = state.GetComponentLookup<GridPosition>(true),
-            Footprints = state.GetComponentLookup<BuildingFootprint>(true), Directions = state.GetComponentLookup<Direction>(true),
-            Networks = state.GetComponentLookup<DroneStationNetworkDecision>(true), Storages = state.GetComponentLookup<Storage>(true),
-            Dedicated = state.GetComponentLookup<DroneStationStorage>(true), Stamps = state.GetComponentLookup<PlacementStamp>(true),
-            Pending = state.GetComponentLookup<PendingBuildingDemolition>(true),
-            Items = state.GetBufferLookup<StoredItemElement>(true), Docks = state.GetBufferLookup<DockedDroneElement>(true),
-            Workers = state.GetComponentLookup<DroneWorker>(true), Transforms = state.GetComponentLookup<LocalTransform>(true),
+            Candidates = SystemAPI.GetBufferLookup<DroneStationRelocationCandidateElement>(true),
+            Preparations = SystemAPI.GetComponentLookup<PreparingStationDemolition>(),
+            Relocations = SystemAPI.GetComponentLookup<DroneStationRelocation>(),
+            Reserved = SystemAPI.GetBufferLookup<DroneStationReservedSlotElement>(),
+            Positions = SystemAPI.GetComponentLookup<GridPosition>(true),
+            Footprints = SystemAPI.GetComponentLookup<BuildingFootprint>(true), Directions = SystemAPI.GetComponentLookup<Direction>(true),
+            Networks = SystemAPI.GetComponentLookup<DroneStationNetworkDecision>(true), Storages = SystemAPI.GetComponentLookup<Storage>(true),
+            Dedicated = SystemAPI.GetComponentLookup<DroneStationStorage>(true), Stamps = SystemAPI.GetComponentLookup<PlacementStamp>(true),
+            Pending = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true),
+            Items = SystemAPI.GetBufferLookup<StoredItemElement>(true), Docks = SystemAPI.GetBufferLookup<DockedDroneElement>(true),
+            Workers = SystemAPI.GetComponentLookup<DroneWorker>(true), Transforms = SystemAPI.GetComponentLookup<LocalTransform>(true),
             Maximum = SystemAPI.GetSingleton<DroneBatteryConfig>().MaximumCharge,
             Rate = SystemAPI.GetSingleton<DroneMovementConfig>().EnergyPerDistance, ECB = end.CreateCommandBuffer()
         }.Schedule(state.Dependency);
@@ -109,11 +109,17 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                     if (candidates[i].Source == seed.Source && candidates[i].Task == seed.Task && candidates[i].Replan == seed.Replan)
                         members.Add(candidates[i]);
                 bool replan = seed.Replan;
-                if (!replan && (!Preparations.HasComponent(seed.Source) || Preparations[seed.Source].Started)) continue;
+                PreparingStationDemolition preparation = default;
+                if (!replan && (!Preparations.TryGetComponent(seed.Source, out preparation) || preparation.Started))
+                {
+                    continue;
+                }
                 foreach (var member in members)
                 {
-                    if (!member.Replan || !Relocations.HasComponent(member.Drone)) continue;
-                    var old = Relocations[member.Drone];
+                    if (!member.Replan || !Relocations.TryGetComponent(member.Drone, out var old))
+                    {
+                        continue;
+                    }
                     RemoveReservation(old.Destination, member.Drone);
                 }
                 using var plans = new NativeList<SlotReservationPlan>(Allocator.Temp);
@@ -123,9 +129,8 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                 foreach (var plan in plans)
                 {
                     Reserved[plan.Destination].Add(new DroneStationReservedSlotElement { Drone = plan.Drone, SlotIndex = plan.Slot });
-                    if (Relocations.HasComponent(plan.Drone))
+                    if (Relocations.TryGetComponent(plan.Drone, out var relocation))
                     {
-                        var relocation = Relocations[plan.Drone];
                         relocation.Destination = plan.Destination; relocation.SlotIndex = plan.Slot;
                         Relocations[plan.Drone] = relocation;
                     }
@@ -140,7 +145,6 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                 }
                 if (!replan)
                 {
-                    var preparation = Preparations[seed.Source];
                     preparation.Started = true; preparation.TotalCount = plans.Length; preparation.CompletedCount = 0;
                     Preparations[seed.Source] = preparation;
                 }
@@ -156,27 +160,39 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             using var sourceChargingSlotsAfterDeparture = new NativeHashSet<int>(16, Allocator.Temp);
             CollectSourceChargingSlotsAfterDeparture(actors, sourceChargingSlotsAfterDeparture);
             using var slots = new NativeList<AvailableSlot>(Allocator.Temp);
+            bool hasSourceNetwork = Networks.TryGetComponent(actors[0].Source, out var sourceNetwork);
             for (int stationIndex = 0; stationIndex < Stations.Length; stationIndex++)
             {
                 Entity station = Stations[stationIndex];
                 if (Preparations.HasComponent(station) || Pending.HasComponent(station)) continue;
-                for (int index = 0; index < Storages[station].SlotCount; index++)
+                int slotCount = Storages[station].SlotCount;
+                int dedicatedSlotCount = Dedicated[station].DedicatedSlotCount;
+                var storedItems = Items[station];
+                var dockedDrones = Docks[station];
+                bool sameNetwork = hasSourceNetwork &&
+                    Networks[station].RepresentativeStation == sourceNetwork.RepresentativeStation;
+                DynamicBuffer<DroneStationReservedSlotElement> reservations = default;
+                if (slotCount > 0)
                 {
-                    int slot = StationStorageUtility.SearchSlot(index, Storages[station].SlotCount,
-                        Dedicated[station].DedicatedSlotCount, ItemTypeEnum.Drone);
-                    bool occupied = DroneStationRelocationUtility.IsReserved(Reserved, station, slot);
-                    foreach (var item in Items[station]) occupied |= item.SlotIndex == slot;
-                    foreach (var dock in Docks[station]) occupied |= dock.SlotIndex == slot;
+                    Reserved.TryGetBuffer(station, out reservations);
+                }
+                for (int index = 0; index < slotCount; index++)
+                {
+                    int slot = StationStorageUtility.SearchSlot(index, slotCount, dedicatedSlotCount, ItemTypeEnum.Drone);
+                    bool occupied = reservations.IsCreated && DroneStationRelocationUtility.IsReserved(reservations, slot);
+                    foreach (var item in storedItems) occupied |= item.SlotIndex == slot;
+                    foreach (var dock in dockedDrones) occupied |= dock.SlotIndex == slot;
                     if (occupied) continue;
                     slots.Add(new AvailableSlot
                     {
                         Station = station, StationIndex = stationIndex, Slot = slot,
-                        SameNetwork = Networks.HasComponent(actors[0].Source) &&
-                            Networks[station].RepresentativeStation == Networks[actors[0].Source].RepresentativeStation
+                        SameNetwork = sameNetwork
                     });
                 }
             }
             if (slots.Length < actors.Length) return false;
+            using var origins = new NativeArray<ActorOriginRead>(actors.Length, Allocator.Temp);
+            using var geometry = new NativeHashMap<Entity, StationGeometryRead>(Stations.Length, Allocator.Temp);
             using var ownerStorage = new NativeArray<int>(slots.Length, Allocator.Temp);
             using var actorSlotStorage = new NativeArray<int>(actors.Length, Allocator.Temp);
             using var parentStorage = new NativeArray<int>(slots.Length, Allocator.Temp);
@@ -190,6 +206,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             var visitedActors = seenActorStorage;
             using var queue = new NativeList<int>(Allocator.Temp);
             using var distances = new NativeHashMap<int2, float>(16, Allocator.Temp);
+            bool chargingStationsReady = false;
             for (int i = 0; i < slotOwners.Length; i++) slotOwners[i] = -1;
             for (int i = 0; i < actorSlots.Length; i++) actorSlots[i] = -1;
             // 가까운 슬롯의 개별 선택이 나머지를 막으면 기존 매칭을 옮기는 증가 경로를 찾는다.
@@ -212,14 +229,18 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                             var key = new int2(actor, slots[slot].StationIndex);
                             if (!distances.TryGetValue(key, out float distance))
                             {
-                                BuildChargingStationsForCohort(flights, actors[actor].Source, plans, sourceChargingSlotsAfterDeparture);
-                                var path = DroneFlightPlanningUtility.Plan(GetActorRouteOriginPosition(actors[actor]), GetStationCenterPosition(slots[slot].Station),
+                                if (!chargingStationsReady)
+                                {
+                                    BuildChargingStationsForCohort(flights, actors[actor].Source, plans, sourceChargingSlotsAfterDeparture, geometry);
+                                    chargingStationsReady = true;
+                                }
+                                var path = DroneFlightPlanningUtility.Plan(GetActorRouteOriginPosition(actors[actor], actor, origins), GetStationCenterPosition(slots[slot].Station, geometry),
                                     Maximum, Maximum, Rate, flights);
                                 distance = path.Status == DroneRouteEvaluationStatusEnum.Reachable ? path.Distance : float.MaxValue;
                                 distances.Add(key, distance);
                             }
                             if (distance == float.MaxValue) continue;
-                            if (best < 0 || IsPreferredDestination(slots[slot], distance, slots[best], bestDistance))
+                            if (best < 0 || IsPreferredDestination(slots[slot], distance, slots[best], bestDistance, geometry))
                             {
                                 best = slot;
                                 bestDistance = distance;
@@ -252,27 +273,38 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                 var slot = slots[actorSlots[i]];
                 plans.Add(new SlotReservationPlan { Drone = actors[i].Drone, Destination = slot.Station, Slot = slot.Slot });
             }
-            if (AreAssignedRoutesReachable(actors, plans, flights, sourceChargingSlotsAfterDeparture)) return true;
-            return TryBuildRoutePreservingAlternative(actors, slots, distances, flights, plans, sourceChargingSlotsAfterDeparture);
+            if (AreAssignedRoutesReachable(actors, plans, flights, sourceChargingSlotsAfterDeparture, origins, geometry))
+            {
+                return true;
+            }
+            return TryBuildRoutePreservingAlternative(actors, slots, distances, flights, plans, sourceChargingSlotsAfterDeparture, origins, geometry);
         }
 
         private bool IsPreferredDestination(in AvailableSlot candidate, float distance,
-            in AvailableSlot current, float currentDistance)
+            in AvailableSlot current, float currentDistance, NativeHashMap<Entity, StationGeometryRead> geometry)
         {
             if (candidate.SameNetwork != current.SameNetwork) return candidate.SameNetwork;
             if (distance != currentDistance) return distance < currentDistance;
-            return IsStationEarlierForTieBreak(candidate.Station, current.Station);
+            return IsStationEarlierForTieBreak(candidate.Station, current.Station, geometry);
         }
 
         private bool AreAssignedRoutesReachable(NativeList<DroneStationRelocationCandidateElement> actors,
             NativeList<SlotReservationPlan> plans, NativeList<DroneFlightStation> flights,
-            NativeHashSet<int> sourceChargingSlotsAfterDeparture)
+            NativeHashSet<int> sourceChargingSlotsAfterDeparture, NativeArray<ActorOriginRead> origins,
+            NativeHashMap<Entity, StationGeometryRead> geometry)
         {
+            if (plans.IsEmpty)
+            {
+                return true;
+            }
+            BuildChargingStationsForCohort(flights, actors[0].Source, plans, sourceChargingSlotsAfterDeparture, geometry);
             for (int i = 0; i < plans.Length; i++)
             {
-                BuildChargingStationsForCohort(flights, actors[i].Source, plans, sourceChargingSlotsAfterDeparture);
-                if (DroneFlightPlanningUtility.Plan(GetActorRouteOriginPosition(actors[i]), GetStationCenterPosition(plans[i].Destination),
-                    Maximum, Maximum, Rate, flights).Status != DroneRouteEvaluationStatusEnum.Reachable) return false;
+                if (DroneFlightPlanningUtility.Plan(GetActorRouteOriginPosition(actors[i], i, origins), GetStationCenterPosition(plans[i].Destination, geometry),
+                    Maximum, Maximum, Rate, flights).Status != DroneRouteEvaluationStatusEnum.Reachable)
+                {
+                    return false;
+                }
             }
             return true;
         }
@@ -280,7 +312,8 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
         private bool TryBuildRoutePreservingAlternative(NativeList<DroneStationRelocationCandidateElement> actors,
             NativeList<AvailableSlot> slots, NativeHashMap<int2, float> distances,
             NativeList<DroneFlightStation> flights, NativeList<SlotReservationPlan> plans,
-            NativeHashSet<int> sourceChargingSlotsAfterDeparture)
+            NativeHashSet<int> sourceChargingSlotsAfterDeparture, NativeArray<ActorOriginRead> origins,
+            NativeHashMap<Entity, StationGeometryRead> geometry)
         {
             plans.Clear();
             using var optionStorage = new NativeList<StationRouteOption>(Allocator.Temp);
@@ -289,17 +322,20 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             var options = optionStorage;
             var ranges = rangeStorage;
             var nextOptions = nextStorage;
+            if (!actors.IsEmpty)
+            {
+                BuildChargingStationsForCohort(flights, actors[0].Source, plans, sourceChargingSlotsAfterDeparture, geometry);
+            }
             for (int actor = 0; actor < actors.Length; actor++)
             {
                 ranges[actor] = options.Length;
-                BuildChargingStationsForCohort(flights, actors[actor].Source, plans, sourceChargingSlotsAfterDeparture);
                 for (int firstSlotIndex = 0; firstSlotIndex < slots.Length;)
                 {
                     var key = new int2(actor, slots[firstSlotIndex].StationIndex);
                     if (!distances.TryGetValue(key, out float distance))
                     {
-                        var path = DroneFlightPlanningUtility.Plan(GetActorRouteOriginPosition(actors[actor]),
-                            GetStationCenterPosition(slots[firstSlotIndex].Station), Maximum, Maximum, Rate, flights);
+                        var path = DroneFlightPlanningUtility.Plan(GetActorRouteOriginPosition(actors[actor], actor, origins),
+                            GetStationCenterPosition(slots[firstSlotIndex].Station, geometry), Maximum, Maximum, Rate, flights);
                         distance = path.Status == DroneRouteEvaluationStatusEnum.Reachable ? path.Distance : float.MaxValue;
                         distances.Add(key, distance);
                     }
@@ -309,7 +345,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                         int insertion = options.Length;
                         options.Add(option);
                         while (insertion > ranges[actor] && IsPreferredDestination(slots[firstSlotIndex], distance,
-                            slots[options[insertion - 1].FirstSlotIndex], options[insertion - 1].Distance))
+                            slots[options[insertion - 1].FirstSlotIndex], options[insertion - 1].Distance, geometry))
                         {
                             options[insertion] = options[insertion - 1];
                             insertion--;
@@ -347,7 +383,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                     Drone = actors[currentActor].Drone, Destination = slot.Station, Slot = slot.Slot
                 });
                 // 추가 예약은 경유 공간을 줄이기만 하므로 부분 계획에서 막힌 가지는 확장하지 않는다.
-                if (!AreAssignedRoutesReachable(actors, plans, flights, sourceChargingSlotsAfterDeparture))
+                if (!AreAssignedRoutesReachable(actors, plans, flights, sourceChargingSlotsAfterDeparture, origins, geometry))
                 {
                     plans.RemoveAt(plans.Length - 1);
                     continue;
@@ -372,18 +408,47 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             return -1;
         }
 
-        private float2 GetActorRouteOriginPosition(in DroneStationRelocationCandidateElement actor) => Workers.HasComponent(actor.Drone)
-            ? Transforms[actor.Drone].Position.xy : (float2)Positions[actor.Source].Value;
-
-        private float2 GetStationCenterPosition(Entity station) => (float2)Positions[station].Value +
-            (float2)Footprints[station].GetEffectiveSize(Directions[station].dir) * 0.5f;
-
-        private bool IsStationEarlierForTieBreak(Entity left, Entity right)
+        private struct ActorOriginRead
         {
-            if (Stamps.HasComponent(left) && Stamps.HasComponent(right))
+            public bool HasRead;
+            public float2 Position;
+        }
+
+        private struct StationGeometryRead
+        {
+            public int2 Position;
+            public float2 Center;
+            public Entity Network;
+            public bool HasStamp;
+            public PlacementStamp Stamp;
+        }
+
+        private float2 GetActorRouteOriginPosition(in DroneStationRelocationCandidateElement actor, int index,
+            NativeArray<ActorOriginRead> origins)
+        {
+            var origin = origins[index];
+            if (!origin.HasRead)
             {
-                int order = PlacementStamp.Compare(true, Stamps[left], Positions[left].Value,
-                    true, Stamps[right], Positions[right].Value);
+                origin.Position = Workers.HasComponent(actor.Drone)
+                    ? Transforms[actor.Drone].Position.xy : (float2)Positions[actor.Source].Value;
+                origin.HasRead = true;
+                origins[index] = origin;
+            }
+            return origin.Position;
+        }
+
+        private static float2 GetStationCenterPosition(Entity station,
+            NativeHashMap<Entity, StationGeometryRead> geometry) => geometry[station].Center;
+
+        private static bool IsStationEarlierForTieBreak(Entity left, Entity right,
+            NativeHashMap<Entity, StationGeometryRead> geometry)
+        {
+            var leftGeometry = geometry[left];
+            var rightGeometry = geometry[right];
+            if (leftGeometry.HasStamp && rightGeometry.HasStamp)
+            {
+                int order = PlacementStamp.Compare(true, leftGeometry.Stamp, leftGeometry.Position,
+                    true, rightGeometry.Stamp, rightGeometry.Position);
                 return order < 0;
             }
             return left.Index < right.Index || (left.Index == right.Index && left.Version < right.Version);
@@ -394,18 +459,35 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             NativeHashSet<int> slotsAfterDeparture)
         {
             Entity source = actors[0].Source;
-            if (!Storages.HasComponent(source)) return;
+            if (!Storages.TryGetComponent(source, out var storage))
+            {
+                return;
+            }
+            if (storage.SlotCount <= 0)
+            {
+                return;
+            }
             using var departingActors = new NativeHashSet<Entity>(actors.Length, Allocator.Temp);
             if (!actors[0].Replan)
                 foreach (var actor in actors) departingActors.Add(actor.Drone);
-            for (int slot = 0; slot < Storages[source].SlotCount; slot++)
+            bool hasReservations = Reserved.TryGetBuffer(source, out var reservations);
+            var items = Items[source];
+            var docks = Docks[source];
+            for (int slot = 0; slot < storage.SlotCount; slot++)
             {
-                bool occupied = DroneStationRelocationUtility.IsReserved(Reserved, source, slot);
-                foreach (var item in Items[source])
+                bool occupied = hasReservations && DroneStationRelocationUtility.IsReserved(reservations, slot);
+                foreach (var item in items)
+                {
                     occupied |= item.SlotIndex == slot && !departingActors.Contains(item.ItemEntity);
-                foreach (var dock in Docks[source])
+                }
+                foreach (var dock in docks)
+                {
                     occupied |= dock.SlotIndex == slot && !departingActors.Contains(dock.Drone);
-                if (!occupied) slotsAfterDeparture.Add(slot);
+                }
+                if (!occupied)
+                {
+                    slotsAfterDeparture.Add(slot);
+                }
             }
         }
 
@@ -413,19 +495,41 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             NativeList<SlotReservationPlan> plans, NativeHashSet<int> sourceChargingSlotsAfterDeparture)
         {
             int total = Storages[station].SlotCount;
+            if (total <= 0)
+            {
+                return -1;
+            }
+            int dedicatedSlots = Dedicated[station].DedicatedSlotCount;
+            bool isSource = station == source;
+            bool hasReservations = false;
+            DynamicBuffer<DroneStationReservedSlotElement> reservations = default;
+            DynamicBuffer<StoredItemElement> items = default;
+            DynamicBuffer<DockedDroneElement> docks = default;
+            if (!isSource)
+            {
+                hasReservations = Reserved.TryGetBuffer(station, out reservations);
+                items = Items[station];
+                docks = Docks[station];
+            }
             for (int index = 0; index < total; index++)
             {
-                int slot = StationStorageUtility.SearchSlot(index, total, Dedicated[station].DedicatedSlotCount, ItemTypeEnum.Drone);
+                int slot = StationStorageUtility.SearchSlot(index, total, dedicatedSlots, ItemTypeEnum.Drone);
                 bool occupied;
-                if (station == source)
+                if (isSource)
                 {
                     occupied = !sourceChargingSlotsAfterDeparture.Contains(slot);
                 }
                 else
                 {
-                    occupied = DroneStationRelocationUtility.IsReserved(Reserved, station, slot);
-                    foreach (var item in Items[station]) occupied |= item.SlotIndex == slot;
-                    foreach (var dock in Docks[station]) occupied |= dock.SlotIndex == slot;
+                    occupied = hasReservations && DroneStationRelocationUtility.IsReserved(reservations, slot);
+                    foreach (var item in items)
+                    {
+                        occupied |= item.SlotIndex == slot;
+                    }
+                    foreach (var dock in docks)
+                    {
+                        occupied |= dock.SlotIndex == slot;
+                    }
                 }
                 foreach (var plan in plans) occupied |= plan.Destination == station && plan.Slot == slot;
                 if (!occupied) return slot;
@@ -434,27 +538,42 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
         }
 
         private void BuildChargingStationsForCohort(NativeList<DroneFlightStation> flights, Entity source,
-            NativeList<SlotReservationPlan> plans, NativeHashSet<int> sourceChargingSlotsAfterDeparture)
+            NativeList<SlotReservationPlan> plans, NativeHashSet<int> sourceChargingSlotsAfterDeparture,
+            NativeHashMap<Entity, StationGeometryRead> geometry)
         {
             flights.Clear();
             foreach (Entity station in Stations)
             {
                 if (Pending.HasComponent(station)) continue;
+                bool hasGeometry = geometry.TryGetValue(station, out var row);
+                if (!hasGeometry)
+                {
+                    row.HasStamp = Stamps.TryGetComponent(station, out row.Stamp);
+                    row.Position = Positions[station].Value;
+                    row.Center = (float2)row.Position + (float2)Footprints[station].GetEffectiveSize(Directions[station].dir) * 0.5f;
+                }
+                // 계획을 바꿀 때마다 실제 충전 공간을 다시 계산한다. 고정 기하/망만 cohort 안에서 공유한다.
+                bool canDock = (!Preparations.HasComponent(station) || station == source) &&
+                    FindChargingSlotAfterCohortDeparture(station, source, plans, sourceChargingSlotsAfterDeparture) >= 0;
+                if (!hasGeometry)
+                {
+                    row.Network = Networks[station].RepresentativeStation;
+                    geometry.Add(station, row);
+                }
                 flights.Add(new DroneFlightStation
                 {
-                    Entity = station, Position = GetStationCenterPosition(station),
-                    CanDock = (!Preparations.HasComponent(station) || station == source) &&
-                        FindChargingSlotAfterCohortDeparture(station, source, plans, sourceChargingSlotsAfterDeparture) >= 0,
-                    Network = Networks[station].RepresentativeStation, HasStamp = Stamps.HasComponent(station),
-                    Stamp = Stamps.HasComponent(station) ? Stamps[station] : default
+                    Entity = station, Position = row.Center, CanDock = canDock,
+                    Network = row.Network, HasStamp = row.HasStamp, Stamp = row.Stamp
                 });
             }
         }
 
         private void RemoveReservation(Entity station, Entity drone)
         {
-            if (!Reserved.HasBuffer(station)) return;
-            var rows = Reserved[station];
+            if (!Reserved.TryGetBuffer(station, out var rows))
+            {
+                return;
+            }
             for (int i = rows.Length - 1; i >= 0; i--)
                 if (rows[i].Drone == drone) rows.RemoveAt(i);
         }

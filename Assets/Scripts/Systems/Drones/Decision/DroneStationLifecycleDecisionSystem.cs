@@ -8,11 +8,13 @@ public partial struct DroneStationLifecycleDecisionSystem : ISystem
     private EntityQueryMask _stationMask;
     private EntityQueryMask _itemMask;
     private EntityQueryMask _workerMask;
+    private DroneStationEligibility _eligibility;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
         DroneStationEligibility.CreateMasks(ref state, out _stationMask, out _itemMask, out _workerMask);
+        _eligibility = DroneStationEligibility.Create(ref state, _stationMask, _itemMask, _workerMask);
         state.RequireForUpdate<PrefabDatabaseReady>();
         state.RequireForUpdate<DroneBatteryConfig>();
     }
@@ -20,9 +22,10 @@ public partial struct DroneStationLifecycleDecisionSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
+        _eligibility.Update(ref state);
         state.Dependency = new DroneStationLifecycleDecisionJob
         {
-            Eligibility = DroneStationEligibility.Create(ref state, _stationMask, _itemMask, _workerMask),
+            Eligibility = _eligibility,
             Automatic = SystemAPI.GetComponentLookup<DroneAutomaticStationRequest>(true),
             RelocationRequests = SystemAPI.GetComponentLookup<DroneStationRelocationRequest>(true),
             MaximumCharge = SystemAPI.GetSingleton<DroneBatteryConfig>().MaximumCharge
@@ -40,10 +43,13 @@ internal partial struct DroneStationLifecycleDecisionJob : IJobEntity
 
     public void Execute(Entity entity, in DroneStationRequest request, ref DroneStationDecision decision)
     {
-        var status = Eligibility.Validate(request, MaximumCharge, Automatic.HasComponent(entity) || RelocationRequests.HasComponent(entity), RelocationRequests.HasComponent(entity));
+        bool relocationRequest = RelocationRequests.HasComponent(entity);
+        bool automaticRequest = Automatic.HasComponent(entity);
+        var status = Eligibility.Validate(request, MaximumCharge, automaticRequest || relocationRequest, relocationRequest);
         decision = new DroneStationDecision
         {
-            Eligible = status == DroneStationRequestStatus.Applied, Status = status, SlotIndex = -1
+            Eligible = status == DroneStationRequestStatus.Applied, Status = status, SlotIndex = -1,
+            IsRelocationRequest = relocationRequest, IsAutomaticRequest = automaticRequest
         };
     }
 }

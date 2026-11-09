@@ -138,6 +138,8 @@ public partial struct MergerDecisionJob : IJobEntity
         // 기준 출력/입력 커서는 실제 전달 성공 때만 Apply가 바꾼다. 경합 탈락이 포트 순서를 소비하지 않게 판단과 상태를 분리한다.
         // 1. 기준 출력 벨트 결정
         Entity outputBelt = routingState.OutputBelt;
+        int2 outputBeltPos = default;
+        bool hasOutputPosition = false;
         DirectionEnum forwardDir = routingState.ForwardDirection;
 
         if (PendingBuildingDemolitionLookup.HasComponent(outputBelt))
@@ -145,17 +147,23 @@ public partial struct MergerDecisionJob : IJobEntity
             outputBelt = Entity.Null;
         }
 
-        if (outputBelt == Entity.Null || !GridPositionLookup.HasComponent(outputBelt))
+        if (outputBelt == Entity.Null)
+        {
+            outputBelt = FindBestOutgoingBelt(mergerPos, out forwardDir);
+        }
+        else if (!GridPositionLookup.TryGetComponent(outputBelt, out var currentOutputPosition))
         {
             outputBelt = FindBestOutgoingBelt(mergerPos, out forwardDir);
         }
         else
         {
-            int2 outputPos = GridPositionLookup[outputBelt].Value;
-            if (!BeltMap.TryGetValue(outputPos, out BeltInfo currentOutputInfo) ||
-                !RoutingDirectionUtility.IsOutgoingBelt(mergerPos, outputPos, currentOutputInfo.Direction))
+            outputBeltPos = currentOutputPosition.Value;
+            hasOutputPosition = true;
+            if (!BeltMap.TryGetValue(outputBeltPos, out BeltInfo currentOutputInfo) ||
+                !RoutingDirectionUtility.IsOutgoingBelt(mergerPos, outputBeltPos, currentOutputInfo.Direction))
             {
                 outputBelt = FindBestOutgoingBelt(mergerPos, out forwardDir);
+                hasOutputPosition = false;
             }
         }
 
@@ -166,7 +174,10 @@ public partial struct MergerDecisionJob : IJobEntity
         }
 
         // 2. 출력 벨트 수용 공간 사전 검사
-        int2 outputBeltPos = GridPositionLookup[outputBelt].Value;
+        if (!hasOutputPosition)
+        {
+            outputBeltPos = GridPositionLookup[outputBelt].Value;
+        }
         if (!IsTargetBeltAvailable(outputBeltPos))
         {
             decisionEnabled.ValueRW = false;

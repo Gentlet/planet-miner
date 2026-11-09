@@ -164,7 +164,9 @@ public partial struct DroneStationRelocationDecisionSystem : ISystem
         bool stopUnstarted, bool destinationValid, float maximum, in DroneMovementConfig config,
         NativeList<DroneFlightStation> allFlights, NativeList<DroneStationRelocationIntentElement> intents)
     {
-        Hold(manager, drone, manager.HasComponent<DroneDocked>(drone) ? manager.GetComponentData<DroneDocked>(drone).Station : Entity.Null);
+        bool hasDocked = manager.HasComponent<DroneDocked>(drone);
+        Entity dockedStation = hasDocked ? manager.GetComponentData<DroneDocked>(drone).Station : Entity.Null;
+        Hold(manager, drone, dockedStation);
         var intent = new DroneStationRelocationIntentElement { Drone = drone, Stage = relocation.Stage };
         if (relocation.Request != Entity.Null)
         {
@@ -211,15 +213,14 @@ public partial struct DroneStationRelocationDecisionSystem : ISystem
         if (relocation.Stage == DroneStationRelocationStageEnum.Charging)
         {
             // 소실된 정박은 Station Lifecycle이 EndSimulation에 해제한 뒤 비행 판단을 재개한다.
-            if (!manager.HasComponent<DroneDocked>(drone))
+            if (!hasDocked)
             {
                 intent.Stage = DroneStationRelocationStageEnum.Travelling;
                 intents.Add(intent);
                 return;
             }
-            Entity dock = manager.GetComponentData<DroneDocked>(drone).Station;
             if (charge < maximum) return;
-            Submit(manager, drone, dock, dock == relocation.Destination ? DroneStationOperation.Store : DroneStationOperation.Activate,
+            Submit(manager, drone, dockedStation, dockedStation == relocation.Destination ? DroneStationOperation.Store : DroneStationOperation.Activate,
                 ref intent, intents);
             return;
         }
@@ -242,11 +243,12 @@ public partial struct DroneStationRelocationDecisionSystem : ISystem
             if (station.Entity == relocation.Destination) station.CanDock = true;
             if (station.Entity == relocation.Source)
             {
-                for (int slot = 0; slot < manager.GetComponentData<Storage>(station.Entity).SlotCount; slot++)
+                var sourceStorage = StationStorageUtility.StorageReadContext.Create(manager, station.Entity);
+                int slotCount = sourceStorage.SlotCount;
+                for (int slot = 0; slot < slotCount; slot++)
                 {
-                    bool occupied = StationStorageUtility.IsDockOccupied(manager, station.Entity, slot) ||
-                        DroneStationRelocationUtility.IsReserved(manager, station.Entity, slot);
-                    foreach (var item in manager.GetBuffer<StoredItemElement>(station.Entity, true)) occupied |= item.SlotIndex == slot;
+                    bool occupied = sourceStorage.IsDockOccupied(slot) || sourceStorage.IsReserved(slot);
+                    foreach (var item in sourceStorage.StoredItems) occupied |= item.SlotIndex == slot;
                     if (!occupied)
                     {
                         station.CanDock = true;

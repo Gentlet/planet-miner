@@ -138,6 +138,8 @@ public partial struct SplitterDecisionJob : IJobEntity
         // 영속 기준선은 실제 전달 성공 때만 Apply가 바꾼다. 여기서는 무효 연결을 다시 찾되 상태 원본은 유지한다.
         // 1. 기준 입력 벨트 결정
         Entity inputBelt = routingState.InputBelt;
+        int2 inputBeltPos = default;
+        bool hasInputPosition = false;
         DirectionEnum forwardDir = routingState.ForwardDirection;
 
         if (PendingBuildingDemolitionLookup.HasComponent(inputBelt))
@@ -145,17 +147,23 @@ public partial struct SplitterDecisionJob : IJobEntity
             inputBelt = Entity.Null;
         }
 
-        if (inputBelt == Entity.Null || !GridPositionLookup.HasComponent(inputBelt))
+        if (inputBelt == Entity.Null)
+        {
+            inputBelt = FindBestIncomingBelt(splitterPos, out forwardDir);
+        }
+        else if (!GridPositionLookup.TryGetComponent(inputBelt, out var currentInputPosition))
         {
             inputBelt = FindBestIncomingBelt(splitterPos, out forwardDir);
         }
         else
         {
-            int2 inputPos = GridPositionLookup[inputBelt].Value;
-            if (!BeltMap.TryGetValue(inputPos, out BeltInfo currentInputInfo) ||
-                !RoutingDirectionUtility.IsIncomingBelt(splitterPos, inputPos, currentInputInfo.Direction))
+            inputBeltPos = currentInputPosition.Value;
+            hasInputPosition = true;
+            if (!BeltMap.TryGetValue(inputBeltPos, out BeltInfo currentInputInfo) ||
+                !RoutingDirectionUtility.IsIncomingBelt(splitterPos, inputBeltPos, currentInputInfo.Direction))
             {
                 inputBelt = FindBestIncomingBelt(splitterPos, out forwardDir);
+                hasInputPosition = false;
             }
         }
 
@@ -166,7 +174,10 @@ public partial struct SplitterDecisionJob : IJobEntity
         }
 
         // 2. 입력 벨트 종단(Progress >= 1.0f - Epsilon)에 도달한 아이템 탐색
-        int2 inputBeltPos = GridPositionLookup[inputBelt].Value;
+        if (!hasInputPosition)
+        {
+            inputBeltPos = GridPositionLookup[inputBelt].Value;
+        }
         Entity candidateItem = FindItemAtBeltEnd(inputBeltPos);
 
         if (candidateItem == Entity.Null)

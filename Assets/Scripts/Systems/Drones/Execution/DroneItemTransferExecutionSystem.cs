@@ -105,14 +105,19 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
                 decision.MaximumQuantity = items.Length;
                 break;
             case DroneActionKindEnum.SupplyConstructionSite:
-                decision.WantedQuantity = manager.GetBuffer<StoredItemElement>(assignment.Worker, true).Length;
-                decision.MaximumQuantity = PrepareSupply(manager, request.Action.Assignment, assignment, items);
+            {
+                var cargo = manager.GetBuffer<StoredItemElement>(assignment.Worker, true);
+                decision.WantedQuantity = cargo.Length;
+                decision.MaximumQuantity = PrepareSupply(manager, request.Action.Assignment, assignment, cargo, items);
                 break;
+            }
             case DroneActionKindEnum.StoreCargo:
-                decision.WantedQuantity = manager.GetBuffer<StoredItemElement>(assignment.Worker, true).Length;
+            {
+                var cargo = manager.GetBuffer<StoredItemElement>(assignment.Worker, true);
+                decision.WantedQuantity = cargo.Length;
                 int capacity = CaptureStorageSlots(manager, assignment.Destination, assignment.ItemType,
                     registry, slots, decision.WantedQuantity, request.Action.Assignment, assignment.DestinationArea);
-                SelectStoredItems(manager, assignment.Worker, assignment.ItemType, items);
+                SelectStoredItems(manager, assignment.Worker, assignment.ItemType, cargo, items);
                 decision.MaximumQuantity = math.min(capacity, items.Length);
                 if (assignment.DestinationArea == DroneTransportAreaEnum.Input)
                 {
@@ -129,11 +134,15 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
                         manager.GetComponentData<DroneTransportReservation>(request.Action.Assignment).RemainingQuantity);
                 }
                 break;
+            }
             case DroneActionKindEnum.DropCargo:
-                decision.WantedQuantity = manager.GetBuffer<StoredItemElement>(assignment.Worker, true).Length;
-                SelectStoredItems(manager, assignment.Worker, assignment.ItemType, items);
+            {
+                var cargo = manager.GetBuffer<StoredItemElement>(assignment.Worker, true);
+                decision.WantedQuantity = cargo.Length;
+                SelectStoredItems(manager, assignment.Worker, assignment.ItemType, cargo, items);
                 decision.MaximumQuantity = items.Length;
                 break;
+            }
         }
         manager.SetComponentData(entity, decision);
     }
@@ -156,7 +165,8 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
         }
         else
         {
-            SelectStoredItems(manager, assignment.Source, assignment.ItemType, items,
+            SelectStoredItems(manager, assignment.Source, assignment.ItemType,
+                manager.GetBuffer<StoredItemElement>(assignment.Source, true), items,
                 task.Purpose == DroneTransportPurposeEnum.ResearchRecovery,
                 DroneSchedulingUtility.IsTransportKind(task.Kind) && assignment.SourceArea == DroneTransportAreaEnum.GeneralStorage);
         }
@@ -180,7 +190,7 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
     }
 
     private static int PrepareSupply(EntityManager manager, Entity entity, in DroneTaskAssignment assignment,
-        DynamicBuffer<DroneItemTransferItemDecisionElement> items)
+        DynamicBuffer<StoredItemElement> cargo, DynamicBuffer<DroneItemTransferItemDecisionElement> items)
     {
         // 자기 예약을 포함한 남은 필요량까지만 계획하고 이번 틱에 새로 수집될 실물은 포함하지 않는다.
         if (!DroneSchedulingUtility.IsSite(manager, assignment.Destination)) return 0;
@@ -188,14 +198,13 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
         var reservation = manager.GetComponentData<ConstructionSupplyReservation>(entity);
         int limit = math.min(reservation.RemainingQuantity, ConstructionSupplyReservationUtility.RemainingIncludingOwn(
             manager, assignment.Destination, assignment.ItemType, reservation.RemainingQuantity));
-        SelectStoredItems(manager, assignment.Worker, assignment.ItemType, items);
+        SelectStoredItems(manager, assignment.Worker, assignment.ItemType, cargo, items);
         return math.min(limit, items.Length);
     }
 
     private static void SelectStoredItems(EntityManager manager, Entity owner, ItemTypeEnum type,
-        DynamicBuffer<DroneItemTransferItemDecisionElement> selected, bool researchRecovery = false, bool generalOnly = false)
+        DynamicBuffer<StoredItemElement> stored, DynamicBuffer<DroneItemTransferItemDecisionElement> selected, bool researchRecovery = false, bool generalOnly = false)
     {
-        var stored = manager.GetBuffer<StoredItemElement>(owner, true);
         int general = generalOnly ? manager.GetComponentData<Storage>(owner).SlotCount - StationStorageUtility.ReadDedicatedCount(manager, owner) : int.MaxValue;
         for (int i = 0; i < stored.Length; i++)
         {
@@ -230,9 +239,10 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
             return 0;
         }
         int maxStack = ItemRegistry.GetMaxStack(manager.GetBuffer<ItemConfigElement>(registry, true), type);
-        int slotCount = math.min(manager.GetComponentData<Storage>(storage).SlotCount, GameConstants.MaxStorageSlots);
-        var stored = manager.GetBuffer<StoredItemElement>(storage, true);
-        bool hasInputSlots = manager.HasBuffer<BuildingInputSlotElement>(storage);
+        var storageRead = StationStorageUtility.StorageReadContext.Create(manager, storage);
+        int slotCount = math.min(storageRead.SlotCount, GameConstants.MaxStorageSlots);
+        var stored = storageRead.StoredItems;
+        bool hasInputSlots = storageRead.HasInputSlots;
         int available = 0;
         for (int slot = 0; slot < slotCount; slot++)
         {
@@ -253,12 +263,11 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
                 ItemCount = mixed ? math.max(maxStack, count) : count
             });
             bool allowed = StationStorageUtility.IsItemSlotAllowed(slot, slotCount,
-                StationStorageUtility.ReadDedicatedCount(manager, storage), type) &&
-                !StationStorageUtility.IsDockOccupied(manager, storage, slot) &&
-                !DroneStationRelocationUtility.IsReserved(manager, storage, slot);
+                storageRead.DedicatedSlotCount, type) &&
+                !storageRead.IsDockOccupied(slot) && !storageRead.IsReserved(slot);
             if (hasInputSlots)
             {
-                var inputs = manager.GetBuffer<BuildingInputSlotElement>(storage, true);
+                var inputs = storageRead.InputSlots;
                 allowed &= slot < inputs.Length && inputs[slot].ItemType == type;
             }
             if (!allowed || mixed || (currentType != ItemTypeEnum.None && currentType != type)) continue;

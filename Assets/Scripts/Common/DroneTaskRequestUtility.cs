@@ -120,11 +120,6 @@ public static class DroneTaskRequestUtility
             return false;
         }
 
-        if (!manager.Exists(request))
-        {
-            return false;
-        }
-
         if (manager.HasComponent<DroneTaskRequest>(request))
         {
             return false;

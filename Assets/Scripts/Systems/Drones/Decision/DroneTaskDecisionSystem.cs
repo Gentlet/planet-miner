@@ -59,6 +59,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         var demolitionDecisions = manager.GetBuffer<DroneDemolitionDecisionElement>(_candidates);
         demolitionDecisions.Clear();
         using var tasks = _tasks.ToEntityArray(Allocator.Temp);
+        using var taskReads = new NativeArray<TaskReadSnapshot>(tasks.Length, Allocator.Temp);
         using var sites = _sites.ToEntityArray(Allocator.Temp);
         using var storages = _storages.ToEntityArray(Allocator.Temp);
         using var workers = _workers.ToEntityArray(Allocator.Temp);
@@ -70,7 +71,9 @@ public partial struct DroneTaskDecisionSystem : ISystem
         var transportPlans = manager.GetBuffer<DroneTransportPlanDecisionElement>(_candidates);
         transportPlans.Clear();
         DroneTaskRequestDecisionUtility.Prepare(manager, _candidates, _taskRequests, tasks, sites, assignments);
-        BuildCreationDecisions(ref state);
+        // Prepare가 취소 결정을 모두 기록한 뒤, 같은 Decision 호출 안에서만 읽는다.
+        var cancellations = new DroneTaskRequestDecisionUtility.CancellationReadContext(manager, _candidates);
+        BuildCreationDecisions(ref state, ref cancellations);
         using var busyWorkers = new NativeHashSet<Entity>(16, Allocator.Temp);
         using var claimedRecoveryItems = new NativeHashSet<Entity>(16, Allocator.Temp);
         using var removedRoutes = new NativeHashSet<Entity>(16, Allocator.Temp);
@@ -80,8 +83,8 @@ public partial struct DroneTaskDecisionSystem : ISystem
         // 예약 해제는 Reservation, 종료 상태와 삭제 보류는 Lifecycle Apply가 각 소유 경계에서 처리한다.
         for (int t = 0; t < tasks.Length; t++)
         {
-            if (DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, tasks[t])) continue;
-            var task = manager.GetComponentData<DroneLogisticsTask>(tasks[t]);
+            if (cancellations.IsPlanned(tasks[t])) continue;
+            var task = ReadTask(manager, tasks, taskReads, t);
             if (task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition &&
                 manager.HasComponent<BuildingDemolitionResult>(tasks[t]))
             {
@@ -115,7 +118,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         {
             var assignment = manager.GetComponentData<DroneTaskAssignment>(assignments[a]);
             if (!DroneSchedulingUtility.IsTerminal(assignment.State) &&
-                DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, assignment.Task))
+                cancellations.IsPlanned(assignment.Task))
             {
                 invalidationDecisions.Add(new DroneTaskInvalidationDecisionElement
                 {
@@ -156,8 +159,8 @@ public partial struct DroneTaskDecisionSystem : ISystem
         var pendingPublications = manager.GetBuffer<DroneTaskPendingPublicationElement>(_candidates);
         var pendingTransport = manager.GetBuffer<DroneTransportPendingReservationElement>(_candidates, true);
         // 이미 적재한 자재의 목적지를 먼저 판단한다. 최종 선택·수량 확보 순서는 Reservation이 정한다.
-        BuildRetargetCandidates(manager, networks, assignments, tasks, sites, storages, registry, routes, pendingRoutes,
-            routeDecisions, removedRoutes, usedRoutes, candidates, pendingPublications, carryingCapacity);
+        BuildRetargetCandidates(manager, networks, assignments, tasks, taskReads, sites, storages, registry, routes, pendingRoutes,
+            routeDecisions, removedRoutes, usedRoutes, candidates, pendingPublications, carryingCapacity, ref cancellations);
         for (int w = 0; w < workers.Length; w++)
         {
             Entity worker = workers[w];
@@ -170,8 +173,8 @@ public partial struct DroneTaskDecisionSystem : ISystem
             }
             for (int t = 0; t < tasks.Length; t++)
             {
-                var task = manager.GetComponentData<DroneLogisticsTask>(tasks[t]);
-                if (DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, tasks[t]))
+                var task = ReadTask(manager, tasks, taskReads, t);
+                if (cancellations.IsPlanned(tasks[t]))
                 {
                     continue;
                 }
@@ -418,11 +421,12 @@ public partial struct DroneTaskDecisionSystem : ISystem
     }
 
     private void BuildRetargetCandidates(EntityManager manager, NativeArray<DroneStationNetworkDecision> networks, NativeArray<Entity> assignments,
-        NativeArray<Entity> tasks, NativeArray<Entity> sites, NativeArray<Entity> storages, Entity registry,
+        NativeArray<Entity> tasks, NativeArray<TaskReadSnapshot> taskReads, NativeArray<Entity> sites, NativeArray<Entity> storages, Entity registry,
         NativeArray<Entity> routes, NativeList<DroneRouteEvaluationRequest> pending,
         DynamicBuffer<DroneRouteDecisionElement> routeDecisions, NativeHashSet<Entity> removedRoutes,
         NativeHashSet<Entity> usedRoutes, DynamicBuffer<DroneTaskCandidateDecisionElement> candidates,
-        DynamicBuffer<DroneTaskPendingPublicationElement> pendingPublications, int capacity)
+        DynamicBuffer<DroneTaskPendingPublicationElement> pendingPublications, int capacity,
+        ref DroneTaskRequestDecisionUtility.CancellationReadContext cancellations)
     {
         // 공급원에서 가져온 적재품은 필요한 현장→보관처 순서로 찾는다.
         // 월드 회수품은 보관처만 찾으며, 보관되기 전에는 건설 현장에 직접 공급하지 않는다.
@@ -430,9 +434,9 @@ public partial struct DroneTaskDecisionSystem : ISystem
         {
             Entity entity = assignments[i];
             if (!DroneSchedulingUtility.IsRetargetingWorker(manager, entity, out var assignment, out int cargo)) continue;
-            if (DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, assignment.Task)) continue;
-            Entity network = DroneTaskNetworkUtility.FindWorkerNetwork(networks,
-                manager.GetComponentData<DroneWorkerObservation>(assignment.Worker).Position);
+            if (cancellations.IsPlanned(assignment.Task)) continue;
+            var observation = manager.GetComponentData<DroneWorkerObservation>(assignment.Worker);
+            Entity network = DroneTaskNetworkUtility.FindWorkerNetwork(networks, observation.Position);
             if (network == Entity.Null)
             {
                 continue;
@@ -448,13 +452,13 @@ public partial struct DroneTaskDecisionSystem : ISystem
             int quantity = cargo;
             if (origin == DroneCargoOriginEnum.Supply)
             {
-                selection = FindCargoDestination(manager, networks, network, entity, assignment, sites, true, assignments, sites,
+                selection = FindCargoDestination(manager, networks, network, entity, assignment, observation, sites, true, assignments, sites,
                     registry, routes, pending, routeDecisions, removedRoutes, usedRoutes, pendingPublications, capacity,
                     out destination, out route);
                 if (selection == CargoDestinationSelectionEnum.Waiting) continue;
                 if (selection == CargoDestinationSelectionEnum.Selected)
                 {
-                    task = FindSupplyTask(manager, tasks, destination, assignment.ItemType);
+                    task = FindSupplyTask(manager, tasks, taskReads, destination, assignment.ItemType, ref cancellations);
                     // 새 현장의 작업은 EndSimulation에 게시될 수 있다. 게시 전에는 보관으로 우회하지 않는다.
                     if (task == Entity.Null) continue;
                     action = DroneActionKindEnum.SupplyConstructionSite;
@@ -464,13 +468,13 @@ public partial struct DroneTaskDecisionSystem : ISystem
             }
             if (selection == CargoDestinationSelectionEnum.NoDestination)
             {
-                selection = FindCargoDestination(manager, networks, network, entity, assignment, storages, false, assignments, sites,
+                selection = FindCargoDestination(manager, networks, network, entity, assignment, observation, storages, false, assignments, sites,
                     registry, routes, pending, routeDecisions, removedRoutes, usedRoutes, pendingPublications, capacity,
                     out destination, out route);
                 if (selection == CargoDestinationSelectionEnum.Waiting) continue;
                 if (selection == CargoDestinationSelectionEnum.Selected) action = DroneActionKindEnum.StoreCargo;
             }
-            if (action == DroneActionKindEnum.DropCargo && !TrySelectDropPosition(manager, networks, network, entity, assignment,
+            if (action == DroneActionKindEnum.DropCargo && !TrySelectDropPosition(manager, networks, network, entity, assignment, observation,
                 routes, pending, routeDecisions, removedRoutes, usedRoutes, capacity, out route, out dropPosition)) continue;
             if (quantity <= 0) continue;
             candidates.Add(new DroneTaskCandidateDecisionElement
@@ -484,20 +488,19 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 Destination = destination,
                 RouteRequest = route,
                 ItemType = assignment.ItemType,
-                WorkerObservationRevision = manager.GetComponentData<DroneWorkerObservation>(assignment.Worker).Revision,
+                WorkerObservationRevision = observation.Revision,
                 Quantity = quantity
             });
         }
     }
 
     private bool TrySelectDropPosition(EntityManager manager, NativeArray<DroneStationNetworkDecision> networks,
-        Entity network, Entity entity, in DroneTaskAssignment assignment,
+        Entity network, Entity entity, in DroneTaskAssignment assignment, in DroneWorkerObservation observation,
         NativeArray<Entity> routes, NativeList<DroneRouteEvaluationRequest> pending,
         DynamicBuffer<DroneRouteDecisionElement> routeDecisions, NativeHashSet<Entity> removedRoutes,
         NativeHashSet<Entity> usedRoutes, int capacity, out Entity route, out int2 position)
     {
         route = Entity.Null;
-        var observation = manager.GetComponentData<DroneWorkerObservation>(assignment.Worker);
         position = (int2)math.floor(observation.Position.xy);
         // 현재 셀이 현장 밖이면 그대로 방출 목표로 삼는다. 안쪽이면 외부 평가자에게 도달 가능한 외부 셀을 요청한다.
         // 선택 목표는 이동 결과가 아니며 실제 방출은 Lifecycle이 관측/요청 위치와 목표 일치를 다시 검사한다.
@@ -521,7 +524,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
     }
 
     private CargoDestinationSelectionEnum FindCargoDestination(EntityManager manager, NativeArray<DroneStationNetworkDecision> networks, Entity network, Entity entity,
-        in DroneTaskAssignment assignment, NativeArray<Entity> destinations, bool supply,
+        in DroneTaskAssignment assignment, in DroneWorkerObservation observation, NativeArray<Entity> destinations, bool supply,
         NativeArray<Entity> assignments, NativeArray<Entity> sites, Entity registry, NativeArray<Entity> routes,
         NativeList<DroneRouteEvaluationRequest> pending, DynamicBuffer<DroneRouteDecisionElement> routeDecisions,
         NativeHashSet<Entity> removedRoutes, NativeHashSet<Entity> usedRoutes,
@@ -533,7 +536,6 @@ public partial struct DroneTaskDecisionSystem : ISystem
         float bestDistance = float.MaxValue;
         bool waiting = false;
         bool waitingForEnergy = false;
-        var observation = manager.GetComponentData<DroneWorkerObservation>(assignment.Worker);
         // 적재품은 공급원을 다시 거치지 않는 Direct 경로를 비교한다.
         // 경로 평가가 남으면 보관/방출로 우회하지 않고 기다리며, 완료 결과의 거리 동률은 PlacementStamp로 푼다.
         for (int i = 0; i < destinations.Length; i++)
@@ -585,15 +587,36 @@ public partial struct DroneTaskDecisionSystem : ISystem
         return bestDestination == Entity.Null ? CargoDestinationSelectionEnum.NoDestination : CargoDestinationSelectionEnum.Selected;
     }
 
-    private Entity FindSupplyTask(EntityManager manager, NativeArray<Entity> tasks, Entity site, ItemTypeEnum type)
+    // 같은 Decision 호출의 작업 원본만 재사용하고 취소 후보는 각 이용 시점에 확인한다.
+    private struct TaskReadSnapshot
+    {
+        public bool HasRead;
+        public DroneLogisticsTask Task;
+    }
+
+    private static DroneLogisticsTask ReadTask(EntityManager manager, NativeArray<Entity> tasks,
+        NativeArray<TaskReadSnapshot> reads, int index)
+    {
+        var snapshot = reads[index];
+        if (!snapshot.HasRead)
+        {
+            snapshot.Task = manager.GetComponentData<DroneLogisticsTask>(tasks[index]);
+            snapshot.HasRead = true;
+            reads[index] = snapshot;
+        }
+        return snapshot.Task;
+    }
+
+    private Entity FindSupplyTask(EntityManager manager, NativeArray<Entity> tasks, NativeArray<TaskReadSnapshot> taskReads,
+        Entity site, ItemTypeEnum type, ref DroneTaskRequestDecisionUtility.CancellationReadContext cancellations)
     {
         for (int i = 0; i < tasks.Length; i++)
         {
-            if (DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, tasks[i]))
+            if (cancellations.IsPlanned(tasks[i]))
             {
                 continue;
             }
-            var task = manager.GetComponentData<DroneLogisticsTask>(tasks[i]);
+            var task = ReadTask(manager, tasks, taskReads, i);
             if (task.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply && task.State == DroneLogisticsTaskStateEnum.Open &&
                 task.Target == site && task.ItemType == type) return tasks[i];
         }
@@ -622,7 +645,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
             ComponentType.ReadOnly<Direction>());
     }
 
-    private void BuildCreationDecisions(ref SystemState state)
+    private void BuildCreationDecisions(ref SystemState state, ref DroneTaskRequestDecisionUtility.CancellationReadContext cancellations)
     {
         var manager = state.EntityManager;
         var decisions = manager.GetBuffer<DroneTaskCreationDecisionElement>(_candidates);
@@ -631,7 +654,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         using var tasks = new NativeList<DroneLogisticsTask>(Allocator.Temp);
         foreach (Entity entity in entities)
         {
-            if (!DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, entity))
+            if (!cancellations.IsPlanned(entity))
             {
                 tasks.Add(manager.GetComponentData<DroneLogisticsTask>(entity));
             }
@@ -652,13 +675,14 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 continue;
             }
             using var types = new NativeHashSet<int>(8, Allocator.Temp);
-            foreach (var item in manager.GetBuffer<StoredItemElement>(building, true))
+            var sourceRead = new ResearchRecoveryUtility.ValidatedSourceReadContext(manager, building);
+            foreach (var item in sourceRead.StoredItems)
             {
                 if (!types.Add((int)item.ItemType))
                 {
                     continue;
                 }
-                int quantity = ResearchRecoveryUtility.Count(manager, building, item.ItemType);
+                int quantity = sourceRead.Count(item.ItemType);
                 if (quantity == 0 || DroneTaskRequestDecisionUtility.IsBlocked(manager, _candidates,
                     DroneTaskGenerationKey.From(DroneLogisticsTaskKindEnum.StorageExport, building, item.ItemType,
                         DroneTransportAreaEnum.Input, DroneTransportPurposeEnum.ResearchRecovery)))
@@ -791,10 +815,11 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 continue;
             }
 
-            var reason = manager.HasComponent<DroneRecoveryPending>(item)
+            bool hasRecovery = manager.HasComponent<DroneRecoveryPending>(item);
+            var reason = hasRecovery
                 ? manager.GetComponentData<DroneRecoveryPending>(item).Reason
                 : DroneRecoveryReasonEnum.None;
-            if (reason == DroneRecoveryReasonEnum.None && manager.HasComponent<DroneRecoveryPending>(item))
+            if (reason == DroneRecoveryReasonEnum.None && hasRecovery)
                 reason = DroneRecoveryReasonEnum.DroneDrop;
             if (reason == DroneRecoveryReasonEnum.None &&
                 IsInsideCreationSite(manager.GetComponentData<GridPosition>(item).Value, footprints))

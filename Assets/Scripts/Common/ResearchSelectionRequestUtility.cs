@@ -30,10 +30,6 @@ public static class ResearchSelectionRequestUtility
         {
             return false;
         }
-        if (!manager.Exists(request))
-        {
-            return false;
-        }
         if (manager.HasComponent<ResearchSelectionRequest>(request))
         {
             return false;

@@ -70,10 +70,6 @@ public partial struct ResourceGenerationCommandSystem : ISystem
             {
                 continue;
             }
-            if (!state.EntityManager.Exists(prefab))
-            {
-                return;
-            }
             if (!state.EntityManager.HasComponent<LocalTransform>(prefab))
             {
                 return;

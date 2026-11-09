@@ -4,7 +4,7 @@ using Unity.Mathematics;
 /// <summary>
 /// 역할·목적: 플레이어 배치 묶음의 충돌 정책·기본 Tick·World 접수 순서를 전달하는 일회성 요청 헤더.
 /// 부착 엔티티: PlacementRequestCandidateElement 버퍼를 가진 별도 배치 요청 엔티티. 현장/완공 건물에 붙이지 않는다.
-/// 생성: 플레이어 입력은 사전 확인 후 BuildingPlacementRequestUtility.Submit으로 요청과 후보를 함께 접수한다. 런타임 UI 연결은 후속이며 테스트도 같은 API를 사용한다.
+/// 생성: WorldConstructionController가 배치 입력을 사전 확인한 뒤 BuildingPlacementRequestUtility.Submit으로 요청과 후보를 함께 접수한다. 테스트도 같은 API를 사용한다.
 /// 이용: BuildingPlacementCommandSystem(Command)이 ReceiptSequence 순서로 최종 검증하고 현장 생성/벨트 방향 변경의 승인 셀을 이번 처리 동안 공유한다.
 /// 제거: 성공/실패와 관계없이 처리한 요청과 후보 버퍼를 EndCommand에서 삭제한다. 거부 요청을 자동 재시도하지 않는다.
 /// </summary>
@@ -45,7 +45,7 @@ public struct BuildingPlacementReceiptSequence : IComponentData
 /// <summary>
 /// 역할·목적: 요청 하나에 단일/다중 건물의 종류·기본 크기·좌하단 위치·방향·개별 Tick을 전달한다.
 /// 부착 엔티티: BuildingPlacementRequest와 같은 요청 엔티티의 버퍼. 후보 자체는 공사 현장의 상태가 아니다.
-/// 생성: 플레이어 입력이 Submit에 후보 묶음을 전달한다. 현재 연결된 호출자는 테스트이며 런타임 UI는 후속이다.
+/// 생성: WorldConstructionController.CompleteGesture가 BuildingPlacementRequestUtility.Submit에 후보 묶음을 전달하며 테스트도 같은 API를 사용한다.
 /// 이용: BuildingPlacementCommandSystem(Command)이 버퍼 순서로 검증하며, 승인 후보의 원래 인덱스를 PlacementStamp.Order로 사용한다.
 /// 개별 RequestTick이 양수이면 헤더/현재 Tick보다 우선하지만 후보의 처리 순서를 Tick으로 재정렬하지는 않는다.
 /// 제거: 처리 후 요청 엔티티와 함께 EndCommand에서 제거한다. 승인 후보의 값은 별도 현장 컴포넌트로 옮겨진다.

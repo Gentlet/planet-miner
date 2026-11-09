@@ -155,12 +155,12 @@ public partial struct BeltMovementDecisionJob : IJobEntity
             do
             {
                 if (otherItem != entity &&
-                    ItemOwnershipLookup.HasComponent(otherItem) &&
-                    ItemOwnershipLookup[otherItem].IsWorldItem &&
-                    BeltMovementStateLookup.HasComponent(otherItem) &&
+                    ItemOwnershipLookup.TryGetComponent(otherItem, out var otherOwnership) &&
+                    otherOwnership.IsWorldItem &&
+                    BeltMovementStateLookup.TryGetComponent(otherItem, out var otherState) &&
                     BeltMovementStateLookup.IsComponentEnabled(otherItem))
                 {
-                    float otherProg = BeltMovementStateLookup[otherItem].Progress;
+                    float otherProg = otherState.Progress;
                     if (otherProg > state.Progress + GameConstants.AlignmentEpsilon)
                     {
                         minAheadProgress = math.min(minAheadProgress, otherProg);
@@ -212,12 +212,12 @@ public partial struct BeltMovementDecisionJob : IJobEntity
             do
             {
                 if (nextItem != entity &&
-                    ItemOwnershipLookup.HasComponent(nextItem) &&
-                    ItemOwnershipLookup[nextItem].IsWorldItem &&
-                    BeltMovementStateLookup.HasComponent(nextItem) &&
+                    ItemOwnershipLookup.TryGetComponent(nextItem, out var nextOwnership) &&
+                    nextOwnership.IsWorldItem &&
+                    BeltMovementStateLookup.TryGetComponent(nextItem, out var nextState) &&
                     BeltMovementStateLookup.IsComponentEnabled(nextItem))
                 {
-                    float nextProg = BeltMovementStateLookup[nextItem].Progress;
+                    float nextProg = nextState.Progress;
                     minNextProgress = math.min(minNextProgress, nextProg);
                     hasNextItem = true;
                     nextItemCount++;

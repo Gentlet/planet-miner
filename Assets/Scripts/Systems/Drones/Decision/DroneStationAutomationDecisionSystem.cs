@@ -14,6 +14,7 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
     private EntityQuery _stations, _workers, _stored, _tasks, _sites, _storages, _assignments, _requests, _results, _registry;
     private Entity _candidates;
     private EntityQueryMask _stationMask, _itemMask, _workerMask;
+    private DroneStationEligibility _eligibility;
 
     public void OnCreate(ref SystemState state)
     {
@@ -31,6 +32,7 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
         _results = SystemAPI.QueryBuilder().WithAll<DroneAutomaticStationRequest, DroneStationResult>().Build();
         _registry = SystemAPI.QueryBuilder().WithAll<ItemRegistry, ItemConfigElement>().Build();
         DroneStationEligibility.CreateMasks(ref state, out _stationMask, out _itemMask, out _workerMask);
+        _eligibility = DroneStationEligibility.Create(ref state, _stationMask, _itemMask, _workerMask);
         state.RequireForUpdate<PrefabDatabaseReady>();
         state.RequireForUpdate<DroneMovementConfig>();
         state.RequireForUpdate<DroneBatteryConfig>();
@@ -63,11 +65,14 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
         int capacity = SystemAPI.GetSingleton<DroneCapacityState>().CarryingCapacity;
         var config = SystemAPI.GetSingleton<DroneMovementConfig>();
         Entity registry = _registry.GetSingletonEntity();
-        var eligibility = DroneStationEligibility.Create(ref state, _stationMask, _itemMask, _workerMask);
+        _eligibility.Update(ref state);
+        var eligibility = _eligibility;
         var dedicated = SystemAPI.GetComponentLookup<DroneStationStorage>(true);
         int maximumStack = ItemRegistry.GetMaxStack(manager.GetBuffer<ItemConfigElement>(registry, true), ItemTypeEnum.Drone);
         using var slotRanges = new NativeParallelHashMap<Entity, DroneStationSlotRange>(1, Allocator.Temp);
         using var slotPreview = new NativeList<DroneStationSlot>(Allocator.Temp);
+        bool hasReadInvalidations = false;
+        DynamicBuffer<DroneTaskInvalidationDecisionElement> invalidations = default;
 
         foreach (Entity worker in workers)
         {
@@ -84,7 +89,12 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
             bool linked = assignment != Entity.Null && manager.Exists(assignment);
             bool invalidated = false;
             bool cancellationPlanned = false;
-            foreach (var invalidation in manager.GetBuffer<DroneTaskInvalidationDecisionElement>(_candidates, true))
+            if (!hasReadInvalidations)
+            {
+                invalidations = manager.GetBuffer<DroneTaskInvalidationDecisionElement>(_candidates, true);
+                hasReadInvalidations = true;
+            }
+            foreach (var invalidation in invalidations)
             {
                 invalidated |= invalidation.Kind == DroneTaskInvalidationDecisionKindEnum.InvalidateAssignment && invalidation.Target == assignment;
                 cancellationPlanned |= invalidation.Kind == DroneTaskInvalidationDecisionKindEnum.CancelAssignment && invalidation.Target == assignment;

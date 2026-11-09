@@ -497,7 +497,7 @@ public static class WorldGenerationConfigLoader
             error = "Pre-registered world configuration is missing resource settings.";
             return false;
         }
-        if (!HasCompleteConfig(entityManager, entity))
+        if (!TryReadCompleteConfig(entityManager, entity, out var resources, out var biomes, out var variants))
         {
             error = "Pre-registered world configuration is missing resource or floor data.";
             return false;
@@ -506,18 +506,49 @@ public static class WorldGenerationConfigLoader
         if (!TryValidateWorldSettings(settings.WorldSeed, settings.InitialChunkSize, out error))
             return false;
 
-        var resources = entityManager.GetBuffer<ResourceGenerationConfigElement>(entity, true);
         for (int i = 0; i < resources.Length; i++)
         {
             if (!TryValidateResourceParameters(resources[i], out error))
                 return false;
         }
-        return TryValidateFloorSettings(entityManager.GetComponentData<FloorGenerationSettings>(entity), out error);
+        var floorSettings = entityManager.GetComponentData<FloorGenerationSettings>(entity);
+        if (!TryValidateFloorSettings(floorSettings, out error))
+            return false;
+
+        int variantCount = variants.Length;
+        if (floorSettings.TransitionVariantCount < 0 || floorSettings.TransitionVariantCount > variantCount ||
+            (floorSettings.TransitionWidthInChunks > 0 && floorSettings.TransitionVariantCount == 0))
+        {
+            error = "Pre-registered floor transition variants have an invalid range.";
+            return false;
+        }
+
+        for (int i = 0; i < biomes.Length; i++)
+        {
+            var biome = biomes[i];
+            long variantEnd = (long)biome.VariantStart + biome.VariantCount;
+            if (biome.VariantStart < 0 || biome.VariantCount <= 0 || variantEnd > variantCount)
+            {
+                error = $"Pre-registered floor biome '{biome.Id}' has an invalid variant range.";
+                return false;
+            }
+        }
+
+        error = null;
+        return true;
     }
 
     /// <summary>제품 초기화는 자원과 바닥을 같은 게시 엔티티에서 요구한다. 자원 전용 게시 API는 격리 구성용이다.</summary>
-    public static bool HasCompleteConfig(EntityManager entityManager, Entity entity)
+    public static bool HasCompleteConfig(EntityManager entityManager, Entity entity) =>
+        TryReadCompleteConfig(entityManager, entity, out _, out _, out _);
+
+    private static bool TryReadCompleteConfig(EntityManager entityManager, Entity entity,
+        out DynamicBuffer<ResourceGenerationConfigElement> resources, out DynamicBuffer<FloorBiomeElement> biomes,
+        out DynamicBuffer<FloorVariantElement> variants)
     {
+        resources = default;
+        biomes = default;
+        variants = default;
         if (!entityManager.HasComponent<FloorGenerationSettings>(entity) ||
             !entityManager.HasBuffer<ResourceGenerationConfigElement>(entity) ||
             !entityManager.HasBuffer<FloorBiomeElement>(entity) ||
@@ -525,9 +556,18 @@ public static class WorldGenerationConfigLoader
         {
             return false;
         }
-        return entityManager.GetBuffer<ResourceGenerationConfigElement>(entity, true).Length > 0 &&
-               entityManager.GetBuffer<FloorBiomeElement>(entity, true).Length > 0 &&
-               entityManager.GetBuffer<FloorVariantElement>(entity, true).Length > 0;
+        resources = entityManager.GetBuffer<ResourceGenerationConfigElement>(entity, true);
+        if (resources.IsEmpty)
+        {
+            return false;
+        }
+        biomes = entityManager.GetBuffer<FloorBiomeElement>(entity, true);
+        if (biomes.IsEmpty)
+        {
+            return false;
+        }
+        variants = entityManager.GetBuffer<FloorVariantElement>(entity, true);
+        return !variants.IsEmpty;
     }
 
     /// <summary>명시적 자원 전용 게시 API. 전체 제품 초기화는 바닥을 포함한 오버로드를 사용한다.</summary>

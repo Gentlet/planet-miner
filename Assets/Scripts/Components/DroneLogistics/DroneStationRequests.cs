@@ -29,6 +29,9 @@ public struct DroneStationDecision : IComponentData
 {
     public bool Eligible;
     public bool Approved;
+    // Decision이 기록하는 요청 분류 스냅샷. Reservation은 보존하고 최종 Apply가 재사용한다.
+    public bool IsRelocationRequest;
+    public bool IsAutomaticRequest;
     public int SlotIndex;
     public DroneStationRequestStatus Status;
 }

@@ -33,11 +33,16 @@ public static class ResearchStatusTextUtility
             text.AppendLine("로컬 1주기 " + elapsed.ToString("F2") + "/" + definition.CycleDuration.ToString("F2"));
             bool materialsReady = true;
             var ingredients = manager.GetBuffer<ResearchIngredientElement>(registry, true);
+            DynamicBuffer<StoredItemElement> storedItems = default;
             for (int i = 0; i < definition.IngredientCount; i++)
             {
                 var ingredient = ingredients[definition.IngredientStart + i];
                 int count = 0;
-                foreach (var stored in manager.GetBuffer<StoredItemElement>(building, true))
+                if (!storedItems.IsCreated)
+                {
+                    storedItems = manager.GetBuffer<StoredItemElement>(building, true);
+                }
+                foreach (var stored in storedItems)
                 {
                     if (stored.ItemType == ingredient.ItemType &&
                         ItemOwnershipApplySystem.CanTransferItem(manager, stored.ItemEntity, stored.ItemType, building))

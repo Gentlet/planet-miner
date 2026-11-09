@@ -1,4 +1,5 @@
 using Unity.Burst;
+using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
@@ -47,8 +48,14 @@ public partial struct DroneStationSpatialSyncSystem : ISystem
         var clear = new ClearDroneStationSpatialIndexJob { Map = index.Map }.Schedule(dependency);
         var populate = new PopulateDroneStationSpatialIndexJob
         {
+            EntityHandle = SystemAPI.GetEntityTypeHandle(),
+            NetworkHandle = SystemAPI.GetComponentTypeHandle<DroneStationNetwork>(true),
+            TypeHandle = SystemAPI.GetComponentTypeHandle<BuildingType>(true),
+            PositionHandle = SystemAPI.GetComponentTypeHandle<GridPosition>(true),
+            DirectionHandle = SystemAPI.GetComponentTypeHandle<Direction>(true),
+            FootprintHandle = SystemAPI.GetComponentTypeHandle<BuildingFootprint>(true),
             Config = SystemAPI.GetSingletonEntity<BuildingConfig>(),
-            ConfigLookup = state.GetBufferLookup<BuildingConfigElement>(true),
+            ConfigLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
             Writer = index.Map.AsParallelWriter()
         }.ScheduleParallel(_stations, clear);
         fence.SetWriter(populate);
@@ -64,23 +71,46 @@ internal struct ClearDroneStationSpatialIndexJob : IJob
 }
 
 [BurstCompile]
-internal partial struct PopulateDroneStationSpatialIndexJob : IJobEntity
+internal struct PopulateDroneStationSpatialIndexJob : IJobChunk
 {
+    [ReadOnly] public EntityTypeHandle EntityHandle;
+    [ReadOnly] public ComponentTypeHandle<DroneStationNetwork> NetworkHandle;
+    [ReadOnly] public ComponentTypeHandle<BuildingType> TypeHandle;
+    [ReadOnly] public ComponentTypeHandle<GridPosition> PositionHandle;
+    [ReadOnly] public ComponentTypeHandle<Direction> DirectionHandle;
+    [ReadOnly] public ComponentTypeHandle<BuildingFootprint> FootprintHandle;
     public Entity Config;
     [ReadOnly] public BufferLookup<BuildingConfigElement> ConfigLookup;
     public NativeParallelHashMap<Entity, DroneStationCoverage>.ParallelWriter Writer;
 
-    public void Execute(Entity entity, in DroneStationNetwork network, in BuildingType type, in GridPosition position,
-        in Direction direction, in BuildingFootprint footprint)
+    public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
     {
-        if (network.RepresentativeStation == Entity.Null) return;
-        // 연결 Writer 이후 설정/위치/크기는 바뀌지 않는다. 같은 타입·티어 조회 성공은 Decision의 게시 계약이다.
-        BuildingConfigLookupUtility.TryGetConfig(ConfigLookup[Config], type.Type, type.Tier, out var config);
-        Writer.TryAdd(entity, new DroneStationCoverage
+        var entities = chunk.GetNativeArray(EntityHandle);
+        var networks = chunk.GetNativeArray(ref NetworkHandle);
+        var types = chunk.GetNativeArray(ref TypeHandle);
+        var positions = chunk.GetNativeArray(ref PositionHandle);
+        var directions = chunk.GetNativeArray(ref DirectionHandle);
+        var footprints = chunk.GetNativeArray(ref FootprintHandle);
+        RegistryBufferReadCache<BuildingConfigElement> configRead = default;
+        var enumerator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+        while (enumerator.NextEntityIndex(out int index))
         {
-            RepresentativeStation = network.RepresentativeStation,
-            Bounds = DroneStationRangeUtility.GetActivityBounds(position.Value, footprint.Size, direction.dir,
-                config.DroneStationRangeInChunks)
-        });
+            Entity representative = networks[index].RepresentativeStation;
+            if (representative == Entity.Null)
+            {
+                continue;
+            }
+
+            // 연결 Writer 이후 설정/위치/크기는 바뀌지 않는다. 같은 타입/티어 조회 성공은 Decision의 게시 계약이다.
+            var type = types[index];
+            var configs = configRead.Read(ConfigLookup, Config);
+            BuildingConfigLookupUtility.TryGetConfig(configs, type.Type, type.Tier, out var config);
+            Writer.TryAdd(entities[index], new DroneStationCoverage
+            {
+                RepresentativeStation = representative,
+                Bounds = DroneStationRangeUtility.GetActivityBounds(positions[index].Value, footprints[index].Size,
+                    directions[index].dir, config.DroneStationRangeInChunks)
+            });
+        }
     }
 }

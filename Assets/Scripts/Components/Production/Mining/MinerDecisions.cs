@@ -12,10 +12,12 @@ public struct MinerDecision : IComponentData, IEnableableComponent
 {
     public bool CanMine;          // 이번 프레임에 채굴 진행 가능 여부
     public Entity TargetResource; // 채굴 대상 자원 엔티티
+    public float PowerTimeRatio;   // 같은 틱 전력 결과에서 계산한 진행 비율. 경과 시간은 Execution이 적용한다.
 
     public MinerDecision(bool canMine, Entity targetResource)
     {
         CanMine = canMine;
         TargetResource = targetResource;
+        PowerTimeRatio = 0f;
     }
 }

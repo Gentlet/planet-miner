@@ -27,13 +27,13 @@ public partial struct DroneReturnReservationSystem : ISystem
 
     public void OnUpdate(ref SystemState state)
     {
-        var stationRequests = _stations.ToComponentDataArrayAsync<DroneStationRequest>(Allocator.TempJob, out var stationsReady);
-        var actionRequests = _actions.ToComponentDataArrayAsync<DroneActionReadyRequest>(Allocator.TempJob, out var actionsReady);
-        var workers = _workers.ToEntityArrayAsync(Allocator.TempJob, out var workersReady);
+        var stationRequests = _stations.ToComponentDataListAsync<DroneStationRequest>(Allocator.TempJob, state.Dependency, out var stationsReady);
+        var actionRequests = _actions.ToComponentDataListAsync<DroneActionReadyRequest>(Allocator.TempJob, state.Dependency, out var actionsReady);
+        var workers = _workers.ToEntityListAsync(Allocator.TempJob, state.Dependency, out var workersReady);
         var job = new ArbitrateReturnsJob
         {
-            Candidates = _pending.GetSingletonEntity(), StationRequests = stationRequests, ActionRequests = actionRequests,
-            Workers = workers, Decisions = SystemAPI.GetComponentLookup<DroneMovementDecision>(true),
+            Candidates = _pending.GetSingletonEntity(), StationRequests = stationRequests.AsDeferredJobArray(), ActionRequests = actionRequests.AsDeferredJobArray(),
+            Workers = workers.AsDeferredJobArray(), Decisions = SystemAPI.GetComponentLookup<DroneMovementDecision>(true),
             Batteries = SystemAPI.GetComponentLookup<DroneBatteryState>(true),
             Observations = SystemAPI.GetComponentLookup<DroneWorkerObservation>(true),
             Results = SystemAPI.GetBufferLookup<DroneReturnReservationElement>(),
@@ -67,6 +67,9 @@ public partial struct DroneReturnReservationSystem : ISystem
         {
             var results = Results[Candidates];
             results.Clear();
+            DynamicBuffer<DroneTaskPendingPublicationElement> pending = default;
+            DynamicBuffer<DroneTransportPendingReservationElement> transport = default;
+            DynamicBuffer<DroneRouteDecisionElement> routes = default;
             for (int i = 0; i < Workers.Length; i++)
             {
                 Entity entity = Workers[i];
@@ -76,14 +79,17 @@ public partial struct DroneReturnReservationSystem : ISystem
                 {
                     continue;
                 }
-                if (ShouldWait(entity, Observations[entity], out bool preserveArrival))
+                if (ShouldWait(entity, Observations[entity], ref pending, ref transport, ref routes, out bool preserveArrival))
                 {
                     results.Add(new DroneReturnReservationElement { Worker = entity, PreserveArrival = preserveArrival });
                 }
             }
         }
 
-        private bool ShouldWait(Entity entity, in DroneWorkerObservation observation, out bool preserveArrival)
+        private bool ShouldWait(Entity entity, in DroneWorkerObservation observation,
+            ref DynamicBuffer<DroneTaskPendingPublicationElement> pending,
+            ref DynamicBuffer<DroneTransportPendingReservationElement> transport,
+            ref DynamicBuffer<DroneRouteDecisionElement> routes, out bool preserveArrival)
         {
             preserveArrival = false;
             // 접수된 정거장/행동 요청의 최종 Apply까지 현재 이동 상태와 위치를 유지한다.
@@ -103,7 +109,10 @@ public partial struct DroneReturnReservationSystem : ISystem
                     return true;
                 }
             }
-            var pending = Pending[Candidates];
+            if (!pending.IsCreated)
+            {
+                pending = Pending[Candidates];
+            }
             for (int i = 0; i < pending.Length; i++)
             {
                 if (pending[i].Candidate.Worker == entity && pending[i].Quantity > 0)
@@ -111,7 +120,10 @@ public partial struct DroneReturnReservationSystem : ISystem
                     return true;
                 }
             }
-            var transport = Transport[Candidates];
+            if (!transport.IsCreated)
+            {
+                transport = Transport[Candidates];
+            }
             for (int i = 0; i < transport.Length; i++)
             {
                 if (transport[i].Candidate.Worker == entity &&
@@ -120,7 +132,10 @@ public partial struct DroneReturnReservationSystem : ISystem
                     return true;
                 }
             }
-            var routes = Routes[Candidates];
+            if (!routes.IsCreated)
+            {
+                routes = Routes[Candidates];
+            }
             for (int i = 0; i < routes.Length; i++)
             {
                 var route = routes[i];
@@ -133,17 +148,16 @@ public partial struct DroneReturnReservationSystem : ISystem
                 }
                 else if (route.Kind == DroneRouteDecisionKindEnum.Retain)
                 {
-                    if (!Requests.HasComponent(route.ExistingRequest))
+                    if (!Requests.TryGetComponent(route.ExistingRequest, out var request))
                     {
                         continue;
                     }
-                    var request = Requests[route.ExistingRequest];
                     if (request.Worker != entity || request.WorkerObservationRevision != observation.Revision)
                     {
                         continue;
                     }
-                    if (!Evaluations.HasComponent(route.ExistingRequest) || !Evaluations[route.ExistingRequest].Ready ||
-                        Evaluations[route.ExistingRequest].Result.Status == DroneRouteEvaluationStatusEnum.None)
+                    if (!Evaluations.TryGetComponent(route.ExistingRequest, out var evaluation) || !evaluation.Ready ||
+                        evaluation.Result.Status == DroneRouteEvaluationStatusEnum.None)
                     {
                         // 평가를 기다리는 동안 위치를 바꾸면 관측 revision이 계속 바뀌어 새 작업이 굶는다.
                         return true;

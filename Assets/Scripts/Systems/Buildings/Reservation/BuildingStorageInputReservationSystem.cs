@@ -1,4 +1,5 @@
 using Unity.Burst;
+using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Collections.LowLevel.Unsafe;
 using Unity.Entities;
@@ -70,14 +71,16 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
 
         var job = new BuildingStorageInputReservationJob
         {
+            BuildingItemInputDecisionHandle = SystemAPI.GetComponentTypeHandle<BuildingItemInputDecision>(false),
+            ItemIdentityHandle = SystemAPI.GetComponentTypeHandle<ItemIdentity>(true),
             StorageLookup = _storageLookup,
             StationStorageLookup = _stationStorageLookup,
             DockedLookup = _dockedLookup,
-            ReservedLookup = state.GetBufferLookup<DroneStationReservedSlotElement>(true),
-            PreparingLookup = state.GetComponentLookup<PreparingStationDemolition>(true),
+            ReservedLookup = SystemAPI.GetBufferLookup<DroneStationReservedSlotElement>(true),
+            PreparingLookup = SystemAPI.GetComponentLookup<PreparingStationDemolition>(true),
             StoredBufferLookup = _storedBufferLookup,
             InputSlotLookup = _inputSlotLookup,
-            ResearchLimits = state.GetBufferLookup<ResearchInputLimitElement>(true),
+            ResearchLimits = SystemAPI.GetBufferLookup<ResearchInputLimitElement>(true),
             ItemRegistryEntity = itemRegistryEntity,
             ItemConfigLookup = _itemConfigLookup,
             PendingAdditions = pendingAdditions
@@ -95,8 +98,33 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
 /// 각 아이템의 창고 슬롯 배정과 경합을 순차 처리하는 단일 워커 Burst Job.
 /// </summary>
 [BurstCompile]
-public partial struct BuildingStorageInputReservationJob : IJobEntity
+public partial struct BuildingStorageInputReservationJob : IJobChunk
 {
+    public ComponentTypeHandle<BuildingItemInputDecision> BuildingItemInputDecisionHandle;
+    [ReadOnly] public ComponentTypeHandle<ItemIdentity> ItemIdentityHandle;
+
+    private struct RegistryReadContext
+    {
+        public RegistryBufferReadCache<ItemConfigElement> ItemConfigLookup;
+    }
+
+    public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+    {
+        var buildingItemInputDecisionValues = chunk.GetNativeArray(ref BuildingItemInputDecisionHandle);
+        var buildingItemInputDecisionEnabled = chunk.GetEnabledMask(ref BuildingItemInputDecisionHandle);
+        var itemIdentityValues = chunk.GetNativeArray(ref ItemIdentityHandle);
+        var registryRead = new RegistryReadContext();
+        var enumerator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+        while (enumerator.NextEntityIndex(out int index))
+        {
+            var inputDecisionRef = new RefRW<BuildingItemInputDecision>(buildingItemInputDecisionValues, index);
+            var itemIdentityValue = itemIdentityValues[index];
+            ExecuteEntity(ref inputDecisionRef.ValueRW,
+                buildingItemInputDecisionEnabled.GetEnabledRefRW<BuildingItemInputDecision>(index),
+                in itemIdentityValue, ref registryRead);
+        }
+    }
+
     /// <summary>이번 Reservation Job에서 승인한 슬롯 품목/수량의 임시 집계. 컴포넌트나 영속 재고로 게시하지 않는다.</summary>
     public struct PendingSlot
     {
@@ -126,10 +154,10 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
 
     public NativeParallelHashMap<int2, PendingSlot> PendingAdditions;
 
-    public void Execute(
+    private void ExecuteEntity(
         ref BuildingItemInputDecision inputDecision,
         EnabledRefRW<BuildingItemInputDecision> inputDecisionEnabled,
-        in ItemIdentity itemIdentity)
+        in ItemIdentity itemIdentity, ref RegistryReadContext registryRead)
     {
         if (!inputDecision.CanDeposit || inputDecision.TargetSlotIndex != -1)
         {
@@ -137,7 +165,8 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
         }
 
         Entity building = inputDecision.TargetBuilding;
-        if (!StorageLookup.HasComponent(building) || !StoredBufferLookup.HasBuffer(building))
+        if (!StorageLookup.TryGetComponent(building, out var storage) ||
+            !StoredBufferLookup.TryGetBuffer(building, out var storedBuffer))
         {
             inputDecision.CanDeposit = false;
             inputDecision.TargetSlotIndex = -1;
@@ -145,10 +174,9 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
             return;
         }
 
-        var storage = StorageLookup[building];
-        var storedBuffer = StoredBufferLookup[building];
         int slotCount = storage.SlotCount;
-        int dedicated = StationStorageLookup.HasComponent(building) ? StationStorageLookup[building].DedicatedSlotCount : 0;
+        int dedicated = StationStorageLookup.TryGetComponent(building, out var stationStorage)
+            ? stationStorage.DedicatedSlotCount : 0;
         if (slotCount <= 0)
         {
             inputDecision.CanDeposit = false;
@@ -157,12 +185,10 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
             return;
         }
 
-        bool hasInputSlots = InputSlotLookup.HasBuffer(building);
-        bool hasItemConfig = ItemConfigLookup.HasBuffer(ItemRegistryEntity);
-        DynamicBuffer<BuildingInputSlotElement> inputSlots = default;
+        bool hasInputSlots = InputSlotLookup.TryGetBuffer(building, out var inputSlots);
+        bool hasItemConfig = registryRead.ItemConfigLookup.TryRead(ItemConfigLookup, ItemRegistryEntity, out var itemConfigs);
         if (hasInputSlots)
         {
-            inputSlots = InputSlotLookup[building];
             if (inputSlots.Length != slotCount || slotCount > GameConstants.MaxStorageSlots ||
                 !hasItemConfig)
             {
@@ -177,7 +203,7 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
         int maxStack = 0;
         if (hasItemConfig)
         {
-            maxStack = ItemRegistry.GetMaxStack(ItemConfigLookup[ItemRegistryEntity], itemType);
+            maxStack = ItemRegistry.GetMaxStack(itemConfigs, itemType);
         }
         // 빈 슬롯도 한 개의 실물을 수용할 양수 한도가 필요하다. 설정 부재를 기본값으로 보충하지 않는다.
         if (maxStack <= 0)
@@ -221,9 +247,9 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
         }
 
         // 적재 가능 슬롯 탐색
-        if (DockedLookup.HasBuffer(building))
+        if (DockedLookup.TryGetBuffer(building, out var dockedDrones))
         {
-            foreach (var docked in DockedLookup[building])
+            foreach (var docked in dockedDrones)
             {
                 if (docked.SlotIndex >= 0 && docked.SlotIndex < safeSlotCount)
                 {
@@ -239,9 +265,9 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
             inputDecisionEnabled.ValueRW = false;
             return;
         }
-        if (ReservedLookup.HasBuffer(building))
+        if (ReservedLookup.TryGetBuffer(building, out var reservedSlots))
         {
-            foreach (var reserved in ReservedLookup[building])
+            foreach (var reserved in reservedSlots)
             {
                 if (reserved.SlotIndex >= 0 && reserved.SlotIndex < safeSlotCount)
                 {
@@ -253,10 +279,10 @@ public partial struct BuildingStorageInputReservationJob : IJobEntity
         int sameTypeSlot = -1;
         int firstEmptySlot = -1;
 
-        if (ResearchLimits.HasBuffer(building))
+        if (ResearchLimits.TryGetBuffer(building, out var researchLimits))
         {
             int maximum = 0;
-            foreach (var limit in ResearchLimits[building])
+            foreach (var limit in researchLimits)
             {
                 if (limit.ItemType == itemType)
                 {

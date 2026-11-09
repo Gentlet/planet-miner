@@ -33,12 +33,12 @@ public partial struct ResearchSelectionCommandSystem : ISystem
             Requests = requests.AsDeferredJobArray(),
             Cycles = cycles.AsDeferredJobArray(),
             Registry = SystemAPI.GetSingletonEntity<ResearchRegistry>(),
-            RequestLookup = state.GetComponentLookup<ResearchSelectionRequest>(true),
-            States = state.GetComponentLookup<ResearchState>(true),
-            ResetResults = state.GetComponentLookup<ResearchCycleResetResult>(true),
-            Definitions = state.GetBufferLookup<ResearchDefinitionElement>(true),
-            Prerequisites = state.GetBufferLookup<ResearchPrerequisiteElement>(true),
-            Progress = state.GetBufferLookup<ResearchProgressElement>(true),
+            RequestLookup = SystemAPI.GetComponentLookup<ResearchSelectionRequest>(true),
+            States = SystemAPI.GetComponentLookup<ResearchState>(true),
+            ResetResults = SystemAPI.GetComponentLookup<ResearchCycleResetResult>(true),
+            Definitions = SystemAPI.GetBufferLookup<ResearchDefinitionElement>(true),
+            Prerequisites = SystemAPI.GetBufferLookup<ResearchPrerequisiteElement>(true),
+            Progress = SystemAPI.GetBufferLookup<ResearchProgressElement>(true),
             ECB = end.CreateCommandBuffer()
         }.Schedule(JobHandle.CombineDependencies(state.Dependency, requestsReady, cyclesReady));
         state.Dependency = JobHandle.CombineDependencies(requests.Dispose(handle), cycles.Dispose(handle));
@@ -111,9 +111,8 @@ public partial struct ResearchSelectionCommandSystem : ISystem
             }
             ECB.SetComponent(Registry, selected);
             // 표시 결과가 없는 유효한 사전 등록 Registry도 기존 연구 진행을 유지한다.
-            if (ResetResults.HasComponent(Registry))
+            if (ResetResults.TryGetComponent(Registry, out var notice))
             {
-                var notice = ResetResults[Registry];
                 notice.Revision++;
                 notice.Reason = ResearchCycleResetReasonEnum.SelectionChanged;
                 ECB.SetComponent(Registry, notice);

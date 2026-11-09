@@ -91,12 +91,13 @@ public static class BuildingInputSlotUtility
                 return BuildingInputSlotCalculationErrorEnum.UnregisteredItemType;
             }
 
-            if (items[itemIndex].ItemType != ingredient.ItemType)
+            var item = items[itemIndex];
+            if (item.ItemType != ingredient.ItemType)
             {
                 return BuildingInputSlotCalculationErrorEnum.UnregisteredItemType;
             }
 
-            if (ItemRegistry.GetMaxStack(items, ingredient.ItemType) <= 0)
+            if (item.MaxStack <= 0)
             {
                 return BuildingInputSlotCalculationErrorEnum.InvalidMaxStack;
             }

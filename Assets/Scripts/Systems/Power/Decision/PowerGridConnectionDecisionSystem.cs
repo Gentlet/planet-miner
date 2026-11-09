@@ -1,6 +1,7 @@
 using Unity.Burst;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Mathematics;
 using Unity.Jobs;
 
 /// <summary>
@@ -32,53 +33,110 @@ public partial struct PowerGridConnectionDecisionSystem : ISystem
 
         Entity configEntity = SystemAPI.TryGetSingletonEntity<BuildingConfig>(out var config) ? config : Entity.Null;
         var poles = _poleQuery.ToEntityListAsync(Allocator.TempJob, dependency, out var polesReady);
-        var selection = new SelectPowerGridConnectionJob
+        var inputs = new NativeList<PowerPoleSelectionInput>(Allocator.TempJob);
+        var inputsReady = new NativeReference<bool>(Allocator.TempJob);
+        var build = new BuildPowerPoleSelectionInputsJob
         {
-            Validation = validationOwner.Validation, Poles = poles.AsDeferredJobArray(), ConfigEntity = configEntity,
+            Validation = validationOwner.Validation, Poles = poles.AsDeferredJobArray(),
+            HasParticipants = !_participantQuery.IsEmptyIgnoreFilter,
+            ConfigEntity = configEntity,
             ConfigLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
             PositionLookup = SystemAPI.GetComponentLookup<GridPosition>(true),
             TypeLookup = SystemAPI.GetComponentLookup<BuildingType>(true),
+            Inputs = inputs, Ready = inputsReady
+        }.Schedule(JobHandle.CombineDependencies(polesReady, state.Dependency));
+        var selection = new SelectPowerGridConnectionJob
+        {
+            Validation = validationOwner.Validation, Inputs = inputs.AsDeferredJobArray(), Ready = inputsReady,
             StampLookup = SystemAPI.GetComponentLookup<PlacementStamp>(true)
-        }.ScheduleParallel(_participantQuery, JobHandle.CombineDependencies(polesReady, state.Dependency));
-        state.Dependency = poles.Dispose(selection);
+        }.ScheduleParallel(_participantQuery, JobHandle.CombineDependencies(build, state.Dependency));
+        state.Dependency = JobHandle.CombineDependencies(poles.Dispose(selection), inputs.Dispose(selection), inputsReady.Dispose(selection));
         validationOwner.Register(state.Dependency);
     }
 
+}
+
+internal struct PowerPoleSelectionInput
+{
+    public Entity Pole;
+    public int2 Position;
+    public int SupplyRange;
+    public bool IsConfigured;
+}
+
+[BurstCompile]
+internal struct BuildPowerPoleSelectionInputsJob : IJob
+{
+    [ReadOnly] public NativeReference<PowerValidationResult> Validation;
+    [ReadOnly] public NativeArray<Entity> Poles;
+    public bool HasParticipants;
+    public Entity ConfigEntity;
+    [ReadOnly] public BufferLookup<BuildingConfigElement> ConfigLookup;
+    [ReadOnly] public ComponentLookup<GridPosition> PositionLookup;
+    [ReadOnly] public ComponentLookup<BuildingType> TypeLookup;
+    public NativeList<PowerPoleSelectionInput> Inputs;
+    public NativeReference<bool> Ready;
+
+    public void Execute()
+    {
+        if (Validation.Value.HasError || !HasParticipants)
+        {
+            return;
+        }
+        var configs = ConfigLookup[ConfigEntity];
+        foreach (Entity pole in Poles)
+        {
+            var type = TypeLookup[pole];
+            if (!BuildingConfigLookupUtility.TryGetConfig(configs, type.Type, type.Tier, out var config))
+            {
+                // 선택 순서의 같은 위치에서 미준비로 남기도록 실패 행을 유지한다.
+                Inputs.Add(new PowerPoleSelectionInput { Pole = pole });
+                Ready.Value = true;
+                return;
+            }
+            Inputs.Add(new PowerPoleSelectionInput
+            {
+                Pole = pole, Position = PositionLookup[pole].Value,
+                SupplyRange = config.Power.SupplyRange, IsConfigured = true
+            });
+        }
+        Ready.Value = true;
+    }
 }
 
 [BurstCompile]
 internal partial struct SelectPowerGridConnectionJob : IJobEntity
 {
     [ReadOnly] public NativeReference<PowerValidationResult> Validation;
-    [ReadOnly] public NativeArray<Entity> Poles;
-    public Entity ConfigEntity;
-    [ReadOnly] public BufferLookup<BuildingConfigElement> ConfigLookup;
-    [ReadOnly] public ComponentLookup<GridPosition> PositionLookup;
-    [ReadOnly] public ComponentLookup<BuildingType> TypeLookup;
+    [ReadOnly] public NativeArray<PowerPoleSelectionInput> Inputs;
+    [ReadOnly] public NativeReference<bool> Ready;
     [ReadOnly] public ComponentLookup<PlacementStamp> StampLookup;
 
     private void Execute(ref PowerGridConnectionDecision decision,
         EnabledRefRW<PowerGridConnectionDecision> prepared, in GridPosition position,
         in BuildingFootprint footprint, in Direction direction)
     {
-        if (Validation.Value.HasError)
+        if (Validation.Value.HasError || !Ready.Value)
         {
             return;
         }
-        var configs = ConfigLookup[ConfigEntity];
         var effectiveSize = footprint.GetEffectiveSize(direction.dir);
         Entity selectedPole = Entity.Null;
+        int2 selectedPolePosition = default;
         long selectedDistance = long.MaxValue;
-        for (int i = 0; i < Poles.Length; i++)
+        bool selectedStampLoaded = false;
+        bool hasSelectedStamp = false;
+        PlacementStamp selectedStamp = default;
+        for (int i = 0; i < Inputs.Length; i++)
         {
-            Entity pole = Poles[i];
-            var type = TypeLookup[pole];
-            if (!BuildingConfigLookupUtility.TryGetConfig(configs, type.Type, type.Tier, out var config))
+            var input = Inputs[i];
+            Entity pole = input.Pole;
+            if (!input.IsConfigured)
             {
                 return;
             }
-            var polePosition = PositionLookup[pole].Value;
-            if (!PowerRangeUtility.TryGetFootprintDistanceSquared(polePosition, config.Power.SupplyRange,
+            var polePosition = input.Position;
+            if (!PowerRangeUtility.TryGetFootprintDistanceSquared(polePosition, input.SupplyRange,
                     position.Value, effectiveSize, out long distance))
             {
                 continue;
@@ -86,6 +144,7 @@ internal partial struct SelectPowerGridConnectionJob : IJobEntity
             if (selectedPole == Entity.Null)
             {
                 selectedPole = pole;
+                selectedPolePosition = polePosition;
                 selectedDistance = distance;
                 continue;
             }
@@ -95,17 +154,26 @@ internal partial struct SelectPowerGridConnectionJob : IJobEntity
             }
             if (distance == selectedDistance)
             {
-                bool hasStamp = StampLookup.HasComponent(pole);
-                bool hasSelectedStamp = StampLookup.HasComponent(selectedPole);
-                var stamp = hasStamp ? StampLookup[pole] : default;
-                var selectedStamp = hasSelectedStamp ? StampLookup[selectedPole] : default;
+                bool hasStamp = StampLookup.TryGetComponent(pole, out var stamp);
+                if (!selectedStampLoaded)
+                {
+                    hasSelectedStamp = StampLookup.TryGetComponent(selectedPole, out selectedStamp);
+                    selectedStampLoaded = true;
+                }
                 if (PlacementStamp.Compare(hasStamp, stamp, polePosition,
-                        hasSelectedStamp, selectedStamp, PositionLookup[selectedPole].Value) >= 0)
+                        hasSelectedStamp, selectedStamp, selectedPolePosition) >= 0)
                 {
                     continue;
                 }
+                hasSelectedStamp = hasStamp;
+                selectedStamp = stamp;
+            }
+            else
+            {
+                selectedStampLoaded = false;
             }
             selectedPole = pole;
+            selectedPolePosition = polePosition;
             selectedDistance = distance;
         }
         decision.PowerPole = selectedPole;

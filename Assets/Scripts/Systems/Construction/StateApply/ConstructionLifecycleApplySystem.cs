@@ -1,4 +1,5 @@
 using Unity.Burst;
+using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -83,6 +84,12 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
 
         var completionJob = new ConstructionCompletionApplyJob
         {
+            EntityHandle = SystemAPI.GetEntityTypeHandle(),
+            ConstructionSiteHandle = SystemAPI.GetComponentTypeHandle<ConstructionSite>(false),
+            GridPositionHandle = SystemAPI.GetComponentTypeHandle<GridPosition>(true),
+            DirectionHandle = SystemAPI.GetComponentTypeHandle<Direction>(true),
+            BuildingFootprintHandle = SystemAPI.GetComponentTypeHandle<BuildingFootprint>(true),
+            ConstructionMaterialRequirementElementHandle = SystemAPI.GetBufferTypeHandle<ConstructionMaterialRequirementElement>(true),
             ECB = ecb,
             HasPrefabDb = hasPrefabDb,
             PrefabDbEntity = prefabDbEntity,
@@ -128,8 +135,46 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
 /// 완공 조건을 만족한 공사 현장을 감지하여 자재를 소비하고 완공 건물을 직접 생성하는 단일 워커 Burst Job.
 /// </summary>
 [BurstCompile]
-public partial struct ConstructionCompletionApplyJob : IJobEntity
+public partial struct ConstructionCompletionApplyJob : IJobChunk
 {
+    [ReadOnly] public EntityTypeHandle EntityHandle;
+    public ComponentTypeHandle<ConstructionSite> ConstructionSiteHandle;
+    [ReadOnly] public ComponentTypeHandle<GridPosition> GridPositionHandle;
+    [ReadOnly] public ComponentTypeHandle<Direction> DirectionHandle;
+    [ReadOnly] public ComponentTypeHandle<BuildingFootprint> BuildingFootprintHandle;
+    [ReadOnly] public BufferTypeHandle<ConstructionMaterialRequirementElement> ConstructionMaterialRequirementElementHandle;
+
+    private struct RegistryReadContext
+    {
+        public BuildingLifecycleUtility.SpawnRegistryReadContext Spawn;
+    }
+
+    public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
+    {
+        var entities = chunk.GetNativeArray(EntityHandle);
+        var constructionSiteValues = chunk.GetNativeArray(ref ConstructionSiteHandle);
+        var gridPositionValues = chunk.GetNativeArray(ref GridPositionHandle);
+        var directionValues = chunk.GetNativeArray(ref DirectionHandle);
+        var buildingFootprintValues = chunk.GetNativeArray(ref BuildingFootprintHandle);
+        var constructionMaterialRequirementElementValues = chunk.GetBufferAccessorRO(ref ConstructionMaterialRequirementElementHandle);
+        var registryRead = new RegistryReadContext();
+        var enumerator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
+        while (enumerator.NextEntityIndex(out int index))
+        {
+            var siteRef = new RefRW<ConstructionSite>(constructionSiteValues, index);
+            var posValue = gridPositionValues[index];
+            var dirValue = directionValues[index];
+            var footprintValue = buildingFootprintValues[index];
+            var requirementsValue = constructionMaterialRequirementElementValues[index];
+            ExecuteEntity(entities[index],
+                ref siteRef.ValueRW,
+                in posValue,
+                in dirValue,
+                in footprintValue,
+                in requirementsValue, ref registryRead);
+        }
+    }
+
     [ReadOnly] public ComponentLookup<PlannedBuildingSettings> PlannedSettings;
     public EntityCommandBuffer ECB;
     public bool HasPrefabDb;
@@ -152,13 +197,13 @@ public partial struct ConstructionCompletionApplyJob : IJobEntity
     [ReadOnly]
     public BufferLookup<BuildingConfigElement> ConfigBufferLookup;
 
-    public void Execute(
+    private void ExecuteEntity(
         Entity siteEntity,
         ref ConstructionSite site,
         in GridPosition pos,
         in Direction dir,
         in BuildingFootprint footprint,
-        in DynamicBuffer<ConstructionMaterialRequirementElement> requirements)
+        in DynamicBuffer<ConstructionMaterialRequirementElement> requirements, ref RegistryReadContext registryRead)
     {
         // 1. 현장 수명 동안 최신 월드 실물의 차단을 재검사한다.
         if ((site.Flags & ConstructionSiteFlags.Cancelled) != 0)
@@ -191,11 +236,7 @@ public partial struct ConstructionCompletionApplyJob : IJobEntity
         }
 
         // 4. 완공 건물 엔티티 인스턴스화 및 컴포넌트 초기화 (BuildingLifecycleUtility 활용)
-        PlacementStamp stamp = default;
-        if (StampLookup.HasComponent(siteEntity))
-        {
-            stamp = StampLookup[siteEntity];
-        }
+        StampLookup.TryGetComponent(siteEntity, out var stamp);
 
         Entity building = BuildingLifecycleUtility.SpawnBuilding(
             ref ECB,
@@ -210,7 +251,8 @@ public partial struct ConstructionCompletionApplyJob : IJobEntity
             HasConfig,
             ConfigEntity,
             in PrefabBufferLookup,
-            in ConfigBufferLookup
+            in ConfigBufferLookup,
+            ref registryRead.Spawn
         );
 
         if (building == Entity.Null)
@@ -219,9 +261,8 @@ public partial struct ConstructionCompletionApplyJob : IJobEntity
             return;
         }
 
-        if (PlannedSettings.HasComponent(siteEntity))
+        if (PlannedSettings.TryGetComponent(siteEntity, out var settings))
         {
-            var settings = PlannedSettings[siteEntity];
             if (settings.HasStorageFilter)
             {
                 // 일반 저장소는 생성과 같은 공개 경계에서 필터를 갖추어 이번 틱 드론 입고도 검사받는다.
@@ -236,9 +277,8 @@ public partial struct ConstructionCompletionApplyJob : IJobEntity
         }
 
         // 생성 명령이 확보된 뒤에만 보관 실물과 현장을 소비한다. 프리팹 실패가 자재 손실로 이어지지 않게 한다.
-        if (StoredLookup.HasBuffer(siteEntity))
+        if (StoredLookup.TryGetBuffer(siteEntity, out var storedItems))
         {
-            var storedItems = StoredLookup[siteEntity];
             for (int i = 0; i < storedItems.Length; i++)
             {
                 Entity itemEntity = storedItems[i].ItemEntity;

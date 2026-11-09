@@ -27,18 +27,21 @@ public partial struct PowerSupplyExecutionSystem : ISystem
         var generators = _generators.ToEntityListAsync(Allocator.TempJob, dependency, out var generatorsReady);
         var consumers = _consumers.ToEntityListAsync(Allocator.TempJob, dependency, out var consumersReady);
         var ready = new NativeReference<bool>(Allocator.TempJob);
+        var plans = SystemAPI.GetComponentLookup<PowerGeneratorSupplyPlan>(true);
+        var reservations = SystemAPI.GetComponentLookup<PowerSupplyReservation>(true);
+        var types = SystemAPI.GetComponentLookup<BuildingType>(true);
         var validate = new ValidatePowerConsumptionJob
         {
             Generators = generators.AsDeferredJobArray(), Consumers = consumers.AsDeferredJobArray(),
-            Plans = state.GetComponentLookup<PowerGeneratorSupplyPlan>(true),
-            Reservations = state.GetComponentLookup<PowerSupplyReservation>(true),
-            Types = state.GetComponentLookup<BuildingType>(true),
-            ConfigLookup = state.GetBufferLookup<BuildingConfigElement>(true), ConfigEntity = configEntity,
-            Fuel = state.GetComponentLookup<FuelEnergyState>(true),
-            Stored = state.GetBufferLookup<StoredItemElement>(true),
-            ItemIdentityLookup = state.GetComponentLookup<ItemIdentity>(true),
-            ItemOwnershipLookup = state.GetComponentLookup<ItemOwnership>(true),
-            DestroyItemRequestLookup = state.GetComponentLookup<DestroyItemRequest>(true),
+            Plans = plans,
+            Reservations = reservations,
+            Types = types,
+            ConfigLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true), ConfigEntity = configEntity,
+            Fuel = SystemAPI.GetComponentLookup<FuelEnergyState>(true),
+            Stored = SystemAPI.GetBufferLookup<StoredItemElement>(true),
+            ItemIdentityLookup = SystemAPI.GetComponentLookup<ItemIdentity>(true),
+            ItemOwnershipLookup = SystemAPI.GetComponentLookup<ItemOwnership>(true),
+            DestroyItemRequestLookup = SystemAPI.GetComponentLookup<DestroyItemRequest>(true),
             Validation = validationOwner.Validation, Ready = ready
         }.Schedule(JobHandle.CombineDependencies(generatorsReady, consumersReady, state.Dependency));
         var ecbSystem = state.World.GetOrCreateSystemManaged<EndPowerEntityCommandBufferSystem>();
@@ -46,10 +49,10 @@ public partial struct PowerSupplyExecutionSystem : ISystem
         {
             Generators = generators.AsDeferredJobArray(), Consumers = consumers.AsDeferredJobArray(),
             Validation = validationOwner.Validation, Ready = ready,
-            Plans = SystemAPI.GetComponentLookup<PowerGeneratorSupplyPlan>(true),
-            Types = SystemAPI.GetComponentLookup<BuildingType>(true),
+            Plans = plans,
+            Types = types,
             Fuel = SystemAPI.GetComponentLookup<FuelEnergyState>(), Stored = SystemAPI.GetBufferLookup<StoredItemElement>(),
-            Reservations = SystemAPI.GetComponentLookup<PowerSupplyReservation>(true),
+            Reservations = reservations,
             Results = SystemAPI.GetComponentLookup<PowerSupplyResult>(), ECB = ecbSystem.CreateCommandBuffer()
         }.Schedule(JobHandle.CombineDependencies(validate, state.Dependency));
         state.Dependency = JobHandle.CombineDependencies(generators.Dispose(commit), consumers.Dispose(commit), ready.Dispose(commit));
@@ -97,14 +100,19 @@ internal struct ValidatePowerConsumptionJob : IJob
                 return;
             }
         }
+        DynamicBuffer<BuildingConfigElement> configs = default;
         foreach (Entity generator in Generators)
         {
-            if (Types[generator].Type != BuildingTypeEnum.CoalGenerator)
+            var type = Types[generator];
+            if (type.Type != BuildingTypeEnum.CoalGenerator)
             {
                 continue;
             }
-            var type = Types[generator];
-            BuildingConfigLookupUtility.TryGetConfig(ConfigLookup[ConfigEntity], type.Type, type.Tier, out var config);
+            if (!configs.IsCreated)
+            {
+                configs = ConfigLookup[ConfigEntity];
+            }
+            BuildingConfigLookupUtility.TryGetConfig(configs, type.Type, type.Tier, out var config);
             var plan = Plans[generator];
             var items = Stored[generator];
             if (!math.isfinite(plan.AllocatedEnergy) || plan.AllocatedEnergy < 0f ||
