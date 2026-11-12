@@ -83,7 +83,7 @@ internal struct PreparePowerAvailabilityJob : IJobChunk
             return;
         }
 
-        if (!BuildingConfigLookupUtility.TryGetConfig(configs.Read(ConfigLookup, ConfigEntity), type.Type, type.Tier, out var config))
+        if (!BuildingConfigLookupUtility.TryGetConfig(configs.Read(ConfigLookup, ConfigEntity), type.BuildingId, out var config))
         {
             return;
         }

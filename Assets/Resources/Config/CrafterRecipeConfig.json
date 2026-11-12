@@ -1,65 +1,65 @@
 {
   "recipes": [
     {
-      "id": 1,
-      "outputItemType": "Iron",
-      "craftTime": 1.0,
+      "id": 13000001,
+      "outputItemId": 12000005,
+      "craftTime": 1,
       "conditions": [],
       "ingredients": [
         {
-          "itemType": "Iron_Ore",
+          "itemId": 12000001,
           "amount": 1
         }
       ]
     },
     {
-      "id": 2,
-      "outputItemType": "Copper",
-      "craftTime": 1.0,
+      "id": 13000002,
+      "outputItemId": 12000006,
+      "craftTime": 1,
       "conditions": [],
       "ingredients": [
         {
-          "itemType": "Copper_Ore",
+          "itemId": 12000002,
           "amount": 1
         }
       ]
     },
     {
-      "id": 3,
-      "outputItemType": "Iron_Stick",
+      "id": 13000003,
+      "outputItemId": 12000007,
       "craftTime": 1.5,
       "conditions": [],
       "ingredients": [
         {
-          "itemType": "Iron",
+          "itemId": 12000005,
           "amount": 2
         }
       ]
     },
     {
-      "id": 4,
-      "outputItemType": "Copper_Stick",
+      "id": 13000004,
+      "outputItemId": 12000008,
       "craftTime": 1.5,
       "conditions": [],
       "ingredients": [
         {
-          "itemType": "Copper",
+          "itemId": 12000006,
           "amount": 2
         }
       ]
     },
     {
-      "id": 5,
-      "outputItemType": "Drone",
-      "craftTime": 4.0,
+      "id": 13000005,
+      "outputItemId": 12000009,
+      "craftTime": 4,
       "conditions": [],
       "ingredients": [
         {
-          "itemType": "Iron_Stick",
+          "itemId": 12000007,
           "amount": 2
         },
         {
-          "itemType": "Copper_Stick",
+          "itemId": 12000008,
           "amount": 2
         }
       ]

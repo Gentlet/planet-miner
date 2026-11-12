@@ -2,7 +2,7 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 역할·목적: 건물 종류·티어별 프리팹 매핑의 단일 DB 소유자를 식별한다. 점유 크기는 BuildingConfig가 소유한다.
+/// 역할·목적: 건물 ID별 프리팹 매핑의 단일 DB 소유자를 식별한다. 점유 크기는 BuildingConfig가 소유한다.
 /// 부착 엔티티: BuildingPrefabElement 버퍼가 함께 있는 별도 베이킹 DB 엔티티다.
 /// 생성: BuildingPrefabDatabaseAuthoring.Baker가 등록된 Authoring 항목을 베이킹한다.
 /// 이용: PrefabDatabaseInitializationSystem(Initialization)이 DB 유일성·필수 항목·프리팹 생존/태그를 검증하고 BuildingLifecycleApplySystem/ConstructionLifecycleApplySystem(StateApply)의 완공 생성이 읽는다.
@@ -13,20 +13,22 @@ public struct BuildingPrefabDatabase : IComponentData
 }
 
 /// <summary>
-/// 역할·목적: 건물 종류·티어별 프리팹 매핑을 제공한다. Prefab은 실제 런타임 인스턴스와 구분하며 크기는 담지 않는다.
+/// 역할·목적: BuildingId별 프리팹 매핑을 제공한다. 역할과 티어는 초기화에서 정의와 대조한다.
 /// 부착 엔티티: BuildingPrefabDatabase 태그가 있는 DB 엔티티의 버퍼다.
 /// 생성: BuildingPrefabDatabaseAuthoring.Baker가 각 항목의 Prefab 참조를 등록한다.
-/// 이용: PrefabDatabaseInitializationSystem(Initialization)이 항목 중복·타입·Prefab/LocalTransform 등을 검증하고 BuildingLifecycleApplySystem/ConstructionLifecycleApplySystem(StateApply)의 완공 생성이 종류·티어로 조회하여 인스턴스화한다.
+/// 이용: Initialization이 ID와 설정의 대응 및 프리팹을 검증하고 공통 건물 생성이 정의 ID로 조회하여 인스턴스화한다.
 /// 제거: 인스턴스 생성/삭제 때 매핑을 소비하지 않는다. 검증 후 변경하지 않으며 DB 엔티티/World 수명을 따른다.
 /// </summary>
 [InternalBufferCapacity(16)]
 public struct BuildingPrefabElement : IBufferElementData
 {
+    public int BuildingId;
     public BuildingTypeEnum Type;
     public int Tier;
     public Entity Prefab;
-    public BuildingPrefabElement(BuildingTypeEnum type, int tier, Entity prefab)
+    public BuildingPrefabElement(BuildingTypeEnum type, int tier, Entity prefab, int buildingId)
     {
+        BuildingId = buildingId;
         Type = type;
         Tier = tier;
         Prefab = prefab;

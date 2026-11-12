@@ -1,9 +1,9 @@
 {
   "carryingCapacity": 3,
-  "movementSpeed": 4.0,
+  "movementSpeed": 4,
   "emergencyMovementSpeed": 0.5,
-  "maximumBattery": 100.0,
-  "batteryConsumptionPerDistance": 1.0,
-  "chargingSpeed": 10.0,
-  "chargingPowerConsumptionPerDrone": 5.0
+  "maximumBattery": 100,
+  "batteryConsumptionPerDistance": 1,
+  "chargingSpeed": 10,
+  "chargingPowerConsumptionPerDrone": 5
 }

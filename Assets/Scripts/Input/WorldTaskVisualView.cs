@@ -21,18 +21,16 @@ public readonly struct WorldTaskVisualRecord
     public readonly int2 Position;
     public readonly int2 Footprint;
     public readonly DirectionEnum Direction;
-    public readonly BuildingTypeEnum BuildingType;
-    public readonly int Tier;
+    public readonly int BuildingId;
     public WorldTaskVisualRecord(Entity target, WorldTaskVisualKindEnum kind, int2 position, int2 footprint,
-        DirectionEnum direction, BuildingTypeEnum buildingType = default, int tier = 0)
+        DirectionEnum direction, int buildingId = 0)
     {
         Target = target;
         Kind = kind;
         Position = position;
         Footprint = footprint;
         Direction = direction;
-        BuildingType = buildingType;
-        Tier = tier;
+        BuildingId = buildingId;
     }
 }
 
@@ -59,7 +57,7 @@ public sealed class WorldTaskVisualView : MonoBehaviour
     private Material _lineMaterial;
     private Material _ghostMaterial;
     private readonly List<Visual> _pool = new List<Visual>();
-    private readonly Dictionary<(BuildingTypeEnum, int), GhostTemplate> _templates = new Dictionary<(BuildingTypeEnum, int), GhostTemplate>();
+    private readonly Dictionary<int, GhostTemplate> _templates = new();
     private readonly List<WorldTaskVisualRecord> _records = new List<WorldTaskVisualRecord>();
     public IReadOnlyList<WorldTaskVisualRecord> Records => _records;
 
@@ -110,7 +108,7 @@ public sealed class WorldTaskVisualView : MonoBehaviour
                 }
                 records.Add(new WorldTaskVisualRecord(entity, WorldTaskVisualKindEnum.Construction,
                     manager.GetComponentData<GridPosition>(entity).Value, manager.GetComponentData<BuildingFootprint>(entity).Size,
-                    manager.GetComponentData<Direction>(entity).dir, site.TargetBuildingType, site.TargetTier));
+                    manager.GetComponentData<Direction>(entity).dir, site.TargetBuildingId));
             }
         }
         var marked = new HashSet<(Entity, WorldTaskVisualKindEnum)>();
@@ -243,7 +241,7 @@ public sealed class WorldTaskVisualView : MonoBehaviour
                 visual.Lines[2].SetPositions(new[] { new Vector3(center.x, min.y, min.z), new Vector3(center.x, max.y, min.z) });
             }
         }
-        var template = construction ? ReadTemplate(record.BuildingType, record.Tier) : null;
+        var template = construction ? ReadTemplate(record.BuildingId) : null;
         if (!ReferenceEquals(template, visual.Template))
         {
             foreach (var part in visual.Parts)
@@ -292,9 +290,9 @@ public sealed class WorldTaskVisualView : MonoBehaviour
         }
     }
 
-    private GhostTemplate ReadTemplate(BuildingTypeEnum type, int tier)
+    private GhostTemplate ReadTemplate(int buildingId)
     {
-        if (_templates.TryGetValue((type, tier), out var known))
+        if (_templates.TryGetValue(buildingId, out var known))
         {
             return known;
         }
@@ -304,7 +302,8 @@ public sealed class WorldTaskVisualView : MonoBehaviour
         {
             return null;
         }
-        if (!PrefabLookupUtility.TryGetBuildingPrefab(manager.GetBuffer<BuildingPrefabElement>(database.GetSingletonEntity(), true), type, tier, out Entity prefab))
+        if (!PrefabLookupUtility.TryGetBuildingPrefab(manager.GetBuffer<BuildingPrefabElement>(database.GetSingletonEntity(), true),
+                buildingId, out Entity prefab))
         {
             return null;
         }
@@ -364,7 +363,7 @@ public sealed class WorldTaskVisualView : MonoBehaviour
             template.Transforms.Add(relative);
         }
         // 그래픽이 없는 유효 프리팹도 현장 윤곽은 남긴다. 게임 생성/승인에 대체 프리팹을 공급하지 않는다.
-        _templates.Add((type, tier), template);
+        _templates.Add(buildingId, template);
         return template;
     }
 

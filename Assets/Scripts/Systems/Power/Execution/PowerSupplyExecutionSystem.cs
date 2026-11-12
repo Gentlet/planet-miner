@@ -112,7 +112,7 @@ internal struct ValidatePowerConsumptionJob : IJob
             {
                 configs = ConfigLookup[ConfigEntity];
             }
-            BuildingConfigLookupUtility.TryGetConfig(configs, type.Type, type.Tier, out var config);
+            BuildingConfigLookupUtility.TryGetConfig(configs, type.BuildingId, out var config);
             var plan = Plans[generator];
             var items = Stored[generator];
             if (!math.isfinite(plan.AllocatedEnergy) || plan.AllocatedEnergy < 0f ||

@@ -17,6 +17,7 @@ namespace PlanetMiner.Config
     public class RecipeJsonEntry
     {
         public int id;
+        public int outputItemId;
         public string outputItemType;
         public int outputAmount = 1;
         public float craftTime = 1.0f;
@@ -29,6 +30,7 @@ namespace PlanetMiner.Config
     [Serializable]
     public class RecipeIngredientJsonEntry
     {
+        public int itemId;
         public string itemType;
         public long amount = 1;
     }
@@ -37,6 +39,7 @@ namespace PlanetMiner.Config
     [Serializable]
     public class RecipeOutputJsonEntry
     {
+        public int itemId;
         public string itemType;
         public int amount = 1;
     }
@@ -55,7 +58,7 @@ namespace PlanetMiner.Config
     /// <summary>
     /// 역할·목적: Resources 레시피 JSON을 해석해 재료/출력 범위를 만들고 World 소유 버퍼에 한 번 게시한다.
     /// conditions는 현재 DTO 입력 필드만 있으며 비트 변환은 연결하지 않고 ConditionFlags=0으로 게시한다.
-    /// 입력·출력: 정식 품목명·실제 주생산품을 요구하고 작성된 부산물도 검증한다. 전체 초기화는 필수 ID 1~5를 요구하며 부분 게시 API는 격리 구성에 사용한다.
+    /// 입력·출력: 기본 Resources는 품목 ID를 사용한다. 직접 JSON과 별도 Resources에서는 정식 품목명도 읽는다. 전체 초기화는 필수 레시피를 검사한다.
     /// 이용: RecipeInitSystem(Initialization)과 설정 테스트가 호출한다. 런타임 Reader는 RecipeRegistry와 ECS 버퍼를 사용한다.
     /// 수명·실패: 기존 레지스트리는 교체하지 않는다. 복사 중 실패하면 이번에 만든 미완성 엔티티만 회수하고 예외를 전달한다.
     /// </summary>
@@ -63,7 +66,7 @@ namespace PlanetMiner.Config
     {
         public const string DefaultResourcePath = "Config/CrafterRecipeConfig";
 
-        public static RecipeConfigData LoadFromResources(string resourcePath = DefaultResourcePath)
+        public static RecipeConfigData LoadFromResources(string resourcePath = DefaultResourcePath, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
         {
             var textAsset = Resources.Load<TextAsset>(resourcePath);
             if (textAsset == null)
@@ -71,12 +74,17 @@ namespace PlanetMiner.Config
                 throw new ArgumentException($"Recipe config asset was not found at Resources/{resourcePath}.", nameof(resourcePath));
             }
 
-            var config = ParseJson(textAsset.text);
+            var config = ParseJson(textAsset.text, itemIds, string.Equals(resourcePath, DefaultResourcePath, StringComparison.OrdinalIgnoreCase));
             ValidateRequiredRecipes(config);
             return config;
         }
 
-        public static RecipeConfigData ParseJson(string json)
+        public static RecipeConfigData ParseJson(string json, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
+        {
+            return ParseJson(json, itemIds, requireItemIds: false);
+        }
+
+        private static RecipeConfigData ParseJson(string json, IReadOnlyDictionary<int, ItemTypeEnum> itemIds, bool requireItemIds)
         {
             if (string.IsNullOrWhiteSpace(json))
             {
@@ -124,7 +132,7 @@ namespace PlanetMiner.Config
                         {
                             throw new ArgumentException($"Recipe {entry.id} contains a null ingredient.", nameof(json));
                         }
-                        ItemTypeEnum itemType = ParseItemType(ingredient.itemType, entry.id, "ingredient");
+                        ItemTypeEnum itemType = ParseItemType(ingredient.itemId, ingredient.itemType, entry.id, "ingredient", itemIds, requireItemIds);
                         if (ingredient.amount < int.MinValue || ingredient.amount > int.MaxValue)
                         {
                             throw new ArgumentException($"Recipe {entry.id} ingredient '{itemType}' amount {ingredient.amount} is outside the Int32 range.", nameof(json));
@@ -135,7 +143,7 @@ namespace PlanetMiner.Config
                 }
 
                 // 각 레시피의 출력 슬롯 0은 주생산품이며, 이후 슬롯은 JSON 순서의 부산물이다.
-                ItemTypeEnum primaryType = ParseItemType(entry.outputItemType, entry.id, "primary output");
+                ItemTypeEnum primaryType = ParseItemType(entry.outputItemId, entry.outputItemType, entry.id, "primary output", itemIds, requireItemIds);
                 config.Outputs.Add(new RecipeOutputElement(primaryType, entry.outputAmount > 0 ? entry.outputAmount : 1));
                 if (entry.byproducts != null)
                 {
@@ -145,7 +153,7 @@ namespace PlanetMiner.Config
                         {
                             throw new ArgumentException($"Recipe {entry.id} contains a null byproduct.", nameof(json));
                         }
-                        ItemTypeEnum itemType = ParseItemType(output.itemType, entry.id, "byproduct");
+                        ItemTypeEnum itemType = ParseItemType(output.itemId, output.itemType, entry.id, "byproduct", itemIds, requireItemIds);
                         config.Outputs.Add(new RecipeOutputElement(itemType, output.amount > 0 ? output.amount : 1, true));
                     }
                 }
@@ -157,8 +165,17 @@ namespace PlanetMiner.Config
             return config;
         }
 
-        private static ItemTypeEnum ParseItemType(string value, int recipeId, string role)
+        private static ItemTypeEnum ParseItemType(int itemId, string value, int recipeId, string role,
+            IReadOnlyDictionary<int, ItemTypeEnum> itemIds, bool requireItemIds)
         {
+            if (itemId != 0)
+            {
+                return ItemConfigInitSystem.ResolveItemId(itemId, itemIds);
+            }
+            if (requireItemIds)
+            {
+                throw new ArgumentException($"Recipe {recipeId} is missing the {role} item ID.", "json");
+            }
             if (string.IsNullOrWhiteSpace(value))
             {
                 throw new ArgumentException($"Recipe {recipeId} has an empty {role} item name.", "json");
@@ -236,7 +253,24 @@ namespace PlanetMiner.Config
         private static void ValidateRequiredRecipeIds(HashSet<int> ids)
         {
             var missing = new List<int>();
+            int firstId = 1;
+            bool hasLegacyRequiredIds = true;
             for (int id = 1; id <= 5; id++)
+            {
+                hasLegacyRequiredIds &= ids.Contains(id);
+            }
+            if (!hasLegacyRequiredIds)
+            {
+                foreach (int id in ids)
+                {
+                    if (id / 100000 == 130)
+                    {
+                        firstId = 13000001;
+                        break;
+                    }
+                }
+            }
+            for (int id = firstId; id < firstId + 5; id++)
             {
                 if (!ids.Contains(id))
                 {

@@ -9,6 +9,7 @@ using Unity.Entities;
 /// 정리·가시화: 성공/실패 뒤 비활성화하고 실패는 로그·미게시·즉시 Fatal로 처리한다. 자동 재시도·ECB 기록은 없다.
 /// </summary>
 [UpdateInGroup(typeof(InitializationSystemGroup))]
+[UpdateAfter(typeof(ItemConfigInitSystem))]
 public partial struct WorldGenerationConfigLoadSystem : ISystem
 {
     public void OnCreate(ref SystemState state)
@@ -39,9 +40,10 @@ public partial struct WorldGenerationConfigLoadSystem : ISystem
                 return;
             }
 
+            var itemIds = ItemConfigInitSystem.ReadRegisteredItemIds(state.EntityManager);
             bool success = WorldGenerationConfigLoader.TryLoadConfigFromResources(
                 WorldGenerationConfigLoader.DefaultResourcePath,
-                out uint worldSeed, out int initialChunkSize, out var elements, out var floor);
+                out uint worldSeed, out int initialChunkSize, out var elements, out var floor, itemIds);
             if (success)
             {
                 WorldGenerationConfigLoader.PublishConfig(state.EntityManager, worldSeed, initialChunkSize, elements, floor);

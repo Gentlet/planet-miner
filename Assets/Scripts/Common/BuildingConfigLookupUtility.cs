@@ -5,33 +5,38 @@ using Unity.Mathematics;
 
 /// <summary>
 /// 역할·목적: 건물 통합/호환 설정의 조회와 현장 자재 요구량 초기화를 공유한다.
-/// 입력·출력: 호출자가 제공한 버퍼에서 첫 종류·티어 일치를 찾는다. PopulateRequirements는 출력 현장 버퍼에 요구 행을 추가한다.
-/// 이용: 배치 검증·BuildingLifecycleUtility·BuildingPlacementCommandSystem이 사용한다. 해금 변경 함수는 제공하지만 현재 제품 연구 Writer는 없다.
+/// 입력·출력: BuildingId로 통합 정의와 호환 설정을 조회하고 해당 ID의 자재 요구 행을 복사한다.
+/// 이용: 배치 검증·공통 건물 생성·건설 자재 초기화에서 사용한다.
 /// 수명·소유권: 별도 설정 캐시는 없으며 조회는 읽기 전용, 요구 추가/해금 변경은 전달받은 버퍼에만 적용한다. 버퍼 유효 수명은 호출자가 유지한다.
 /// </summary>
 [BurstCompile]
 public static class BuildingConfigLookupUtility
 {
-    /// <summary>
-    /// 지정된 건물의 스펙 및 해금 정보를 조회.
-    /// </summary>
     public static bool TryGetConfig(
-        in DynamicBuffer<BuildingConfigElement> buffer,
-        BuildingTypeEnum type,
-        int tier,
+        in NativeArray<BuildingConfigElement> configs,
+        int buildingId,
         out BuildingConfigElement config)
     {
-        for (int i = 0; i < buffer.Length; i++)
+        if (buildingId <= 0 || !configs.IsCreated)
         {
-            if (buffer[i].BuildingType == type && buffer[i].Tier == tier)
+            config = default;
+            return false;
+        }
+        for (int i = 0; i < configs.Length; i++)
+        {
+            if (configs[i].BuildingId == buildingId)
             {
-                config = buffer[i];
+                config = configs[i];
                 return true;
             }
         }
-
         config = default;
         return false;
+    }
+
+    public static bool TryGetConfig(in DynamicBuffer<BuildingConfigElement> configs, int buildingId, out BuildingConfigElement config)
+    {
+        return TryGetConfig(configs.AsNativeArray(), buildingId, out config);
     }
 
     /// <summary>
@@ -39,13 +44,17 @@ public static class BuildingConfigLookupUtility
     /// </summary>
     public static bool TryGetConfig(
         in DynamicBuffer<BuildingRuntimeConfigElement> buffer,
-        BuildingTypeEnum type,
-        int tier,
+        int buildingId,
         out BuildingRuntimeConfigElement config)
     {
+        if (buildingId <= 0)
+        {
+            config = default;
+            return false;
+        }
         for (int i = 0; i < buffer.Length; i++)
         {
-            if (buffer[i].BuildingType == type && buffer[i].Tier == tier)
+            if (buffer[i].BuildingId == buildingId)
             {
                 config = buffer[i];
                 return true;
@@ -61,11 +70,10 @@ public static class BuildingConfigLookupUtility
     /// </summary>
     public static bool TryGetFootprint(
         in DynamicBuffer<BuildingConfigElement> buffer,
-        BuildingTypeEnum type,
-        int tier,
+        int buildingId,
         out int2 footprint)
     {
-        if (TryGetConfig(buffer, type, tier, out BuildingConfigElement config) &&
+        if (TryGetConfig(buffer, buildingId, out BuildingConfigElement config) &&
             config.Footprint.x > 0 && config.Footprint.y > 0)
         {
             footprint = config.Footprint;
@@ -81,11 +89,10 @@ public static class BuildingConfigLookupUtility
     /// </summary>
     public static bool IsBuildingUnlocked(
         in DynamicBuffer<BuildingConfigElement> buffer,
-        BuildingTypeEnum type,
-        int tier)
+        int buildingId)
     {
         // 설정에 등록되지 않은 건물은 안전을 위해 미해금으로 처리
-        return TryGetConfig(buffer, type, tier, out BuildingConfigElement config) && config.IsUnlocked;
+        return TryGetConfig(buffer, buildingId, out BuildingConfigElement config) && config.IsUnlocked;
     }
 
     /// <summary>
@@ -93,13 +100,16 @@ public static class BuildingConfigLookupUtility
     /// </summary>
     public static bool SetBuildingUnlocked(
         ref DynamicBuffer<BuildingConfigElement> buffer,
-        BuildingTypeEnum type,
-        int tier,
+        int buildingId,
         bool isUnlocked)
     {
+        if (buildingId <= 0)
+        {
+            return false;
+        }
         for (int i = 0; i < buffer.Length; i++)
         {
-            if (buffer[i].BuildingType == type && buffer[i].Tier == tier)
+            if (buffer[i].BuildingId == buildingId)
             {
                 var elem = buffer[i];
                 elem.IsUnlocked = isUnlocked;
@@ -116,24 +126,10 @@ public static class BuildingConfigLookupUtility
     /// </summary>
     public static int PopulateRequirements(
         in DynamicBuffer<BuildingConstructionMaterialElement> materialDb,
-        BuildingTypeEnum type,
-        int tier,
+        int buildingId,
         ref DynamicBuffer<ConstructionMaterialRequirementElement> targetRequirements)
     {
-        int count = 0;
-        for (int i = 0; i < materialDb.Length; i++)
-        {
-            if (materialDb[i].BuildingType == type && materialDb[i].Tier == tier)
-            {
-                targetRequirements.Add(new ConstructionMaterialRequirementElement(
-                    materialDb[i].ItemType,
-                    materialDb[i].Quantity,
-                    0));
-                count++;
-            }
-        }
-
-        return count;
+        return PopulateRequirements(materialDb.AsNativeArray(), buildingId, ref targetRequirements);
     }
 
     /// <summary>
@@ -141,32 +137,9 @@ public static class BuildingConfigLookupUtility
     /// </summary>
     public static bool IsBuildingUnlocked(
         in NativeArray<BuildingConfigElement> configs,
-        BuildingTypeEnum type,
-        int tier)
+        int buildingId)
     {
-        return TryGetConfig(configs, type, tier, out var config) && config.IsUnlocked;
-    }
-
-    /// <summary>Command의 같은 설정 스냅샷에서 크기·해금을 조회한다. 별도 크기 캐시를 만들지 않는다.</summary>
-    public static bool TryGetConfig(
-        in NativeArray<BuildingConfigElement> configs,
-        BuildingTypeEnum type,
-        int tier,
-        out BuildingConfigElement config)
-    {
-        if (configs.IsCreated)
-        {
-            for (int i = 0; i < configs.Length; i++)
-            {
-                if (configs[i].BuildingType == type && configs[i].Tier == tier)
-                {
-                    config = configs[i];
-                    return true;
-                }
-            }
-        }
-        config = default;
-        return false;
+        return TryGetConfig(configs, buildingId, out var config) && config.IsUnlocked;
     }
 
     /// <summary>
@@ -174,14 +147,18 @@ public static class BuildingConfigLookupUtility
     /// </summary>
     public static int PopulateRequirements(
         in NativeArray<BuildingConstructionMaterialElement> materialDb,
-        BuildingTypeEnum type,
-        int tier,
+        int buildingId,
         ref DynamicBuffer<ConstructionMaterialRequirementElement> targetRequirements)
     {
+        if (buildingId <= 0)
+        {
+            return 0;
+        }
+
         int count = 0;
         for (int i = 0; i < materialDb.Length; i++)
         {
-            if (materialDb[i].BuildingType == type && materialDb[i].Tier == tier)
+            if (materialDb[i].BuildingId == buildingId)
             {
                 targetRequirements.Add(new ConstructionMaterialRequirementElement(
                     materialDb[i].ItemType,

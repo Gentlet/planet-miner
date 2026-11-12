@@ -155,9 +155,11 @@ public sealed class BuildingInfoController : MonoBehaviour
             Type = building.Type;
             Title = building.Type + " T" + building.Tier;
             using var configs = manager.CreateEntityQuery(typeof(BuildingConfig), typeof(BuildingConfigElement));
-            if (configs.CalculateEntityCount() == 1 && BuildingConfigLookupUtility.TryGetConfig(manager.GetBuffer<BuildingConfigElement>(configs.GetSingletonEntity(), true), building.Type, building.Tier, out var config))
+            if (configs.CalculateEntityCount() == 1 &&
+                BuildingConfigLookupUtility.TryGetConfig(manager.GetBuffer<BuildingConfigElement>(configs.GetSingletonEntity(), true),
+                    building.BuildingId, out var config))
             {
-                Title = config.DisplayName.ToString() + " T" + building.Tier;
+                Title = config.DisplayName.ToString() + " T" + config.Tier;
             }
         }
         else

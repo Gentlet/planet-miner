@@ -1,71 +1,124 @@
 {
-  "initiallyUnlockedRecipeIds": [1, 2],
+  "initiallyUnlockedRecipeIds": [
+    13000001,
+    13000002
+  ],
   "researches": [
     {
-      "stableId": "logistics_distribution",
-      "displayName": "물류 분배",
-      "description": "물류 흐름을 나누고 합치는 기초 설비를 해금합니다.",
+      "researchId": 14000001,
+      "displayName": "\uBB3C\uB958 \uBD84\uBC30",
+      "description": "\uBB3C\uB958 \uD750\uB984\uC744 \uB098\uB204\uACE0 \uD569\uCE58\uB294 \uAE30\uCD08 \uC124\uBE44\uB97C \uD574\uAE08\uD569\uB2C8\uB2E4.",
       "prerequisiteIds": [],
       "ingredients": [
-        { "itemType": "Iron", "amount": 1 },
-        { "itemType": "Copper", "amount": 1 }
+        {
+          "itemId": 12000005,
+          "amount": 1
+        },
+        {
+          "itemId": 12000006,
+          "amount": 1
+        }
       ],
-      "cycleDuration": 5.0,
-      "progressPerCycle": 10.0,
-      "requiredProgress": 100.0,
+      "cycleDuration": 5,
+      "progressPerCycle": 10,
+      "requiredProgress": 100,
       "rewards": [
-        { "type": "BuildingUnlock", "buildingType": "Splitter" },
-        { "type": "BuildingUnlock", "buildingType": "Merger" }
+        {
+          "type": "BuildingUnlock",
+          "buildingId": 11000006
+        },
+        {
+          "type": "BuildingUnlock",
+          "buildingId": 11000007
+        }
       ]
     },
     {
-      "stableId": "material_processing",
-      "displayName": "소재 가공",
-      "description": "철봉과 구리봉 제작 기술을 해금합니다.",
+      "researchId": 14000002,
+      "displayName": "\uC18C\uC7AC \uAC00\uACF5",
+      "description": "\uCCA0\uBD09\uACFC \uAD6C\uB9AC\uBD09 \uC81C\uC791 \uAE30\uC220\uC744 \uD574\uAE08\uD569\uB2C8\uB2E4.",
       "prerequisiteIds": [],
       "ingredients": [
-        { "itemType": "Iron", "amount": 1 },
-        { "itemType": "Copper", "amount": 1 }
+        {
+          "itemId": 12000005,
+          "amount": 1
+        },
+        {
+          "itemId": 12000006,
+          "amount": 1
+        }
       ],
-      "cycleDuration": 5.0,
-      "progressPerCycle": 10.0,
-      "requiredProgress": 100.0,
+      "cycleDuration": 5,
+      "progressPerCycle": 10,
+      "requiredProgress": 100,
       "rewards": [
-        { "type": "RecipeUnlock", "recipeId": 3 },
-        { "type": "RecipeUnlock", "recipeId": 4 }
+        {
+          "type": "RecipeUnlock",
+          "recipeId": 13000003
+        },
+        {
+          "type": "RecipeUnlock",
+          "recipeId": 13000004
+        }
       ]
     },
     {
-      "stableId": "coal_power",
-      "displayName": "석탄 발전",
-      "description": "석탄을 연료로 사용하는 발전 설비를 해금합니다.",
-      "prerequisiteIds": ["material_processing"],
-      "ingredients": [
-        { "itemType": "Iron_Stick", "amount": 1 },
-        { "itemType": "Copper_Stick", "amount": 1 }
+      "researchId": 14000003,
+      "displayName": "\uC11D\uD0C4 \uBC1C\uC804",
+      "description": "\uC11D\uD0C4\uC744 \uC5F0\uB8CC\uB85C \uC0AC\uC6A9\uD558\uB294 \uBC1C\uC804 \uC124\uBE44\uB97C \uD574\uAE08\uD569\uB2C8\uB2E4.",
+      "prerequisiteIds": [
+        14000002
       ],
-      "cycleDuration": 5.0,
-      "progressPerCycle": 10.0,
-      "requiredProgress": 100.0,
+      "ingredients": [
+        {
+          "itemId": 12000007,
+          "amount": 1
+        },
+        {
+          "itemId": 12000008,
+          "amount": 1
+        }
+      ],
+      "cycleDuration": 5,
+      "progressPerCycle": 10,
+      "requiredProgress": 100,
       "rewards": [
-        { "type": "BuildingUnlock", "buildingType": "CoalGenerator" }
+        {
+          "type": "BuildingUnlock",
+          "buildingId": 11000008
+        }
       ]
     },
     {
-      "stableId": "drone_logistics",
-      "displayName": "드론 물류",
-      "description": "드론 제작과 전용 정거장 운용 기술을 해금합니다.",
-      "prerequisiteIds": ["logistics_distribution", "material_processing"],
-      "ingredients": [
-        { "itemType": "Iron_Stick", "amount": 2 },
-        { "itemType": "Copper_Stick", "amount": 2 }
+      "researchId": 14000004,
+      "displayName": "\uB4DC\uB860 \uBB3C\uB958",
+      "description": "\uB4DC\uB860 \uC81C\uC791\uACFC \uC804\uC6A9 \uC815\uAC70\uC7A5 \uC6B4\uC6A9 \uAE30\uC220\uC744 \uD574\uAE08\uD569\uB2C8\uB2E4.",
+      "prerequisiteIds": [
+        14000001,
+        14000002
       ],
-      "cycleDuration": 5.0,
-      "progressPerCycle": 10.0,
-      "requiredProgress": 100.0,
+      "ingredients": [
+        {
+          "itemId": 12000007,
+          "amount": 2
+        },
+        {
+          "itemId": 12000008,
+          "amount": 2
+        }
+      ],
+      "cycleDuration": 5,
+      "progressPerCycle": 10,
+      "requiredProgress": 100,
       "rewards": [
-        { "type": "BuildingUnlock", "buildingType": "DroneStation" },
-        { "type": "RecipeUnlock", "recipeId": 5 }
+        {
+          "type": "BuildingUnlock",
+          "buildingId": 11000009
+        },
+        {
+          "type": "RecipeUnlock",
+          "recipeId": 13000005
+        }
       ]
     }
   ]

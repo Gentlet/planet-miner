@@ -23,10 +23,10 @@ public struct ResearchRegistry : IComponentData
 {
 }
 
-/// <summary>선택 Command는 EndCommand에 활성 ID를 공개하고 완료 Apply는 EndBuilding에 비운다. 빈 ID는 미선택이다.</summary>
+/// <summary>선택 Command는 EndCommand에 활성 ID를 공개하고 완료 Apply는 EndBuilding에 0을 기록한다. ID 0은 미선택이다.</summary>
 public struct ResearchState : IComponentData
 {
-    public FixedString32Bytes ActiveResearchId;
+    public int ActiveResearchId;
 }
 
 /// <summary>BuildingConfig 엔티티의 완료 연구 보너스 합계다. 초기화가 재구성하고 완료 Apply가 EndBuilding에 갱신한다. 기본 속도와 소비 전력은 보존한다.</summary>
@@ -42,7 +42,7 @@ public struct ResearchStatBonuses : IComponentData
 [InternalBufferCapacity(0)]
 public struct ResearchDefinitionElement : IBufferElementData
 {
-    public FixedString32Bytes StableId;
+    public int StableId;
     public FixedString128Bytes DisplayName;
     public FixedString512Bytes Description;
     public float CycleDuration;
@@ -59,7 +59,7 @@ public struct ResearchDefinitionElement : IBufferElementData
 [InternalBufferCapacity(0)]
 public struct ResearchPrerequisiteElement : IBufferElementData
 {
-    public FixedString32Bytes ResearchId;
+    public int ResearchId;
 }
 
 /// <summary>한 주기의 선소비 수량이다. 실제 실물/보관 관계와 구분하며 2주기 수량이 Int32 범위를 넘지 않아야 한다.</summary>
@@ -70,12 +70,12 @@ public struct ResearchIngredientElement : IBufferElementData
     public int Amount;
 }
 
-/// <summary>완료 보상의 읽기 전용 원본이다. 종류별 대상 필드만 사용하며 보너스 0.10은 +10%다.</summary>
+/// <summary>완료 보상의 읽기 전용 원본이다. 건물과 레시피 해금은 정의 ID를 사용하며 보너스 0.10은 +10%다.</summary>
 [InternalBufferCapacity(0)]
 public struct ResearchRewardElement : IBufferElementData
 {
     public ResearchRewardTypeEnum Type;
-    public BuildingTypeEnum BuildingType;
+    public int BuildingId;
     public int RecipeId;
     public ResearchStatKeyEnum StatKey;
     public float Bonus;
@@ -92,15 +92,15 @@ public struct ResearchInitialRecipeUnlockElement : IBufferElementData
 [InternalBufferCapacity(0)]
 public struct ResearchProgressElement : IBufferElementData
 {
-    public FixedString32Bytes ResearchId;
+    public int ResearchId;
     public double Progress;
     public bool IsCompleted;
 }
 
-/// <summary>Execution이 선소비/전력 시간으로 진행하는 로컬 원본이다. 선택은 EndCommand, 전역 완료는 EndBuilding에 초기화한다. 빈 ID는 주기 없음이다.</summary>
+/// <summary>Execution이 선소비/전력 시간으로 진행하는 로컬 원본이다. 선택은 EndCommand, 전역 완료는 EndBuilding에 초기화한다. ID 0은 주기 없음이다.</summary>
 public struct ResearchCycleState : IComponentData
 {
-    public FixedString32Bytes ResearchId;
+    public int ResearchId;
     public float ElapsedTime;
 }
 

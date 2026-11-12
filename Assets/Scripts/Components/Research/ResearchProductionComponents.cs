@@ -1,4 +1,3 @@
-using Unity.Collections;
 using Unity.Entities;
 
 /// <summary>고정 품목 슬롯의 최초 구성을 구분한다. 빈 재료 목록도 유효하므로 버퍼 길이를 준비 완료로 사용하지 않는다.</summary>
@@ -42,6 +41,6 @@ public struct ResearchRecoveryElement : IBufferElementData
 [InternalBufferCapacity(0)]
 public struct ResearchContributionElement : IBufferElementData
 {
-    public FixedString32Bytes ResearchId;
+    public int ResearchId;
     public float Progress;
 }

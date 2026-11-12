@@ -4,7 +4,7 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 /// <summary>
-/// 역할·목적: 점유 셀의 건물/현장 엔티티·종류·방향을 공간 조회에 전달하는 요약 값이다.
+/// 역할·목적: 점유 셀의 엔티티, 건물 ID, 역할, 티어, 방향과 배치 원점을 공간 조회에 전달한다.
 /// 부착 엔티티: 독립 ECS 컴포넌트가 아니며 BuildingSpatialIndex.Map의 셀별 값이다.
 /// 생성·이용: BuildingSpatialSyncSystem(Synchronization)이 현재 ECS 원본에서 회전 footprint 셀마다 등록하고 배치 Command와 건물 입고 Decision이 읽는다.
 /// 제거: 매 Synchronization Clear/재등록과 Native 맵 Dispose의 수명을 따른다. 요약 값 수정으로 실제 건물 상태를 바꾸지 않는다.
@@ -12,16 +12,21 @@ using Unity.Mathematics;
 public struct BuildingInfo
 {
     public Entity Entity;
+    public int BuildingId;
     public BuildingTypeEnum Type;
     public int Tier;
     public DirectionEnum Direction;
+    public int2 OriginPosition;
 
-    public BuildingInfo(Entity entity, BuildingTypeEnum type, int tier, DirectionEnum direction)
+    public BuildingInfo(Entity entity, BuildingTypeEnum type, int tier, DirectionEnum direction, int buildingId,
+        int2 originPosition)
     {
         Entity = entity;
+        BuildingId = buildingId;
         Type = type;
         Tier = tier;
         Direction = direction;
+        OriginPosition = originPosition;
     }
 }
 

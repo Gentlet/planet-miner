@@ -135,9 +135,11 @@ public struct ApplyGameBootstrapJob : IJob
         }
 
         Entity request = Requests[0];
+        var configs = BuildingConfigs[ConfigEntity];
+        bool hasMainFacilityConfig = TryGetMainFacilityConfig(configs, out var config);
         if (Records.Length == 1)
         {
-            if (!IsValidRecord(RecordData[Records[0]].MainFacility))
+            if (!hasMainFacilityConfig || !IsValidRecord(RecordData[Records[0]].MainFacility, config.BuildingId))
             {
                 Fail("[GameBootstrapApplySystem] Bootstrap record has an invalid main facility.");
             }
@@ -145,8 +147,7 @@ public struct ApplyGameBootstrapJob : IJob
             return;
         }
 
-        var configs = BuildingConfigs[ConfigEntity];
-        if (!BuildingConfigLookupUtility.TryGetConfig(configs, BuildingTypeEnum.MainFacility, 1, out var config))
+        if (!hasMainFacilityConfig)
         {
             Fail("[GameBootstrapApplySystem] Main facility configuration is missing.");
             ECB.DestroyEntity(request);
@@ -168,9 +169,9 @@ public struct ApplyGameBootstrapJob : IJob
             return;
         }
 
-        Entity main = BuildingLifecycleUtility.SpawnConfiguredBuilding(ref ECB, BuildingTypeEnum.MainFacility, 1,
-            int2.zero, DirectionEnum.Up, config.Footprint, RequestData[request].Stamp,
-            true, BuildingDatabase, config, BuildingPrefabs);
+        Entity main = BuildingLifecycleUtility.SpawnConfiguredBuilding(ref ECB, int2.zero,
+            DirectionEnum.Up, config.Footprint, RequestData[request].Stamp,
+            BuildingDatabase, config, BuildingPrefabs);
         if (main == Entity.Null)
         {
             ECB.DestroyEntity(request);
@@ -194,7 +195,22 @@ public struct ApplyGameBootstrapJob : IJob
         ECB.DestroyEntity(request);
     }
 
-    private bool IsValidRecord(Entity main)
+    // 시작 정책의 주 시설 1티어를 선택한다. 이후 생성과 완료 기록 검증은 선택한 ID를 사용한다.
+    private static bool TryGetMainFacilityConfig(in DynamicBuffer<BuildingConfigElement> configs, out BuildingConfigElement config)
+    {
+        foreach (var definition in configs)
+        {
+            if (definition.BuildingType == BuildingTypeEnum.MainFacility && definition.Tier == 1)
+            {
+                config = definition;
+                return true;
+            }
+        }
+        config = default;
+        return false;
+    }
+
+    private bool IsValidRecord(Entity main, int expectedBuildingId)
     {
         if (!BuildingTypes.TryGetComponent(main, out var type) ||
             !Positions.TryGetComponent(main, out var position) ||
@@ -203,7 +219,7 @@ public struct ApplyGameBootstrapJob : IJob
             return false;
         }
 
-        if (type.Type != BuildingTypeEnum.MainFacility || type.Tier != 1 ||
+        if (type.BuildingId != expectedBuildingId || type.Type != BuildingTypeEnum.MainFacility || type.Tier != 1 ||
             !math.all(position.Value == int2.zero) || direction.dir != DirectionEnum.Up)
         {
             return false;
@@ -267,7 +283,8 @@ public struct ApplyGameBootstrapJob : IJob
             if (Sites.TryGetComponent(building, out var site) &&
                 Requirements.TryGetBuffer(building, out var requirements) && !DisabledEntities.HasComponent(building))
             {
-                if (site.TargetBuildingType == BuildingTypeEnum.MainFacility &&
+                if (BuildingConfigLookupUtility.TryGetConfig(configs, site.TargetBuildingId, out var target) &&
+                    target.BuildingType == BuildingTypeEnum.MainFacility &&
                     (site.Flags & ConstructionSiteFlags.Cancelled) == 0 &&
                     ConstructionCompletionUtility.AreMaterialsSatisfied(requirements) &&
                     !ConstructionCompletionUtility.HasBlockingWorldItem(buildingPosition, occupiedSize, worldItemPositions))
@@ -283,11 +300,11 @@ public struct ApplyGameBootstrapJob : IJob
         {
             var spawn = SpawnData[Spawns[i]];
             // 공통 생성 소유자가 생성 없이 소비하는 요청은 미공개 점유가 아니다.
-            if (spawn.TargetType == BuildingTypeEnum.None || spawn.TargetType == BuildingTypeEnum.ConstructionSite)
+            if (spawn.BuildingId == 0)
             {
                 continue;
             }
-            if (!BuildingConfigLookupUtility.TryGetConfig(configs, spawn.TargetType, spawn.TargetTier, out var target))
+            if (!BuildingConfigLookupUtility.TryGetConfig(configs, spawn.BuildingId, out var target))
             {
                 Fail("[GameBootstrapApplySystem] Pending building spawn has invalid configuration.");
                 return false;
@@ -296,7 +313,7 @@ public struct ApplyGameBootstrapJob : IJob
             {
                 continue;
             }
-            if (spawn.TargetType == BuildingTypeEnum.MainFacility)
+            if (target.BuildingType == BuildingTypeEnum.MainFacility)
             {
                 Fail("[GameBootstrapApplySystem] Another main facility spawn is already pending.");
                 return false;

@@ -1,0 +1,184 @@
+{
+  "buildingDefinitions": [
+    {
+      "buildingId": 11000001,
+      "buildingType": "Belt",
+      "tier": 1,
+      "displayName": "Belt",
+      "speed": 7.5,
+      "storageCapacity": 0,
+      "isUnlockedByDefault": true,
+      "requiredResearchId": 0,
+      "footprint": [
+        1,
+        1
+      ]
+    },
+    {
+      "buildingId": 11000002,
+      "buildingType": "Miner",
+      "tier": 1,
+      "displayName": "Miner",
+      "speed": 0.1,
+      "storageCapacity": 0,
+      "isUnlockedByDefault": true,
+      "requiredResearchId": 0,
+      "footprint": [
+        2,
+        2
+      ],
+      "power": {
+        "maximumConsumption": 10
+      }
+    },
+    {
+      "buildingId": 11000003,
+      "buildingType": "Crafter",
+      "tier": 1,
+      "displayName": "Crafter",
+      "speed": 1,
+      "storageCapacity": 0,
+      "isUnlockedByDefault": true,
+      "requiredResearchId": 0,
+      "footprint": [
+        2,
+        2
+      ],
+      "power": {
+        "maximumConsumption": 20
+      }
+    },
+    {
+      "buildingId": 11000004,
+      "buildingType": "Storage",
+      "tier": 1,
+      "displayName": "Storage",
+      "speed": 0,
+      "storageCapacity": 10,
+      "isUnlockedByDefault": true,
+      "requiredResearchId": 0,
+      "footprint": [
+        1,
+        1
+      ]
+    },
+    {
+      "buildingId": 11000005,
+      "buildingType": "PowerPole",
+      "tier": 1,
+      "displayName": "PowerPole",
+      "speed": 0,
+      "storageCapacity": 0,
+      "isUnlockedByDefault": true,
+      "requiredResearchId": 0,
+      "footprint": [
+        1,
+        1
+      ],
+      "power": {
+        "supplyRange": 5,
+        "connectionRange": 8
+      }
+    },
+    {
+      "buildingId": 11000006,
+      "buildingType": "Splitter",
+      "tier": 1,
+      "displayName": "Splitter",
+      "speed": 0,
+      "storageCapacity": 0,
+      "isUnlockedByDefault": false,
+      "requiredResearchId": 14000001,
+      "footprint": [
+        1,
+        1
+      ]
+    },
+    {
+      "buildingId": 11000007,
+      "buildingType": "Merger",
+      "tier": 1,
+      "displayName": "Merger",
+      "speed": 0,
+      "storageCapacity": 0,
+      "isUnlockedByDefault": false,
+      "requiredResearchId": 14000001,
+      "footprint": [
+        1,
+        1
+      ]
+    },
+    {
+      "buildingId": 11000008,
+      "buildingType": "CoalGenerator",
+      "tier": 1,
+      "displayName": "CoalGenerator",
+      "speed": 0,
+      "storageCapacity": 1,
+      "isUnlockedByDefault": false,
+      "requiredResearchId": 14000003,
+      "footprint": [
+        3,
+        3
+      ],
+      "power": {
+        "maximumGeneration": 100,
+        "coalEnergyPerItem": 600
+      }
+    },
+    {
+      "buildingId": 11000009,
+      "buildingType": "DroneStation",
+      "tier": 1,
+      "displayName": "DroneStation",
+      "speed": 0,
+      "storageCapacity": 20,
+      "isUnlockedByDefault": false,
+      "requiredResearchId": 14000004,
+      "footprint": [
+        3,
+        3
+      ],
+      "droneStationRangeInChunks": 1,
+      "droneStationStorageCapacity": 5
+    },
+    {
+      "buildingId": 11000010,
+      "buildingType": "ResearchBuilding",
+      "tier": 1,
+      "displayName": "ResearchBuilding",
+      "speed": 1,
+      "storageCapacity": 0,
+      "isUnlockedByDefault": true,
+      "requiredResearchId": 0,
+      "footprint": [
+        3,
+        3
+      ],
+      "power": {
+        "maximumConsumption": 20
+      }
+    },
+    {
+      "buildingId": 11000011,
+      "buildingType": "MainFacility",
+      "tier": 1,
+      "displayName": "MainFacility",
+      "speed": 0,
+      "storageCapacity": 50,
+      "isUnlockedByDefault": true,
+      "requiredResearchId": 0,
+      "footprint": [
+        3,
+        3
+      ],
+      "power": {
+        "supplyRange": 0,
+        "connectionRange": 8,
+        "maximumGeneration": 40
+      },
+      "droneStationRangeInChunks": 1,
+      "droneStationStorageCapacity": 5
+    }
+  ]
+}

@@ -227,14 +227,14 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
             }
         }
 
-        if (!BuildingConfigLookupUtility.TryGetConfig(registryRead.BuildingConfigs.Read(BuildingConfigs, Buildings), type.Type, type.Tier, out var config))
+        if (!BuildingConfigLookupUtility.TryGetConfig(registryRead.BuildingConfigs.Read(BuildingConfigs, Buildings), type.BuildingId, out var config))
         {
             prepared.ValueRW = false;
             return;
         }
         preparation.DefinitionIndex = index;
         preparation.Speed = ResearchRewardUtility.EffectiveSpeed(config.Speed, SpeedBonus);
-        preparation.CanAdvance = cycle.ResearchId == active && !active.IsEmpty;
+        preparation.CanAdvance = cycle.ResearchId == active && active != 0;
         if (recovery.Length > 0)
         {
             return;
@@ -244,7 +244,7 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
             var ingredient = ingredients[definition.IngredientStart + i];
             limits.Add(new ResearchInputLimitElement { ItemType = ingredient.ItemType, MaximumQuantity = ResearchMaterialUtility.MaximumBufferedQuantity(ingredient.Amount) });
         }
-        preparation.CanStartCycle = cycle.ResearchId.IsEmpty && ResearchMaterialUtility.HasMaterials(
+        preparation.CanStartCycle = cycle.ResearchId == 0 && ResearchMaterialUtility.HasMaterials(
             definition, ingredients, stored, DestroyRequests);
     }
 

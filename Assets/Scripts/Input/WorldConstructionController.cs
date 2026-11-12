@@ -83,7 +83,7 @@ public sealed class WorldConstructionController : MonoBehaviour
         {
             var a = next[i].Config;
             var b = _catalog[i].Config;
-            same = a.BuildingType == b.BuildingType && a.Tier == b.Tier &&
+            same = a.BuildingId == b.BuildingId && a.Tier == b.Tier &&
                 a.DisplayName == b.DisplayName && a.Footprint.Equals(b.Footprint);
         }
         if (!same)
@@ -94,7 +94,7 @@ public sealed class WorldConstructionController : MonoBehaviour
         return true;
     }
 
-    public void SelectBuilding(BuildingTypeEnum type, int tier)
+    public void SelectBuilding(int buildingId)
     {
         if (!isActiveAndEnabled)
         {
@@ -106,19 +106,20 @@ public sealed class WorldConstructionController : MonoBehaviour
         }
         foreach (var entry in _catalog)
         {
-            if (entry.Config.BuildingType != type || entry.Config.Tier != tier)
+            var config = entry.Config;
+            if (config.BuildingId != buildingId)
             {
                 continue;
             }
-            if (Mode == BuildingToolModeEnum.Building && _selected.TargetType == type && _selected.TargetTier == tier)
+            if (Mode == BuildingToolModeEnum.Building && _selected.BuildingId == buildingId)
             {
                 CancelTool();
                 return;
             }
-            _selected = new PlacementRequestCandidateElement(type, tier, entry.Config.Footprint, int2.zero);
+            _selected = new PlacementRequestCandidateElement(buildingId, config.Footprint, int2.zero);
             Mode = BuildingToolModeEnum.Building;
             _dragging = false;
-            Status = entry.Config.DisplayName.ToString() + " T" + tier;
+            Status = config.DisplayName.ToString() + " T" + config.Tier;
             UpdatePreview();
             return;
         }
@@ -169,8 +170,7 @@ public sealed class WorldConstructionController : MonoBehaviour
         int slot = frame.Construction.SelectedSlot;
         if (slot > 0 && slot <= _catalog.Count)
         {
-            var config = _catalog[slot - 1].Config;
-            SelectBuilding(config.BuildingType, config.Tier);
+            SelectBuilding(_catalog[slot - 1].Config.BuildingId);
         }
         if (frame.Construction.Has(WorldConstructionCommandEnum.Copy))
         {
@@ -354,7 +354,7 @@ public sealed class WorldConstructionController : MonoBehaviour
     {
         _dragging = false;
         Entity target = BuildingToolWorld.TargetAt(_world.EntityManager, _pointer);
-        if (!BuildingToolWorld.TryCapture(_world.EntityManager, target, out var candidate))
+        if (!BuildingToolWorld.TryCapture(_world.EntityManager, target, out var candidate, out var role))
         {
             Status = "복사할 설정이 없습니다";
             Changed?.Invoke();
@@ -362,7 +362,7 @@ public sealed class WorldConstructionController : MonoBehaviour
         }
         if (candidate.Settings.HasValues)
         {
-            _settingsType = candidate.TargetType;
+            _settingsType = role;
             _copiedSettings = candidate.Settings;
             Status = "설정을 복사했습니다";
         }
@@ -374,7 +374,7 @@ public sealed class WorldConstructionController : MonoBehaviour
         _dragging = false;
         Entity target = BuildingToolWorld.TargetAt(_world.EntityManager, _pointer);
         Status = "설정을 적용할 수 없습니다";
-        if (!BuildingToolWorld.TryCapture(_world.EntityManager, target, out var candidate))
+        if (!BuildingToolWorld.TryCapture(_world.EntityManager, target, out _, out var role))
         {
             Changed?.Invoke();
             return;
@@ -385,7 +385,7 @@ public sealed class WorldConstructionController : MonoBehaviour
             Changed?.Invoke();
             return;
         }
-        if (candidate.TargetType == _settingsType)
+        if (role == _settingsType)
         {
             Entity request = BuildingSettingsUtility.Submit(_world.EntityManager, target, _copiedSettings);
             Status = request == Entity.Null ? "설정을 적용할 수 없습니다" : "설정 적용 요청 접수";

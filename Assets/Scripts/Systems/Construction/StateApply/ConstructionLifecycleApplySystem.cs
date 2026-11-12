@@ -76,11 +76,8 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
         state.CompleteDependency();
         var worldItemPositions = CollectWorldItemPositions(ref state);
 
-        bool hasPrefabDb = !_prefabDbQuery.IsEmptyIgnoreFilter;
-        Entity prefabDbEntity = hasPrefabDb ? _prefabDbQuery.GetSingletonEntity() : Entity.Null;
-
-        bool hasConfig = !_buildingConfigQuery.IsEmptyIgnoreFilter;
-        Entity configEntity = hasConfig ? _buildingConfigQuery.GetSingletonEntity() : Entity.Null;
+        Entity prefabDbEntity = _prefabDbQuery.IsEmptyIgnoreFilter ? Entity.Null : _prefabDbQuery.GetSingletonEntity();
+        Entity configEntity = _buildingConfigQuery.IsEmptyIgnoreFilter ? Entity.Null : _buildingConfigQuery.GetSingletonEntity();
 
         var completionJob = new ConstructionCompletionApplyJob
         {
@@ -91,9 +88,7 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
             BuildingFootprintHandle = SystemAPI.GetComponentTypeHandle<BuildingFootprint>(true),
             ConstructionMaterialRequirementElementHandle = SystemAPI.GetBufferTypeHandle<ConstructionMaterialRequirementElement>(true),
             ECB = ecb,
-            HasPrefabDb = hasPrefabDb,
             PrefabDbEntity = prefabDbEntity,
-            HasConfig = hasConfig,
             ConfigEntity = configEntity,
             StoredLookup = _storedBufferLookup,
             StampLookup = _stampLookup,
@@ -177,9 +172,7 @@ public partial struct ConstructionCompletionApplyJob : IJobChunk
 
     [ReadOnly] public ComponentLookup<PlannedBuildingSettings> PlannedSettings;
     public EntityCommandBuffer ECB;
-    public bool HasPrefabDb;
     public Entity PrefabDbEntity;
-    public bool HasConfig;
     public Entity ConfigEntity;
 
     [ReadOnly]
@@ -223,12 +216,6 @@ public partial struct ConstructionCompletionApplyJob : IJobChunk
         // 최신 바닥 차단을 다시 검사한다. 뒤의 드론 단계가 마지막 실물을 회수하면 다음 틱 완공 검사에 반영한다.
         site.Flags &= ~ConstructionSiteFlags.AwaitingItemClearance;
 
-        // 2. 무효하거나 공사 현장 타입인 경우 완공 불가
-        if (site.TargetBuildingType == BuildingTypeEnum.None || site.TargetBuildingType == BuildingTypeEnum.ConstructionSite)
-        {
-            return;
-        }
-
         // 예약량은 도착량이 아니다. 실제 인계 성공분으로 갱신된 DeliveredQuantity만 완공 조건으로 사용한다.
         if (!ConstructionCompletionUtility.AreMaterialsSatisfied(requirements))
         {
@@ -240,15 +227,12 @@ public partial struct ConstructionCompletionApplyJob : IJobChunk
 
         Entity building = BuildingLifecycleUtility.SpawnBuilding(
             ref ECB,
-            site.TargetBuildingType,
-            site.TargetTier,
+            site.TargetBuildingId,
             pos.Value,
             dir.dir,
             footprint.Size,
             stamp,
-            HasPrefabDb,
             PrefabDbEntity,
-            HasConfig,
             ConfigEntity,
             in PrefabBufferLookup,
             in ConfigBufferLookup,

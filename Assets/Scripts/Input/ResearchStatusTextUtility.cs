@@ -15,7 +15,7 @@ public static class ResearchStatusTextUtility
         }
         Entity registry = registryQuery.GetSingletonEntity();
         var active = manager.GetComponentData<ResearchState>(registry).ActiveResearchId;
-        if (active.IsEmpty)
+        if (active == 0)
         {
             text.AppendLine("활성 연구 없음");
             return;

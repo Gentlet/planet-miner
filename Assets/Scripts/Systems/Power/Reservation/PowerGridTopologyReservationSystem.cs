@@ -76,7 +76,7 @@ public partial struct PowerGridTopologyReservationSystem : ISystem
         {
             return false;
         }
-        if (!BuildingConfigLookupUtility.TryGetConfig(configs, type.Type, type.Tier, out var config))
+        if (!BuildingConfigLookupUtility.TryGetConfig(configs, type.BuildingId, out var config))
         {
             return false;
         }

@@ -87,7 +87,7 @@ internal struct BuildPowerPoleSelectionInputsJob : IJob
         foreach (Entity pole in Poles)
         {
             var type = TypeLookup[pole];
-            if (!BuildingConfigLookupUtility.TryGetConfig(configs, type.Type, type.Tier, out var config))
+            if (!BuildingConfigLookupUtility.TryGetConfig(configs, type.BuildingId, out var config))
             {
                 // 선택 순서의 같은 위치에서 미준비로 남기도록 실패 행을 유지한다.
                 Inputs.Add(new PowerPoleSelectionInput { Pole = pole });

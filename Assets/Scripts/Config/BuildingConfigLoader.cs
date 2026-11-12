@@ -1,61 +1,24 @@
 using System;
 using System.Collections.Generic;
-using System.Globalization;
-using System.Text;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
-using PlanetMiner.Config;
+using Newtonsoft.Json.Converters;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine;
 
-/// <summary>
-/// 건물 JSON의 최상위 목록 DTO. Resources 파싱 시에만 쓰며 ECS에 부착하거나 런타임 설정 원본으로 유지하지 않는다.
-/// </summary>
-[Serializable]
-public class BuildingConfigJsonData
-{
-    public List<BuildingConfigJsonEntry> buildings = new List<BuildingConfigJsonEntry>();
-}
-
-/// <summary>건물 한 종류의 JSON 입력 행. 속도/용량/해금/기본 크기와 비용 목록은 검증 후 ECS 버퍼 값으로 변환한다.</summary>
-[Serializable]
-public class BuildingConfigJsonEntry
-{
-    public string buildingType;
-    public int tier;
-    public string displayName;
-    public float speed;
-    public int storageCapacity;
-    public bool isUnlockedByDefault = true;
-    public string requiredResearch;
-    public int[] footprint;
-    public List<BuildingMaterialJsonEntry> materials = new List<BuildingMaterialJsonEntry>();
-}
-
-/// <summary>건축 비용의 품목 문자열/수량 DTO. 실제 현장의 요구량이나 도착 실물 상태가 아니다.</summary>
-[Serializable]
-public class BuildingMaterialJsonEntry
-{
-    public string itemType;
-    public int quantity = 1;
-}
-
-/// <summary>
-/// 역할·목적: Resources의 건물 JSON을 파싱/검증하고 통합 설정·건축 비용·호환 런타임 버퍼로 게시한다.
-/// 입력·출력: 유효하지 않은 입력은 false/Null로 거부한다. PublishConfig는 제공된 검증 결과로 새 ECS 엔티티를 만든다.
-/// 이용: BuildingConfigInitSystem(Initialization)과 설정 테스트가 호출한다. 초기화 시점/중복 게시 관리는 호출자가 소유한다.
-/// 수명·경계: JSON DTO/managed 목록은 게시 전 입력이며 게임 실행 Reader는 ECS 버퍼를 사용한다. 해금의 연구 Writer는 별도 후속이다.
-/// </summary>
 public static class BuildingConfigLoader
 {
-    public const string DefaultResourcePath = "Config/BuildingConfig";
+    public const string DefaultResourcePath = "Config/" + BuildingResourceName;
+    public const string DefaultMaterialsResourcePath = "Config/" + MaterialsResourceName;
+    private const string BuildingResourceName = "BuildingDefinitions";
+    private const string MaterialsResourceName = "BuildingConstructionMaterials";
 
+    /// <summary>생성된 건물·자재 리소스를 함께 읽는다. 별도 경로의 내장 자재는 해당 정의의 건물 ID로 연결한다.</summary>
     public static bool TryLoadConfigFromResources(
         string resourcePath,
         out List<BuildingConfigElement> configs,
-        out List<BuildingConstructionMaterialElement> materials)
+        out List<BuildingConstructionMaterialElement> materials, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
     {
         configs = null;
         materials = null;
@@ -69,7 +32,22 @@ public static class BuildingConfigLoader
                 return false;
             }
 
-            return TryParseJson(textAsset.text, out configs, out materials);
+            var table = ReadBuildingDefinitions(textAsset.text);
+            if (!IsStandaloneResource(resourcePath, table))
+            {
+                string materialPath = GetMaterialsResourcePath(resourcePath);
+                var materialAsset = Resources.Load<TextAsset>(materialPath);
+                if (materialAsset == null)
+                {
+                    Debug.LogError($"[BuildingConfigLoader] Failed to load config TextAsset at Resources path: '{materialPath}'.");
+                    return false;
+                }
+                AttachConstructionMaterials(table, materialAsset.text);
+            }
+
+            bool requireMaterialItemIds = string.Equals(resourcePath, DefaultResourcePath, StringComparison.OrdinalIgnoreCase);
+            DecodeTable(table, out configs, out materials, itemIds, requireMaterialItemIds);
+            return true;
         }
         catch (Exception exception)
         {
@@ -80,198 +58,293 @@ public static class BuildingConfigLoader
         }
     }
 
+    private static bool IsStandaloneResource(string resourcePath, BuildingDefinitions table)
+    {
+        if (string.Equals(resourcePath, DefaultResourcePath, StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+        return table.ConstructionMaterials != null || table.Buildings.Exists(row => row?.Materials != null);
+    }
+
+    private static string GetMaterialsResourcePath(string buildingPath)
+    {
+        int folderLength = buildingPath.LastIndexOf('/') + 1;
+        string buildingName = buildingPath.Substring(folderLength);
+        string materialName = string.Equals(buildingName, BuildingResourceName, StringComparison.OrdinalIgnoreCase)
+            ? MaterialsResourceName
+            : buildingName + "." + MaterialsResourceName;
+        return buildingPath.Substring(0, folderLength) + materialName;
+    }
+
+    /// <summary>기존 단일 건물 JSON 입력을 해석한다.</summary>
     public static bool TryParseJson(
         string json,
         out List<BuildingConfigElement> configs,
-        out List<BuildingConstructionMaterialElement> materials)
+        out List<BuildingConstructionMaterialElement> materials, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
+    {
+        return TryDecodeJson(json, null, out configs, out materials, itemIds);
+    }
+
+    public static bool TryParseJson(
+        string buildingJson,
+        string materialJson,
+        out List<BuildingConfigElement> configs,
+        out List<BuildingConstructionMaterialElement> materials, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
+    {
+        if (materialJson == null)
+        {
+            configs = null;
+            materials = null;
+            Debug.LogError("[BuildingConfigLoader] Missing BuildingConstructionMaterials JSON for the generated building table.");
+            return false;
+        }
+        return TryDecodeJson(buildingJson, materialJson, out configs, out materials, itemIds);
+    }
+
+    private static bool TryDecodeJson(
+        string buildingJson,
+        string materialJson,
+        out List<BuildingConfigElement> configs,
+        out List<BuildingConstructionMaterialElement> materials, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
     {
         configs = null;
         materials = null;
-
-        if (string.IsNullOrEmpty(json))
-        {
-            Debug.LogError("[BuildingConfigLoader] JSON string is null or empty.");
-            return false;
-        }
-
-        BuildingConfigJsonData data;
-        JArray rawEntries;
         try
         {
-            // JsonUtility는 소수/문자열 숫자를 int로 보정한다. 원본 토큰으로 크기 형식만 먼저 보존한다.
-            rawEntries = JObject.Parse(json)["buildings"] as JArray;
-            data = JsonUtility.FromJson<BuildingConfigJsonData>(json);
+            var table = ReadBuildingDefinitions(buildingJson);
+            if (materialJson != null)
+            {
+                AttachConstructionMaterials(table, materialJson);
+            }
+            DecodeTable(table, out var decodedConfigs, out var decodedMaterials, itemIds);
+            configs = decodedConfigs;
+            materials = decodedMaterials;
+            return true;
         }
-        catch (Exception ex)
+        catch (Exception error) when (error is JsonException or ArgumentException)
         {
-            Debug.LogError($"[BuildingConfigLoader] JSON parsing exception: {ex.Message}");
+            Debug.LogError($"[BuildingConfigLoader] Failed to decode building JSON: {error.Message}");
             return false;
         }
+    }
 
-        if (data == null || data.buildings == null || data.buildings.Count == 0 || rawEntries == null)
+    private static BuildingDefinitions ReadBuildingDefinitions(string json)
+    {
+        var table = JsonConvert.DeserializeObject<BuildingDefinitions>(json, new StringEnumConverter { AllowIntegerValues = false });
+        if (table == null)
         {
-            Debug.LogError("[BuildingConfigLoader] Parsed buildings list is null or empty.");
-            return false;
+            throw new JsonSerializationException("Missing building table.");
         }
-
-        var configList = new List<BuildingConfigElement>(data.buildings.Count);
-        var materialList = new List<BuildingConstructionMaterialElement>();
-        var seenTypes = new HashSet<(BuildingTypeEnum Type, int Tier)>();
-
-        for (int i = 0; i < data.buildings.Count; i++)
+        if (table.LegacyBuildings != null)
         {
-            var entry = data.buildings[i];
-            if (entry == null)
+            if (table.Buildings != null)
             {
-                Debug.LogError($"[BuildingConfigLoader] Entry at index {i} is null.");
-                return false;
+                throw new JsonSerializationException("Use one building definitions array: buildingDefinitions or legacy buildings.");
             }
+            table.Buildings = table.LegacyBuildings;
+        }
+        if (table.Buildings == null)
+        {
+            throw new JsonSerializationException("Missing buildingDefinitions array.");
+        }
+        if (table.Buildings.Count == 0)
+        {
+            throw new JsonSerializationException("Empty buildingDefinitions array.");
+        }
+        return table;
+    }
 
-            if (string.IsNullOrEmpty(entry.buildingType))
+    private static void AttachConstructionMaterials(BuildingDefinitions buildings, string json)
+    {
+        var materials = JsonConvert.DeserializeObject<ConstructionMaterialTable>(json, new StringEnumConverter { AllowIntegerValues = false });
+        if (materials == null)
+        {
+            throw new JsonSerializationException("Missing buildingConstructionMaterials table.");
+        }
+        if (buildings.ConstructionMaterials != null)
+        {
+            throw new JsonSerializationException("The generated building table must use the separate BuildingConstructionMaterials JSON.");
+        }
+        buildings.ConstructionMaterials = materials.ConstructionMaterials;
+    }
+
+    private static void DecodeTable(
+        BuildingDefinitions table,
+        out List<BuildingConfigElement> configs,
+        out List<BuildingConstructionMaterialElement> materials, IReadOnlyDictionary<int, ItemTypeEnum> itemIds,
+        bool requireMaterialItemIds = false)
+    {
+        var materialRows = table.ConstructionMaterials;
+        configs = new List<BuildingConfigElement>(table.Buildings.Count);
+        materials = new List<BuildingConstructionMaterialElement>(materialRows?.Count ?? 0);
+        var buildingIds = new HashSet<int>();
+
+        foreach (var row in table.Buildings)
+        {
+            if (row == null)
             {
-                Debug.LogError($"[BuildingConfigLoader] Entry at index {i} has missing or empty buildingType.");
-                return false;
+                throw new JsonSerializationException("Null building definition.");
             }
-
-            if (!Enum.TryParse<BuildingTypeEnum>(entry.buildingType, true, out var buildingType) ||
-                buildingType == BuildingTypeEnum.None ||
-                buildingType == BuildingTypeEnum.ConstructionSite ||
-                buildingType >= BuildingTypeEnum.Count)
+            if (row.BuildingId <= 0 || !buildingIds.Add(row.BuildingId))
             {
-                Debug.LogError($"[BuildingConfigLoader] Invalid buildingType '{entry.buildingType}' at index {i}.");
-                return false;
+                throw new JsonSerializationException($"Missing, invalid, or duplicate buildingId {row.BuildingId}.");
             }
+            configs.Add(DecodeBuilding(row));
 
-            // 용량 및 속도 검증
-            bool hasStorageSettings = buildingType == BuildingTypeEnum.Storage ||
-                buildingType == BuildingTypeEnum.MainFacility ||
-                buildingType == BuildingTypeEnum.DroneStation;
-            if (hasStorageSettings || buildingType == BuildingTypeEnum.CoalGenerator)
+            if (materialRows != null)
             {
-                JToken capacityToken = (rawEntries[i] as JObject)?["storageCapacity"];
-                if (capacityToken == null || capacityToken.Type != JTokenType.Integer ||
-                    !int.TryParse(capacityToken.ToString(Formatting.None), NumberStyles.Integer, CultureInfo.InvariantCulture, out _))
+                if (row.Materials != null)
                 {
-                    Debug.LogError($"[BuildingConfigLoader] {buildingType} storageCapacity must be an explicit JSON integer.");
-                    return false;
+                    throw new JsonSerializationException($"Building {row.BuildingId} must use the separate buildingConstructionMaterials table.");
                 }
-                if (entry.storageCapacity <= 0 || entry.storageCapacity > GameConstants.MaxStorageSlots)
+            }
+            else if (row.Materials != null)
+            {
+                // 기존 직접 JSON 호출은 정의 행 안에 자재를 담을 수 있다.
+                foreach (var material in row.Materials)
                 {
-                    Debug.LogError($"[BuildingConfigLoader] {buildingType} has invalid storageCapacity {entry.storageCapacity} (allowed: 1 ~ {GameConstants.MaxStorageSlots}).");
-                    return false;
-                }
-            }
-            if (!hasStorageSettings && entry.speed < 0f)
-            {
-                Debug.LogError($"[BuildingConfigLoader] {buildingType} has invalid speed {entry.speed} (cannot be negative).");
-                return false;
-            }
-
-            if (buildingType == BuildingTypeEnum.Belt)
-            {
-                if (!math.isfinite(entry.speed) || entry.speed > GameConstants.MaxBeltSpeed)
-                {
-                    Debug.LogError($"[BuildingConfigLoader] Belt has invalid speed {entry.speed} (must be finite and between 0 and {GameConstants.MaxBeltSpeed}).");
-                    return false;
-                }
-            }
-
-            var rawEntry = rawEntries[i] as JObject;
-            if (rawEntry == null)
-            {
-                Debug.LogError($"[BuildingConfigLoader] Entry at index {i} is not a building object.");
-                return false;
-            }
-            if (!TryReadDefinition(rawEntry, buildingType, out int tier, out FixedString128Bytes displayName))
-            {
-                return false;
-            }
-            if (!seenTypes.Add((buildingType, tier)))
-            {
-                Debug.LogError($"[BuildingConfigLoader] Duplicate building type/tier '{buildingType}/{tier}' at index {i}.");
-                return false;
-            }
-            if (!TryReadFootprint(buildingType, rawEntry["footprint"], out int2 footprint))
-            {
-                return false;
-            }
-            if (!BuildingPowerConfigParser.TryRead(rawEntry, buildingType, tier, out var power))
-            {
-                return false;
-            }
-            if (!TryReadDroneStationRange(rawEntry, buildingType, out int droneStationRange))
-            {
-                return false;
-            }
-            if (!TryReadDroneStationCapacity(rawEntry, buildingType, out int droneStationCapacity))
-            {
-                return false;
-            }
-
-            FixedString32Bytes reqResearch = default;
-            if (!string.IsNullOrEmpty(entry.requiredResearch))
-            {
-                if (Encoding.UTF8.GetByteCount(entry.requiredResearch) > reqResearch.Capacity)
-                {
-                    Debug.LogError($"[BuildingConfigLoader] {buildingType} requiredResearch exceeds {reqResearch.Capacity} UTF-8 bytes at index {i}.");
-                    return false;
-                }
-
-                reqResearch = new FixedString32Bytes(entry.requiredResearch);
-            }
-
-            configList.Add(new BuildingConfigElement(
-                buildingType,
-                tier,
-                displayName,
-                entry.speed,
-                entry.storageCapacity,
-                entry.isUnlockedByDefault,
-                reqResearch,
-                footprint,
-                power,
-                droneStationRange,
-                droneStationCapacity));
-
-            // 건설 자재 검증
-            if (entry.materials != null)
-            {
-                for (int m = 0; m < entry.materials.Count; m++)
-                {
-                    var mat = entry.materials[m];
-                    if (mat == null)
+                    if (material == null)
                     {
-                        Debug.LogError($"[BuildingConfigLoader] Material at index {m} for {buildingType} is null.");
-                        return false;
+                        throw new JsonSerializationException($"Null material for building {row.BuildingType}/{row.Tier}.");
                     }
-
-                    if (!Enum.TryParse<ItemTypeEnum>(mat.itemType, true, out var itemType) ||
-                        !Enum.IsDefined(typeof(ItemTypeEnum), itemType) ||
-                        itemType == ItemTypeEnum.None)
+                    if (material.BuildingId != 0 && material.BuildingId != row.BuildingId)
                     {
-                        Debug.LogError($"[BuildingConfigLoader] Invalid itemType '{mat.itemType}' for building {buildingType}.");
-                        return false;
+                        throw new JsonSerializationException($"Inline material buildingId {material.BuildingId} does not match buildingId {row.BuildingId}.");
                     }
-
-                    if (mat.quantity <= 0)
-                    {
-                        Debug.LogError($"[BuildingConfigLoader] Invalid quantity {mat.quantity} for material {itemType} in building {buildingType}.");
-                        return false;
-                    }
-
-                    materialList.Add(new BuildingConstructionMaterialElement(buildingType, tier, itemType, mat.quantity));
+                    materials.Add(new BuildingConstructionMaterialElement(row.BuildingId, DecodeMaterialItem(material, itemIds),
+                        material.Quantity ?? 1));
                 }
             }
         }
 
-        if (!ValidateDefinitions(configList, materialList, out _) || !ValidateRequiredTypes(seenTypes))
+        if (materialRows == null)
         {
-            return false;
+            return;
         }
+        foreach (var material in materialRows)
+        {
+            if (material == null)
+            {
+                throw new JsonSerializationException("Null buildingConstructionMaterials row.");
+            }
+            if (!buildingIds.Contains(material.BuildingId))
+            {
+                throw new JsonSerializationException($"buildingConstructionMaterials references unknown buildingId {material.BuildingId}.");
+            }
+            if (!material.Quantity.HasValue)
+            {
+                throw new JsonSerializationException($"Missing quantity for buildingId {material.BuildingId} and itemType {material.ItemType}.");
+            }
+            if (requireMaterialItemIds && material.ItemId == 0)
+            {
+                throw new JsonSerializationException($"Construction material for buildingId {material.BuildingId} requires itemId.");
+            }
+            materials.Add(new BuildingConstructionMaterialElement(material.BuildingId, DecodeMaterialItem(material, itemIds),
+                material.Quantity.Value));
+        }
+    }
 
-        configs = configList;
-        materials = materialList;
-        return true;
+    private static ItemTypeEnum DecodeMaterialItem(ConstructionMaterialRow material, IReadOnlyDictionary<int, ItemTypeEnum> itemIds)
+    {
+        if (material.ItemId != 0)
+        {
+            return ItemConfigInitSystem.ResolveItemId(material.ItemId, itemIds);
+        }
+        if (material.ItemType == ItemTypeEnum.None)
+        {
+            throw new JsonSerializationException("Construction material requires an itemId or a legacy itemType.");
+        }
+        return material.ItemType;
+    }
+
+    private static BuildingConfigElement DecodeBuilding(BuildingRow row)
+    {
+        if (!string.IsNullOrEmpty(row.LegacyRequiredResearch) ||
+            (row.RequiredResearchId != 0 && !ResearchConfigLoader.IsResearchId(row.RequiredResearchId)))
+        {
+            throw new JsonSerializationException($"Building {row.BuildingType}/{row.Tier} requires a numeric requiredResearchId in category 140 or 0.");
+        }
+        if (row.Footprint.Length != 2)
+        {
+            throw new JsonSerializationException($"Building {row.BuildingType}/{row.Tier} footprint must contain two dimensions.");
+        }
+        BuildingPowerConfig power = default;
+        if (row.Power != null)
+        {
+            power = new BuildingPowerConfig(row.Power.SupplyRange, row.Power.ConnectionRange, row.Power.MaximumGeneration,
+                row.Power.MaximumConsumption, row.Power.CoalEnergyPerItem);
+        }
+        return new BuildingConfigElement(
+            row.BuildingType,
+            row.Tier,
+            new FixedString128Bytes(row.DisplayName),
+            row.Speed,
+            row.StorageCapacity,
+            row.IsUnlockedByDefault,
+            row.RequiredResearchId,
+            new int2(row.Footprint[0], row.Footprint[1]),
+            power,
+            row.DroneStationRangeInChunks,
+            row.DroneStationStorageCapacity,
+            row.BuildingId);
+    }
+
+    private sealed class BuildingDefinitions
+    {
+        [JsonProperty("buildingDefinitions")]
+        public List<BuildingRow> Buildings { get; set; }
+        [JsonProperty("buildings")]
+        public List<BuildingRow> LegacyBuildings { get; set; }
+        [JsonProperty(Required = Required.DisallowNull)]
+        public List<ConstructionMaterialRow> ConstructionMaterials { get; set; }
+    }
+
+    private sealed class ConstructionMaterialTable
+    {
+        [JsonProperty("buildingConstructionMaterials", Required = Required.Always)]
+        public List<ConstructionMaterialRow> ConstructionMaterials { get; set; }
+    }
+
+    private sealed class BuildingRow
+    {
+        public int BuildingId { get; set; }
+        [JsonProperty(Required = Required.Always)]
+        public BuildingTypeEnum BuildingType { get; set; }
+        [JsonProperty(Required = Required.Always)]
+        public int Tier { get; set; }
+        [JsonProperty(Required = Required.Always)]
+        public string DisplayName { get; set; }
+        public float Speed { get; set; }
+        public int StorageCapacity { get; set; }
+        public bool IsUnlockedByDefault { get; set; } = true;
+        [JsonProperty("requiredResearch")]
+        public string LegacyRequiredResearch { get; set; }
+        public int RequiredResearchId { get; set; }
+        [JsonProperty(Required = Required.Always)]
+        public int[] Footprint { get; set; }
+        public PowerRow Power { get; set; }
+        public int DroneStationRangeInChunks { get; set; }
+        public int DroneStationStorageCapacity { get; set; }
+        public List<ConstructionMaterialRow> Materials { get; set; }
+    }
+
+    private sealed class ConstructionMaterialRow
+    {
+        public int BuildingId { get; set; }
+        public int ItemId { get; set; }
+        public ItemTypeEnum ItemType { get; set; }
+        [JsonProperty(Required = Required.DisallowNull)]
+        public int? Quantity { get; set; }
+    }
+
+    private sealed class PowerRow
+    {
+        public int SupplyRange { get; set; }
+        public int ConnectionRange { get; set; }
+        public float MaximumGeneration { get; set; }
+        public float MaximumConsumption { get; set; }
+        public float CoalEnergyPerItem { get; set; }
     }
 
     /// <summary>제품 초기화의 사전 등록도 전체 건물 종류와 게시 버퍼를 요구한다. 격리 테스트는 Init을 실행하지 않는다.</summary>
@@ -295,132 +368,105 @@ public static class BuildingConfigLoader
         {
             materials.Add(entry);
         }
-        if (!ValidateDefinitions(configs, materials, out var keys))
+        if (!ValidateDefinitions(configs, materials, out var keys, out var buildingIds))
         {
             return false;
         }
-        var runtimeKeys = new HashSet<(BuildingTypeEnum Type, int Tier)>();
+        var runtimeIds = new HashSet<int>();
         foreach (var entry in entityManager.GetBuffer<BuildingRuntimeConfigElement>(entity, true))
         {
-            if (!keys.Contains((entry.BuildingType, entry.Tier)) || !runtimeKeys.Add((entry.BuildingType, entry.Tier)))
+            if (!buildingIds.Contains(entry.BuildingId) || !runtimeIds.Add(entry.BuildingId))
             {
-                Debug.LogError("[BuildingConfigLoader] Pre-registered runtime configuration has an invalid or duplicate type/tier.");
+                Debug.LogError($"[BuildingConfigLoader] Pre-registered runtime configuration has invalid or duplicate buildingId {entry.BuildingId}.");
                 return false;
             }
         }
-        if (!runtimeKeys.SetEquals(keys))
+        if (runtimeIds.Count != buildingIds.Count)
         {
-            Debug.LogError("[BuildingConfigLoader] Pre-registered runtime configuration is missing a type/tier.");
+            Debug.LogError("[BuildingConfigLoader] Pre-registered runtime configuration is missing a buildingId.");
             return false;
         }
         return ValidateRequiredTypes(keys);
     }
 
-    private static bool TryReadDefinition(JObject entry, BuildingTypeEnum type, out int tier, out FixedString128Bytes displayName)
+    /// <summary>
+    /// 검증된 설정 엘리먼트들을 ECS 월드의 BuildingConfig 싱글톤 엔티티로 게시.
+    /// (기존 BuildingRuntimeConfig 호환성 버퍼도 함께 부착)
+    /// </summary>
+    public static Entity PublishConfig(
+        EntityManager entityManager,
+        List<BuildingConfigElement> configs,
+        List<BuildingConstructionMaterialElement> materials)
     {
-        tier = 0;
-        displayName = default;
-        JToken tierToken = entry["tier"];
-        if (tierToken == null)
+        if (configs == null || configs.Count == 0)
         {
-            Debug.LogError($"[BuildingConfigLoader] {type} is missing its required tier.");
-            return false;
+            Debug.LogError("[BuildingConfigLoader] Cannot publish null or empty config elements.");
+            return Entity.Null;
         }
-        if (tierToken.Type != JTokenType.Integer ||
-            !long.TryParse(tierToken.ToString(Formatting.None), NumberStyles.Integer, CultureInfo.InvariantCulture, out long value) ||
-            value <= 0 || value > int.MaxValue)
+
+        if (!ValidateDefinitions(configs, materials, out _, out _))
         {
-            Debug.LogError($"[BuildingConfigLoader] {type} tier must be an explicit positive JSON integer representable as int.");
-            return false;
+            return Entity.Null;
         }
-        JToken nameToken = entry["displayName"];
-        if (nameToken == null)
-        {
-            Debug.LogError($"[BuildingConfigLoader] {type}/{value} is missing its required displayName.");
-            return false;
-        }
-        if (nameToken.Type != JTokenType.String)
-        {
-            Debug.LogError($"[BuildingConfigLoader] {type}/{value} displayName must be a nonempty string.");
-            return false;
-        }
-        string name = nameToken.Value<string>();
-        if (string.IsNullOrWhiteSpace(name) || Encoding.UTF8.GetByteCount(name) > displayName.Capacity)
-        {
-            Debug.LogError($"[BuildingConfigLoader] {type}/{value} displayName must be nonempty and fit {displayName.Capacity} UTF-8 bytes.");
-            return false;
-        }
-        tier = (int)value;
-        displayName = new FixedString128Bytes(name);
-        return true;
+        return PublishValidatedConfig(entityManager, configs, materials);
     }
 
-    private static bool TryReadDroneStationRange(JObject entry, BuildingTypeEnum type, out int range)
+    /// <summary>TableBuilder 산출물 또는 직접 검증한 ECS 설정을 함께 게시한다.</summary>
+    internal static Entity PublishValidatedConfig(
+        EntityManager entityManager,
+        List<BuildingConfigElement> configs,
+        List<BuildingConstructionMaterialElement> materials)
     {
-        range = 0;
-        if (entry["droneStationRangeInChunksX"] != null || entry["droneStationRangeInChunksY"] != null)
+        // 통합 설정과 호환 버퍼를 같은 입력에서 게시한다. 이후 게임 Reader가 managed JSON 목록을 원본으로 다시 읽지 않게 한다.
+        var entity = entityManager.CreateEntity(
+            typeof(BuildingConfig),
+            typeof(ResearchStatBonuses),
+            typeof(BuildingRuntimeConfig),
+            typeof(BuildingConfigElement),
+            typeof(BuildingRuntimeConfigElement),
+            typeof(BuildingConstructionMaterialElement));
+
+        try
         {
-            Debug.LogError("[BuildingConfigLoader] Use a single droneStationRangeInChunks instead of X/Y ranges.");
-            return false;
-        }
-        JToken token = entry["droneStationRangeInChunks"];
-        if (!DroneStationRangeUtility.IsStationType(type))
-        {
-            if (token != null)
+            var configBuffer = entityManager.GetBuffer<BuildingConfigElement>(entity);
+            var runtimeBuffer = entityManager.GetBuffer<BuildingRuntimeConfigElement>(entity);
+            var materialBuffer = entityManager.GetBuffer<BuildingConstructionMaterialElement>(entity);
+
+            for (int i = 0; i < configs.Count; i++)
             {
-                Debug.LogError($"[BuildingConfigLoader] {type} cannot define droneStationRangeInChunks.");
-                return false;
+                configBuffer.Add(configs[i]);
+                runtimeBuffer.Add(new BuildingRuntimeConfigElement(configs[i].BuildingId, configs[i].Speed, configs[i].StorageCapacity));
             }
-            return true;
-        }
-        if (token == null)
-        {
-            Debug.LogError($"[BuildingConfigLoader] {type} is missing its required droneStationRangeInChunks.");
-            return false;
-        }
-        if (token.Type != JTokenType.Integer ||
-            !long.TryParse(token.ToString(Formatting.None), NumberStyles.Integer, CultureInfo.InvariantCulture, out long value) ||
-            value < int.MinValue || value > int.MaxValue)
-        {
-            Debug.LogError($"[BuildingConfigLoader] {type} droneStationRangeInChunks must be a JSON integer representable as int.");
-            return false;
-        }
-        range = math.max(0, (int)value);
-        return true;
-    }
 
-    private static bool TryReadDroneStationCapacity(JObject entry, BuildingTypeEnum type, out int capacity)
-    {
-        capacity = 0;
-        JToken token = entry["droneStationStorageCapacity"];
-        if (!DroneStationRangeUtility.IsStationType(type))
-        {
-            if (token == null)
+            if (materials != null)
             {
-                return true;
+                for (int i = 0; i < materials.Count; i++)
+                {
+                    materialBuffer.Add(materials[i]);
+                }
             }
-            Debug.LogError("[BuildingConfigLoader] Only station types can define droneStationStorageCapacity.");
-            return false;
+            return entity;
         }
-        if (token == null)
+        catch
         {
-            Debug.LogError("[BuildingConfigLoader] Station requires droneStationStorageCapacity.");
-            return false;
+            entityManager.DestroyEntity(entity);
+            throw;
         }
-        if (token.Type != JTokenType.Integer || !int.TryParse(token.ToString(Formatting.None), out capacity) || capacity <= 0)
-        {
-            Debug.LogError("[BuildingConfigLoader] droneStationStorageCapacity must be a positive int.");
-            return false;
-        }
-        return true;
     }
 
+    // 직접 전달되거나 사전 등록된 ECS 값은 TableBuilder를 거치지 않는다.
     private static bool ValidateDefinitions(List<BuildingConfigElement> configs, List<BuildingConstructionMaterialElement> materials,
-        out HashSet<(BuildingTypeEnum Type, int Tier)> keys)
+        out HashSet<(BuildingTypeEnum Type, int Tier)> keys, out HashSet<int> ids)
     {
         keys = new HashSet<(BuildingTypeEnum Type, int Tier)>();
+        ids = new HashSet<int>();
         foreach (var config in configs)
         {
+            if (config.BuildingId <= 0 || !ids.Add(config.BuildingId))
+            {
+                Debug.LogError($"[BuildingConfigLoader] Invalid or duplicate buildingId {config.BuildingId}.");
+                return false;
+            }
             if (config.BuildingType <= BuildingTypeEnum.None || config.BuildingType >= BuildingTypeEnum.Count ||
                 config.BuildingType == BuildingTypeEnum.ConstructionSite || config.Tier <= 0 ||
                 string.IsNullOrWhiteSpace(config.DisplayName.ToString()) || !keys.Add((config.BuildingType, config.Tier)))
@@ -428,43 +474,19 @@ public static class BuildingConfigLoader
                 Debug.LogError("[BuildingConfigLoader] Invalid or duplicate building type/tier, or empty displayName.");
                 return false;
             }
-            if (!ValidateFootprint(config.BuildingType, config.Footprint))
+            if (!ValidateDefinition(config))
             {
-                return false;
-            }
-            if (!BuildingPowerConfigParser.Validate(config))
-            {
-                return false;
-            }
-            bool station = DroneStationRangeUtility.IsStationType(config.BuildingType);
-            // CoalGenerator의 용량은 바로 위 전력 역할 검증이 검사한다.
-            bool storesItems = station || config.BuildingType == BuildingTypeEnum.Storage;
-            if (storesItems && (config.StorageCapacity <= 0 || config.StorageCapacity > GameConstants.MaxStorageSlots))
-            {
-                Debug.LogError("[BuildingConfigLoader] Invalid storage capacity; expected 1..MaxStorageSlots.");
-                return false;
-            }
-            if ((station && (config.DroneStationStorageCapacity <= 0 ||
-                    (long)config.StorageCapacity + config.DroneStationStorageCapacity > GameConstants.MaxStorageSlots)) ||
-                (!station && config.DroneStationStorageCapacity != 0))
-            {
-                Debug.LogError("[BuildingConfigLoader] Invalid station dedicated/general storage capacity.");
-                return false;
-            }
-            if (!DroneStationRangeUtility.IsStationType(config.BuildingType) && config.DroneStationRangeInChunks != 0)
-            {
-                Debug.LogError("[BuildingConfigLoader] Only MainFacility and DroneStation can define a drone station range.");
                 return false;
             }
         }
         if (materials != null)
         {
-            var materialKeys = new HashSet<(BuildingTypeEnum Type, int Tier, ItemTypeEnum ItemType)>();
+            var materialKeys = new HashSet<(int BuildingId, ItemTypeEnum ItemType)>();
             foreach (var material in materials)
             {
-                if (!keys.Contains((material.BuildingType, material.Tier)))
+                if (!ids.Contains(material.BuildingId))
                 {
-                    Debug.LogError("[BuildingConfigLoader] Construction material references an undefined building type/tier.");
+                    Debug.LogError($"[BuildingConfigLoader] Construction material references undefined buildingId {material.BuildingId}.");
                     return false;
                 }
                 if (material.ItemType == ItemTypeEnum.None || !Enum.IsDefined(typeof(ItemTypeEnum), material.ItemType))
@@ -477,10 +499,10 @@ public static class BuildingConfigLoader
                     Debug.LogError("[BuildingConfigLoader] Construction material quantity must be positive.");
                     return false;
                 }
-                // 한 건물/티어의 품목별 비용은 한 행으로 유지해 런타임 요구량 합산의 오버플로를 막는다.
-                if (!materialKeys.Add((material.BuildingType, material.Tier, material.ItemType)))
+                // 한 건물 ID의 품목별 비용은 한 행으로 유지해 런타임 요구량 합산의 오버플로를 막는다.
+                if (!materialKeys.Add((material.BuildingId, material.ItemType)))
                 {
-                    Debug.LogError($"[BuildingConfigLoader] Duplicate construction material '{material.ItemType}' for building {material.BuildingType}/{material.Tier}.");
+                    Debug.LogError($"[BuildingConfigLoader] Duplicate construction material '{material.ItemType}' for buildingId {material.BuildingId}.");
                     return false;
                 }
             }
@@ -488,37 +510,37 @@ public static class BuildingConfigLoader
         return true;
     }
 
-    private static bool TryReadFootprint(BuildingTypeEnum type, JToken rawFootprint, out int2 footprint)
+    private static bool ValidateDefinition(in BuildingConfigElement config)
     {
-        footprint = int2.zero;
-        if (rawFootprint == null)
+        if (!ValidateFootprint(config.BuildingType, config.Footprint))
         {
-            Debug.LogError($"[BuildingConfigLoader] {type} is missing its required footprint.");
             return false;
         }
-        if (rawFootprint.Type == JTokenType.Null)
+        if (!ValidatePublishedPower(config))
         {
-            Debug.LogError($"[BuildingConfigLoader] {type} is missing its required footprint.");
             return false;
         }
-        if (rawFootprint is not JArray dimensions || dimensions.Count != 2)
+        bool station = DroneStationRangeUtility.IsStationType(config.BuildingType);
+        // CoalGenerator의 용량은 바로 위 전력 역할 검증이 검사한다.
+        bool storesItems = station || config.BuildingType == BuildingTypeEnum.Storage;
+        if (storesItems && (config.StorageCapacity <= 0 || config.StorageCapacity > GameConstants.MaxStorageSlots))
         {
-            Debug.LogError($"[BuildingConfigLoader] {type} footprint must contain exactly two integer dimensions.");
+            Debug.LogError("[BuildingConfigLoader] Invalid storage capacity; expected 1..MaxStorageSlots.");
             return false;
         }
-        for (int axis = 0; axis < 2; axis++)
+        if ((station && (config.DroneStationStorageCapacity <= 0 ||
+                (long)config.StorageCapacity + config.DroneStationStorageCapacity > GameConstants.MaxStorageSlots)) ||
+            (!station && config.DroneStationStorageCapacity != 0))
         {
-            JToken value = dimensions[axis];
-            if (value.Type != JTokenType.Integer ||
-                !long.TryParse(value.ToString(Formatting.None), NumberStyles.Integer, CultureInfo.InvariantCulture, out long dimension) ||
-                dimension < int.MinValue || dimension > int.MaxValue)
-            {
-                Debug.LogError($"[BuildingConfigLoader] {type} footprint dimensions must be JSON integers representable as int.");
-                return false;
-            }
-            footprint[axis] = (int)dimension;
+            Debug.LogError("[BuildingConfigLoader] Invalid station dedicated/general storage capacity.");
+            return false;
         }
-        return ValidateFootprint(type, footprint);
+        if (!DroneStationRangeUtility.IsStationType(config.BuildingType) && config.DroneStationRangeInChunks != 0)
+        {
+            Debug.LogError("[BuildingConfigLoader] Only MainFacility and DroneStation can define a drone station range.");
+            return false;
+        }
+        return true;
     }
 
     private static bool ValidateFootprint(BuildingTypeEnum type, int2 footprint)
@@ -553,61 +575,60 @@ public static class BuildingConfigLoader
         return false;
     }
 
-    /// <summary>
-    /// 검증된 설정 엘리먼트들을 ECS 월드의 BuildingConfig 싱글톤 엔티티로 게시.
-    /// (기존 BuildingRuntimeConfig 호환성 버퍼도 함께 부착)
-    /// </summary>
-    public static Entity PublishConfig(
-        EntityManager entityManager,
-        List<BuildingConfigElement> configs,
-        List<BuildingConstructionMaterialElement> materials)
+    private static bool ValidatePublishedPower(in BuildingConfigElement config)
     {
-        if (configs == null || configs.Count == 0)
+        BuildingPowerConfig power = config.Power;
+        BuildingTypeEnum type = config.BuildingType;
+        int tier = config.Tier;
+        if (power.SupplyRange < 0 || power.ConnectionRange < 0 ||
+            !math.isfinite(power.MaximumGeneration) || !math.isfinite(power.MaximumConsumption) ||
+            !math.isfinite(power.CoalEnergyPerItem) || power.MaximumGeneration < 0f ||
+            power.MaximumConsumption < 0f || power.CoalEnergyPerItem < 0f)
         {
-            Debug.LogError("[BuildingConfigLoader] Cannot publish null or empty config elements.");
-            return Entity.Null;
+            return RejectPublishedPower(type, tier, "has invalid power values");
         }
-
-        // 공개 게시와 사전 등록 Init도 JSON과 같은 크기 계약을 따른다. 무효 입력은 부분 게시하지 않는다.
-        if (!ValidateDefinitions(configs, materials, out _))
+        bool expectsPower = type is BuildingTypeEnum.PowerPole or BuildingTypeEnum.MainFacility or BuildingTypeEnum.CoalGenerator
+            or BuildingTypeEnum.Miner or BuildingTypeEnum.Crafter or BuildingTypeEnum.ResearchBuilding;
+        if (power.HasConfiguration != expectsPower)
         {
-            return Entity.Null;
+            return RejectPublishedPower(type, tier, "has missing or unexpected power configuration");
         }
-
-        // 통합 설정과 호환 버퍼를 같은 입력에서 게시한다. 이후 게임 Reader가 managed JSON 목록을 원본으로 다시 읽지 않게 한다.
-        var entity = entityManager.CreateEntity(
-            typeof(BuildingConfig),
-            typeof(ResearchStatBonuses),
-            typeof(BuildingRuntimeConfig),
-            typeof(BuildingConfigElement),
-            typeof(BuildingRuntimeConfigElement),
-            typeof(BuildingConstructionMaterialElement));
-
-        try
+        bool valid;
+        switch (type)
         {
-            var configBuffer = entityManager.GetBuffer<BuildingConfigElement>(entity);
-            var runtimeBuffer = entityManager.GetBuffer<BuildingRuntimeConfigElement>(entity);
-            var materialBuffer = entityManager.GetBuffer<BuildingConstructionMaterialElement>(entity);
-
-            for (int i = 0; i < configs.Count; i++)
-            {
-                configBuffer.Add(configs[i]);
-                runtimeBuffer.Add(new BuildingRuntimeConfigElement(configs[i].BuildingType, configs[i].Tier, configs[i].Speed, configs[i].StorageCapacity));
-            }
-
-            if (materials != null)
-            {
-                for (int i = 0; i < materials.Count; i++)
-                {
-                    materialBuffer.Add(materials[i]);
-                }
-            }
-            return entity;
+            case BuildingTypeEnum.PowerPole:
+                valid = power.MaximumGeneration == 0f && power.MaximumConsumption == 0f && power.CoalEnergyPerItem == 0f;
+                break;
+            case BuildingTypeEnum.MainFacility:
+                valid = power.SupplyRange == 0 && power.MaximumGeneration > 0f &&
+                    power.MaximumConsumption == 0f && power.CoalEnergyPerItem == 0f;
+                break;
+            case BuildingTypeEnum.CoalGenerator:
+                valid = power.SupplyRange == 0 && power.ConnectionRange == 0 && power.MaximumGeneration > 0f &&
+                    power.MaximumConsumption == 0f && power.CoalEnergyPerItem > 0f &&
+                    config.StorageCapacity > 0 && config.StorageCapacity <= GameConstants.MaxStorageSlots;
+                break;
+            case BuildingTypeEnum.Miner:
+            case BuildingTypeEnum.Crafter:
+            case BuildingTypeEnum.ResearchBuilding:
+                valid = power.SupplyRange == 0 && power.ConnectionRange == 0 && power.MaximumGeneration == 0f &&
+                    power.MaximumConsumption > 0f && power.CoalEnergyPerItem == 0f;
+                break;
+            default:
+                valid = power.SupplyRange == 0 && power.ConnectionRange == 0 && power.MaximumGeneration == 0f &&
+                    power.MaximumConsumption == 0f && power.CoalEnergyPerItem == 0f;
+                break;
         }
-        catch
+        if (!valid)
         {
-            entityManager.DestroyEntity(entity);
-            throw;
+            return RejectPublishedPower(type, tier, "has power values or fuel slots inconsistent with its building role");
         }
+        return true;
+    }
+
+    private static bool RejectPublishedPower(BuildingTypeEnum type, int tier, string reason)
+    {
+        Debug.LogError($"[BuildingConfigLoader] {type}/{tier} {reason}.");
+        return false;
     }
 }

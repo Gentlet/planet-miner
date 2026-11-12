@@ -1,13 +1,49 @@
 {
   "Items": [
-    { "ItemType": "Iron_Ore", "MaxStack": 50 },
-    { "ItemType": "Copper_Ore", "MaxStack": 50 },
-    { "ItemType": "Coal", "MaxStack": 50 },
-    { "ItemType": "Stone", "MaxStack": 50 },
-    { "ItemType": "Iron", "MaxStack": 100 },
-    { "ItemType": "Copper", "MaxStack": 100 },
-    { "ItemType": "Iron_Stick", "MaxStack": 100 },
-    { "ItemType": "Copper_Stick", "MaxStack": 100 },
-    { "ItemType": "Drone", "MaxStack": 50 }
+    {
+      "ItemId": 12000001,
+      "ItemType": "Iron_Ore",
+      "MaxStack": 50
+    },
+    {
+      "ItemId": 12000002,
+      "ItemType": "Copper_Ore",
+      "MaxStack": 50
+    },
+    {
+      "ItemId": 12000003,
+      "ItemType": "Coal",
+      "MaxStack": 50
+    },
+    {
+      "ItemId": 12000004,
+      "ItemType": "Stone",
+      "MaxStack": 50
+    },
+    {
+      "ItemId": 12000005,
+      "ItemType": "Iron",
+      "MaxStack": 100
+    },
+    {
+      "ItemId": 12000006,
+      "ItemType": "Copper",
+      "MaxStack": 100
+    },
+    {
+      "ItemId": 12000007,
+      "ItemType": "Iron_Stick",
+      "MaxStack": 100
+    },
+    {
+      "ItemId": 12000008,
+      "ItemType": "Copper_Stick",
+      "MaxStack": 100
+    },
+    {
+      "ItemId": 12000009,
+      "ItemType": "Drone",
+      "MaxStack": 50
+    }
   ]
 }

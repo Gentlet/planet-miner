@@ -89,9 +89,11 @@ internal struct DecideDroneStationNetworkJob : IJob
         {
             Entity station = Stations[i];
             var type = TypeLookup[station];
-            if (!BuildingConfigLookupUtility.TryGetConfig(configs, type.Type, type.Tier, out var config))
+            if (!BuildingConfigLookupUtility.TryGetConfig(configs, type.BuildingId, out var config))
             {
-                SimulationFailureUtility.Record(ref ECB, "[DroneStationNetwork] Missing station type/tier configuration.");
+                FixedString128Bytes message = "[DroneStationNetwork] Missing station configuration for BuildingId ";
+                message.Append(type.BuildingId);
+                SimulationFailureUtility.Record(ref ECB, message);
                 return;
             }
             Parents[i] = i;

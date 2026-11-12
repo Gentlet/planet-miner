@@ -3,7 +3,7 @@
   "initialChunkSize": 3,
   "configs": [
     {
-      "type": "Iron_Ore",
+      "itemId": 12000001,
       "weight": 0.35,
       "minPatchRadius": 1,
       "maxPatchRadius": 2,
@@ -12,7 +12,7 @@
       "maxAmount": 300
     },
     {
-      "type": "Copper_Ore",
+      "itemId": 12000002,
       "weight": 0.3,
       "minPatchRadius": 1,
       "maxPatchRadius": 2,
@@ -21,7 +21,7 @@
       "maxAmount": 300
     },
     {
-      "type": "Coal",
+      "itemId": 12000003,
       "weight": 0.25,
       "minPatchRadius": 1,
       "maxPatchRadius": 2,
@@ -30,7 +30,7 @@
       "maxAmount": 350
     },
     {
-      "type": "Stone",
+      "itemId": 12000004,
       "weight": 0.3,
       "minPatchRadius": 1,
       "maxPatchRadius": 2,
@@ -42,31 +42,58 @@
   "floor": {
     "biomeRegionSizeInChunks": 3,
     "transitionWidthInChunks": 2,
-    "boundaryNoiseScaleInCells": 24.0,
-    "boundaryNoiseAmplitudeInCells": 6.0,
+    "boundaryNoiseScaleInCells": 24,
+    "boundaryNoiseAmplitudeInCells": 6,
     "nearBiomePreferenceExponent": 0.5,
     "transitionFloorVariants": [
-      { "spriteResourcePath": "Sprites/Floor/GroundTransition01", "weight": 1.0 },
-      { "spriteResourcePath": "Sprites/Floor/GroundTransition02", "weight": 1.0 },
-      { "spriteResourcePath": "Sprites/Floor/GroundTransition03", "weight": 1.0 }
+      {
+        "spriteResourcePath": "Sprites/Floor/GroundTransition01",
+        "weight": 1
+      },
+      {
+        "spriteResourcePath": "Sprites/Floor/GroundTransition02",
+        "weight": 1
+      },
+      {
+        "spriteResourcePath": "Sprites/Floor/GroundTransition03",
+        "weight": 1
+      }
     ],
     "biomes": [
       {
-        "id": "Grass",
-        "selectionWeight": 1.0,
+        "biomeId": 15000001,
+        "selectionWeight": 1,
         "floorVariants": [
-          { "spriteResourcePath": "Sprites/Floor/GroundGrass", "weight": 1.0 },
-          { "spriteResourcePath": "Sprites/Floor/GroundGrass02", "weight": 1.0 },
-          { "spriteResourcePath": "Sprites/Floor/GroundGrass03", "weight": 1.0 }
+          {
+            "spriteResourcePath": "Sprites/Floor/GroundGrass",
+            "weight": 1
+          },
+          {
+            "spriteResourcePath": "Sprites/Floor/GroundGrass02",
+            "weight": 1
+          },
+          {
+            "spriteResourcePath": "Sprites/Floor/GroundGrass03",
+            "weight": 1
+          }
         ]
       },
       {
-        "id": "Dirt",
-        "selectionWeight": 1.0,
+        "biomeId": 15000002,
+        "selectionWeight": 1,
         "floorVariants": [
-          { "spriteResourcePath": "Sprites/Floor/GroundDirt", "weight": 1.0 },
-          { "spriteResourcePath": "Sprites/Floor/GroundDirt02", "weight": 1.0 },
-          { "spriteResourcePath": "Sprites/Floor/GroundDirt03", "weight": 1.0 }
+          {
+            "spriteResourcePath": "Sprites/Floor/GroundDirt",
+            "weight": 1
+          },
+          {
+            "spriteResourcePath": "Sprites/Floor/GroundDirt02",
+            "weight": 1
+          },
+          {
+            "spriteResourcePath": "Sprites/Floor/GroundDirt03",
+            "weight": 1
+          }
         ]
       }
     ]

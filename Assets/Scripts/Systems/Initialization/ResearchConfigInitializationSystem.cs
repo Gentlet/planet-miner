@@ -49,9 +49,10 @@ public partial class ResearchConfigInitializationSystem : SystemBase
                 return registered;
             }
 
+            var itemIds = ItemConfigInitSystem.ReadRegisteredItemIds(manager);
             var data = jsonOverride == null
-                ? ResearchConfigLoader.LoadFromResources(resourcePath)
-                : ResearchConfigLoader.ParseJson(jsonOverride);
+                ? ResearchConfigLoader.LoadFromResources(resourcePath, itemIds)
+                : ResearchConfigLoader.ParseJson(jsonOverride, itemIds);
             return ResearchConfigLoader.PublishConfig(manager, data);
         }
         catch (Exception exception)

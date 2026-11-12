@@ -1,10 +1,9 @@
-using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
 /// 역할·목적: 완공 건물 하나의 직접 생성과 런타임 컴포넌트 초기화를 요청한다.
-/// 부착 엔티티: 위치·종류 등을 담은 별도 일회성 요청 엔티티. 생성될 건물에 붙이는 상태가 아니다.
+/// 부착 엔티티: 건물 ID와 설치 위치를 담은 별도 일회성 요청 엔티티.
 /// 생성: 외부 Producer는 BuildingPlacementRequestUtility.SubmitSpawn으로 접수한다. 기존 원시 요청의 생략 표식은 Apply 직전에 같은 처리 묶음으로 발급한다.
 /// 현재 ConstructionLifecycleApplySystem은 이 요청을 만들지 않고 공통 SpawnBuilding API로 완공 건물을 직접 생성한다.
 /// 이용: BuildingLifecycleApplySystem(StateApply)이 등록된 프리팹을 인스턴스화한다. DB/항목 누락 시 대체 생성 없이 중단 오류를 기록한다.
@@ -13,10 +12,9 @@ using Unity.Mathematics;
 public struct SpawnBuildingRequest : IComponentData, IRequestComponent
 {
     /// <summary>
-    /// 스폰할 대상 건물 종류.
+    /// 생성할 건물 정의의 ID. 역할과 티어는 등록 설정에서 읽는다.
     /// </summary>
-    public BuildingTypeEnum TargetType;
-    public int TargetTier;
+    public int BuildingId;
 
     /// <summary>
     /// 건물이 배치될 원점 그리드 좌표.
@@ -42,15 +40,13 @@ public struct SpawnBuildingRequest : IComponentData, IRequestComponent
     public bool HasPlacementStamp;
 
     public SpawnBuildingRequest(
-        BuildingTypeEnum targetType,
-        int targetTier,
+        int buildingId,
         int2 position,
         DirectionEnum direction = DirectionEnum.Up,
         int2 footprintSize = default,
         PlacementStamp? stamp = null)
     {
-        TargetType = targetType;
-        TargetTier = targetTier;
+        BuildingId = buildingId;
         Position = position;
         Direction = direction;
         FootprintSize = footprintSize;

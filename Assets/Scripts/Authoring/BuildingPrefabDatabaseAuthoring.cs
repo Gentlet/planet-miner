@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.Serialization;
 
 /// <summary>
-/// 종류·티어별 프리팹을 명시적으로 등록한다. 크기와 표시 이름은 BuildingConfig가 소유한다.
+/// BuildingId별 프리팹을 명시적으로 등록한다. 크기와 표시 이름은 건물 설정 테이블이 소유한다.
 /// Baker는 별도 DB 엔티티를 만들며 Initialization이 설정과의 대응·중복·원형을 검증한다.
 /// 런타임 매핑은 World 동안 불변이다. 프리팹 이름으로 종류나 티어를 추론하지 않는다.
 /// </summary>
@@ -14,19 +14,21 @@ public class BuildingPrefabDatabaseAuthoring : MonoBehaviour
     [System.Serializable]
     public struct BuildingPrefabEntry
     {
+        public int BuildingId;
         public BuildingTypeEnum Type;
         public int Tier;
         public GameObject Prefab;
 
-        public BuildingPrefabEntry(BuildingTypeEnum type, int tier, GameObject prefab)
+        public BuildingPrefabEntry(BuildingTypeEnum type, int tier, GameObject prefab, int buildingId)
         {
+            BuildingId = buildingId;
             Type = type;
             Tier = tier;
             Prefab = prefab;
         }
     }
 
-    [Tooltip("종류·양수 티어·프리팹을 명시적으로 등록합니다. 크기와 표시 이름은 Config/BuildingConfig에서 편집합니다.")]
+    [Tooltip("건물 ID / 역할 / 티어와 프리팹을 등록합니다. 건물 ID와 설정은 외부 TableBuilder의 BuildingDefinitions.xml에서 편집합니다.")]
     [FormerlySerializedAs("_entries")]
     public List<BuildingPrefabEntry> Prefabs = new List<BuildingPrefabEntry>();
 
@@ -43,7 +45,7 @@ public class BuildingPrefabDatabaseAuthoring : MonoBehaviour
                 Entity prefabEntity = entry.Prefab == null
                     ? Entity.Null
                     : GetEntity(entry.Prefab, TransformUsageFlags.Renderable);
-                buffer.Add(new BuildingPrefabElement(entry.Type, entry.Tier, prefabEntity));
+                buffer.Add(new BuildingPrefabElement(entry.Type, entry.Tier, prefabEntity, entry.BuildingId));
             }
         }
     }

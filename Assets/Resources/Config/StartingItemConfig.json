@@ -1,9 +1,24 @@
 {
   "items": [
-    { "itemType": "Iron", "quantity": 30 },
-    { "itemType": "Copper", "quantity": 30 },
-    { "itemType": "Iron_Stick", "quantity": 30 },
-    { "itemType": "Copper_Stick", "quantity": 30 },
-    { "itemType": "Drone", "quantity": 10 }
+    {
+      "itemId": 12000005,
+      "quantity": 30
+    },
+    {
+      "itemId": 12000006,
+      "quantity": 30
+    },
+    {
+      "itemId": 12000007,
+      "quantity": 30
+    },
+    {
+      "itemId": 12000008,
+      "quantity": 30
+    },
+    {
+      "itemId": 12000009,
+      "quantity": 10
+    }
   ]
 }

@@ -4,12 +4,12 @@ using System.Collections.Generic;
 /// <summary>연구 정의의 DAG를 화면에만 배치한다. 선행 완료나 실제 활성 연구를 변경하지 않는다.</summary>
 public sealed class ResearchUiNode
 {
-    public string Id;
+    public int Id;
     public string Name;
     public string Description;
     public string Materials;
     public string Rewards;
-    public readonly List<string> Parents = new List<string>();
+    public readonly List<int> Parents = new List<int>();
     public double Progress;
     public double RequiredProgress;
     public bool Completed;
@@ -21,14 +21,14 @@ public sealed class ResearchUiNode
 
 public static class ResearchTreeLayoutUtility
 {
-    public static bool TryArrange(IReadOnlyList<ResearchUiNode> nodes, string rootId, List<ResearchUiNode> visible)
+    public static bool TryArrange(IReadOnlyList<ResearchUiNode> nodes, int rootId, List<ResearchUiNode> visible)
     {
         visible.Clear();
-        if (string.IsNullOrEmpty(rootId))
+        if (rootId == 0)
         {
             return false;
         }
-        var depths = new Dictionary<string, int>();
+        var depths = new Dictionary<int, int>();
         for (int pass = 0; pass < nodes.Count; pass++)
         {
             bool advanced = false;
@@ -40,7 +40,7 @@ public static class ResearchTreeLayoutUtility
                 }
                 bool ready = true;
                 int depth = 0;
-                foreach (string parent in node.Parents)
+                foreach (int parent in node.Parents)
                 {
                     if (!depths.TryGetValue(parent, out int parentDepth))
                     {
@@ -64,7 +64,7 @@ public static class ResearchTreeLayoutUtility
         {
             return false;
         }
-        var included = new HashSet<string> { rootId };
+        var included = new HashSet<int> { rootId };
         for (int pass = 0; pass < nodes.Count; pass++)
         {
             bool advanced = false;
@@ -74,7 +74,7 @@ public static class ResearchTreeLayoutUtility
                 {
                     continue;
                 }
-                foreach (string parent in node.Parents)
+                foreach (int parent in node.Parents)
                 {
                     if (included.Contains(parent))
                     {

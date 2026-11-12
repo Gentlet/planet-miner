@@ -11,7 +11,7 @@ public static class StartingItemConfigLoader
 {
     public const string DefaultResourcePath = "Config/StartingItemConfig";
 
-    public static List<StartingItemConfigElement> LoadFromResources(string resourcePath = DefaultResourcePath)
+    public static List<StartingItemConfigElement> LoadFromResources(string resourcePath = DefaultResourcePath, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
     {
         var asset = Resources.Load<TextAsset>(resourcePath);
         if (asset == null)
@@ -19,10 +19,15 @@ public static class StartingItemConfigLoader
             throw new InvalidOperationException($"Starting item configuration was not found at '{resourcePath}'.");
         }
 
-        return ParseJson(asset.text);
+        return ParseJson(asset.text, itemIds, string.Equals(resourcePath, DefaultResourcePath, StringComparison.OrdinalIgnoreCase));
     }
 
-    public static List<StartingItemConfigElement> ParseJson(string json)
+    public static List<StartingItemConfigElement> ParseJson(string json, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
+    {
+        return ParseJson(json, itemIds, requireItemIds: false);
+    }
+
+    private static List<StartingItemConfigElement> ParseJson(string json, IReadOnlyDictionary<int, ItemTypeEnum> itemIds, bool requireItemIds)
     {
         if (string.IsNullOrWhiteSpace(json))
         {
@@ -43,24 +48,8 @@ public static class StartingItemConfigLoader
                 throw new ArgumentException("Starting item entries must be objects.", nameof(json));
             }
 
-            var itemToken = entry["itemType"];
-            if (itemToken == null)
-            {
-                throw new ArgumentException("Starting itemType is missing.", nameof(json));
-            }
-
-            if (itemToken.Type != JTokenType.String)
-            {
-                throw new ArgumentException("Starting itemType must be an explicit item name.", nameof(json));
-            }
-
-            string itemName = itemToken.Value<string>().Trim();
-            if (!Enum.TryParse(itemName, true, out ItemTypeEnum itemType) ||
-                !Enum.IsDefined(typeof(ItemTypeEnum), itemType) ||
-                !string.Equals(itemName, itemType.ToString(), StringComparison.OrdinalIgnoreCase))
-            {
-                throw new ArgumentException($"Unknown starting item name '{itemName}'.", nameof(json));
-            }
+            ItemTypeEnum itemType = ReadItemType(entry, itemIds, requireItemIds);
+            string itemName = itemType.ToString();
 
             var quantityToken = entry["quantity"];
             if (quantityToken == null)
@@ -84,6 +73,44 @@ public static class StartingItemConfigLoader
 
         ValidateDefinitions(definitions);
         return definitions;
+    }
+
+    private static ItemTypeEnum ReadItemType(JObject entry, IReadOnlyDictionary<int, ItemTypeEnum> itemIds, bool requireItemIds)
+    {
+        var idToken = entry["itemId"];
+        if (idToken != null)
+        {
+            if (idToken.Type != JTokenType.Integer ||
+                !int.TryParse(idToken.ToString(Formatting.None), NumberStyles.Integer, CultureInfo.InvariantCulture, out int itemId))
+            {
+                throw new ArgumentException("Starting itemId must be an explicit Int32 integer.");
+            }
+            return ItemConfigInitSystem.ResolveItemId(itemId, itemIds);
+        }
+        if (requireItemIds)
+        {
+            throw new ArgumentException("Starting itemId is missing.");
+        }
+
+        var itemToken = entry["itemType"];
+        if (itemToken == null)
+        {
+            throw new ArgumentException("Starting itemType is missing.");
+        }
+
+        if (itemToken.Type != JTokenType.String)
+        {
+            throw new ArgumentException("Starting itemType must be an explicit item name.");
+        }
+
+        string itemName = itemToken.Value<string>().Trim();
+        if (!Enum.TryParse(itemName, true, out ItemTypeEnum itemType) ||
+            !Enum.IsDefined(typeof(ItemTypeEnum), itemType) ||
+            !string.Equals(itemName, itemType.ToString(), StringComparison.OrdinalIgnoreCase))
+        {
+            throw new ArgumentException($"Unknown starting item name '{itemName}'.");
+        }
+        return itemType;
     }
 
     public static Entity PublishConfig(EntityManager manager, IReadOnlyList<StartingItemConfigElement> definitions)

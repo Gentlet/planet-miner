@@ -86,7 +86,7 @@ public partial struct ResearchSelectionCommandSystem : ISystem
             var definitions = Definitions[Registry];
             var prerequisites = Prerequisites[Registry];
             var progress = Progress[Registry];
-            using var completedById = new NativeHashMap<FixedString32Bytes, bool>(progress.Length, Allocator.Temp);
+            using var completedById = new NativeHashMap<int, bool>(progress.Length, Allocator.Temp);
             foreach (var entry in progress)
             {
                 completedById.Add(entry.ResearchId, entry.IsCompleted);
@@ -124,9 +124,9 @@ public partial struct ResearchSelectionCommandSystem : ISystem
             }
         }
 
-        private static ResearchSelectionStatusEnum Select(FixedString32Bytes researchId,
+        private static ResearchSelectionStatusEnum Select(int researchId,
             DynamicBuffer<ResearchDefinitionElement> definitions, DynamicBuffer<ResearchPrerequisiteElement> prerequisites,
-            NativeHashMap<FixedString32Bytes, bool> completedById, ref ResearchState selected)
+            NativeHashMap<int, bool> completedById, ref ResearchState selected)
         {
             for (int i = 0; i < definitions.Length; i++)
             {

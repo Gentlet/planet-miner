@@ -85,7 +85,7 @@ internal partial struct ExecuteResearchJob : IJobChunk
         }
         var definition = registryRead.Definitions.Read(Definitions, Registry)[preparation.DefinitionIndex];
         var ingredients = registryRead.Ingredients.Read(Ingredients, Registry);
-        if (cycle.ResearchId.IsEmpty)
+        if (cycle.ResearchId == 0)
         {
             if (!decision.CanStartCycle)
             {

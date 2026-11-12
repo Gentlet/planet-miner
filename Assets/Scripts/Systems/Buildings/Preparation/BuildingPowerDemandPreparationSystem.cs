@@ -99,7 +99,7 @@ internal partial struct PrepareBuildingPowerDemandJob : IJobChunk
         }
 
         var configs = registryRead.ConfigLookup.Read(ConfigLookup, ConfigEntity);
-        if (!BuildingConfigLookupUtility.TryGetConfig(configs, type.Type, type.Tier, out var config))
+        if (!BuildingConfigLookupUtility.TryGetConfig(configs, type.BuildingId, out var config))
         {
             return;
         }

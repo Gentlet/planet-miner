@@ -79,9 +79,10 @@ public sealed class BuildingToolbarView : MonoBehaviour
             for (int i = 0; i < _tools.Catalog.Count; i++)
             {
                 var config = _tools.Catalog[i].Config;
+                int buildingId = config.BuildingId;
                 string key = i < 10 ? Key("SelectSlot" + (i + 1)) + "  " : string.Empty;
                 AddButton(key + config.DisplayName + " T" + config.Tier,
-                    () => _tools.SelectBuilding(config.BuildingType, config.Tier));
+                    () => _tools.SelectBuilding(buildingId));
             }
             AddButton(Key("Copy") + " 복사", _tools.BeginCopyRange);
             AddButton(Key("RangeDemolish") + " 범위 작업", _tools.BeginDemolitionRange);

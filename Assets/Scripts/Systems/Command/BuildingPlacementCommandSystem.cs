@@ -134,7 +134,9 @@ public partial struct BuildingPlacementCommandSystem : ISystem
             {
                 var candidate = candidateBuffer[i];
                 candidates[i] = candidate;
-                if (!BuildingSettingsUtility.IsAllowed(candidate.TargetType, candidate.Settings, ref settingsRead))
+                if (candidate.Settings.HasValues &&
+                    BuildingConfigLookupUtility.TryGetConfig(configs, candidate.BuildingId, out var definition) &&
+                    !BuildingSettingsUtility.IsAllowed(definition.BuildingType, candidate.Settings, ref settingsRead))
                 {
                     settingsRejections[i] = PlacementValidationCode.InvalidBuildingSettings;
                 }
@@ -172,19 +174,11 @@ public partial struct BuildingPlacementCommandSystem : ISystem
 
                 if (res.Code == PlacementValidationCode.BeltUpgradeAllowed)
                 {
-                    // 벨트 덮어쓰기 처리: 동일 벨트인지 다른 벨트인지 판정
-                    if (buildingMap.TryGetValue(candidate.OriginPosition, out var existingBuilding))
-                    {
-                        if (existingBuilding.Type == candidate.TargetType && existingBuilding.Tier == candidate.TargetTier)
-                        {
-                            // 기존 같은 타입 벨트는 새 현장/요구 자재 없이 EndCommand에서 방향만 바꾼다.
-                            ecb.SetComponent(existingBuilding.Entity, new Direction(candidate.Direction));
-                            BuildingPlacementValidationUtility.ClaimApprovedPlacement(candidate, approvedCells);
-                            continue;
-                        }
-                    }
-
-                    // 같은 타입 벨트의 방향 변경으로 처리하지 못한 승인 후보는 현장 생성 경로를 따른다.
+                    // 승인에 사용한 같은 인덱스의 원점 벨트를 EndCommand에서 변경한다.
+                    var existingBelt = buildingMap[candidate.OriginPosition];
+                    ecb.SetComponent(existingBelt.Entity, new Direction(candidate.Direction));
+                    BuildingPlacementValidationUtility.ClaimApprovedPlacement(candidate, approvedCells);
+                    continue;
                 }
 
                 if (res.IsValid)
@@ -205,7 +199,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                         flags |= ConstructionSiteFlags.AwaitingItemClearance;
                     }
 
-                    ecb.AddComponent(siteEntity, new ConstructionSite(candidate.TargetType, candidate.TargetTier, flags));
+                    ecb.AddComponent(siteEntity, new ConstructionSite(candidate.TargetType, candidate.TargetTier, candidate.BuildingId, flags));
                     if (candidateBuffer[i].Settings.HasValues)
                     {
                         ecb.AddComponent(siteEntity, candidateBuffer[i].Settings);
@@ -218,7 +212,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                     var reqBuffer = ecb.AddBuffer<ConstructionMaterialRequirementElement>(siteEntity);
                     ecb.AddBuffer<StoredItemElement>(siteEntity);
 
-                    BuildingConfigLookupUtility.PopulateRequirements(materials, candidate.TargetType, candidate.TargetTier, ref reqBuffer);
+                    BuildingConfigLookupUtility.PopulateRequirements(materials, candidate.BuildingId, ref reqBuffer);
 
                     BuildingPlacementValidationUtility.ClaimApprovedPlacement(candidate, approvedCells);
                 }

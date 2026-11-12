@@ -153,7 +153,7 @@ public static class DroneTransportEndpointUtility
 
         Entity registry = query.GetSingletonEntity();
         var active = manager.GetComponentData<ResearchState>(registry).ActiveResearchId;
-        if (active.IsEmpty)
+        if (active == 0)
         {
             return 0;
         }

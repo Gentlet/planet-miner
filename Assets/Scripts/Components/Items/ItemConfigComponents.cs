@@ -10,11 +10,13 @@ using Unity.Entities;
 [InternalBufferCapacity(0)]
 public struct ItemConfigElement : IBufferElementData
 {
+    public int ItemId;
     public ItemTypeEnum ItemType;
     public int MaxStack;
 
-    public ItemConfigElement(ItemTypeEnum itemType, int maxStack)
+    public ItemConfigElement(ItemTypeEnum itemType, int maxStack, int itemId = 0)
     {
+        ItemId = itemId;
         ItemType = itemType;
         MaxStack = maxStack;
     }

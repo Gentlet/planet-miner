@@ -16,6 +16,7 @@ public class ItemConfigJsonData
 [Serializable]
 public class ItemConfigJsonEntry
 {
+    public int ItemId;
     public string ItemType;
     public int MaxStack;
 }
@@ -23,7 +24,7 @@ public class ItemConfigJsonEntry
 /// <summary>
 /// 역할·목적: Initialization에서 품목별 최대 스택 설정을 한 번 게시한다.
 /// 입력·생성: Resources/Config/ItemConfig 또는 사전 등록 API의 JSON을 읽는다. 모든 실제 품목의 명시적 양수 값이 필수이며 읽기/파싱/검증 실패는 중단 오류다.
-/// 출력·소유권: ItemRegistry와 ItemConfigElement 버퍼를 즉시 생성한다. 유효한 기존 Registry는 보존하고 직접 중복 게시 API 호출은 거부한다.
+/// 출력·소유권: ItemRegistry의 기존 품목 인덱스에 품목 ID와 MaxStack을 함께 게시한다. 유효한 사전 등록은 보존한다.
 /// 이용: 입고 슬롯 예약, 생산 출력 공간 검사와 드론 보관 계획이 World 수명 동안 읽기 전용으로 이용한다.
 /// 정리: 초기화 뒤 비활성화하며 게시 도중 예외는 이번 호출이 만든 미완성 엔티티만 회수한다. 게시된 설정을 시스템 종료 시 삭제하지 않는다.
 /// </summary>
@@ -84,7 +85,7 @@ public partial class ItemConfigInitSystem : SystemBase
         try
         {
             string jsonText = jsonOverride ?? ReadConfigResource();
-            var items = ParseItems(jsonText);
+            var items = ParseItems(jsonText, requireItemIds: jsonOverride == null);
             Entity registryEntity = entityManager.CreateEntity(typeof(ItemRegistry), typeof(ItemConfigElement));
             try
             {
@@ -117,8 +118,43 @@ public partial class ItemConfigInitSystem : SystemBase
             "Item configuration initialization failed. See error log.");
     }
 
-    private static List<ItemConfigElement> ParseItems(string jsonText)
+    /// <summary>같은 World에 게시된 ID를 설정 로드 동안만 사용하는 조회표로 복사한다.</summary>
+    public static IReadOnlyDictionary<int, ItemTypeEnum> ReadRegisteredItemIds(EntityManager manager)
     {
+        var itemIds = new Dictionary<int, ItemTypeEnum>();
+        using var query = manager.CreateEntityQuery(ComponentType.ReadOnly<ItemRegistry>());
+        if (query.IsEmptyIgnoreFilter)
+        {
+            return itemIds;
+        }
+
+        var items = manager.GetBuffer<ItemConfigElement>(query.GetSingletonEntity(), true);
+        foreach (var item in items)
+        {
+            if (item.ItemId != 0)
+            {
+                itemIds.Add(item.ItemId, item.ItemType);
+            }
+        }
+        return itemIds;
+    }
+
+    internal static ItemTypeEnum ResolveItemId(int itemId, IReadOnlyDictionary<int, ItemTypeEnum> itemIds)
+    {
+        if (itemIds == null)
+        {
+            throw new ArgumentException($"Resolving itemId {itemId} requires a registered item configuration.");
+        }
+        if (!itemIds.TryGetValue(itemId, out var itemType))
+        {
+            throw new ArgumentException($"Unknown itemId {itemId} in the registered item configuration.");
+        }
+        return itemType;
+    }
+
+    private static List<ItemConfigElement> ParseItems(string jsonText, bool requireItemIds)
+    {
+        var itemIds = new HashSet<int>();
         if (string.IsNullOrWhiteSpace(jsonText))
         {
             throw new ArgumentException("Item JSON is null or empty.", nameof(jsonText));
@@ -133,7 +169,7 @@ public partial class ItemConfigInitSystem : SystemBase
         {
             throw new ArgumentException("Item configuration requires an Items list.", nameof(jsonText));
         }
-        var stacksByItemType = new Dictionary<ItemTypeEnum, int>();
+        var itemsByType = new Dictionary<ItemTypeEnum, ItemConfigElement>();
         foreach (var item in data.Items)
         {
             if (item == null)
@@ -155,11 +191,21 @@ public partial class ItemConfigInitSystem : SystemBase
                 throw new ArgumentException("None is not a configurable item.", nameof(jsonText));
             }
             ValidateMaxStack(parsedType, item.MaxStack);
-            if (stacksByItemType.ContainsKey(parsedType))
+            if (requireItemIds || item.ItemId != 0)
+            {
+                if (!IsItemId(item.ItemId))
+                {
+                    throw new ArgumentException($"Item '{parsedType}' requires an ItemId in category 120.", nameof(jsonText));
+                }
+                if (!itemIds.Add(item.ItemId))
+                {
+                    throw new ArgumentException($"Duplicate ItemId {item.ItemId}.", nameof(jsonText));
+                }
+            }
+            if (!itemsByType.TryAdd(parsedType, new ItemConfigElement(parsedType, item.MaxStack, item.ItemId)))
             {
                 throw new ArgumentException($"Duplicate item definition '{parsedType}'.", nameof(jsonText));
             }
-            stacksByItemType.Add(parsedType, item.MaxStack);
         }
 
         int count = Enum.GetValues(typeof(ItemTypeEnum)).Length;
@@ -170,12 +216,12 @@ public partial class ItemConfigInitSystem : SystemBase
         for (int i = 1; i < count; i++)
         {
             var itemType = (ItemTypeEnum)i;
-            if (!stacksByItemType.TryGetValue(itemType, out int maxStack))
+            if (!itemsByType.TryGetValue(itemType, out var item))
             {
                 missingItems.Add(itemType.ToString());
                 continue;
             }
-            items.Add(new ItemConfigElement(itemType, maxStack));
+            items.Add(item);
         }
         if (missingItems.Count > 0)
         {
@@ -193,6 +239,8 @@ public partial class ItemConfigInitSystem : SystemBase
         }
     }
 
+    private static bool IsItemId(int itemId) => itemId / 100000 == 120 && itemId % 100000 != 0;
+
     private static void ValidateRegisteredItems(DynamicBuffer<ItemConfigElement> items)
     {
         int count = Enum.GetValues(typeof(ItemTypeEnum)).Length;
@@ -200,6 +248,7 @@ public partial class ItemConfigInitSystem : SystemBase
         {
             throw new ArgumentException("The pre-registered ItemRegistry is missing its indexed item definitions.");
         }
+        var itemIds = new HashSet<int>();
         for (int i = 0; i < count; i++)
         {
             var item = items[i];
@@ -209,11 +258,15 @@ public partial class ItemConfigInitSystem : SystemBase
             }
             if (item.ItemType == ItemTypeEnum.None)
             {
-                if (item.MaxStack != 0)
+                if (item.MaxStack != 0 || item.ItemId != 0)
                 {
-                    throw new ArgumentException("The reserved None entry requires MaxStack 0.");
+                    throw new ArgumentException("The reserved None entry requires MaxStack and ItemId 0.");
                 }
                 continue;
+            }
+            if (item.ItemId != 0 && (!IsItemId(item.ItemId) || !itemIds.Add(item.ItemId)))
+            {
+                throw new ArgumentException($"The pre-registered ItemRegistry has an invalid or duplicate ItemId {item.ItemId}.");
             }
             ValidateMaxStack(item.ItemType, item.MaxStack);
         }

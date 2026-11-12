@@ -7,6 +7,7 @@ using Unity.Entities;
 /// 출력·정리: 설정을 읽거나 바꾸지 않고 자신을 비활성화한다. 설정 엔티티·버퍼 수명은 World에 속하며 ECB 기록은 없다.
 /// </summary>
 [UpdateInGroup(typeof(InitializationSystemGroup))]
+[UpdateAfter(typeof(BuildingConfigInitSystem))]
 public partial struct BuildingConfigLoadSystem : ISystem
 {
     public void OnCreate(ref SystemState state)
@@ -23,22 +24,18 @@ public partial struct BuildingConfigLoadSystem : ISystem
 
 /// <summary>
 /// 역할·목적: managed 초기화 진입점에서 건물 스펙·해금 상태·자재 요구 설정을 한 번 게시한다.
-/// 입력·생성: OnCreate에서 Resources의 BuildingConfigLoader.DefaultResourcePath를 읽고 Loader가 검증한 설정을 이용한다.
+/// 입력·생성: ItemConfig 게시 뒤 건물·자재 JSON을 읽고 같은 World의 품목 ID로 해석한다.
 /// 출력·소유권: BuildingConfig와 스펙/자재 버퍼를 즉시 생성한다. 기존 singleton이 있으면 덮어쓰지 않는다.
 /// 이용: 배치 검증, 공사 요구량 구성과 완공 건물/철거 환급 생성이 게시 버퍼를 읽는다.
-/// 정리·가시화: 로드/필수 종류 실패는 로그·미게시·즉시 Fatal이며 자동 재시도하지 않는다. 설정은 World 수명 동안 남고 ECB는 사용하지 않는다.
+/// 정리·가시화: 생성 JSON 로드·해석·연결, 게시 또는 사전 등록 검증에 실패하면 즉시 Fatal을 기록한다. 설정은 World 수명 동안 남고 ECB는 사용하지 않는다.
 /// </summary>
 [UpdateInGroup(typeof(InitializationSystemGroup))]
+[UpdateAfter(typeof(ItemConfigInitSystem))]
 public partial class BuildingConfigInitSystem : SystemBase
 {
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-        LoadAndPublish();
-    }
-
     protected override void OnUpdate()
     {
+        LoadAndPublish();
         Enabled = false;
     }
 
@@ -66,15 +63,15 @@ public partial class BuildingConfigInitSystem : SystemBase
                 return;
             }
 
-            bool success = BuildingConfigLoader.TryLoadConfigFromResources(
-                BuildingConfigLoader.DefaultResourcePath, out var configs, out var materials);
-            if (!success)
+            var itemIds = ItemConfigInitSystem.ReadRegisteredItemIds(EntityManager);
+            if (!BuildingConfigLoader.TryLoadConfigFromResources(
+                    BuildingConfigLoader.DefaultResourcePath, out var configs, out var materials, itemIds))
             {
-                ReportFailure("Failed to load or validate BuildingConfig. Config will not be published.");
+                ReportFailure("Failed to load generated BuildingConfig. Config will not be published.");
                 return;
             }
 
-            if (BuildingConfigLoader.PublishConfig(EntityManager, configs, materials) == Entity.Null)
+            if (BuildingConfigLoader.PublishValidatedConfig(EntityManager, configs, materials) == Entity.Null)
             {
                 ReportFailure("Failed to publish BuildingConfig.");
             }

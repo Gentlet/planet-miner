@@ -6,35 +6,20 @@ using Unity.Mathematics;
 /// <summary>
 /// 역할·목적: 단일/묶음 배치의 회전 점유·자원 필요·해금·바닥 실물 여부를 검증한다.
 /// 입력·출력: 직전 동기화의 공간 인덱스와 후보/설정을 읽고 후보별 승인/거부 값을 쓴다. 월드 상태와 인덱스를 변경하지 않는다.
-/// 이용: BuildingPlacementCommandSystem(Command)과 테스트가 호출한다. 런타임 UI 프리뷰 Producer는 미구현이다.
+/// 이용: BuildingPlacementCommandSystem(Command)과 BuildingToolWorld 미리보기가 같은 설정 조회와 검증 규칙을 사용한다.
 /// 수명·경계: 묶음 내부 claimedCells와 Command가 전달한 최종 승인 셀을 함께 검사한다. 외부 승인 셀은 읽기만 하며 영속 예약이나 조기 공간 동기화가 아니다.
 /// </summary>
 [BurstCompile]
 public static class BuildingPlacementValidationUtility
 {
-    /// <summary>
-    /// 단일 건물 배치 요청에 대한 유효성을 검증.
-    /// </summary>
-    /// <param name="targetType">설치하려는 건물 타입</param>
-    /// <param name="footprintSize">건물 기본 크기</param>
-    /// <param name="originPosition">건물 기준 좌표 (회전된 바운딩 박스의 좌하단 Min Cell)</param>
-    /// <param name="direction">건물 배치 방향</param>
-    /// <param name="buildingMap">건물 공간 인덱스 ReadOnly 뷰</param>
-    /// <param name="resourceMap">자원 노드 공간 인덱스 ReadOnly 뷰</param>
-    /// <param name="itemMap">월드 아이템 공간 인덱스 ReadOnly 뷰</param>
-    /// <returns>검증 결과 (성공, 실패 원인, 바닥 아이템 여부)</returns>
-    public static PlacementValidationResult ValidateSinglePlacement(
-        BuildingTypeEnum targetType,
-        int targetTier,
-        int2 footprintSize,
-        int2 originPosition,
-        DirectionEnum direction,
+    private static PlacementValidationResult ValidateSinglePlacement(
+        in PlacementCandidate candidate,
         in NativeParallelHashMap<int2, BuildingInfo>.ReadOnly buildingMap,
         in NativeParallelHashMap<int2, Entity>.ReadOnly resourceMap,
         in NativeParallelMultiHashMap<int2, Entity>.ReadOnly itemMap,
-        bool isUnlocked = true)
+        bool isUnlocked)
     {
-        if (targetType == BuildingTypeEnum.MainFacility)
+        if (candidate.TargetType == BuildingTypeEnum.MainFacility)
         {
             return new PlacementValidationResult(PlacementValidationCode.NotPlayerBuildable);
         }
@@ -43,44 +28,45 @@ public static class BuildingPlacementValidationUtility
             return new PlacementValidationResult(PlacementValidationCode.BlockedByResearch);
         }
 
-        if (targetTier <= 0 || footprintSize.x <= 0 || footprintSize.y <= 0)
+        if (candidate.TargetTier <= 0 || candidate.FootprintSize.x <= 0 || candidate.FootprintSize.y <= 0)
         {
             return new PlacementValidationResult(PlacementValidationCode.InvalidFootprint);
         }
 
-        int2 effectiveSize = BuildingFootprintUtility.GetEffectiveSize(footprintSize, direction);
-        if ((long)originPosition.x + effectiveSize.x - 1 > int.MaxValue ||
-            (long)originPosition.y + effectiveSize.y - 1 > int.MaxValue)
+        int2 effectiveSize = BuildingFootprintUtility.GetEffectiveSize(candidate.FootprintSize, candidate.Direction);
+        if ((long)candidate.OriginPosition.x + effectiveSize.x - 1 > int.MaxValue ||
+            (long)candidate.OriginPosition.y + effectiveSize.y - 1 > int.MaxValue)
         {
             return new PlacementValidationResult(PlacementValidationCode.InvalidFootprint);
         }
 
         bool hasResource = false;
         bool hasGroundItems = false;
-        bool isBeltUpgrade = false;
+        Entity beltToRedirect = Entity.Null;
+        // 방향 변경은 기존 벨트의 원점에서 실행하므로 같은 원점의 회전 점유를 검사한다.
+        if (candidate.TargetType == BuildingTypeEnum.Belt &&
+            buildingMap.TryGetValue(candidate.OriginPosition, out var originBuilding) &&
+            originBuilding.Type == BuildingTypeEnum.Belt && originBuilding.BuildingId == candidate.BuildingId &&
+            math.all(originBuilding.OriginPosition == candidate.OriginPosition))
+        {
+            beltToRedirect = originBuilding.Entity;
+        }
 
         for (int y = 0; y < effectiveSize.y; y++)
         {
             for (int x = 0; x < effectiveSize.x; x++)
             {
-                int2 cell = originPosition + new int2(x, y);
+                int2 cell = candidate.OriginPosition + new int2(x, y);
 
                 // 1. 기존 건물 및 공사 현장 점유 검사
-                if (buildingMap.TryGetValue(cell, out var existingBuilding))
+                if (buildingMap.TryGetValue(cell, out var existingBuilding) &&
+                    (beltToRedirect == Entity.Null || existingBuilding.Entity != beltToRedirect))
                 {
-                    if (targetType == BuildingTypeEnum.Belt && existingBuilding.Type == BuildingTypeEnum.Belt && existingBuilding.Tier == targetTier)
-                    {
-                        // 같은 종류·티어의 벨트 방향 변경만 허용한다. 티어 승급은 후속이다.
-                        isBeltUpgrade = true;
-                    }
-                    else if (existingBuilding.Type == BuildingTypeEnum.ConstructionSite)
+                    if (existingBuilding.Type == BuildingTypeEnum.ConstructionSite)
                     {
                         return new PlacementValidationResult(PlacementValidationCode.BlockedByConstructionSite);
                     }
-                    else
-                    {
-                        return new PlacementValidationResult(PlacementValidationCode.BlockedByBuilding);
-                    }
+                    return new PlacementValidationResult(PlacementValidationCode.BlockedByBuilding);
                 }
 
                 // 2. 자원 노드 검사 (일반 건물은 자원 위에도 배치 가능)
@@ -98,12 +84,12 @@ public static class BuildingPlacementValidationUtility
         }
 
         // 4. 채굴기(Miner) 전용 자원 충족 검사: 풋프린트 내 자원 노드가 최소 1개 이상 존재해야 함
-        if (targetType == BuildingTypeEnum.Miner && !hasResource)
+        if (candidate.TargetType == BuildingTypeEnum.Miner && !hasResource)
         {
             return new PlacementValidationResult(PlacementValidationCode.RequiresResourceNode);
         }
 
-        if (isBeltUpgrade)
+        if (beltToRedirect != Entity.Null)
         {
             return new PlacementValidationResult(PlacementValidationCode.BeltUpgradeAllowed, hasGroundItems);
         }
@@ -111,218 +97,23 @@ public static class BuildingPlacementValidationUtility
         return new PlacementValidationResult(PlacementValidationCode.Success, hasGroundItems);
     }
 
-    /// <summary>
-    /// 동일 프레임 다중 배치 묶음(Batch)의 경합 및 유효성을 일괄 검증.
-    /// </summary>
-    /// <param name="candidates">배치 후보 목록</param>
-    /// <param name="flags">충돌 중재 플래그 (StrictAllOrNothing 기본값, AllowPartialPlacement)</param>
-    /// <param name="buildingMap">건물 공간 인덱스 ReadOnly 뷰</param>
-    /// <param name="resourceMap">자원 노드 공간 인덱스 ReadOnly 뷰</param>
-    /// <param name="itemMap">월드 아이템 공간 인덱스 ReadOnly 뷰</param>
-    /// <param name="results">각 후보별 검증 결과 출력 버퍼 (candidates와 동일 크기)</param>
-    /// <param name="allocator">선점 추적용 임시 할당자</param>
-    public static void ValidateBatchPlacement(
-        NativeArray<PlacementCandidate> candidates,
-        PlacementFlags flags,
-        in NativeParallelHashMap<int2, BuildingInfo>.ReadOnly buildingMap,
-        in NativeParallelHashMap<int2, Entity>.ReadOnly resourceMap,
-        in NativeParallelMultiHashMap<int2, Entity>.ReadOnly itemMap,
-        NativeArray<PlacementValidationResult> results,
-        Allocator allocator = Allocator.Temp,
-        NativeParallelHashSet<int2> approvedCells = default,
-        NativeArray<PlacementValidationCode> settingsRejections = default)
+    private static bool TryResolveCandidate(
+        in NativeArray<BuildingConfigElement> configs,
+        ref PlacementCandidate candidate,
+        out BuildingConfigElement config)
     {
-        var claimedCells = new NativeParallelHashSet<int2>(math.max(16, candidates.Length * 4), allocator);
-        bool anyFailed = false;
-
-        for (int i = 0; i < candidates.Length; i++)
+        if (!BuildingConfigLookupUtility.TryGetConfig(configs, candidate.BuildingId, out config))
         {
-            var candidate = candidates[i];
-            if (settingsRejections.IsCreated && settingsRejections[i] != PlacementValidationCode.Success)
-            {
-                results[i] = new PlacementValidationResult(settingsRejections[i]);
-                anyFailed = true;
-                continue;
-            }
-            var singleResult = ValidateSinglePlacement(
-                candidate.TargetType,
-                candidate.TargetTier,
-                candidate.FootprintSize,
-                candidate.OriginPosition,
-                candidate.Direction,
-                buildingMap,
-                resourceMap,
-                itemMap);
-
-            if (!singleResult.IsValid)
-            {
-                results[i] = singleResult;
-                anyFailed = true;
-                continue;
-            }
-
-            // 동일 묶음 내 앞선 후보와의 셀 선점 충돌 검사
-            int2 effectiveSize = BuildingFootprintUtility.GetEffectiveSize(candidate.FootprintSize, candidate.Direction);
-            bool internallyConflict = false;
-
-            for (int y = 0; y < effectiveSize.y && !internallyConflict; y++)
-            {
-                for (int x = 0; x < effectiveSize.x; x++)
-                {
-                    int2 cell = candidate.OriginPosition + new int2(x, y);
-                    if (claimedCells.Contains(cell) ||
-                        (approvedCells.IsCreated && approvedCells.Contains(cell)))
-                    {
-                        internallyConflict = true;
-                        break;
-                    }
-                }
-            }
-
-            if (internallyConflict)
-            {
-                // 동일 프레임 선점 충돌: 앞선 요청에 의해 차단됨
-                results[i] = new PlacementValidationResult(PlacementValidationCode.BlockedByConstructionSite);
-                anyFailed = true;
-                continue;
-            }
-
-            // 충돌이 없으면 셀 선점 등록
-            for (int y = 0; y < effectiveSize.y; y++)
-            {
-                for (int x = 0; x < effectiveSize.x; x++)
-                {
-                    claimedCells.Add(candidate.OriginPosition + new int2(x, y));
-                }
-            }
-
-            results[i] = singleResult;
+            return false;
         }
 
-        claimedCells.Dispose();
-
-        // 중재 정책 적용: AllowPartialPlacement 플래그가 없는 경우(기본 StrictAllOrNothing)
-        // 단 1개라도 실패하면 전체 묶음을 롤백 처리
-        bool allowPartial = (flags & PlacementFlags.AllowPartialPlacement) != 0;
-        if (!allowPartial && anyFailed)
-        {
-            for (int i = 0; i < results.Length; i++)
-            {
-                if (results[i].IsValid)
-                {
-                    // 원래 유효했으나 묶음 전체 실패로 인해 연쇄 취소됨
-                    results[i] = new PlacementValidationResult(PlacementValidationCode.BatchAllOrNothingRolledBack);
-                }
-            }
-        }
+        candidate.TargetType = config.BuildingType;
+        candidate.TargetTier = config.Tier;
+        return true;
     }
 
     /// <summary>
-    /// BuildingConfig 버퍼를 참조하여 연구 해금 상태까지 함께 검증하는 배치 묶음 검증 오버로드.
-    /// </summary>
-    public static void ValidateBatchPlacement(
-        NativeArray<PlacementCandidate> candidates,
-        PlacementFlags flags,
-        in NativeParallelHashMap<int2, BuildingInfo>.ReadOnly buildingMap,
-        in NativeParallelHashMap<int2, Entity>.ReadOnly resourceMap,
-        in NativeParallelMultiHashMap<int2, Entity>.ReadOnly itemMap,
-        NativeArray<PlacementValidationResult> results,
-        in DynamicBuffer<BuildingConfigElement> configBuffer,
-        Allocator allocator = Allocator.Temp,
-        NativeParallelHashSet<int2> approvedCells = default,
-        NativeArray<PlacementValidationCode> settingsRejections = default)
-    {
-        var claimedCells = new NativeParallelHashSet<int2>(math.max(16, candidates.Length * 4), allocator);
-        bool anyFailed = false;
-
-        for (int i = 0; i < candidates.Length; i++)
-        {
-            var candidate = candidates[i];
-            if (settingsRejections.IsCreated && settingsRejections[i] != PlacementValidationCode.Success)
-            {
-                results[i] = new PlacementValidationResult(settingsRejections[i]);
-                anyFailed = true;
-                continue;
-            }
-            bool hasConfig = BuildingConfigLookupUtility.TryGetConfig(configBuffer, candidate.TargetType, candidate.TargetTier, out var config);
-            bool isUnlocked = hasConfig && config.IsUnlocked;
-            if (isUnlocked && !math.all(candidate.FootprintSize == config.Footprint))
-            {
-                results[i] = new PlacementValidationResult(PlacementValidationCode.InvalidFootprint);
-                anyFailed = true;
-                continue;
-            }
-
-            var singleResult = ValidateSinglePlacement(
-                candidate.TargetType,
-                candidate.TargetTier,
-                candidate.FootprintSize,
-                candidate.OriginPosition,
-                candidate.Direction,
-                buildingMap,
-                resourceMap,
-                itemMap,
-                isUnlocked);
-
-            if (!singleResult.IsValid)
-            {
-                results[i] = singleResult;
-                anyFailed = true;
-                continue;
-            }
-
-            int2 effectiveSize = BuildingFootprintUtility.GetEffectiveSize(candidate.FootprintSize, candidate.Direction);
-            bool internallyConflict = false;
-
-            for (int y = 0; y < effectiveSize.y && !internallyConflict; y++)
-            {
-                for (int x = 0; x < effectiveSize.x; x++)
-                {
-                    int2 cell = candidate.OriginPosition + new int2(x, y);
-                    if (claimedCells.Contains(cell) ||
-                        (approvedCells.IsCreated && approvedCells.Contains(cell)))
-                    {
-                        internallyConflict = true;
-                        break;
-                    }
-                }
-            }
-
-            if (internallyConflict)
-            {
-                results[i] = new PlacementValidationResult(PlacementValidationCode.BlockedByConstructionSite);
-                anyFailed = true;
-                continue;
-            }
-
-            for (int y = 0; y < effectiveSize.y; y++)
-            {
-                for (int x = 0; x < effectiveSize.x; x++)
-                {
-                    claimedCells.Add(candidate.OriginPosition + new int2(x, y));
-                }
-            }
-
-            results[i] = singleResult;
-        }
-
-        claimedCells.Dispose();
-
-        bool allowPartial = (flags & PlacementFlags.AllowPartialPlacement) != 0;
-        if (!allowPartial && anyFailed)
-        {
-            for (int i = 0; i < results.Length; i++)
-            {
-                if (results[i].IsValid)
-                {
-                    results[i] = new PlacementValidationResult(PlacementValidationCode.BatchAllOrNothingRolledBack);
-                }
-            }
-        }
-    }
-
-    /// <summary>
-    /// BuildingConfig NativeArray를 참조하여 연구 해금 상태까지 함께 검증하는 배치 묶음 검증 오버로드.
+    /// ID로 해석한 건물 정의와 현재 점유를 기준으로 묶음 배치를 검증한다.
     /// </summary>
     public static void ValidateBatchPlacement(
         NativeArray<PlacementCandidate> candidates,
@@ -342,17 +133,21 @@ public static class BuildingPlacementValidationUtility
         for (int i = 0; i < candidates.Length; i++)
         {
             var candidate = candidates[i];
+            if (!TryResolveCandidate(configs, ref candidate, out var config))
+            {
+                results[i] = new PlacementValidationResult(PlacementValidationCode.UnknownBuildingId);
+                anyFailed = true;
+                continue;
+            }
+            candidates[i] = candidate;
             if (settingsRejections.IsCreated && settingsRejections[i] != PlacementValidationCode.Success)
             {
                 results[i] = new PlacementValidationResult(settingsRejections[i]);
                 anyFailed = true;
                 continue;
             }
-            bool hasConfig = BuildingConfigLookupUtility.TryGetConfig(configs, candidate.TargetType, candidate.TargetTier, out var config);
-            bool isUnlocked = hasConfig && config.IsUnlocked;
-
             // 전달 크기는 미리보기의 설정 스냅샷이다. 설정과 다르면 어떤 셀도 승인하거나 선점하지 않는다.
-            if (isUnlocked && !math.all(candidate.FootprintSize == config.Footprint))
+            if (config.IsUnlocked && !math.all(candidate.FootprintSize == config.Footprint))
             {
                 results[i] = new PlacementValidationResult(PlacementValidationCode.InvalidFootprint);
                 anyFailed = true;
@@ -360,15 +155,11 @@ public static class BuildingPlacementValidationUtility
             }
 
             var singleResult = ValidateSinglePlacement(
-                candidate.TargetType,
-                candidate.TargetTier,
-                candidate.FootprintSize,
-                candidate.OriginPosition,
-                candidate.Direction,
+                candidate,
                 buildingMap,
                 resourceMap,
                 itemMap,
-                isUnlocked);
+                config.IsUnlocked);
 
             if (!singleResult.IsValid)
             {

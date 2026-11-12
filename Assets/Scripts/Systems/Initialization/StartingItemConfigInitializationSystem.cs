@@ -3,6 +3,7 @@ using Unity.Entities;
 
 /// <summary>초기 지급 정의를 한 번 검증/게시한다. 프리팹 준비나 실제 지급은 수행하지 않는다.</summary>
 [UpdateInGroup(typeof(InitializationSystemGroup))]
+[UpdateAfter(typeof(ItemConfigInitSystem))]
 public partial class StartingItemConfigInitializationSystem : SystemBase
 {
     protected override void OnUpdate()
@@ -40,9 +41,10 @@ public partial class StartingItemConfigInitializationSystem : SystemBase
                 return registered;
             }
 
+            var itemIds = ItemConfigInitSystem.ReadRegisteredItemIds(manager);
             var definitions = jsonOverride == null
-                ? StartingItemConfigLoader.LoadFromResources(resourcePath)
-                : StartingItemConfigLoader.ParseJson(jsonOverride);
+                ? StartingItemConfigLoader.LoadFromResources(resourcePath, itemIds)
+                : StartingItemConfigLoader.ParseJson(jsonOverride, itemIds);
             return StartingItemConfigLoader.PublishConfig(manager, definitions);
         }
         catch (Exception exception)

@@ -43,7 +43,7 @@ public struct BuildingPlacementReceiptSequence : IComponentData
 }
 
 /// <summary>
-/// 역할·목적: 요청 하나에 단일/다중 건물의 종류·기본 크기·좌하단 위치·방향·개별 Tick을 전달한다.
+/// 역할·목적: 후보별 건물 ID, 기본 크기, 좌하단 위치, 방향과 개별 Tick을 전달한다. Command는 ID로 건물 정의를 조회한다.
 /// 부착 엔티티: BuildingPlacementRequest와 같은 요청 엔티티의 버퍼. 후보 자체는 공사 현장의 상태가 아니다.
 /// 생성: WorldConstructionController.CompleteGesture가 BuildingPlacementRequestUtility.Submit에 후보 묶음을 전달하며 테스트도 같은 API를 사용한다.
 /// 이용: BuildingPlacementCommandSystem(Command)이 버퍼 순서로 검증하며, 승인 후보의 원래 인덱스를 PlacementStamp.Order로 사용한다.
@@ -52,8 +52,8 @@ public struct BuildingPlacementReceiptSequence : IComponentData
 /// </summary>
 public struct PlacementRequestCandidateElement : IBufferElementData
 {
-    public BuildingTypeEnum TargetType;
-    public int TargetTier;
+    /// <summary>배치할 건물 정의의 ID.</summary>
+    public int BuildingId;
     /// <summary>미리보기/사전 검사에 사용한 Config 크기. Command가 원본 설정과 일치하는지 확인하며 덮어쓰기를 허용하지 않는다.</summary>
     public int2 FootprintSize;
     public int2 OriginPosition;
@@ -61,15 +61,13 @@ public struct PlacementRequestCandidateElement : IBufferElementData
     public ulong RequestTick;
 
     public PlacementRequestCandidateElement(
-        BuildingTypeEnum targetType,
-        int targetTier,
+        int buildingId,
         int2 footprintSize,
         int2 originPosition,
         DirectionEnum direction = DirectionEnum.Up,
         ulong requestTick = 0)
     {
-        TargetType = targetType;
-        TargetTier = targetTier;
+        BuildingId = buildingId;
         FootprintSize = footprintSize;
         OriginPosition = originPosition;
         Direction = direction;
@@ -82,6 +80,6 @@ public struct PlacementRequestCandidateElement : IBufferElementData
 
     public static implicit operator PlacementCandidate(PlacementRequestCandidateElement elem)
     {
-        return new PlacementCandidate(elem.TargetType, elem.TargetTier, elem.FootprintSize, elem.OriginPosition, elem.Direction);
+        return new PlacementCandidate(elem.BuildingId, elem.FootprintSize, elem.OriginPosition, elem.Direction);
     }
 }

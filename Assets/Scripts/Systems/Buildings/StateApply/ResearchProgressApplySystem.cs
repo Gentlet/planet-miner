@@ -76,7 +76,7 @@ internal struct ApplyResearchProgressJob : IJob
             }
             foreach (var result in results)
             {
-                if (!selected.ActiveResearchId.IsEmpty && result.ResearchId == selected.ActiveResearchId)
+                if (selected.ActiveResearchId != 0 && result.ResearchId == selected.ActiveResearchId)
                 {
                     contribution += result.Progress;
                 }
@@ -130,8 +130,7 @@ internal struct ApplyResearchProgressJob : IJob
         foreach (var previous in Configs[ConfigEntity])
         {
             var config = previous;
-            // 초기화에서 보상과 종류/티어별 RequiredResearch의 양방향 일치를 검증했다.
-            if (config.RequiredResearch == selected.ActiveResearchId)
+            if (ResearchRewardUtility.UnlocksBuilding(activeDefinition, rewards, config.BuildingId))
             {
                 config.IsUnlocked = true;
             }

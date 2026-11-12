@@ -16,9 +16,9 @@ public sealed class ResearchPanelController : MonoBehaviour
     private float _nextRefresh;
     public readonly List<ResearchUiNode> Nodes = new List<ResearchUiNode>();
     public readonly List<ResearchUiNode> VisibleNodes = new List<ResearchUiNode>();
-    public string RootId { get; private set; }
-    public string ViewedId { get; private set; }
-    public string ActiveId { get; private set; }
+    public int RootId { get; private set; }
+    public int ViewedId { get; private set; }
+    public int ActiveId { get; private set; }
     public string ActiveText { get; private set; }
     public string Feedback { get; private set; }
     public bool Ready { get; private set; }
@@ -44,8 +44,9 @@ public sealed class ResearchPanelController : MonoBehaviour
         _pending.Clear();
         _world = null;
         _registry = Entity.Null;
-        RootId = null;
-        ViewedId = null;
+        RootId = 0;
+        ViewedId = 0;
+        ActiveId = 0;
         _definitionSignature = null;
         Feedback = string.Empty;
         Nodes.Clear();
@@ -101,18 +102,24 @@ public sealed class ResearchPanelController : MonoBehaviour
             return;
         }
         _registry = query.GetSingletonEntity();
-        ActiveId = manager.GetComponentData<ResearchState>(_registry).ActiveResearchId.ToString();
+        ActiveId = manager.GetComponentData<ResearchState>(_registry).ActiveResearchId;
         var definitions = manager.GetBuffer<ResearchDefinitionElement>(_registry, true);
         var prerequisites = manager.GetBuffer<ResearchPrerequisiteElement>(_registry, true);
         var progress = manager.GetBuffer<ResearchProgressElement>(_registry, true);
         var ingredients = manager.GetBuffer<ResearchIngredientElement>(_registry, true);
         var rewards = manager.GetBuffer<ResearchRewardElement>(_registry, true);
-        var complete = new HashSet<string>();
+        using var buildingQuery = manager.CreateEntityQuery(typeof(BuildingConfig), typeof(BuildingConfigElement));
+        NativeArray<BuildingConfigElement> buildingConfigs = default;
+        if (buildingQuery.CalculateEntityCount() == 1)
+        {
+            buildingConfigs = manager.GetBuffer<BuildingConfigElement>(buildingQuery.GetSingletonEntity(), true).AsNativeArray();
+        }
+        var complete = new HashSet<int>();
         foreach (var entry in progress)
         {
             if (entry.IsCompleted)
             {
-                complete.Add(entry.ResearchId.ToString());
+                complete.Add(entry.ResearchId);
             }
         }
         var signature = new StringBuilder();
@@ -120,7 +127,7 @@ public sealed class ResearchPanelController : MonoBehaviour
         {
             var node = new ResearchUiNode
             {
-                Id = definition.StableId.ToString(), Name = definition.DisplayName.ToString(),
+                Id = definition.StableId, Name = definition.DisplayName.ToString(),
                 Description = definition.Description.ToString(), RequiredProgress = definition.RequiredProgress
             };
             node.Active = node.Id == ActiveId;
@@ -129,7 +136,7 @@ public sealed class ResearchPanelController : MonoBehaviour
             signature.Append(node.Id).Append(':');
             for (int i = 0; i < definition.PrerequisiteCount; i++)
             {
-                string parent = prerequisites[definition.PrerequisiteStart + i].ResearchId.ToString();
+                int parent = prerequisites[definition.PrerequisiteStart + i].ResearchId;
                 node.Parents.Add(parent);
                 node.Available &= complete.Contains(parent);
                 signature.Append(parent).Append(',');
@@ -160,7 +167,13 @@ public sealed class ResearchPanelController : MonoBehaviour
                 switch (reward.Type)
                 {
                     case ResearchRewardTypeEnum.BuildingUnlock:
-                        rewardText.AppendLine("건물 해금: " + reward.BuildingType);
+                        string buildingName = reward.BuildingId.ToString();
+                        if (buildingConfigs.IsCreated &&
+                            BuildingConfigLookupUtility.TryGetConfig(buildingConfigs, reward.BuildingId, out var building))
+                        {
+                            buildingName = building.DisplayName.ToString();
+                        }
+                        rewardText.AppendLine("건물 해금: " + buildingName);
                         break;
                     case ResearchRewardTypeEnum.RecipeUnlock:
                         rewardText.AppendLine("레시피 해금: " + reward.RecipeId);
@@ -197,7 +210,7 @@ public sealed class ResearchPanelController : MonoBehaviour
         }
         if (Find(ViewedId) == null)
         {
-            ViewedId = string.IsNullOrEmpty(ActiveId) ? RootId : ActiveId;
+            ViewedId = ActiveId == 0 ? RootId : ActiveId;
         }
         Ready = ResearchTreeLayoutUtility.TryArrange(Nodes, RootId, VisibleNodes);
         using var buildings = manager.CreateEntityQuery(new EntityQueryDesc
@@ -213,7 +226,7 @@ public sealed class ResearchPanelController : MonoBehaviour
             ActiveText += "\n1주기 재료\n";
             foreach (var definition in definitions)
             {
-                if (definition.StableId.ToString() != ActiveId)
+                if (definition.StableId != ActiveId)
                 {
                     continue;
                 }
@@ -227,7 +240,7 @@ public sealed class ResearchPanelController : MonoBehaviour
         Changed?.Invoke();
     }
 
-    public ResearchUiNode Find(string id)
+    public ResearchUiNode Find(int id)
     {
         foreach (var node in Nodes)
         {
@@ -239,7 +252,7 @@ public sealed class ResearchPanelController : MonoBehaviour
         return null;
     }
 
-    public void SelectRoot(string id)
+    public void SelectRoot(int id)
     {
         if (!isActiveAndEnabled)
         {
@@ -256,7 +269,7 @@ public sealed class ResearchPanelController : MonoBehaviour
         Changed?.Invoke();
     }
 
-    public void ViewNode(string id)
+    public void ViewNode(int id)
     {
         if (!isActiveAndEnabled)
         {
@@ -297,7 +310,7 @@ public sealed class ResearchPanelController : MonoBehaviour
         {
             return Entity.Null;
         }
-        Entity request = ResearchSelectionRequestUtility.Submit(_world.EntityManager, new FixedString32Bytes(node.Id));
+        Entity request = ResearchSelectionRequestUtility.Submit(_world.EntityManager, node.Id);
         _world.EntityManager.AddComponentData(request, new WorldUiRequestOwner { FeedbackToken = _feedbackToken });
         _pending.Add(request);
         Feedback = "연구 선택 요청 대기";

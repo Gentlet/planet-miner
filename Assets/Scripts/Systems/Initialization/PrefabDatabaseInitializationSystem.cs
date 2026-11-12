@@ -132,10 +132,26 @@ public partial class PrefabDatabaseInitializationSystem : SystemBase
             return false;
         }
         var configs = EntityManager.GetBuffer<BuildingConfigElement>(configQuery.GetSingletonEntity(), true);
-        var expected = new HashSet<(BuildingTypeEnum Type, int Tier)>();
+        var expected = new Dictionary<int, (BuildingTypeEnum Type, int Tier)>();
+        var configuredTiers = new HashSet<(BuildingTypeEnum Type, int Tier)>();
         foreach (var config in configs)
         {
-            expected.Add((config.BuildingType, config.Tier));
+            if (config.BuildingType <= BuildingTypeEnum.None || config.BuildingType >= BuildingTypeEnum.Count ||
+                config.BuildingType == BuildingTypeEnum.ConstructionSite || config.Tier <= 0)
+            {
+                error = $"Invalid building configuration role/tier for ID {config.BuildingId}: {config.BuildingType}/{config.Tier}.";
+                return false;
+            }
+            if (config.BuildingId <= 0 || !expected.TryAdd(config.BuildingId, (config.BuildingType, config.Tier)))
+            {
+                error = $"Invalid or duplicate building configuration ID {config.BuildingId}.";
+                return false;
+            }
+            if (!configuredTiers.Add((config.BuildingType, config.Tier)))
+            {
+                error = $"Duplicate building configuration: {config.BuildingType}/{config.Tier}.";
+                return false;
+            }
         }
         foreach (BuildingTypeEnum type in Enum.GetValues(typeof(BuildingTypeEnum)))
         {
@@ -143,36 +159,40 @@ public partial class PrefabDatabaseInitializationSystem : SystemBase
             {
                 continue;
             }
-            if (!expected.Contains((type, 1)))
+            if (!configuredTiers.Contains((type, 1)))
             {
                 error = $"Missing building tier 1 configuration: {type}.";
                 return false;
             }
         }
-        var types = new HashSet<(BuildingTypeEnum Type, int Tier)>();
+        var ids = new HashSet<int>();
         foreach (var entry in entries)
         {
-            if (entry.Type <= BuildingTypeEnum.None || entry.Type >= BuildingTypeEnum.Count ||
-                entry.Type == BuildingTypeEnum.ConstructionSite || entry.Tier <= 0 || !types.Add((entry.Type, entry.Tier)))
+            if (entry.BuildingId <= 0 || !ids.Add(entry.BuildingId))
             {
-                error = $"Invalid or duplicate building prefab type/tier: {entry.Type}/{entry.Tier}.";
+                error = $"Invalid or duplicate building prefab ID {entry.BuildingId}: {entry.Type}/{entry.Tier}.";
                 return false;
             }
-            if (!expected.Contains((entry.Type, entry.Tier)))
+            if (!expected.TryGetValue(entry.BuildingId, out var definition))
             {
-                error = $"Building prefab has no configuration: {entry.Type}/{entry.Tier}.";
+                error = $"Building prefab has no configuration for ID {entry.BuildingId}.";
                 return false;
             }
-            if (!ValidatePrefab(entry.Prefab, $"Building {entry.Type}/{entry.Tier}", out error))
+            if (entry.Type != definition.Type || entry.Tier != definition.Tier)
+            {
+                error = $"Mismatched building prefab role/tier for ID {entry.BuildingId}: {entry.Type}/{entry.Tier}.";
+                return false;
+            }
+            if (!ValidatePrefab(entry.Prefab, $"Building ID {entry.BuildingId}", out error))
             {
                 return false;
             }
         }
-        foreach (var key in expected)
+        foreach (int buildingId in expected.Keys)
         {
-            if (!types.Contains(key))
+            if (!ids.Contains(buildingId))
             {
-                error = $"Missing building prefab: {key.Type}/{key.Tier}.";
+                error = $"Missing building prefab for ID {buildingId}.";
                 return false;
             }
         }

@@ -1,0 +1,64 @@
+{
+  "buildingConstructionMaterials": [
+    {
+      "buildingId": 11000001,
+      "itemId": 12000005,
+      "quantity": 1
+    },
+    {
+      "buildingId": 11000002,
+      "itemId": 12000005,
+      "quantity": 3
+    },
+    {
+      "buildingId": 11000003,
+      "itemId": 12000005,
+      "quantity": 3
+    },
+    {
+      "buildingId": 11000004,
+      "itemId": 12000005,
+      "quantity": 2
+    },
+    {
+      "buildingId": 11000005,
+      "itemId": 12000006,
+      "quantity": 1
+    },
+    {
+      "buildingId": 11000006,
+      "itemId": 12000005,
+      "quantity": 2
+    },
+    {
+      "buildingId": 11000007,
+      "itemId": 12000005,
+      "quantity": 2
+    },
+    {
+      "buildingId": 11000008,
+      "itemId": 12000005,
+      "quantity": 4
+    },
+    {
+      "buildingId": 11000009,
+      "itemId": 12000005,
+      "quantity": 5
+    },
+    {
+      "buildingId": 11000010,
+      "itemId": 12000005,
+      "quantity": 3
+    },
+    {
+      "buildingId": 11000010,
+      "itemId": 12000006,
+      "quantity": 3
+    },
+    {
+      "buildingId": 11000011,
+      "itemId": 12000005,
+      "quantity": 10
+    }
+  ]
+}

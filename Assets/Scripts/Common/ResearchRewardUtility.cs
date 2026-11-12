@@ -32,6 +32,20 @@ public static class ResearchRewardUtility
         return false;
     }
 
+    public static bool UnlocksBuilding(in ResearchDefinitionElement definition,
+        DynamicBuffer<ResearchRewardElement> rewards, int buildingId)
+    {
+        for (int i = 0; i < definition.RewardCount; i++)
+        {
+            var reward = rewards[definition.RewardStart + i];
+            if (reward.Type == ResearchRewardTypeEnum.BuildingUnlock && reward.BuildingId == buildingId)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     /// <summary>검증된 완료 원본에서 최종 효과를 재구성한다. 재초기화가 보너스를 누적하거나 진척도/정의를 덮어쓰지 않는다.</summary>
     public static void InitializeFromProgress(EntityManager manager, Entity registry)
     {
@@ -83,7 +97,7 @@ public static class ResearchRewardUtility
             for (int i = 0; i < buildings.Length; i++)
             {
                 var building = buildings[i];
-                if (building.RequiredResearch == definition.StableId)
+                if (UnlocksBuilding(definition, rewards, building.BuildingId))
                 {
                     building.IsUnlocked = true;
                     buildings[i] = building;

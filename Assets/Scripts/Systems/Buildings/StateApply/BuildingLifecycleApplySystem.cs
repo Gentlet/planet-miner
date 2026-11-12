@@ -109,8 +109,7 @@ public partial struct BuildingLifecycleApplySystem : ISystem
         _itemPrefabBufferLookup.Update(ref state);
         _configBufferLookup.Update(ref state);
 
-        bool hasBuildingPrefabDb = !_buildingPrefabDbQuery.IsEmptyIgnoreFilter;
-        Entity buildingPrefabDbEntity = hasBuildingPrefabDb ? _buildingPrefabDbQuery.GetSingletonEntity() : Entity.Null;
+        Entity buildingPrefabDbEntity = _buildingPrefabDbQuery.IsEmptyIgnoreFilter ? Entity.Null : _buildingPrefabDbQuery.GetSingletonEntity();
 
         bool hasItemPrefabDb = !_itemPrefabDbQuery.IsEmptyIgnoreFilter;
         Entity itemPrefabDbEntity = hasItemPrefabDb ? _itemPrefabDbQuery.GetSingletonEntity() : Entity.Null;
@@ -167,9 +166,7 @@ public partial struct BuildingLifecycleApplySystem : ISystem
                 EntityHandle = SystemAPI.GetEntityTypeHandle(),
                 SpawnBuildingRequestHandle = SystemAPI.GetComponentTypeHandle<SpawnBuildingRequest>(true),
                 ECB = ecb,
-                HasPrefabDb = hasBuildingPrefabDb,
                 PrefabDbEntity = buildingPrefabDbEntity,
-                HasConfig = hasConfig,
                 ConfigEntity = configEntity,
                 PrefabBufferLookup = _buildingPrefabBufferLookup,
                 ConfigBufferLookup = _configBufferLookup
@@ -339,7 +336,7 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
             DynamicBuffer<ItemPrefabElement> prefabBuffer = default;
             for (int i = 0; i < materialDb.Length; i++)
             {
-                if (materialDb[i].BuildingType == buildingType && materialDb[i].Tier == buildingDefinition.Tier)
+                if (materialDb[i].BuildingId == buildingDefinition.BuildingId)
                 {
                     ItemTypeEnum itemType = materialDb[i].ItemType;
                     int quantity = materialDb[i].Quantity;
@@ -419,9 +416,7 @@ public partial struct SpawnBuildingApplyJob : IJobChunk
     }
 
     public EntityCommandBuffer ECB;
-    public bool HasPrefabDb;
     public Entity PrefabDbEntity;
-    public bool HasConfig;
     public Entity ConfigEntity;
 
     [ReadOnly]
@@ -434,15 +429,12 @@ public partial struct SpawnBuildingApplyJob : IJobChunk
     {
         BuildingLifecycleUtility.SpawnBuilding(
             ref ECB,
-            request.TargetType,
-            request.TargetTier,
+            request.BuildingId,
             request.Position,
             request.Direction,
             request.FootprintSize,
             request.Stamp,
-            HasPrefabDb,
             PrefabDbEntity,
-            HasConfig,
             ConfigEntity,
             in PrefabBufferLookup,
             in ConfigBufferLookup,

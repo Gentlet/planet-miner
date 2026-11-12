@@ -56,7 +56,7 @@ public enum PlacementValidationCode : byte
     RequiresResourceNode = 4,
 
     /// <summary>
-    /// 기존 벨트 위에 새 벨트를 덮어쓰는 업그레이드/방향 교체 배치 (승인).
+    /// 같은 건물 ID를 가진 기존 벨트의 방향 변경 (승인).
     /// </summary>
     BeltUpgradeAllowed = 5,
 
@@ -70,7 +70,8 @@ public enum PlacementValidationCode : byte
     /// </summary>
     BlockedByResearch = 7,
     NotPlayerBuildable = 8,
-    InvalidBuildingSettings = 9
+    InvalidBuildingSettings = 9,
+    UnknownBuildingId = 10
 }
 
 /// <summary>
@@ -94,23 +95,26 @@ public struct PlacementValidationResult
 }
 
 /// <summary>
-/// 역할·목적: 배치 가능성 검사에 필요한 종류·기본 크기·위치·방향을 전달하는 후보 값.
+/// 역할·목적: 배치 검증에 건물 ID, 기본 크기, 위치와 방향을 전달한다. 검증에서 역할과 티어를 설정으로부터 채운다.
 /// 부착 엔티티: 없음. PlacementRequestCandidateElement를 검증용으로 변환한 일반 구조체이며 Tick은 포함하지 않는다.
 /// 생성·이용: BuildingPlacementCommandSystem이 임시 배열로 만들고 BuildingPlacementValidationUtility가 묶음 충돌을 검사한다.
 /// 제거: 요청 처리 후 임시 후보 배열을 Dispose한다. 승인 시 설치 Tick·요청 접수번호·원래 후보 인덱스로 별도 PlacementStamp를 만든다.
 /// </summary>
 public struct PlacementCandidate
 {
-    public BuildingTypeEnum TargetType;
-    public int TargetTier;
+    public int BuildingId;
+    internal BuildingTypeEnum TargetType;
+    internal int TargetTier;
     public int2 FootprintSize;
     public int2 OriginPosition;
     public DirectionEnum Direction;
 
-    public PlacementCandidate(BuildingTypeEnum targetType, int targetTier, int2 footprintSize, int2 originPosition, DirectionEnum direction = DirectionEnum.Up)
+    public PlacementCandidate(int buildingId, int2 footprintSize, int2 originPosition,
+        DirectionEnum direction = DirectionEnum.Up)
     {
-        TargetType = targetType;
-        TargetTier = targetTier;
+        BuildingId = buildingId;
+        TargetType = BuildingTypeEnum.None;
+        TargetTier = 0;
         FootprintSize = footprintSize;
         OriginPosition = originPosition;
         Direction = direction;

@@ -30,6 +30,7 @@ public static class WorldGenerationConfigLoader
     [Serializable]
     public class ResourceGenerationConfigData
     {
+        public int itemId;
         public string type;
         public float weight;
         public int minPatchRadius;
@@ -56,7 +57,7 @@ public static class WorldGenerationConfigLoader
     [Serializable]
     public class FloorBiomeConfigData
     {
-        public string id;
+        public int biomeId;
         public float selectionWeight;
         public List<FloorVariantConfigData> floorVariants;
     }
@@ -84,9 +85,9 @@ public static class WorldGenerationConfigLoader
     public static bool TryLoadConfigFromResources(
         string resourcePath,
         out uint worldSeed,
-        out List<ResourceGenerationConfigElement> elements)
+        out List<ResourceGenerationConfigElement> elements, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
     {
-        return TryLoadConfigFromResources(resourcePath, out worldSeed, out _, out elements);
+        return TryLoadConfigFromResources(resourcePath, out worldSeed, out _, out elements, itemIds);
     }
 
     /// <summary>
@@ -96,9 +97,9 @@ public static class WorldGenerationConfigLoader
         string resourcePath,
         out uint worldSeed,
         out int initialChunkSize,
-        out List<ResourceGenerationConfigElement> elements)
+        out List<ResourceGenerationConfigElement> elements, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
     {
-        return TryLoadConfigFromResources(resourcePath, out worldSeed, out initialChunkSize, out elements, out _);
+        return TryLoadConfigFromResources(resourcePath, out worldSeed, out initialChunkSize, out elements, out _, itemIds);
     }
 
     public static bool TryLoadConfigFromResources(
@@ -106,7 +107,7 @@ public static class WorldGenerationConfigLoader
         out uint worldSeed,
         out int initialChunkSize,
         out List<ResourceGenerationConfigElement> elements,
-        out FloorGenerationDefinition floor)
+        out FloorGenerationDefinition floor, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
     {
         worldSeed = 0;
         initialChunkSize = 0;
@@ -122,7 +123,8 @@ public static class WorldGenerationConfigLoader
                 return false;
             }
 
-            return TryParseAndValidateJson(asset.text, out worldSeed, out initialChunkSize, out elements, out floor);
+            bool requireItemIds = string.Equals(resourcePath, DefaultResourcePath, StringComparison.OrdinalIgnoreCase);
+            return TryParseAndValidateJson(asset.text, out worldSeed, out initialChunkSize, out elements, out floor, itemIds, requireItemIds);
         }
         catch (Exception exception)
         {
@@ -141,9 +143,9 @@ public static class WorldGenerationConfigLoader
     public static bool TryParseAndValidateJson(
         string jsonText,
         out uint worldSeed,
-        out List<ResourceGenerationConfigElement> elements)
+        out List<ResourceGenerationConfigElement> elements, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
     {
-        return TryParseAndValidateJson(jsonText, out worldSeed, out _, out elements);
+        return TryParseAndValidateJson(jsonText, out worldSeed, out _, out elements, itemIds);
     }
 
     /// <summary>
@@ -153,9 +155,9 @@ public static class WorldGenerationConfigLoader
         string jsonText,
         out uint worldSeed,
         out int initialChunkSize,
-        out List<ResourceGenerationConfigElement> elements)
+        out List<ResourceGenerationConfigElement> elements, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
     {
-        return TryParseAndValidateJson(jsonText, out worldSeed, out initialChunkSize, out elements, out _);
+        return TryParseAndValidateJson(jsonText, out worldSeed, out initialChunkSize, out elements, out _, itemIds);
     }
 
     public static bool TryParseAndValidateJson(
@@ -163,7 +165,19 @@ public static class WorldGenerationConfigLoader
         out uint worldSeed,
         out int initialChunkSize,
         out List<ResourceGenerationConfigElement> elements,
-        out FloorGenerationDefinition floor)
+        out FloorGenerationDefinition floor, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
+    {
+        return TryParseAndValidateJson(jsonText, out worldSeed, out initialChunkSize, out elements, out floor, itemIds, requireItemIds: false);
+    }
+
+    private static bool TryParseAndValidateJson(
+        string jsonText,
+        out uint worldSeed,
+        out int initialChunkSize,
+        out List<ResourceGenerationConfigElement> elements,
+        out FloorGenerationDefinition floor,
+        IReadOnlyDictionary<int, ItemTypeEnum> itemIds,
+        bool requireItemIds)
     {
         worldSeed = 0;
         initialChunkSize = 0;
@@ -221,9 +235,32 @@ public static class WorldGenerationConfigLoader
                 return false;
             }
 
-            if (string.IsNullOrEmpty(entry.type) ||
-                !Enum.TryParse<ItemTypeEnum>(entry.type, true, out var type) ||
-                !Enum.IsDefined(typeof(ItemTypeEnum), type) || type == ItemTypeEnum.None)
+            ItemTypeEnum type;
+            if (entry.itemId != 0)
+            {
+                try
+                {
+                    type = ItemConfigInitSystem.ResolveItemId(entry.itemId, itemIds);
+                }
+                catch (Exception error) when (error is ArgumentException or InvalidOperationException)
+                {
+                    Debug.LogError($"[WorldGenerationConfigLoader] {error.Message}");
+                    return false;
+                }
+            }
+            else if (requireItemIds)
+            {
+                Debug.LogError("[WorldGenerationConfigLoader] Resource itemId is missing or zero.");
+                return false;
+            }
+            else if (string.IsNullOrWhiteSpace(entry.type))
+            {
+                Debug.LogError("[WorldGenerationConfigLoader] Invalid or unrecognized resource type: a resource name is required.");
+                return false;
+            }
+            else if (!Enum.TryParse<ItemTypeEnum>(entry.type, true, out type) ||
+                !Enum.IsDefined(typeof(ItemTypeEnum), type) || type == ItemTypeEnum.None ||
+                !string.Equals(entry.type.Trim(), type.ToString(), StringComparison.OrdinalIgnoreCase))
             {
                 Debug.LogError($"[WorldGenerationConfigLoader] Invalid or unrecognized resource type: '{entry.type}'.");
                 return false;
@@ -302,27 +339,32 @@ public static class WorldGenerationConfigLoader
         }
 
         var biomes = new List<FloorBiomeElement>(config.biomes.Count);
-        var ids = new HashSet<string>(StringComparer.Ordinal);
+        var ids = new HashSet<int>();
         float totalWeight = 0f;
         foreach (FloorBiomeConfigData biome in config.biomes)
         {
-            if (biome == null || string.IsNullOrWhiteSpace(biome.id) ||
-                !ids.Add(biome.id) || !IsPositiveFinite(biome.selectionWeight) ||
-                Encoding.UTF8.GetByteCount(biome.id) > FixedString64Bytes.UTF8MaxLengthInBytes)
+            if (biome == null)
+            {
+                Debug.LogError("[WorldGenerationConfigLoader] Floor biome entry is null.");
+                return false;
+            }
+            int id = biome.biomeId;
+            if (id / 100000 != 150 || id % 100000 == 0 ||
+                !ids.Add(id) || !IsPositiveFinite(biome.selectionWeight))
             {
                 Debug.LogError("[WorldGenerationConfigLoader] Invalid or duplicate floor biome id/weight.");
                 return false;
             }
 
             int start = variants.Count;
-            if (!TryAddVariants(biome.floorVariants, biome.id, variants))
+            if (!TryAddVariants(biome.floorVariants, $"Biome {id}", variants))
             {
                 return false;
             }
 
             biomes.Add(new FloorBiomeElement
             {
-                Id = biome.id,
+                Id = id,
                 SelectionWeight = biome.selectionWeight,
                 VariantStart = start,
                 VariantCount = variants.Count - start
@@ -392,7 +434,8 @@ public static class WorldGenerationConfigLoader
             {
                 if (token is not JObject resource)
                     continue;
-                if (!TryValidateIntegerToken(resource["minPatchRadius"], "minPatchRadius", out error) ||
+                if (!TryValidateIntegerToken(resource["itemId"], "itemId", out error) ||
+                    !TryValidateIntegerToken(resource["minPatchRadius"], "minPatchRadius", out error) ||
                     !TryValidateIntegerToken(resource["maxPatchRadius"], "maxPatchRadius", out error) ||
                     !TryValidateIntegerToken(resource["minAmount"], "minAmount", out error) ||
                     !TryValidateIntegerToken(resource["maxAmount"], "maxAmount", out error))
@@ -405,6 +448,15 @@ public static class WorldGenerationConfigLoader
             if (!TryValidateIntegerToken(floor["biomeRegionSizeInChunks"], "biomeRegionSizeInChunks", out error) ||
                 !TryValidateIntegerToken(floor["transitionWidthInChunks"], "transitionWidthInChunks", out error))
                 return false;
+
+            if (floor["biomes"] is JArray biomes)
+            {
+                foreach (var biome in biomes)
+                {
+                    if (biome is JObject entry && !TryValidateIntegerToken(entry["biomeId"], "biomeId", out error))
+                        return false;
+                }
+            }
         }
 
         error = null;

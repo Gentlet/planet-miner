@@ -60,7 +60,7 @@ public sealed class SimulationOverviewView : MonoBehaviour
     private Label _feedback;
     private Button _start;
     private VisualElement _taskRows;
-    private readonly Dictionary<string, Button> _nodeButtons = new Dictionary<string, Button>();
+    private readonly Dictionary<int, Button> _nodeButtons = new Dictionary<int, Button>();
     private readonly List<TaskRow> _rows = new List<TaskRow>();
     private int _layoutVersion = -1;
     private int _page;
@@ -227,10 +227,10 @@ public sealed class SimulationOverviewView : MonoBehaviour
             return;
         }
         string parents = string.Empty;
-        foreach (string id in selected.Parents)
+        foreach (int id in selected.Parents)
         {
             var parent = _research.Find(id);
-            parents += "\n선행 " + (parent == null ? id : parent.Name) + (parent != null && parent.Completed ? " / 완료" : " / 미완료");
+            parents += "\n선행 " + (parent == null ? id.ToString() : parent.Name) + (parent != null && parent.Completed ? " / 완료" : " / 미완료");
         }
         _detail.text = selected.Name + "\n" + selected.Description + parents + "\n" + selected.Materials + "\n보상\n" + selected.Rewards;
     }
@@ -241,7 +241,7 @@ public sealed class SimulationOverviewView : MonoBehaviour
         _roots.Clear();
         foreach (var node in _research.Nodes)
         {
-            string id = node.Id;
+            int id = node.Id;
             var button = MakeButton(node.Name, () => _research.SelectRoot(id));
             _roots.Add(button);
         }
@@ -252,7 +252,7 @@ public sealed class SimulationOverviewView : MonoBehaviour
         float height = 100f;
         foreach (var node in _research.VisibleNodes)
         {
-            string id = node.Id;
+            int id = node.Id;
             var button = MakeButton(node.Name, () => _research.ViewNode(id));
             button.style.position = Position.Absolute;
             button.style.left = node.Depth * 230 + 12;
@@ -267,7 +267,7 @@ public sealed class SimulationOverviewView : MonoBehaviour
         }
         foreach (var node in _research.VisibleNodes)
         {
-            foreach (string id in node.Parents)
+            foreach (int id in node.Parents)
             {
                 if (!_nodeButtons.ContainsKey(id))
                 {

@@ -5,7 +5,7 @@ using Unity.Mathematics;
 using Unity.Transforms;
 using UnityEngine;
 
-/// <summary>화면 선택 문맥만 소유한다. 현장 완공 연결은 위치와 설치 식별을 함께 확인하며 실물 상태는 변경하지 않는다.</summary>
+/// <summary>화면 선택 문맥만 소유한다. 현장 완공 연결은 목표 건물 ID, 위치와 설치 표식을 확인한다.</summary>
 [DisallowMultipleComponent]
 public sealed class WorldSelectionController : MonoBehaviour
 {
@@ -13,8 +13,7 @@ public sealed class WorldSelectionController : MonoBehaviour
     private float _droneSelectionRadius = 0.5f;
     private World _world;
     private int2 _sitePosition;
-    private BuildingTypeEnum _siteType;
-    private int _siteTier;
+    private int _siteBuildingId;
     private PlacementStamp _siteStamp;
     private bool _wasSite;
     private bool _wasWorker;
@@ -154,8 +153,7 @@ public sealed class WorldSelectionController : MonoBehaviour
         {
             var site = manager.GetComponentData<ConstructionSite>(selected);
             _sitePosition = manager.GetComponentData<GridPosition>(selected).Value;
-            _siteType = site.TargetBuildingType;
-            _siteTier = site.TargetTier;
+            _siteBuildingId = site.TargetBuildingId;
             _siteStamp = manager.GetComponentData<PlacementStamp>(selected);
         }
 
@@ -209,14 +207,19 @@ public sealed class WorldSelectionController : MonoBehaviour
             return;
         }
 
-        if (_wasSite)
+        if (_wasSite && _siteBuildingId > 0)
         {
-            using var query = manager.CreateEntityQuery(typeof(BuildingType), typeof(GridPosition), typeof(PlacementStamp));
+            using var query = manager.CreateEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<BuildingType>(), ComponentType.ReadOnly<GridPosition>(), ComponentType.ReadOnly<PlacementStamp>() },
+                None = new[] { ComponentType.ReadOnly<ConstructionSite>() }
+            });
             using var buildings = query.ToEntityArray(Allocator.Temp);
             foreach (Entity building in buildings)
             {
-                var type = manager.GetComponentData<BuildingType>(building);
-                if (type.Type == _siteType && type.Tier == _siteTier && manager.GetComponentData<GridPosition>(building).Value.Equals(_sitePosition) && manager.GetComponentData<PlacementStamp>(building).Equals(_siteStamp))
+                if (manager.GetComponentData<BuildingType>(building).BuildingId == _siteBuildingId &&
+                    manager.GetComponentData<GridPosition>(building).Value.Equals(_sitePosition) &&
+                    manager.GetComponentData<PlacementStamp>(building).Equals(_siteStamp))
                 {
                     Select(manager, building);
                     return;

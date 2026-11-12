@@ -1,11 +1,10 @@
 using System;
-using Unity.Collections;
 using Unity.Entities;
 
 public static class ResearchSelectionRequestUtility
 {
-    /// <summary>시뮬레이션 실행 전 접수한다. ID의 선택 자격은 Command가 판단하며 빈 ID도 선택 해제로 해석하지 않는다.</summary>
-    public static Entity Submit(EntityManager manager, FixedString32Bytes researchId)
+    /// <summary>시뮬레이션 실행 전 접수한다. ID의 선택 자격은 Command가 판단하며 ID 0 요청은 잘못된 선택으로 거부한다.</summary>
+    public static Entity Submit(EntityManager manager, int researchId)
     {
         using var query = manager.CreateEntityQuery(typeof(ResearchSelectionRequestSequence));
         bool createSequence = query.IsEmptyIgnoreFilter;

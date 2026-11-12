@@ -22,7 +22,7 @@ public static class ResearchConfigLoader
 {
     public const string DefaultResourcePath = "Config/ResearchConfig";
 
-    public static ResearchConfigData LoadFromResources(string resourcePath = DefaultResourcePath)
+    public static ResearchConfigData LoadFromResources(string resourcePath = DefaultResourcePath, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
     {
         var asset = Resources.Load<TextAsset>(resourcePath);
         if (asset == null)
@@ -30,10 +30,16 @@ public static class ResearchConfigLoader
             throw new ArgumentException($"Research configuration resource '{resourcePath}' was not found.");
         }
 
-        return ParseJson(asset.text);
+        bool requireItemIds = string.Equals(resourcePath, DefaultResourcePath, StringComparison.OrdinalIgnoreCase);
+        return ParseJson(asset.text, itemIds, requireItemIds);
     }
 
-    public static ResearchConfigData ParseJson(string json)
+    public static ResearchConfigData ParseJson(string json, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
+    {
+        return ParseJson(json, itemIds, requireItemIds: false);
+    }
+
+    private static ResearchConfigData ParseJson(string json, IReadOnlyDictionary<int, ItemTypeEnum> itemIds, bool requireItemIds)
     {
         if (string.IsNullOrWhiteSpace(json))
         {
@@ -47,6 +53,7 @@ public static class ResearchConfigLoader
         }
 
         var data = new ResearchConfigData();
+
         foreach (var token in RequireArray(root, "initiallyUnlockedRecipeIds"))
         {
             data.InitialRecipes.Add(new ResearchInitialRecipeUnlockElement { RecipeId = ReadInteger(token, "initial recipe ID") });
@@ -57,7 +64,7 @@ public static class ResearchConfigLoader
             var entry = RequireObject(token, "research");
             var definition = new ResearchDefinitionElement
             {
-                StableId = ReadId(entry, "stableId"),
+                StableId = ReadId(entry["researchId"], "research ID"),
                 DisplayName = new FixedString128Bytes(ReadText(entry, "displayName", default(FixedString128Bytes).Capacity, false)),
                 Description = new FixedString512Bytes(ReadText(entry, "description", default(FixedString512Bytes).Capacity, true)),
                 CycleDuration = ReadNumber(entry, "cycleDuration"),
@@ -75,9 +82,23 @@ public static class ResearchConfigLoader
             foreach (var ingredient in RequireArray(entry, "ingredients"))
             {
                 var ingredientEntry = RequireObject(ingredient, "ingredient");
+                var itemId = ingredientEntry["itemId"];
+                ItemTypeEnum itemType;
+                if (itemId != null)
+                {
+                    itemType = ItemConfigInitSystem.ResolveItemId(ReadInteger(itemId, "ingredient itemId"), itemIds);
+                }
+                else
+                {
+                    if (requireItemIds)
+                    {
+                        throw new ArgumentException("Research 'ingredient itemId' is missing.");
+                    }
+                    itemType = ReadEnum<ItemTypeEnum>(ingredientEntry, "itemType");
+                }
                 data.Ingredients.Add(new ResearchIngredientElement
                 {
-                    ItemType = ReadEnum<ItemTypeEnum>(ingredientEntry, "itemType"),
+                    ItemType = itemType,
                     Amount = ReadInteger(ingredientEntry["amount"], "ingredient amount")
                 });
             }
@@ -158,12 +179,12 @@ public static class ResearchConfigLoader
     private static void ValidateRegisteredProgress(ResearchConfigData data, ResearchState state,
         DynamicBuffer<ResearchProgressElement> progress)
     {
-        var definitions = new Dictionary<FixedString32Bytes, ResearchDefinitionElement>();
+        var definitions = new Dictionary<int, ResearchDefinitionElement>();
         foreach (var definition in data.Definitions)
         {
             definitions.Add(definition.StableId, definition);
         }
-        var progressById = new Dictionary<FixedString32Bytes, ResearchProgressElement>();
+        var progressById = new Dictionary<int, ResearchProgressElement>();
         foreach (var entry in progress)
         {
             if (!definitions.TryGetValue(entry.ResearchId, out var definition) ||
@@ -189,7 +210,7 @@ public static class ResearchConfigLoader
                 ValidateCompletedPrerequisites(data, definitions[entry.ResearchId], progressById);
             }
         }
-        if (state.ActiveResearchId.IsEmpty)
+        if (state.ActiveResearchId == 0)
         {
             return;
         }
@@ -201,7 +222,7 @@ public static class ResearchConfigLoader
     }
 
     private static void ValidateCompletedPrerequisites(ResearchConfigData data, ResearchDefinitionElement definition,
-        Dictionary<FixedString32Bytes, ResearchProgressElement> progressById)
+        Dictionary<int, ResearchProgressElement> progressById)
     {
         for (int i = 0; i < definition.PrerequisiteCount; i++)
         {
@@ -220,18 +241,17 @@ public static class ResearchConfigLoader
             throw new ArgumentNullException(nameof(data));
         }
 
-        var indices = new Dictionary<FixedString32Bytes, int>();
+        var indices = new Dictionary<int, int>();
         int prerequisiteEnd = 0;
         int ingredientEnd = 0;
         int rewardEnd = 0;
         for (int i = 0; i < data.Definitions.Count; i++)
         {
             var definition = data.Definitions[i];
-            string stableId = definition.StableId.ToString();
-            if (string.IsNullOrWhiteSpace(stableId) || stableId != stableId.Trim() ||
+            if (!IsResearchId(definition.StableId) ||
                 !indices.TryAdd(definition.StableId, i))
             {
-                throw new ArgumentException("Research stable IDs must be nonempty and unique.");
+                throw new ArgumentException("Research IDs must use category 140 and be unique.");
             }
             if (string.IsNullOrWhiteSpace(definition.DisplayName.ToString()))
             {
@@ -262,7 +282,7 @@ public static class ResearchConfigLoader
         ValidatePrerequisites(data, indices);
     }
 
-    private static void ValidatePrerequisites(ResearchConfigData data, Dictionary<FixedString32Bytes, int> indices)
+    private static void ValidatePrerequisites(ResearchConfigData data, Dictionary<int, int> indices)
     {
         // 깊은 선행 관계도 관리형 호출 스택에 의존하지 않도록 진입 차수로 전체 순환을 검사한다.
         var indegrees = new int[data.Definitions.Count];
@@ -274,7 +294,7 @@ public static class ResearchConfigLoader
         for (int i = 0; i < data.Definitions.Count; i++)
         {
             var definition = data.Definitions[i];
-            var prerequisites = new HashSet<FixedString32Bytes>();
+            var prerequisites = new HashSet<int>();
             for (int j = 0; j < definition.PrerequisiteCount; j++)
             {
                 var prerequisite = data.Prerequisites[definition.PrerequisiteStart + j].ResearchId;
@@ -330,7 +350,7 @@ public static class ResearchConfigLoader
 
     private static void ValidateRewards(ResearchConfigData data, ResearchDefinitionElement definition)
     {
-        var buildings = new HashSet<BuildingTypeEnum>();
+        var buildingIds = new HashSet<int>();
         var recipes = new HashSet<int>();
         for (int i = 0; i < definition.RewardCount; i++)
         {
@@ -338,16 +358,14 @@ public static class ResearchConfigLoader
             switch (reward.Type)
             {
                 case ResearchRewardTypeEnum.BuildingUnlock:
-                    if (reward.BuildingType == BuildingTypeEnum.None || reward.BuildingType == BuildingTypeEnum.Count ||
-                        reward.BuildingType == BuildingTypeEnum.ConstructionSite ||
-                        !Enum.IsDefined(typeof(BuildingTypeEnum), reward.BuildingType) || !buildings.Add(reward.BuildingType) ||
+                    if (reward.BuildingId <= 0 || !buildingIds.Add(reward.BuildingId) ||
                         reward.RecipeId != 0 || reward.StatKey != ResearchStatKeyEnum.None || reward.Bonus != 0)
                     {
-                        throw new ArgumentException("BuildingUnlock requires one valid building target and no recipe/stat payload.");
+                        throw new ArgumentException("BuildingUnlock requires one unique positive building ID and no recipe/stat payload.");
                     }
                     break;
                 case ResearchRewardTypeEnum.RecipeUnlock:
-                    if (reward.RecipeId <= 0 || !recipes.Add(reward.RecipeId) || reward.BuildingType != BuildingTypeEnum.None ||
+                    if (reward.RecipeId <= 0 || !recipes.Add(reward.RecipeId) || reward.BuildingId != 0 ||
                         reward.StatKey != ResearchStatKeyEnum.None || reward.Bonus != 0)
                     {
                         throw new ArgumentException("RecipeUnlock requires one positive recipe ID and no building/stat payload.");
@@ -355,7 +373,7 @@ public static class ResearchConfigLoader
                     break;
                 case ResearchRewardTypeEnum.StatModifier:
                     if (reward.StatKey == ResearchStatKeyEnum.None || !Enum.IsDefined(typeof(ResearchStatKeyEnum), reward.StatKey) ||
-                        reward.BuildingType != BuildingTypeEnum.None || reward.RecipeId != 0)
+                        reward.BuildingId != 0 || reward.RecipeId != 0)
                     {
                         throw new ArgumentException("StatModifier requires one supported stat key and no building/recipe payload.");
                     }
@@ -461,7 +479,7 @@ public static class ResearchConfigLoader
             }
         }
 
-        var definitions = new Dictionary<FixedString32Bytes, ResearchDefinitionElement>();
+        var definitions = new Dictionary<int, ResearchDefinitionElement>();
         foreach (var definition in data.Definitions)
         {
             definitions.Add(definition.StableId, definition);
@@ -474,7 +492,7 @@ public static class ResearchConfigLoader
                 }
                 if (reward.Type == ResearchRewardTypeEnum.BuildingUnlock)
                 {
-                    ValidateBuildingReward(buildings, definition.StableId, reward.BuildingType);
+                    ValidateBuildingReward(buildings, definition.StableId, reward);
                 }
             }
         }
@@ -485,36 +503,33 @@ public static class ResearchConfigLoader
             {
                 throw new ArgumentException("Research building speed must be finite and positive.");
             }
-            if (building.RequiredResearch.IsEmpty)
+            if (building.RequiredResearch == 0)
             {
                 continue;
             }
-            if (!definitions.TryGetValue(building.RequiredResearch, out var definition) || !HasBuildingReward(data, definition, building.BuildingType))
+            if (!definitions.TryGetValue(building.RequiredResearch, out var definition) || !HasBuildingReward(data, definition, building.BuildingId))
             {
-                throw new ArgumentException($"Building '{building.BuildingType}' refers to missing research or a mismatched unlock reward.");
+                throw new ArgumentException($"Building ID {building.BuildingId} refers to missing research or a mismatched unlock reward.");
             }
         }
     }
 
-    private static void ValidateBuildingReward(DynamicBuffer<BuildingConfigElement> buildings, FixedString32Bytes researchId, BuildingTypeEnum buildingType)
+    private static void ValidateBuildingReward(
+        DynamicBuffer<BuildingConfigElement> buildings, int researchId, in ResearchRewardElement reward)
     {
-        // 같은 종류라도 티어별 필요 연구는 독립적이다. 각 행의 참조는 별도의 역방향 검사에서 확인한다.
-        foreach (var building in buildings)
+        if (!BuildingConfigLookupUtility.TryGetConfig(buildings, reward.BuildingId, out var building) ||
+            building.RequiredResearch != researchId)
         {
-            if (building.BuildingType == buildingType && building.RequiredResearch == researchId)
-            {
-                return;
-            }
+            throw new ArgumentException($"Building reward ID {reward.BuildingId} has no matching BuildingConfig.RequiredResearch.");
         }
-        throw new ArgumentException($"Building reward '{buildingType}' has no matching BuildingConfig.RequiredResearch.");
     }
 
-    private static bool HasBuildingReward(ResearchConfigData data, ResearchDefinitionElement definition, BuildingTypeEnum buildingType)
+    private static bool HasBuildingReward(ResearchConfigData data, ResearchDefinitionElement definition, int buildingId)
     {
         for (int i = 0; i < definition.RewardCount; i++)
         {
             var reward = data.Rewards[definition.RewardStart + i];
-            if (reward.Type == ResearchRewardTypeEnum.BuildingUnlock && reward.BuildingType == buildingType)
+            if (reward.Type == ResearchRewardTypeEnum.BuildingUnlock && reward.BuildingId == buildingId)
             {
                 return true;
             }
@@ -574,7 +589,7 @@ public static class ResearchConfigLoader
         switch (reward.Type)
         {
             case ResearchRewardTypeEnum.BuildingUnlock:
-                reward.BuildingType = ReadEnum<BuildingTypeEnum>(entry, "buildingType");
+                reward.BuildingId = ReadInteger(entry["buildingId"], "reward buildingId");
                 break;
             case ResearchRewardTypeEnum.RecipeUnlock:
                 reward.RecipeId = ReadInteger(entry["recipeId"], "reward recipe ID");
@@ -589,7 +604,7 @@ public static class ResearchConfigLoader
         foreach (var property in entry.Properties())
         {
             bool allowed = property.Name == "type" ||
-                (reward.Type == ResearchRewardTypeEnum.BuildingUnlock && property.Name == "buildingType") ||
+                (reward.Type == ResearchRewardTypeEnum.BuildingUnlock && property.Name == "buildingId") ||
                 (reward.Type == ResearchRewardTypeEnum.RecipeUnlock && property.Name == "recipeId") ||
                 (reward.Type == ResearchRewardTypeEnum.StatModifier && (property.Name == "statKey" || property.Name == "bonus"));
             if (!allowed)
@@ -618,28 +633,17 @@ public static class ResearchConfigLoader
         return array;
     }
 
-    private static FixedString32Bytes ReadId(JObject entry, string name)
+    private static int ReadId(JToken token, string name)
     {
-        return ReadId(entry[name], name);
+        int id = ReadInteger(token, name);
+        if (!IsResearchId(id))
+        {
+            throw new ArgumentException($"Research '{name}' must use category 140.");
+        }
+        return id;
     }
 
-    private static FixedString32Bytes ReadId(JToken token, string name)
-    {
-        if (token == null)
-        {
-            throw new ArgumentException($"Research '{name}' is missing.");
-        }
-        if (token.Type != JTokenType.String)
-        {
-            throw new ArgumentException($"Research '{name}' must be a string ID.");
-        }
-        string value = token.Value<string>();
-        if (string.IsNullOrWhiteSpace(value) || value != value.Trim() || Encoding.UTF8.GetByteCount(value) > default(FixedString32Bytes).Capacity)
-        {
-            throw new ArgumentException($"Research '{name}' must be nonempty, unpadded and fit FixedString32Bytes.");
-        }
-        return new FixedString32Bytes(value);
-    }
+    internal static bool IsResearchId(int id) => id / 100000 == 140 && id % 100000 != 0;
 
     private static string ReadText(JObject entry, string name, int capacity, bool allowEmpty)
     {

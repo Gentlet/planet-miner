@@ -45,7 +45,7 @@ public static class BuildingToolWorld
         }
         foreach (var config in manager.GetBuffer<BuildingConfigElement>(query.GetSingletonEntity(), true))
         {
-            if (config.IsUnlocked && config.BuildingType != BuildingTypeEnum.None &&
+            if (config.BuildingId > 0 && config.IsUnlocked && config.BuildingType != BuildingTypeEnum.None &&
                 config.BuildingType != BuildingTypeEnum.ConstructionSite && config.BuildingType != BuildingTypeEnum.MainFacility)
             {
                 result.Add(new BuildingToolCatalogEntry(config));
@@ -54,9 +54,11 @@ public static class BuildingToolWorld
         return result;
     }
 
-    public static bool TryCapture(EntityManager manager, Entity entity, out PlacementRequestCandidateElement candidate)
+    public static bool TryCapture(EntityManager manager, Entity entity, out PlacementRequestCandidateElement candidate,
+        out BuildingTypeEnum role)
     {
         candidate = default;
+        role = default;
         if (!manager.Exists(entity))
         {
             return false;
@@ -72,8 +74,8 @@ public static class BuildingToolWorld
             return false;
         }
         var building = manager.GetComponentData<BuildingType>(entity);
+        int buildingId = building.BuildingId;
         BuildingTypeEnum type = building.Type;
-        int tier = building.Tier;
         PlannedBuildingSettings settings = default;
         if (type == BuildingTypeEnum.ConstructionSite)
         {
@@ -83,7 +85,7 @@ public static class BuildingToolWorld
                 return false;
             }
             type = site.TargetBuildingType;
-            tier = site.TargetTier;
+            buildingId = site.TargetBuildingId;
             if (manager.HasComponent<PlannedBuildingSettings>(entity))
             {
                 settings = manager.GetComponentData<PlannedBuildingSettings>(entity);
@@ -103,10 +105,11 @@ public static class BuildingToolWorld
         {
             return false;
         }
-        candidate = new PlacementRequestCandidateElement(type, tier,
+        candidate = new PlacementRequestCandidateElement(buildingId,
             manager.GetComponentData<BuildingFootprint>(entity).Size,
             manager.GetComponentData<GridPosition>(entity).Value,
             manager.GetComponentData<Direction>(entity).dir) { Settings = settings };
+        role = type;
         return true;
     }
 
@@ -117,7 +120,7 @@ public static class BuildingToolWorld
         using var entities = query.ToEntityArray(Allocator.Temp);
         foreach (Entity entity in entities)
         {
-            if (!TryCapture(manager, entity, out var candidate))
+            if (!TryCapture(manager, entity, out var candidate, out _))
             {
                 continue;
             }
@@ -142,7 +145,10 @@ public static class BuildingToolWorld
         int2 pivot = math.min(first, last);
         foreach (Entity entity in Select(manager, first, last))
         {
-            TryCapture(manager, entity, out var candidate);
+            if (!TryCapture(manager, entity, out var candidate, out _) || candidate.BuildingId <= 0)
+            {
+                continue;
+            }
             if (!BuildingToolGeometry.TryPosition((long)candidate.OriginPosition.x - pivot.x,
                 (long)candidate.OriginPosition.y - pivot.y, out int2 offset))
             {
@@ -162,7 +168,7 @@ public static class BuildingToolWorld
 
     public static void RequestTarget(EntityManager manager, Entity target)
     {
-        if (!TryCapture(manager, target, out _))
+        if (!TryCapture(manager, target, out _, out _))
         {
             return;
         }
@@ -210,12 +216,16 @@ public static class BuildingToolWorld
         var native = new NativeArray<PlacementCandidate>(candidates.Count, Allocator.Temp);
         var validation = new NativeArray<PlacementValidationResult>(candidates.Count, Allocator.Temp);
         var settings = new NativeArray<PlacementValidationCode>(candidates.Count, Allocator.Temp);
+        var definitions = manager.GetBuffer<BuildingConfigElement>(configs.GetSingletonEntity(), true).AsNativeArray();
         try
         {
             for (int i = 0; i < candidates.Count; i++)
             {
-                native[i] = candidates[i];
-                if (!BuildingSettingsUtility.IsAllowed(manager, candidates[i].TargetType, candidates[i].Settings))
+                var candidate = candidates[i];
+                native[i] = candidate;
+                if (candidate.Settings.HasValues &&
+                    BuildingConfigLookupUtility.TryGetConfig(definitions, candidate.BuildingId, out var config) &&
+                    !BuildingSettingsUtility.IsAllowed(manager, config.BuildingType, candidate.Settings))
                 {
                     settings[i] = PlacementValidationCode.InvalidBuildingSettings;
                 }
@@ -224,7 +234,7 @@ public static class BuildingToolWorld
                 buildings.GetSingleton<BuildingSpatialIndex>().Map.AsReadOnly(),
                 resources.GetSingleton<ResourceSpatialIndex>().Map.AsReadOnly(),
                 items.GetSingleton<ItemSpatialIndex>().Map.AsReadOnly(), validation,
-                manager.GetBuffer<BuildingConfigElement>(configs.GetSingletonEntity(), true), settingsRejections: settings);
+                definitions, settingsRejections: settings);
             bool allowed = true;
             for (int i = 0; i < candidates.Count; i++)
             {

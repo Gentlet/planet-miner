@@ -101,10 +101,10 @@ internal struct PopulateDroneStationSpatialIndexJob : IJobChunk
                 continue;
             }
 
-            // 연결 Writer 이후 설정/위치/크기는 바뀌지 않는다. 같은 타입/티어 조회 성공은 Decision의 게시 계약이다.
+            // 연결 Writer 이후 건물 ID/설정/위치/크기는 바뀌지 않는다. 같은 ID 조회 성공은 Decision의 게시 계약이다.
             var type = types[index];
             var configs = configRead.Read(ConfigLookup, Config);
-            BuildingConfigLookupUtility.TryGetConfig(configs, type.Type, type.Tier, out var config);
+            BuildingConfigLookupUtility.TryGetConfig(configs, type.BuildingId, out var config);
             Writer.TryAdd(entities[index], new DroneStationCoverage
             {
                 RepresentativeStation = representative,

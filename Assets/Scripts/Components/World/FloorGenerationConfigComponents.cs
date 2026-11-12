@@ -28,7 +28,7 @@ public struct FloorGenerationSettings : IComponentData
 /// </summary>
 public struct FloorBiomeElement : IBufferElementData
 {
-    public FixedString64Bytes Id;
+    public int Id;
     public float SelectionWeight;
     public int VariantStart;
     public int VariantCount;

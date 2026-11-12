@@ -11,6 +11,7 @@ using Unity.Entities;
 /// 실패: 파싱/게시 검증 오류는 로그와 즉시 SimulationFatalError로 게임 시뮬레이션을 차단하고 재시도하지 않는다.
 /// </summary>
 [UpdateInGroup(typeof(InitializationSystemGroup))]
+[UpdateAfter(typeof(ItemConfigInitSystem))]
 public partial class RecipeInitSystem : SystemBase
 {
     protected override void OnUpdate()
@@ -71,9 +72,10 @@ public partial class RecipeInitSystem : SystemBase
 
         try
         {
+            var itemIds = ItemConfigInitSystem.ReadRegisteredItemIds(entityManager);
             var config = jsonOverride == null
-                ? RecipeConfigLoader.LoadFromResources()
-                : RecipeConfigLoader.ParseJson(jsonOverride);
+                ? RecipeConfigLoader.LoadFromResources(itemIds: itemIds)
+                : RecipeConfigLoader.ParseJson(jsonOverride, itemIds);
             if (jsonOverride != null)
             {
                 RecipeConfigLoader.ValidateRequiredRecipes(config);

@@ -223,7 +223,7 @@ internal struct AllocatePowerBudgetsJob : IJob
         {
             configs = ConfigLookup[ConfigEntity];
         }
-        BuildingConfigLookupUtility.TryGetConfig(configs, type.Type, type.Tier, out var config);
+        BuildingConfigLookupUtility.TryGetConfig(configs, type.BuildingId, out var config);
         // 기존 에너지 계산과 같이 float 곱셈을 마친 뒤 합산용 double로 보관한다.
         float ratedEnergy = config.Power.MaximumGeneration * DeltaTime;
         input.RatedEnergy = ratedEnergy;

@@ -3,8 +3,8 @@ using Unity.Mathematics;
 
 /// <summary>
 /// 역할·목적: 완공 건물과 ConstructionSite의 종류 번호를 정의한다.
-/// 부착 엔티티: 열거형 자체는 붙이지 않고 BuildingType·배치/생성 요청·설정·프리팹 매핑 값으로 사용한다.
-/// 생성·이용: Authoring/설정/배치 Producer가 선택하고 생성·철거 Command/StateApply 및 BuildingSpatialSyncSystem이 종류별 동작을 구분한다.
+/// 부착 엔티티: 완공 건물과 현장의 BuildingType 및 설정과 프리팹 등록의 역할 필드에 사용한다.
+/// 생성·이용: 배치/생성에서 BuildingId로 찾은 정의의 역할을 읽어 설치 조건과 런타임 구성을 결정한다.
 /// 제거: 값을 담은 데이터의 수명을 따른다. enum·프리팹 존재만으로 전력·연구·드론 수행 기능이 구현된 것은 아니다. None/Count는 일반 생성 대상이 아니다.
 /// </summary>
 public enum BuildingTypeEnum : byte
@@ -34,12 +34,15 @@ public enum BuildingTypeEnum : byte
 /// </summary>
 public struct BuildingType : IComponentData
 {
+    /// <summary>완공 건물의 설정 ID. 공사 현장의 목표 ID는 ConstructionSite가 소유한다.</summary>
+    public int BuildingId;
     public BuildingTypeEnum Type;
     /// <summary>완공 건물은 명시적 양수 티어, 현장 분류는 0이며 목표 티어는 ConstructionSite가 소유한다.</summary>
     public int Tier;
 
-    public BuildingType(BuildingTypeEnum type, int tier)
+    public BuildingType(BuildingTypeEnum type, int tier, int buildingId = 0)
     {
+        BuildingId = buildingId;
         Type = type;
         Tier = tier;
     }
