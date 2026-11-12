@@ -99,8 +99,8 @@ internal struct DroneStationLifecycleReservationJob : IJob
             else if (MaximumStack > 0)
             {
                 int preferred = Docks.TryGetComponent(request.Drone, out var dock) ? dock.SlotIndex : -1;
-                decision.SlotIndex = DroneStationLifecycleUtility.ReserveSlot(request.Station, request.Drone, request.Operation,
-                    preferred, MaximumStack, Storages, Dedicated, Items, Docked, ranges, slots, Reserved);
+                decision.SlotIndex = DroneStationLifecycleUtility.ReserveSlot(request, preferred, MaximumStack,
+                    Storages, Dedicated, Items, Docked, ranges, slots, Reserved);
                 decision.Approved = decision.SlotIndex >= 0;
                 if (!decision.Approved)
                 {

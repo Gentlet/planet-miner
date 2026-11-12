@@ -68,7 +68,6 @@ public partial struct MinerWorkPreparationSystem : ISystem
             MinerWorkPreparationHandle = SystemAPI.GetComponentTypeHandle<MinerWorkPreparation>(false),
             ProductItemElementHandle = SystemAPI.GetBufferTypeHandle<ProductItemElement>(true),
             ProductResultHandle = SystemAPI.GetBufferTypeHandle<ProductResult>(true),
-            MinerStateHandle = SystemAPI.GetComponentTypeHandle<MinerState>(true),
             BuildingFootprintHandle = SystemAPI.GetComponentTypeHandle<BuildingFootprint>(true),
             GridPositionHandle = SystemAPI.GetComponentTypeHandle<GridPosition>(true),
             DirectionHandle = SystemAPI.GetComponentTypeHandle<Direction>(true),
@@ -98,7 +97,6 @@ public partial struct MinerWorkPreparationJob : IJobChunk
     public ComponentTypeHandle<MinerWorkPreparation> MinerWorkPreparationHandle;
     [ReadOnly] public BufferTypeHandle<ProductItemElement> ProductItemElementHandle;
     [ReadOnly] public BufferTypeHandle<ProductResult> ProductResultHandle;
-    [ReadOnly] public ComponentTypeHandle<MinerState> MinerStateHandle;
     [ReadOnly] public ComponentTypeHandle<BuildingFootprint> BuildingFootprintHandle;
     [ReadOnly] public ComponentTypeHandle<GridPosition> GridPositionHandle;
     [ReadOnly] public ComponentTypeHandle<Direction> DirectionHandle;
@@ -115,7 +113,6 @@ public partial struct MinerWorkPreparationJob : IJobChunk
         var minerWorkPreparationEnabled = chunk.GetEnabledMask(ref MinerWorkPreparationHandle);
         var productItemElementValues = chunk.GetBufferAccessorRO(ref ProductItemElementHandle);
         var productResultValues = chunk.GetBufferAccessorRO(ref ProductResultHandle);
-        var minerStateValues = chunk.GetNativeArray(ref MinerStateHandle);
         var buildingFootprintValues = chunk.GetNativeArray(ref BuildingFootprintHandle);
         var gridPositionValues = chunk.GetNativeArray(ref GridPositionHandle);
         var directionValues = chunk.GetNativeArray(ref DirectionHandle);
@@ -126,7 +123,6 @@ public partial struct MinerWorkPreparationJob : IJobChunk
             var preparationRef = new RefRW<MinerWorkPreparation>(minerWorkPreparationValues, index);
             var productItemsValue = productItemElementValues[index];
             var productResultsValue = productResultValues[index];
-            var stateValue = minerStateValues[index];
             var footprintValue = buildingFootprintValues[index];
             var gridPosValue = gridPositionValues[index];
             var dirValue = directionValues[index];
@@ -135,7 +131,6 @@ public partial struct MinerWorkPreparationJob : IJobChunk
                 minerWorkPreparationEnabled.GetEnabledRefRW<MinerWorkPreparation>(index),
                 in productItemsValue,
                 in productResultsValue,
-                in stateValue,
                 in footprintValue,
                 in gridPosValue,
                 in dirValue, ref registryRead);
@@ -162,7 +157,6 @@ public partial struct MinerWorkPreparationJob : IJobChunk
         EnabledRefRW<MinerWorkPreparation> decisionEnabled,
         in DynamicBuffer<ProductItemElement> productItems,
         in DynamicBuffer<ProductResult> productResults,
-        in MinerState state,
         in BuildingFootprint footprint,
         in GridPosition gridPos,
         in Direction dir, ref RegistryReadContext registryRead)

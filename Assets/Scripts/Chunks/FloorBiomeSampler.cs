@@ -65,13 +65,7 @@ public static class FloorBiomeSampler
         int2 worldCell)
     {
         // 경계는 연속 노이즈로 휘게 하고 변형은 셀 해시로 고정한다. 표시/청크 로드 순서가 선택을 바꾸지 않는다.
-        float2 warpedCell = worldCell + GetBoundaryWarp(worldSeed, settings, worldCell);
-        float regionSizeInCells = settings.BiomeRegionSizeInChunks * (float)ChunkUtility.ChunkSize;
-        float2 regionCoordinate = warpedCell / regionSizeInCells;
-        int2 currentRegion = (int2)math.floor(regionCoordinate);
-        int currentBiomeIndex = SelectBiomeIndex(worldSeed, biomes, currentRegion);
-        int biomeIndex = SelectTransitionBiomeIndex(worldSeed, settings, biomes, worldCell,
-            regionCoordinate, currentRegion, currentBiomeIndex, regionSizeInCells,
+        int biomeIndex = SelectBiomeIndexForCell(worldSeed, settings, biomes, worldCell,
             out bool isInTransition, out float distanceRatio);
         bool usesTransition = isInTransition &&
             HashToUnitFloat(Hash(worldSeed, worldCell.x, worldCell.y, TransitionVariantSalt)) <=
@@ -87,7 +81,6 @@ public static class FloorBiomeSampler
     }
 
     public static FloorVariantElement GetVariant(
-        in FloorGenerationSettings settings,
         in DynamicBuffer<FloorBiomeElement> biomes,
         in DynamicBuffer<FloorVariantElement> variants,
         in FloorTileSelection selection)
@@ -96,23 +89,26 @@ public static class FloorBiomeSampler
         return variants[start + selection.VariantIndex];
     }
 
-    private static int SelectTransitionBiomeIndex(
+    private static int SelectBiomeIndexForCell(
         uint worldSeed,
         in FloorGenerationSettings settings,
         in DynamicBuffer<FloorBiomeElement> biomes,
         int2 worldCell,
-        float2 regionCoordinate,
-        int2 currentRegion,
-        int currentBiomeIndex,
-        float regionSizeInCells,
         out bool isInTransition,
         out float distanceRatio)
     {
+        float2 warpedCell = worldCell + GetBoundaryWarp(worldSeed, settings, worldCell);
+        float regionSizeInCells = settings.BiomeRegionSizeInChunks * (float)ChunkUtility.ChunkSize;
+        float2 regionCoordinate = warpedCell / regionSizeInCells;
+        float2 regionOrigin = math.floor(regionCoordinate);
+        int2 currentRegion = (int2)regionOrigin;
+        int currentBiomeIndex = SelectBiomeIndex(worldSeed, biomes, currentRegion);
+
         isInTransition = false;
         distanceRatio = 1f;
         if (settings.TransitionWidthInChunks == 0) return currentBiomeIndex;
 
-        float2 regionFraction = regionCoordinate - math.floor(regionCoordinate);
+        float2 regionFraction = regionCoordinate - regionOrigin;
         float2 distanceToBoundary = math.min(regionFraction, 1f - regionFraction) * regionSizeInCells;
         bool isVerticalBoundary = distanceToBoundary.x <= distanceToBoundary.y;
         float boundaryDistance = isVerticalBoundary ? distanceToBoundary.x : distanceToBoundary.y;

@@ -194,7 +194,13 @@ public sealed class FloorChunkRenderController : MonoBehaviour
     private void BuildNearestChunks(Vector2 center, uint seed, FloorGenerationSettings settings,
         DynamicBuffer<FloorBiomeElement> biomes, DynamicBuffer<FloorVariantElement> variants)
     {
-        _candidates.Sort((left, right) => CompareChunks(right, left, center));
+        // 가장 가까운 후보를 목록 끝에서 꺼낼 수 있도록 먼 순서로 정렬한다.
+        _candidates.Sort((left, right) =>
+        {
+            var leftCandidate = new CameraChunkLoadUtility.ChunkCandidate(left, center);
+            var rightCandidate = new CameraChunkLoadUtility.ChunkCandidate(right, center);
+            return rightCandidate.CompareTo(leftCandidate);
+        });
         int count = Math.Min(_candidates.Count, GameConstants.MaxFloorChunkBuildsPerFrame);
         for (int i = 0; i < count; i++)
         {
@@ -234,25 +240,6 @@ public sealed class FloorChunkRenderController : MonoBehaviour
             FloorChunkMeshBuilder.DestroyOwned(mesh);
             throw;
         }
-    }
-
-    private static int CompareChunks(int2 left, int2 right, Vector2 center)
-    {
-        int distance = DistanceSquared(left, center).CompareTo(DistanceSquared(right, center));
-        if (distance != 0)
-        {
-            return distance;
-        }
-        int row = left.y.CompareTo(right.y);
-        return row != 0 ? row : left.x.CompareTo(right.x);
-    }
-
-    private static double DistanceSquared(int2 chunk, Vector2 center)
-    {
-        double offset = (ChunkUtility.ChunkSize - 1) * 0.5d;
-        double x = chunk.x * (double)ChunkUtility.ChunkSize + offset - center.x;
-        double y = chunk.y * (double)ChunkUtility.ChunkSize + offset - center.y;
-        return x * x + y * y;
     }
 
     private static bool IsInside(int2 chunk, int2 minimum, int2 maximum)

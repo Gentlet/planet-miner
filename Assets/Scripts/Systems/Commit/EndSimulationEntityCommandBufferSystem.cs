@@ -13,11 +13,7 @@ public partial class EndSimulationEntityCommandBufferSystem : EntityCommandBuffe
     protected override void OnCreate()
     {
         base.OnCreate();
-        _pendingPrefabInstances = GetEntityQuery(new EntityQueryDesc
-        {
-            All = new[] { ComponentType.ReadOnly<PendingPrefabSceneDetach>() },
-            Options = EntityQueryOptions.IncludeDisabledEntities
-        });
+        _pendingPrefabInstances = RuntimePrefabLifecycleUtility.CreatePendingSceneDetachQuery(this);
     }
 
     protected override void OnUpdate()

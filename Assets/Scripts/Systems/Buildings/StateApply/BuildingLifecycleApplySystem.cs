@@ -366,7 +366,8 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
 
                     for (int q = 0; q < quantity; q++)
                     {
-                        Entity refund = ItemLifecycleUtility.SpawnPrefabItem(ref ECB, prefabEntity, itemType, sitePos, worldPos, ItemOwnership.WorldItem);
+                        Entity refund = ItemLifecycleUtility.SpawnPrefabItem(
+                            ref ECB, prefabEntity, itemType, sitePos, ItemOwnership.WorldItem);
                         ECB.AddComponent(refund, new DroneRecoveryPending { Reason = DroneRecoveryReasonEnum.BuildingDemolition });
                     }
 

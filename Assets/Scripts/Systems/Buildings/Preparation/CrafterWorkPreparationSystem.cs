@@ -106,12 +106,11 @@ internal partial struct PrepareCrafterWorkJob : IJobChunk
             prepared.ValueRW = false;
             return;
         }
-        if (results.Length > 0 || !RecipeConfigLookupUtility.TryGetRecipeIndex(recipes,
-                state.SelectedRecipeId, out int recipeIndex))
+        if (results.Length > 0 || !RecipeConfigLookupUtility.TryGetRecipe(recipes,
+                state.SelectedRecipeId, out var recipe))
         {
             return;
         }
-        var recipe = recipes[recipeIndex];
         if (!recipe.IsUnlocked)
         {
             return;

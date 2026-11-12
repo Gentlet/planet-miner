@@ -48,25 +48,23 @@ public class ItemPrefabDatabaseAuthoring : MonoBehaviour
     public void PopulateFromResources()
     {
         Prefabs.Clear();
+        Prefabs.AddRange(DiscoverResourcePrefabs());
+    }
 
+    private static IEnumerable<ItemPrefabEntry> DiscoverResourcePrefabs()
+    {
         var loadedPrefabs = Resources.LoadAll<GameObject>("Prefabs/Item");
-        if (loadedPrefabs == null || loadedPrefabs.Length == 0)
+        if (loadedPrefabs == null)
         {
-            return;
+            yield break;
         }
 
         foreach (var prefab in loadedPrefabs)
         {
-            string prefabName = prefab.name.Replace(" Item", "").Trim();
-            // Enum 이름과 일치 여부 확인 (언더스코어 및 공백 처리)
-            string normalizedName = prefabName.Replace(" ", "_");
-
-            if (Enum.TryParse<ItemTypeEnum>(normalizedName, true, out var itemType))
+            string normalizedName = prefab.name.Replace(" Item", "").Trim().Replace(" ", "_");
+            if (Enum.TryParse<ItemTypeEnum>(normalizedName, true, out var itemType) && itemType != ItemTypeEnum.None)
             {
-                if (itemType != ItemTypeEnum.None)
-                {
-                    Prefabs.Add(new ItemPrefabEntry(itemType, prefab));
-                }
+                yield return new ItemPrefabEntry(itemType, prefab);
             }
         }
     }
@@ -82,18 +80,10 @@ public class ItemPrefabDatabaseAuthoring : MonoBehaviour
 
             if (authoring.LoadMode == ItemPrefabLoadMode.ResourcesAutoLoad)
             {
-                var loadedPrefabs = Resources.LoadAll<GameObject>("Prefabs/Item");
-                if (loadedPrefabs != null)
+                foreach (var entry in DiscoverResourcePrefabs())
                 {
-                    foreach (var prefab in loadedPrefabs)
-                    {
-                        string prefabName = prefab.name.Replace(" Item", "").Trim().Replace(" ", "_");
-                        if (Enum.TryParse<ItemTypeEnum>(prefabName, true, out var itemType) && itemType != ItemTypeEnum.None)
-                        {
-                            Entity prefabEntity = GetEntity(prefab, TransformUsageFlags.Dynamic);
-                            buffer.Add(new ItemPrefabElement(itemType, prefabEntity));
-                        }
-                    }
+                    Entity prefabEntity = GetEntity(entry.Prefab, TransformUsageFlags.Dynamic);
+                    buffer.Add(new ItemPrefabElement(entry.Type, prefabEntity));
                 }
             }
             else

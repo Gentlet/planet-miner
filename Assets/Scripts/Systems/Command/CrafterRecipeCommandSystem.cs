@@ -118,14 +118,13 @@ public partial struct CrafterRecipeCommandSystem : ISystem
                     {
                         recipes = _recipeConfigLookup[recipeRegistryEntity];
                     }
-                    if (!RecipeConfigLookupUtility.TryGetRecipeIndex(recipes, newRecipeId, out int recipeIndex))
+                    if (!RecipeConfigLookupUtility.TryGetRecipe(recipes, newRecipeId, out var recipe))
                     {
                         UnityEngine.Debug.LogError($"[CrafterRecipeCommandSystem] Unknown recipe {newRecipeId}. Recipe change rejected.");
                         ecb.DestroyEntity(reqEntity);
                         continue;
                     }
 
-                    var recipe = recipes[recipeIndex];
                     if (!recipe.IsUnlocked)
                     {
                         // 잠긴 선택은 정상 거부다. 기존 주기/재료/필터는 변경하지 않는다.

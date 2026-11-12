@@ -7,6 +7,14 @@ using Unity.Entities;
 /// </summary>
 public static class RuntimePrefabLifecycleUtility
 {
+    internal static EntityQuery CreatePendingSceneDetachQuery(EntityCommandBufferSystem owner)
+    {
+        using var builder = new EntityQueryBuilder(Allocator.Temp);
+        return builder.WithAll<PendingPrefabSceneDetach>()
+            .WithOptions(EntityQueryOptions.IncludeDisabledEntities)
+            .Build(owner);
+    }
+
     public static Entity Instantiate(ref EntityCommandBuffer ecb, Entity prefab)
     {
         Entity instance = ecb.Instantiate(prefab);

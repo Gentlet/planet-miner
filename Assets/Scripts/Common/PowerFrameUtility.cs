@@ -4,67 +4,6 @@ using Unity.Mathematics;
 /// <summary>전력 준비 결과의 대표 조회와 공급에 따른 작업 시간 계산. 상태·집계의 생성/갱신은 각 소유 시스템이 담당한다.</summary>
 public static class PowerFrameUtility
 {
-    internal static bool TryGetRepresentative(ComponentLookup<Disabled> disabledLookup,
-        ComponentLookup<PendingBuildingDemolition> pendingBuildingDemolitionLookup,
-        ComponentLookup<PowerGridConnectionDecision> powerGridConnectionDecisionLookup,
-        ComponentLookup<PowerGridTopologyDecision> powerGridTopologyDecisionLookup,
-        ComponentLookup<PowerPole> powerPoleLookup,
-        ComponentLookup<Prefab> prefabLookup, Entity entity, out Entity representative)
-    {
-        representative = Entity.Null;
-        Entity pole = entity;
-        bool isPowerPole = powerPoleLookup.HasComponent(entity);
-        if (!isPowerPole)
-        {
-            if (!powerGridConnectionDecisionLookup.TryGetComponent(entity, out var connection))
-            {
-                return false;
-            }
-            if (!powerGridConnectionDecisionLookup.IsComponentEnabled(entity))
-            {
-                return false;
-            }
-            pole = connection.PowerPole;
-            if (pole == Entity.Null)
-            {
-                return true;
-            }
-        }
-        if (!isPowerPole && !powerPoleLookup.HasComponent(pole))
-        {
-            return false;
-        }
-        if (!powerGridTopologyDecisionLookup.TryGetComponent(pole, out var topology))
-        {
-            return false;
-        }
-        if (disabledLookup.HasComponent(pole) || prefabLookup.HasComponent(pole) ||
-            pendingBuildingDemolitionLookup.HasComponent(pole))
-        {
-            return false;
-        }
-        representative = topology.RepresentativePole;
-        if (representative == Entity.Null)
-        {
-            return false;
-        }
-        if (representative == pole)
-        {
-            return true;
-        }
-        if (!powerPoleLookup.HasComponent(representative) ||
-            !powerGridTopologyDecisionLookup.TryGetComponent(representative, out var representativeTopology))
-        {
-            return false;
-        }
-        if (disabledLookup.HasComponent(representative) || prefabLookup.HasComponent(representative) ||
-            pendingBuildingDemolitionLookup.HasComponent(representative))
-        {
-            return false;
-        }
-        return representativeTopology.RepresentativePole == representative;
-    }
-
     public static Entity GetRepresentative(Entity entity, ComponentLookup<PowerPole> poles,
         ComponentLookup<PowerGridConnectionDecision> connections, ComponentLookup<PowerGridTopologyDecision> topology)
     {

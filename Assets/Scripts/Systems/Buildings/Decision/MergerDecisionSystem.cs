@@ -205,7 +205,8 @@ public partial struct MergerDecisionJob : IJobEntity
 
                 if (RoutingDirectionUtility.IsIncomingBelt(mergerPos, inputPos, beltInfo.Direction))
                 {
-                    Entity item = FindItemAtBeltEnd(inputPos);
+                    Entity item = BeltEntryUtility.FindItemAtBeltEnd(
+                        inputPos, ItemMap, ItemOwnershipLookup, BeltMovementStateLookup);
                     if (item != Entity.Null)
                     {
                         candidateItem = item;
@@ -276,47 +277,6 @@ public partial struct MergerDecisionJob : IJobEntity
         }
 
         return bestBelt;
-    }
-
-    private Entity FindItemAtBeltEnd(int2 beltPos)
-    {
-        Entity bestItem = Entity.Null;
-        float maxProgress = 1.0f - GameConstants.AlignmentEpsilon;
-
-        if (ItemMap.TryGetFirstValue(beltPos, out Entity item, out var iterator))
-        {
-            do
-            {
-                if (!ItemOwnershipLookup.TryGetComponent(item, out var ownership))
-                {
-                    continue;
-                }
-
-                if (!ownership.IsWorldItem)
-                {
-                    continue;
-                }
-
-                if (!BeltMovementStateLookup.TryGetComponent(item, out var movement))
-                {
-                    continue;
-                }
-
-                // 잔여 진행도가 있더라도 이동이 꺼진 바닥 아이템은 라우팅하지 않는다.
-                if (!BeltMovementStateLookup.IsComponentEnabled(item))
-                {
-                    continue;
-                }
-
-                if (movement.Progress >= maxProgress)
-                {
-                    bestItem = item;
-                    maxProgress = movement.Progress;
-                }
-            } while (ItemMap.TryGetNextValue(out item, ref iterator));
-        }
-
-        return bestItem;
     }
 
     private bool IsTargetBeltAvailable(int2 targetPos)

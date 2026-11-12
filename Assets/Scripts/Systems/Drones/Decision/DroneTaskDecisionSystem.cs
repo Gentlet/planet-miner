@@ -198,8 +198,18 @@ public partial struct DroneTaskDecisionSystem : ISystem
                     if (assigned) continue;
                     Entity direct = FindOrRequestRoute(manager, worker, observation, Entity.Null, task.Target,
                         routes, pendingRoutes, routeDecisions, removedRoutes, usedRoutes, carryingCapacity, demolition: true);
-                    if (direct == Entity.Null || !DroneSchedulingUtility.TryReadRoute(manager, direct, carryingCapacity,
-                        out bool directReachable, out _) || !directReachable) continue;
+                    if (direct == Entity.Null)
+                    {
+                        continue;
+                    }
+                    if (!DroneSchedulingUtility.TryReadRoute(manager, direct, carryingCapacity, out var directResult))
+                    {
+                        continue;
+                    }
+                    if (directResult.Status != DroneRouteEvaluationStatusEnum.Reachable)
+                    {
+                        continue;
+                    }
                     candidates.Add(new DroneTaskCandidateDecisionElement
                     {
                         Worker = worker, Task = tasks[t], Destination = task.Target,
@@ -266,13 +276,14 @@ public partial struct DroneTaskDecisionSystem : ISystem
                         continue;
                     }
 
-                    if (!DroneSchedulingUtility.TryReadRoute(manager, route, carryingCapacity, out bool reachable, out float distance))
+                    if (!DroneSchedulingUtility.TryReadRoute(manager, route, carryingCapacity, out var routeResult))
                     {
                         waitingForRoutes = true;
                         continue;
                     }
 
-                    if (!reachable) continue;
+                    if (routeResult.Status != DroneRouteEvaluationStatusEnum.Reachable) continue;
+                    float distance = routeResult.TotalDistance;
                     if (bestStorage == Entity.Null || distance < bestDistance ||
                         (distance == bestDistance && DroneSchedulingUtility.ComparePlacement(manager, storage, bestStorage) < 0))
                     {
@@ -344,16 +355,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         // 제외 목록은 이번 판단에만 쓰며 실제 요청 삭제는 아래 경로 의도와 Execution을 거친다.
         for (int i = 0; i < routes.Length; i++)
         {
-            var request = manager.GetComponentData<DroneRouteEvaluationRequest>(routes[i]);
-            bool invalid = !DroneSchedulingUtility.RouteIsCurrent(manager, request, carryingCapacity);
-            if (!invalid && manager.HasComponent<DroneRouteEvaluationResult>(routes[i]))
-            {
-                var result = DroneSchedulingUtility.ReadCurrentRouteResult(manager, routes[i]);
-                invalid = result.EvaluationRevision != request.EvaluationRevision ||
-                          (result.Status != DroneRouteEvaluationStatusEnum.None &&
-                           !DroneSchedulingUtility.TryReadRoute(manager, routes[i], carryingCapacity, out _, out _));
-            }
-            if (invalid)
+            if (DroneSchedulingUtility.IsRouteInvalid(manager, routes[i], carryingCapacity))
             {
                 removedRoutes.Add(routes[i]);
             }
@@ -509,9 +511,8 @@ public partial struct DroneTaskDecisionSystem : ISystem
         route = FindOrRequestRoute(manager, assignment.Worker, observation, Entity.Null, Entity.Null,
             routes, pending, routeDecisions, removedRoutes, usedRoutes, capacity, entity, assignment.Revision, true);
         if (route == Entity.Null) return false;
-        if (!DroneSchedulingUtility.TryReadRoute(manager, route, capacity, out bool reachable, out _)) return false;
-        if (!reachable) return false;
-        var result = DroneSchedulingUtility.ReadCurrentRouteResult(manager, route);
+        if (!DroneSchedulingUtility.TryReadRoute(manager, route, capacity, out var result)) return false;
+        if (result.Status != DroneRouteEvaluationStatusEnum.Reachable) return false;
         if (!result.HasDropPosition) return false;
         // 현재 셀은 호출자의 네트워크 자격을 통과했다. 외부 평가 좌표도 같은 망 안이어야 한다.
         if (!DroneTaskNetworkUtility.IsCellInNetwork(networks, network, result.DropPosition))
@@ -559,18 +560,22 @@ public partial struct DroneTaskDecisionSystem : ISystem
             else if (!DroneSchedulingUtility.HasStorageSpace(manager, destination, assignment.ItemType, registry)) continue;
             Entity route = FindOrRequestRoute(manager, assignment.Worker, observation, Entity.Null, destination,
                 routes, pending, routeDecisions, removedRoutes, usedRoutes, capacity, entity, assignment.Revision);
-            if (route == Entity.Null || !DroneSchedulingUtility.TryReadRoute(manager, route, capacity,
-                out bool reachable, out float distance))
+            if (route == Entity.Null)
             {
                 waiting = true;
                 continue;
             }
-            if (!reachable)
+            if (!DroneSchedulingUtility.TryReadRoute(manager, route, capacity, out var routeResult))
             {
-                waitingForEnergy |= DroneSchedulingUtility.ReadCurrentRouteResult(manager, route).Status ==
-                    DroneRouteEvaluationStatusEnum.WaitingForEnergy;
+                waiting = true;
                 continue;
             }
+            if (routeResult.Status != DroneRouteEvaluationStatusEnum.Reachable)
+            {
+                waitingForEnergy |= routeResult.Status == DroneRouteEvaluationStatusEnum.WaitingForEnergy;
+                continue;
+            }
+            float distance = routeResult.TotalDistance;
             if (bestDestination == Entity.Null || distance < bestDistance ||
                 (distance == bestDistance && DroneSchedulingUtility.ComparePlacement(manager, destination, bestDestination) < 0))
             {

@@ -48,23 +48,23 @@ public class ResourcePrefabDatabaseAuthoring : MonoBehaviour
     public void PopulateFromResources()
     {
         Prefabs.Clear();
+        Prefabs.AddRange(DiscoverResourcePrefabs());
+    }
 
+    private static IEnumerable<ResourcePrefabEntry> DiscoverResourcePrefabs()
+    {
         var loadedPrefabs = Resources.LoadAll<GameObject>("Prefabs/Resource");
-        if (loadedPrefabs == null || loadedPrefabs.Length == 0)
+        if (loadedPrefabs == null)
         {
-            return;
+            yield break;
         }
 
         foreach (var prefab in loadedPrefabs)
         {
-            string prefabName = prefab.name.Trim().Replace(" ", "_");
-
-            if (Enum.TryParse<ItemTypeEnum>(prefabName, true, out var itemType))
+            string normalizedName = prefab.name.Trim().Replace(" ", "_");
+            if (Enum.TryParse<ItemTypeEnum>(normalizedName, true, out var itemType) && itemType != ItemTypeEnum.None)
             {
-                if (itemType != ItemTypeEnum.None)
-                {
-                    Prefabs.Add(new ResourcePrefabEntry(itemType, prefab));
-                }
+                yield return new ResourcePrefabEntry(itemType, prefab);
             }
         }
     }
@@ -80,18 +80,10 @@ public class ResourcePrefabDatabaseAuthoring : MonoBehaviour
 
             if (authoring.LoadMode == ResourcePrefabLoadMode.ResourcesAutoLoad)
             {
-                var loadedPrefabs = Resources.LoadAll<GameObject>("Prefabs/Resource");
-                if (loadedPrefabs != null)
+                foreach (var entry in DiscoverResourcePrefabs())
                 {
-                    foreach (var prefab in loadedPrefabs)
-                    {
-                        string prefabName = prefab.name.Trim().Replace(" ", "_");
-                        if (Enum.TryParse<ItemTypeEnum>(prefabName, true, out var itemType) && itemType != ItemTypeEnum.None)
-                        {
-                            Entity prefabEntity = GetEntity(prefab, TransformUsageFlags.Renderable);
-                            buffer.Add(new ResourcePrefabElement(itemType, prefabEntity));
-                        }
-                    }
+                    Entity prefabEntity = GetEntity(entry.Prefab, TransformUsageFlags.Renderable);
+                    buffer.Add(new ResourcePrefabElement(entry.Type, prefabEntity));
                 }
             }
             else

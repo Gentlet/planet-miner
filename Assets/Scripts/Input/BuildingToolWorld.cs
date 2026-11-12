@@ -179,8 +179,7 @@ public static class BuildingToolWorld
         }
         else
         {
-            Entity request = DroneTaskRequestUtility.SubmitCreate(manager, DroneLogisticsTaskKindEnum.BuildingDemolition,
-                target, ItemTypeEnum.None);
+            Entity request = DroneTaskRequestUtility.SubmitBuildingDemolition(manager, target);
             manager.AddComponent<WorldUiRequestOwner>(request);
         }
     }
@@ -219,13 +218,14 @@ public static class BuildingToolWorld
         var definitions = manager.GetBuffer<BuildingConfigElement>(configs.GetSingletonEntity(), true).AsNativeArray();
         try
         {
+            var settingsRead = new BuildingSettingsUtility.SettingsReadContext(manager);
             for (int i = 0; i < candidates.Count; i++)
             {
                 var candidate = candidates[i];
                 native[i] = candidate;
                 if (candidate.Settings.HasValues &&
                     BuildingConfigLookupUtility.TryGetConfig(definitions, candidate.BuildingId, out var config) &&
-                    !BuildingSettingsUtility.IsAllowed(manager, config.BuildingType, candidate.Settings))
+                    !BuildingSettingsUtility.IsAllowed(config.BuildingType, candidate.Settings, ref settingsRead))
                 {
                     settings[i] = PlacementValidationCode.InvalidBuildingSettings;
                 }

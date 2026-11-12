@@ -756,11 +756,14 @@ public static class DroneSchedulingUtility
         return manager.GetComponentData<DroneRouteEvaluationResult>(request);
     }
 
+    /// <summary>
+    /// 이번 틱에 준비된 판단을 우선하며 그 외에는 EndSimulation에 공개된 결과를 읽는다.
+    /// 현재 요청의 도달 불가와 에너지 대기도 유효한 결과다. 미평가 또는 무효 결과는 false를 반환한다.
+    /// </summary>
     public static bool TryReadRoute(EntityManager manager, Entity requestEntity, int carryingCapacity,
-        out bool reachable, out float distance)
+        out DroneRouteEvaluationResult result)
     {
-        reachable = false;
-        distance = 0f;
+        result = default;
         if (!manager.HasComponent<DroneRouteEvaluationRequest>(requestEntity) ||
             !manager.HasComponent<DroneRouteEvaluationResult>(requestEntity))
         {
@@ -768,12 +771,38 @@ public static class DroneSchedulingUtility
         }
 
         var request = manager.GetComponentData<DroneRouteEvaluationRequest>(requestEntity);
-        var result = ReadCurrentRouteResult(manager, requestEntity);
-        if (!RouteIsCurrent(manager, request, carryingCapacity) || result.EvaluationRevision != request.EvaluationRevision)
+        var current = ReadCurrentRouteResult(manager, requestEntity);
+        if (!RouteIsCurrent(manager, request, carryingCapacity) || current.EvaluationRevision != request.EvaluationRevision ||
+            !IsValidCompletedRouteResult(manager, request, current))
         {
             return false;
         }
 
+        result = current;
+        return true;
+    }
+
+    // 현재 요청의 미평가 결과는 보존해 후속 평가를 기다린다.
+    internal static bool IsRouteInvalid(EntityManager manager, Entity requestEntity, int carryingCapacity)
+    {
+        var request = manager.GetComponentData<DroneRouteEvaluationRequest>(requestEntity);
+        if (!RouteIsCurrent(manager, request, carryingCapacity))
+        {
+            return true;
+        }
+        if (!manager.HasComponent<DroneRouteEvaluationResult>(requestEntity))
+        {
+            return false;
+        }
+
+        var result = ReadCurrentRouteResult(manager, requestEntity);
+        return result.EvaluationRevision != request.EvaluationRevision ||
+               (result.Status != DroneRouteEvaluationStatusEnum.None && !IsValidCompletedRouteResult(manager, request, result));
+    }
+
+    private static bool IsValidCompletedRouteResult(EntityManager manager, in DroneRouteEvaluationRequest request,
+        in DroneRouteEvaluationResult result)
+    {
         if (result.Status == DroneRouteEvaluationStatusEnum.Unreachable ||
             result.Status == DroneRouteEvaluationStatusEnum.WaitingForEnergy)
         {
@@ -785,12 +814,8 @@ public static class DroneSchedulingUtility
             return false;
         }
 
-        if (request.IsDropPositionSearch && (!result.HasDropPosition ||
-            !ConstructionSiteWorldItemUtility.IsWorldPositionAllowed(manager, result.DropPosition))) return false;
-
-        reachable = true;
-        distance = result.TotalDistance;
-        return true;
+        return !request.IsDropPositionSearch || (result.HasDropPosition &&
+            ConstructionSiteWorldItemUtility.IsWorldPositionAllowed(manager, result.DropPosition));
     }
 
     public static int CandidateQuantity(EntityManager manager, in DroneTaskCandidateDecisionElement candidate, Entity registry,
@@ -805,7 +830,11 @@ public static class DroneSchedulingUtility
 
         var observation = manager.GetComponentData<DroneWorkerObservation>(candidate.Worker);
         if (observation.Revision != candidate.WorkerObservationRevision ||
-            !TryReadRoute(manager, candidate.RouteRequest, carryingCapacity, out bool reachable, out _) || !reachable)
+            !TryReadRoute(manager, candidate.RouteRequest, carryingCapacity, out var routeResult))
+        {
+            return 0;
+        }
+        if (routeResult.Status != DroneRouteEvaluationStatusEnum.Reachable)
         {
             return 0;
         }
@@ -876,14 +905,26 @@ public static class DroneSchedulingUtility
             if (!ConstructionSiteWorldItemUtility.IsWorldPositionAllowed(manager, candidate.DropPosition)) return 0;
             if (candidate.RouteRequest == Entity.Null)
                 return math.all((int2)math.floor(observation.Position.xy) == candidate.DropPosition) ? quantity : 0;
-            if (!TryReadRoute(manager, candidate.RouteRequest, carryingCapacity, out bool dropReachable, out _) ||
-                !dropReachable) return 0;
+            if (!TryReadRoute(manager, candidate.RouteRequest, carryingCapacity, out var dropResult))
+            {
+                return 0;
+            }
+            if (dropResult.Status != DroneRouteEvaluationStatusEnum.Reachable)
+            {
+                return 0;
+            }
             var dropRequest = manager.GetComponentData<DroneRouteEvaluationRequest>(candidate.RouteRequest);
-            var dropResult = ReadCurrentRouteResult(manager, candidate.RouteRequest);
             if (!dropRequest.IsDropPositionSearch || dropRequest.Assignment != candidate.Assignment) return 0;
             return math.all(dropResult.DropPosition == candidate.DropPosition) ? quantity : 0;
         }
-        if (!TryReadRoute(manager, candidate.RouteRequest, carryingCapacity, out bool reachable, out _) || !reachable) return 0;
+        if (!TryReadRoute(manager, candidate.RouteRequest, carryingCapacity, out var routeResult))
+        {
+            return 0;
+        }
+        if (routeResult.Status != DroneRouteEvaluationStatusEnum.Reachable)
+        {
+            return 0;
+        }
         var route = manager.GetComponentData<DroneRouteEvaluationRequest>(candidate.RouteRequest);
         if (route.Kind != DroneRouteKindEnum.Direct || route.Assignment != candidate.Assignment ||
             route.Destination != candidate.Destination) return 0;

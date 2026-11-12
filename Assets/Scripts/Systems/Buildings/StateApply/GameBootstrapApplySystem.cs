@@ -170,7 +170,7 @@ public struct ApplyGameBootstrapJob : IJob
         }
 
         Entity main = BuildingLifecycleUtility.SpawnConfiguredBuilding(ref ECB, int2.zero,
-            DirectionEnum.Up, config.Footprint, RequestData[request].Stamp,
+            DirectionEnum.Up, RequestData[request].Stamp,
             BuildingDatabase, config, BuildingPrefabs);
         if (main == Entity.Null)
         {
@@ -184,7 +184,7 @@ public struct ApplyGameBootstrapJob : IJob
             for (int count = 0; count < slot.Quantity; count++)
             {
                 Entity item = ItemLifecycleUtility.SpawnPrefabItem(ref ECB, slot.Prefab, slot.Type,
-                    int2.zero, float3.zero, ItemOwnership.Stored(main));
+                    int2.zero, ItemOwnership.Stored(main));
                 ECB.AppendToBuffer(main, new StoredItemElement(item, slot.Type, slot.Slot));
             }
         }

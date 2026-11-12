@@ -115,8 +115,8 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
             {
                 var cargo = manager.GetBuffer<StoredItemElement>(assignment.Worker, true);
                 decision.WantedQuantity = cargo.Length;
-                int capacity = CaptureStorageSlots(manager, assignment.Destination, assignment.ItemType,
-                    registry, slots, decision.WantedQuantity, request.Action.Assignment, assignment.DestinationArea);
+                int capacity = CaptureStorageSlots(manager, assignment, registry, slots,
+                    decision.WantedQuantity, request.Action.Assignment);
                 SelectStoredItems(manager, assignment.Worker, assignment.ItemType, cargo, items);
                 decision.MaximumQuantity = math.min(capacity, items.Length);
                 if (assignment.DestinationArea == DroneTransportAreaEnum.Input)
@@ -157,7 +157,8 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
         {
             foreach (var product in manager.GetBuffer<ProductItemElement>(assignment.Source, true))
             {
-                if (product.ItemType == assignment.ItemType && DroneItemTransferUtility.CanMove(manager, product.ItemEntity, product.ItemType, assignment.Source))
+                if (product.ItemType == assignment.ItemType &&
+                    ItemOwnershipApplySystem.CanTransferItem(manager, product.ItemEntity, product.ItemType, assignment.Source))
                 {
                     items.Add(new DroneItemTransferItemDecisionElement { ItemEntity = product.ItemEntity });
                 }
@@ -180,7 +181,7 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
         // 승인된 명시 의도가 합쳐졌다면 현장 종료 뒤에도 일반 바닥 자격으로 진행한다.
         // 이후 적재 출처가 Recovery로 유지되어 보관처 입고 전에는 건설 공급으로 전용되지 않는다.
         if (!DroneSchedulingUtility.IsStorage(manager, assignment.Destination)) return;
-        if (!DroneItemTransferUtility.CanMove(manager, assignment.Source, assignment.ItemType, Entity.Null)) return;
+        if (!ItemOwnershipApplySystem.CanTransferItem(manager, assignment.Source, assignment.ItemType, Entity.Null)) return;
         var task = manager.GetComponentData<DroneLogisticsTask>(assignment.Task);
         if (!DroneWorldItemRecoveryUtility.IsReasonValid(manager, task, sites))
         {
@@ -218,7 +219,7 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
             {
                 continue;
             }
-            if (!DroneItemTransferUtility.CanMove(manager, entry.ItemEntity, type, owner)) continue;
+            if (!ItemOwnershipApplySystem.CanTransferItem(manager, entry.ItemEntity, type, owner)) continue;
             bool duplicate = false;
             for (int j = 0; j < selected.Length; j++) duplicate |= selected[j].ItemEntity == entry.ItemEntity;
             if (duplicate) continue;
@@ -226,15 +227,16 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
         }
     }
 
-    private static int CaptureStorageSlots(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry,
-        DynamicBuffer<DroneItemTransferSlotDecisionElement> snapshot, int wanted, Entity deliveryAssignment,
-        DroneTransportAreaEnum area)
+    private static int CaptureStorageSlots(EntityManager manager, in DroneTaskAssignment assignment, Entity registry,
+        DynamicBuffer<DroneItemTransferSlotDecisionElement> snapshot, int wanted, Entity deliveryAssignment)
     {
+        Entity storage = assignment.Destination;
+        ItemTypeEnum type = assignment.ItemType;
         if (type == ItemTypeEnum.Drone && manager.HasComponent<PreparingStationDemolition>(storage) &&
             !DroneStationRelocationUtility.CanReceiveCommittedDroneCargo(manager, storage, deliveryAssignment)) return 0;
         // 이 슬롯 기록은 런타임 Storage의 복제 원본이 아니라 이번 행동에 허용할 공간 상한이다.
         // 뒤의 출고로 공간이 늘어도 상한을 확장하지 않고, 실제 성공분만 Lifecycle의 슬롯 예산에서 차감한다.
-        if (DroneSchedulingUtility.FindStorageSlot(manager, storage, type, registry, area) < 0)
+        if (DroneSchedulingUtility.FindStorageSlot(manager, storage, type, registry, assignment.DestinationArea) < 0)
         {
             return 0;
         }

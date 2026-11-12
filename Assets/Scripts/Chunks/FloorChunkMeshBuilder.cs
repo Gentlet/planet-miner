@@ -96,7 +96,7 @@ internal sealed class FloorChunkMeshBuilder : IDisposable
             {
                 var cell = minimumCell + new int2(x, y);
                 var selection = FloorBiomeSampler.SelectFloor(seed, settings, biomes, variants, cell);
-                var variant = FloorBiomeSampler.GetVariant(settings, biomes, variants, selection);
+                var variant = FloorBiomeSampler.GetVariant(biomes, variants, selection);
                 AppendTile(_tiles[variant.SpriteResourcePath], x, y);
             }
         }

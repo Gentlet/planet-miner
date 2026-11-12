@@ -80,7 +80,6 @@ public partial struct CrafterDecisionSystem : ISystem
             CrafterDecisionHandle = SystemAPI.GetComponentTypeHandle<CrafterDecision>(false),
             CrafterStateDecisionHandle = SystemAPI.GetComponentTypeHandle<CrafterStateDecision>(false),
             CrafterStateHandle = SystemAPI.GetComponentTypeHandle<CrafterState>(true),
-            StoredItemElementHandle = SystemAPI.GetBufferTypeHandle<StoredItemElement>(true),
             ProductItemElementHandle = SystemAPI.GetBufferTypeHandle<ProductItemElement>(true),
             ProductResultHandle = SystemAPI.GetBufferTypeHandle<ProductResult>(true),
             RecipeRegistryEntity = recipeRegistryEntity,
@@ -110,7 +109,6 @@ public partial struct CrafterDecisionJob : IJobChunk
     public ComponentTypeHandle<CrafterDecision> CrafterDecisionHandle;
     public ComponentTypeHandle<CrafterStateDecision> CrafterStateDecisionHandle;
     [ReadOnly] public ComponentTypeHandle<CrafterState> CrafterStateHandle;
-    [ReadOnly] public BufferTypeHandle<StoredItemElement> StoredItemElementHandle;
     [ReadOnly] public BufferTypeHandle<ProductItemElement> ProductItemElementHandle;
     [ReadOnly] public BufferTypeHandle<ProductResult> ProductResultHandle;
 
@@ -130,7 +128,6 @@ public partial struct CrafterDecisionJob : IJobChunk
         var crafterStateDecisionValues = chunk.GetNativeArray(ref CrafterStateDecisionHandle);
         var crafterStateDecisionEnabled = chunk.GetEnabledMask(ref CrafterStateDecisionHandle);
         var crafterStateValues = chunk.GetNativeArray(ref CrafterStateHandle);
-        var storedItemElementValues = chunk.GetBufferAccessorRO(ref StoredItemElementHandle);
         var productItemElementValues = chunk.GetBufferAccessorRO(ref ProductItemElementHandle);
         var productResultValues = chunk.GetBufferAccessorRO(ref ProductResultHandle);
         var registryRead = new RegistryReadContext();
@@ -140,7 +137,6 @@ public partial struct CrafterDecisionJob : IJobChunk
             var decisionRef = new RefRW<CrafterDecision>(crafterDecisionValues, index);
             var stateDecisionRef = new RefRW<CrafterStateDecision>(crafterStateDecisionValues, index);
             var stateValue = crafterStateValues[index];
-            var storedItemsValue = storedItemElementValues[index];
             var productItemsValue = productItemElementValues[index];
             var productResultsValue = productResultValues[index];
             ExecuteEntity(entities[index],
@@ -149,7 +145,6 @@ public partial struct CrafterDecisionJob : IJobChunk
                 ref stateDecisionRef.ValueRW,
                 crafterStateDecisionEnabled.GetEnabledRefRW<CrafterStateDecision>(index),
                 in stateValue,
-                in storedItemsValue,
                 in productItemsValue,
                 in productResultsValue, ref registryRead);
         }
@@ -187,7 +182,6 @@ public partial struct CrafterDecisionJob : IJobChunk
         ref CrafterStateDecision stateDecision,
         EnabledRefRW<CrafterStateDecision> stateDecisionEnabled,
         in CrafterState state,
-        in DynamicBuffer<StoredItemElement> storedItems,
         in DynamicBuffer<ProductItemElement> productItems,
         in DynamicBuffer<ProductResult> productResults, ref RegistryReadContext registryRead)
     {
@@ -363,7 +357,7 @@ public partial struct CrafterDecisionJob : IJobChunk
         }
         else
         {
-            // 신규 제작 대기 상태: StoredItemElement에 레시피 필요 재료가 완비되었는지 검사
+            // 신규 제작 대기 상태에서는 Preparation이 게시한 재료 충족 판정을 사용한다.
             bool hasAllIngredients = preparation.CanStartCraft;
 
             if (hasAllIngredients)

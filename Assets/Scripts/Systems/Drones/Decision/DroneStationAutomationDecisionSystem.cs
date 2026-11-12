@@ -118,13 +118,11 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
             if (docked && !linked && manager.GetBuffer<StoredItemElement>(worker, true).IsEmpty)
                 DroneStationAutomationUtility.PrepareDemand(manager, _candidates, worker, station, tasks, sites, storages,
                     assignments, networks, registry, capacity, maximum, plans);
-            var operation = DroneStationOperation.Store;
-            var request = new DroneStationRequest { Drone = worker, Station = station, Operation = operation };
+            var request = new DroneStationRequest { Drone = worker, Station = station, Operation = DroneStationOperation.Store };
             if (eligibility.Validate(request, maximum, true) != DroneStationRequestStatus.Applied)
             {
                 if (docked) continue;
-                operation = DroneStationOperation.Dock;
-                request.Operation = operation;
+                request.Operation = DroneStationOperation.Dock;
                 if (eligibility.Validate(request, maximum, true) != DroneStationRequestStatus.Applied) continue;
             }
             // 만석 정거장에 실패 요청을 매 틱 만들면 귀환 재선택을 계속 막는다.
@@ -132,9 +130,9 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
             slotRanges.Clear();
             slotPreview.Clear();
             int preferred = docked ? manager.GetComponentData<DroneDocked>(worker).SlotIndex : -1;
-            if (DroneStationLifecycleUtility.ReserveSlot(station, worker, operation, preferred, maximumStack,
+            if (DroneStationLifecycleUtility.ReserveSlot(request, preferred, maximumStack,
                 eligibility.Storages, dedicated, eligibility.Items, eligibility.Docked, slotRanges, slotPreview, eligibility.Reserved) < 0) continue;
-            intents.Add(new DroneStationAutomationIntent { Drone = worker, Station = station, Operation = operation });
+            intents.Add(new DroneStationAutomationIntent { Drone = request.Drone, Station = request.Station, Operation = request.Operation });
         }
         foreach (Entity item in stored)
         {

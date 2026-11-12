@@ -36,6 +36,25 @@ public struct ItemSpatialIndex : IComponentData
         return Map.TryGetNextValue(out item, ref iterator);
     }
 
+    internal readonly bool ContainsItemAt(int2 position, Entity item)
+    {
+        if (!Map.TryGetFirstValue(position, out Entity entry, out var iterator))
+        {
+            return false;
+        }
+
+        do
+        {
+            if (entry == item)
+            {
+                return true;
+            }
+        }
+        while (Map.TryGetNextValue(out entry, ref iterator));
+
+        return false;
+    }
+
     /// <summary>
     /// 해당 좌표에 존재하는 아이템의 총 개수를 반환.
     /// </summary>

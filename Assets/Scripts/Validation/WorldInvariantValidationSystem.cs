@@ -105,20 +105,23 @@ public partial class WorldInvariantValidationSystem : SystemBase
             resourceFenceRw.ValueRW.Complete();
         }
 
-        bool hasItemSpatialIndex = SystemAPI.TryGetSingleton<ItemSpatialIndex>(out var itemSpatialIndex);
+        if (!SystemAPI.TryGetSingleton<ItemSpatialIndex>(out var itemSpatialIndex))
+        {
+            itemSpatialIndex = default;
+        }
         ComponentLookup<BeltMovementState>? beltMovementLookup = null;
 
         // 월드 실물과 공간 인덱스의 양방향 정합성.
-        ValidateItemAndSpatialInvariants(hasItemSpatialIndex, itemSpatialIndex);
+        ValidateItemAndSpatialInvariants(itemSpatialIndex);
 
         // 정상 소비돼야 하는 일반 이전/삭제 요청의 잔류 검사. 여기서 대신 소비하지 않는다.
         ValidateRequestLifecycleInvariants();
 
         // 벨트 이동 계획 소비와 위치/간격 검사.
-        ValidateBeltInvariants(hasItemSpatialIndex, itemSpatialIndex, ref beltMovementLookup);
+        ValidateBeltInvariants(itemSpatialIndex, ref beltMovementLookup);
 
         // 소유 버퍼/Owner 참조와 보관 슬롯 규칙 검사.
-        ValidateStorageInvariants(hasItemSpatialIndex, itemSpatialIndex, ref beltMovementLookup);
+        ValidateStorageInvariants(itemSpatialIndex, ref beltMovementLookup);
         ValidateDroneStationInvariants();
 
         // 승인된 입출고/라우팅 결정의 잔류 검사.
@@ -131,9 +134,9 @@ public partial class WorldInvariantValidationSystem : SystemBase
     /// <summary>
     /// Item 도메인 및 공간 인덱스(ItemSpatialIndex) 간의 양방향 정합성을 검증.
     /// </summary>
-    private void ValidateItemAndSpatialInvariants(bool hasSpatialIndex, in ItemSpatialIndex spatialIndex)
+    private void ValidateItemAndSpatialInvariants(in ItemSpatialIndex spatialIndex)
     {
-        if (!hasSpatialIndex || !spatialIndex.Map.IsCreated)
+        if (!spatialIndex.Map.IsCreated)
         {
             return;
         }
@@ -147,21 +150,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
             if (ownership.ValueRO.IsWorldItem)
             {
                 int2 targetPos = pos.ValueRO.Value;
-                bool foundInIndex = false;
-
-                if (spatialIndex.TryGetFirstItem(targetPos, out Entity itemEntity, out var it))
-                {
-                    do
-                    {
-                        if (itemEntity == entity)
-                        {
-                            foundInIndex = true;
-                            break;
-                        }
-                    } while (spatialIndex.TryGetNextItem(out itemEntity, ref it));
-                }
-
-                if (!foundInIndex)
+                if (!spatialIndex.ContainsItemAt(targetPos, entity))
                 {
                     ReportViolation(
                         "ItemSpatial",
@@ -281,7 +270,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
     /// - 3. GameConstants의 타일 수용량 초과 및 ItemSpacing 침범 감시
     /// - 4. 연속된 타일 경계 횡단 간격(Boundary Gap) 침범 감시
     /// </summary>
-    private void ValidateBeltInvariants(bool hasSpatialIndex, in ItemSpatialIndex itemSpatialIndex,
+    private void ValidateBeltInvariants(in ItemSpatialIndex itemSpatialIndex,
         ref ComponentLookup<BeltMovementState>? sharedBeltMovementLookup)
     {
         if (!SystemAPI.TryGetSingleton<BeltSpatialIndex>(out var beltIndex) || !beltIndex.Map.IsCreated)
@@ -289,7 +278,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
             return;
         }
 
-        if (!hasSpatialIndex || !itemSpatialIndex.Map.IsCreated)
+        if (!itemSpatialIndex.Map.IsCreated)
         {
             return;
         }
@@ -531,7 +520,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
     /// 소유권 양방향 무결성 및 월드 상태 비활성화를 검사하고,
     /// Storage에만 슬롯 범위·품목·정원·필터 규칙을 적용한다.
     /// </summary>
-    private void ValidateStorageInvariants(bool hasSpatialIndex, in ItemSpatialIndex itemSpatialIndex,
+    private void ValidateStorageInvariants(in ItemSpatialIndex itemSpatialIndex,
         ref ComponentLookup<BeltMovementState>? sharedBeltMovementLookup)
     {
         StorageValidationRegistryContext registryContext = default;
@@ -711,24 +700,17 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 }
 
                 // C. 보관된 아이템이 ItemSpatialIndex에 잘못 등록되어 있는지 확인
-                if (hasSpatialIndex && itemSpatialIndex.Map.IsCreated &&
+                if (itemSpatialIndex.Map.IsCreated &&
                     SystemAPI.TryGetComponent<GridPosition>(itemEntity, out var position))
                 {
                     int2 gridPos = position.Value;
-                    if (itemSpatialIndex.TryGetFirstItem(gridPos, out Entity foundItem, out var it))
+                    if (itemSpatialIndex.ContainsItemAt(gridPos, itemEntity))
                     {
-                        do
-                        {
-                            if (foundItem == itemEntity)
-                            {
-                                ReportViolation(
-                                    "StorageInvariant",
-                                    $"Stored item ({itemEntity.Index}:{itemEntity.Version}) in Storage ({storageEntity.Index}:{storageEntity.Version}) is erroneously registered in ItemSpatialIndex at ({gridPos.x}, {gridPos.y}).",
-                                    storageEntity
-                                );
-                                break;
-                            }
-                        } while (itemSpatialIndex.TryGetNextItem(out foundItem, ref it));
+                        ReportViolation(
+                            "StorageInvariant",
+                            $"Stored item ({itemEntity.Index}:{itemEntity.Version}) in Storage ({storageEntity.Index}:{storageEntity.Version}) is erroneously registered in ItemSpatialIndex at ({gridPos.x}, {gridPos.y}).",
+                            storageEntity
+                        );
                     }
                 }
 
@@ -827,25 +809,18 @@ public partial class WorldInvariantValidationSystem : SystemBase
                     continue;
                 }
 
-                // C. 보관된 아이템이 ItemSpatialIndex에 잘못 등록되어 있는지 확인
-                if (hasSpatialIndex && itemSpatialIndex.Map.IsCreated &&
+                // C. 생산품이 ItemSpatialIndex에 잘못 등록되어 있는지 확인
+                if (itemSpatialIndex.Map.IsCreated &&
                     SystemAPI.TryGetComponent<GridPosition>(itemEntity, out var position))
                 {
                     int2 gridPos = position.Value;
-                    if (itemSpatialIndex.TryGetFirstItem(gridPos, out Entity foundItem, out var it))
+                    if (itemSpatialIndex.ContainsItemAt(gridPos, itemEntity))
                     {
-                        do
-                        {
-                            if (foundItem == itemEntity)
-                            {
-                                ReportViolation(
-                                    "StorageInvariant",
-                                    $"Stored product item ({itemEntity.Index}:{itemEntity.Version}) in Producer ({producerEntity.Index}:{producerEntity.Version}) is erroneously registered in ItemSpatialIndex at ({gridPos.x}, {gridPos.y}).",
-                                    producerEntity
-                                );
-                                break;
-                            }
-                        } while (itemSpatialIndex.TryGetNextItem(out foundItem, ref it));
+                        ReportViolation(
+                            "StorageInvariant",
+                            $"Stored product item ({itemEntity.Index}:{itemEntity.Version}) in Producer ({producerEntity.Index}:{producerEntity.Version}) is erroneously registered in ItemSpatialIndex at ({gridPos.x}, {gridPos.y}).",
+                            producerEntity
+                        );
                     }
                 }
 
@@ -971,13 +946,12 @@ public partial class WorldInvariantValidationSystem : SystemBase
             return false;
         }
 
-        var recipes = context.Recipes;
-        if (!RecipeConfigLookupUtility.TryGetRecipeIndex(recipes, recipeId, out int recipeIndex))
+        if (!RecipeConfigLookupUtility.TryGetRecipe(context.Recipes, recipeId, out var recipe))
         {
             return false;
         }
 
-        return recipes[recipeIndex].IngredientCount == 0;
+        return recipe.IngredientCount == 0;
     }
 
     /// <summary>

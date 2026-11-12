@@ -17,14 +17,17 @@ public static class ItemLifecycleUtility
         ecb.DestroyEntity(item);
     }
 
+    /// <summary>월드 실물의 표시 위치는 격자 위치를 사용하고, 수납 실물은 원점에 둔다. 반환 엔티티는 ECB 재생에서 생성된다.</summary>
     public static Entity SpawnPrefabItem(
         ref EntityCommandBuffer ecb,
         Entity prefab,
         ItemTypeEnum itemType,
         int2 gridPosition,
-        float3 worldPosition,
         ItemOwnership ownership)
     {
+        float3 worldPosition = ownership.IsWorldItem
+            ? new float3(gridPosition.x, gridPosition.y, 0f)
+            : float3.zero;
         Entity item = RuntimePrefabLifecycleUtility.Instantiate(ref ecb, prefab);
         InitializeItemRole(ref ecb, item, itemType, gridPosition, worldPosition, ownership);
         return item;

@@ -44,11 +44,11 @@ public static class BuildingSettingsUtility
             if (settings.RecipeId > 0)
             {
                 var entries = read.Recipes;
-                if (!entries.IsCreated || !RecipeConfigLookupUtility.TryGetRecipeIndex(entries, settings.RecipeId, out int index))
+                if (!entries.IsCreated || !RecipeConfigLookupUtility.TryGetRecipe(entries, settings.RecipeId, out var recipe))
                 {
                     return false;
                 }
-                if (!entries[index].IsUnlocked)
+                if (!recipe.IsUnlocked)
                 {
                     return false;
                 }

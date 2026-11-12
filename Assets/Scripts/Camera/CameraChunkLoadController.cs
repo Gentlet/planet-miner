@@ -14,35 +14,9 @@ using UnityEngine;
 [DefaultExecutionOrder(100)]
 public sealed class CameraChunkLoadController : MonoBehaviour
 {
-    private readonly struct ChunkCandidate : IComparable<ChunkCandidate>
-    {
-        public readonly int2 Coordinate;
-        private readonly double _distanceSquared;
-
-        public ChunkCandidate(int2 coordinate, Vector2 worldCenter)
-        {
-            Coordinate = coordinate;
-            double offset = (ChunkUtility.ChunkSize - 1) * 0.5d;
-            double x = coordinate.x * (double)ChunkUtility.ChunkSize + offset - worldCenter.x;
-            double y = coordinate.y * (double)ChunkUtility.ChunkSize + offset - worldCenter.y;
-            _distanceSquared = x * x + y * y;
-        }
-
-        public int CompareTo(ChunkCandidate other)
-        {
-            int distance = _distanceSquared.CompareTo(other._distanceSquared);
-            if (distance != 0)
-            {
-                return distance;
-            }
-            int row = Coordinate.y.CompareTo(other.Coordinate.y);
-            return row != 0 ? row : Coordinate.x.CompareTo(other.Coordinate.x);
-        }
-    }
-
     [SerializeField, Min(0)] private int _prefetchMarginInChunks = 1;
     private Camera _camera;
-    private readonly SortedSet<ChunkCandidate> _frontier = new SortedSet<ChunkCandidate>();
+    private readonly SortedSet<CameraChunkLoadUtility.ChunkCandidate> _frontier = new();
     private readonly HashSet<int2> _visited = new HashSet<int2>();
 
     private void OnEnable()
@@ -142,7 +116,7 @@ public sealed class CameraChunkLoadController : MonoBehaviour
         {
             return;
         }
-        _frontier.Add(new ChunkCandidate(coordinate, center));
+        _frontier.Add(new CameraChunkLoadUtility.ChunkCandidate(coordinate, center));
     }
 
     private static bool ContainsRequest(DynamicBuffer<ChunkLoadRequestElement> requests, int2 coordinate)

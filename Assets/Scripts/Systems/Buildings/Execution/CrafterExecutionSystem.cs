@@ -72,7 +72,6 @@ public partial struct CrafterExecutionSystem : ISystem
 
         var job = new CrafterExecutionJob
         {
-            EntityHandle = SystemAPI.GetEntityTypeHandle(),
             CrafterStateHandle = SystemAPI.GetComponentTypeHandle<CrafterState>(false),
             StoredItemElementHandle = SystemAPI.GetBufferTypeHandle<StoredItemElement>(false),
             ProductResultHandle = SystemAPI.GetBufferTypeHandle<ProductResult>(false),
@@ -96,7 +95,6 @@ public partial struct CrafterExecutionSystem : ISystem
 [BurstCompile]
 public partial struct CrafterExecutionJob : IJobChunk
 {
-    [ReadOnly] public EntityTypeHandle EntityHandle;
     public ComponentTypeHandle<CrafterState> CrafterStateHandle;
     public BufferTypeHandle<StoredItemElement> StoredItemElementHandle;
     public BufferTypeHandle<ProductResult> ProductResultHandle;
@@ -111,7 +109,6 @@ public partial struct CrafterExecutionJob : IJobChunk
 
     public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
     {
-        var entities = chunk.GetNativeArray(EntityHandle);
         var crafterStateValues = chunk.GetNativeArray(ref CrafterStateHandle);
         var storedItemElementValues = chunk.GetBufferAccessorRW(ref StoredItemElementHandle);
         var productResultValues = chunk.GetBufferAccessorRW(ref ProductResultHandle);
@@ -124,7 +121,7 @@ public partial struct CrafterExecutionJob : IJobChunk
             var storedItemsValue = storedItemElementValues[index];
             var productResultsValue = productResultValues[index];
             var decisionValue = crafterDecisionValues[index];
-            ExecuteEntity(entities[index],
+            ExecuteEntity(
                 ref stateRef.ValueRW,
                 ref storedItemsValue,
                 ref productResultsValue,
@@ -149,7 +146,6 @@ public partial struct CrafterExecutionJob : IJobChunk
     public ComponentLookup<DestroyItemRequest> DestroyItemRequestLookup;
 
     private void ExecuteEntity(
-        Entity building,
         ref CrafterState state,
         ref DynamicBuffer<StoredItemElement> storedItems,
         ref DynamicBuffer<ProductResult> productResults,

@@ -2,11 +2,23 @@ using Unity.Entities;
 
 /// <summary>
 /// 역할·목적: 게시된 레시피의 ID 조회와 재료 전체의 소비 가능 여부 검사를 제공한다.
-/// 입력·출력: ID에 해당하는 원본 버퍼의 인덱스를 반환한다. 누락이면 false와 -1을 반환한다.
+/// 입력·출력: ID에 해당하는 레시피 또는 원본 버퍼의 인덱스를 반환한다.
 /// 이용·수명: 제작 레시피 요청/실행 경계에서 사용하는 읽기 계산이며 별도 캐시나 ECS 상태를 만들지 않는다.
 /// </summary>
 public static class RecipeConfigLookupUtility
 {
+    public static bool TryGetRecipe(DynamicBuffer<RecipeConfigElement> recipes, int recipeId, out RecipeConfigElement recipe)
+    {
+        if (!TryGetRecipeIndex(recipes, recipeId, out int recipeIndex))
+        {
+            recipe = default;
+            return false;
+        }
+
+        recipe = recipes[recipeIndex];
+        return true;
+    }
+
     public static bool TryGetRecipeIndex(DynamicBuffer<RecipeConfigElement> recipes, int recipeId, out int recipeIndex)
     {
         for (int i = 0; i < recipes.Length; i++)

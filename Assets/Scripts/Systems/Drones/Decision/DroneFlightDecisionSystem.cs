@@ -197,7 +197,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
                 result.HasDropPosition = true;
                 result.DropPosition = drop;
             }
-            else if (!TryPoint(request.Destination, Positions, Footprints, Directions, out destination))
+            else if (!DroneTargetPointUtility.TryGetTargetPoint(request.Destination, Positions, Footprints, Directions, out destination))
             {
                 decision = new DroneRouteEvaluationDecision { Ready = true, Result = result };
                 return;
@@ -206,7 +206,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
             DroneFlightPlan plan;
             if (request.Kind == DroneRouteKindEnum.ViaSource)
             {
-                if (!TryPoint(request.Source, Positions, Footprints, Directions, out var source))
+                if (!DroneTargetPointUtility.TryGetTargetPoint(request.Source, Positions, Footprints, Directions, out var source))
                 {
                     decision = new DroneRouteEvaluationDecision { Ready = true, Result = result };
                     return;
@@ -267,7 +267,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
                             PrepareReturn(transform.Position.xy, battery.CurrentCharge, link.Assignment, assignment, previous, ref decision);
                             return;
                         }
-                        if (!TryPoint(assignment.Source, Positions, Footprints, Directions, out var source) ||
+                        if (!DroneTargetPointUtility.TryGetTargetPoint(assignment.Source, Positions, Footprints, Directions, out var source) ||
                             math.any(transform.Position.xy != source))
                         {
                             decision.Failure = DroneMovementFailureEnum.InvalidGoal;
@@ -350,7 +350,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
             }
             else
             {
-                valid = TryPoint(goal, Positions, Footprints, Directions, out destination);
+                valid = DroneTargetPointUtility.TryGetTargetPoint(goal, Positions, Footprints, Directions, out destination);
             }
             if (!valid)
             {
@@ -361,7 +361,8 @@ public partial struct DroneFlightDecisionSystem : ISystem
             DroneFlightPlan plan;
             bool collecting = assignment.NextAction == DroneActionKindEnum.CollectFromStorage ||
                 assignment.NextAction == DroneActionKindEnum.RecoverWorldItem;
-            if (collecting && TryPoint(assignment.Destination, Positions, Footprints, Directions, out var delivery))
+            if (collecting &&
+                DroneTargetPointUtility.TryGetTargetPoint(assignment.Destination, Positions, Footprints, Directions, out var delivery))
             {
                 plan = DroneFlightPlanningUtility.PlanViaSource(transform.Position.xy, destination, delivery,
                     battery.CurrentCharge, Maximum, Config.EnergyPerDistance, Stations);
@@ -433,11 +434,5 @@ public partial struct DroneFlightDecisionSystem : ISystem
             decision.Station = Stations[station].Entity;
             decision.Target = Stations[station].Position;
         }
-    }
-
-    private static bool TryPoint(Entity entity, ComponentLookup<GridPosition> positions,
-        ComponentLookup<BuildingFootprint> footprints, ComponentLookup<Direction> directions, out float2 point)
-    {
-        return DroneTargetPointUtility.TryGetTargetPoint(entity, positions, footprints, directions, out point);
     }
 }

@@ -140,7 +140,7 @@ internal struct AllocatePowerBudgetsJob : IJob
             Entity generator = Generators[i];
             Entity representative = GeneratorInputs[i].Representative;
             var plan = GeneratorPlans[generator];
-            var type = ReadGeneratorType(i, generator);
+            var type = ReadGeneratorType(i);
             if (type.Type == BuildingTypeEnum.CoalGenerator)
             {
                 var settings = GetGeneratorPowerSettings(i, type, ref configs);
@@ -171,7 +171,7 @@ internal struct AllocatePowerBudgetsJob : IJob
             }
             budgets.TryGetValue(representative, out var budget);
             float available = GeneratorLookup.IsComponentEnabled(generator) ? GeneratorPlans[generator].AvailableEnergy : 0f;
-            if (ReadGeneratorType(i, generator).Type == BuildingTypeEnum.MainFacility)
+            if (ReadGeneratorType(i).Type == BuildingTypeEnum.MainFacility)
             {
                 budget.BaseAvailable += available;
             }
@@ -199,12 +199,12 @@ internal struct AllocatePowerBudgetsJob : IJob
         }
     }
 
-    private BuildingType ReadGeneratorType(int index, Entity generator)
+    private BuildingType ReadGeneratorType(int index)
     {
         var input = GeneratorInputs[index];
         if (!input.TypeRead)
         {
-            input.BuildingType = TypeLookup[generator];
+            input.BuildingType = TypeLookup[Generators[index]];
             input.TypeRead = true;
             GeneratorInputs[index] = input;
         }
@@ -246,8 +246,7 @@ internal struct AllocatePowerBudgetsJob : IJob
         double remainingRated = 0d;
         for (int i = 0; i < Generators.Length; i++)
         {
-            Entity generator = Generators[i];
-            var type = ReadGeneratorType(i, generator);
+            var type = ReadGeneratorType(i);
             if (type.Type == kind && GeneratorInputs[i].Representative == representative)
             {
                 remainingRated += GetRatedEnergy(i, type, ref configs);
@@ -262,7 +261,7 @@ internal struct AllocatePowerBudgetsJob : IJob
             for (int i = 0; i < Generators.Length; i++)
             {
                 Entity generator = Generators[i];
-                var type = ReadGeneratorType(i, generator);
+                var type = ReadGeneratorType(i);
                 if (type.Type != kind || GeneratorInputs[i].Representative != representative)
                 {
                     continue;
@@ -290,7 +289,7 @@ internal struct AllocatePowerBudgetsJob : IJob
             for (int i = 0; i < Generators.Length; i++)
             {
                 Entity generator = Generators[i];
-                var type = ReadGeneratorType(i, generator);
+                var type = ReadGeneratorType(i);
                 if (type.Type != kind || GeneratorInputs[i].Representative != representative)
                 {
                     continue;
@@ -363,9 +362,7 @@ internal struct ValidatePowerBudgetsJob : IJob
             {
                 return;
             }
-            if (!PowerFrameUtility.TryGetRepresentative(
-                DisabledLookup, PendingBuildingDemolitionLookup, PowerGridConnectionDecisionLookup,
-                PowerGridTopologyDecisionLookup, PowerPoleLookup, PrefabLookup, generator, out var representative))
+            if (!TryGetRepresentative(generator, out var representative))
             {
                 return;
             }
@@ -383,9 +380,7 @@ internal struct ValidatePowerBudgetsJob : IJob
             {
                 return;
             }
-            if (!PowerFrameUtility.TryGetRepresentative(
-                DisabledLookup, PendingBuildingDemolitionLookup, PowerGridConnectionDecisionLookup,
-                PowerGridTopologyDecisionLookup, PowerPoleLookup, PrefabLookup, consumer, out var representative))
+            if (!TryGetRepresentative(consumer, out var representative))
             {
                 return;
             }
@@ -402,5 +397,62 @@ internal struct ValidatePowerBudgetsJob : IJob
             });
         }
         Ready.Value = true;
+    }
+
+    // 미연결은 정상 입력으로 Entity.Null을 반환한다. 잘못된 연결은 false로 거부한다.
+    private bool TryGetRepresentative(Entity entity, out Entity representative)
+    {
+        representative = Entity.Null;
+        Entity pole = entity;
+        bool isPowerPole = PowerPoleLookup.HasComponent(entity);
+        if (!isPowerPole)
+        {
+            if (!PowerGridConnectionDecisionLookup.TryGetComponent(entity, out var connection))
+            {
+                return false;
+            }
+            if (!PowerGridConnectionDecisionLookup.IsComponentEnabled(entity))
+            {
+                return false;
+            }
+            pole = connection.PowerPole;
+            if (pole == Entity.Null)
+            {
+                return true;
+            }
+        }
+        if (!isPowerPole && !PowerPoleLookup.HasComponent(pole))
+        {
+            return false;
+        }
+        if (!PowerGridTopologyDecisionLookup.TryGetComponent(pole, out var topology))
+        {
+            return false;
+        }
+        if (DisabledLookup.HasComponent(pole) || PrefabLookup.HasComponent(pole) ||
+            PendingBuildingDemolitionLookup.HasComponent(pole))
+        {
+            return false;
+        }
+        representative = topology.RepresentativePole;
+        if (representative == Entity.Null)
+        {
+            return false;
+        }
+        if (representative == pole)
+        {
+            return true;
+        }
+        if (!PowerPoleLookup.HasComponent(representative) ||
+            !PowerGridTopologyDecisionLookup.TryGetComponent(representative, out var representativeTopology))
+        {
+            return false;
+        }
+        if (DisabledLookup.HasComponent(representative) || PrefabLookup.HasComponent(representative) ||
+            PendingBuildingDemolitionLookup.HasComponent(representative))
+        {
+            return false;
+        }
+        return representativeTopology.RepresentativePole == representative;
     }
 }

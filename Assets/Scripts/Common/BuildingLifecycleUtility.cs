@@ -70,19 +70,18 @@ public static class BuildingLifecycleUtility
             stamp, prefabDbEntity, config, prefabBufferLookup, ref registryRead);
     }
 
-    // 같은 실행에서 검증한 설정을 전달하며, 독립 호출의 설정 검증은 SpawnBuilding이 소유한다.
+    // 같은 실행에서 검증한 설정의 크기로 생성한다. 별도 승인 크기가 있는 요청은 SpawnBuilding에서 대조한다.
     internal static Entity SpawnConfiguredBuilding(
         ref EntityCommandBuffer ecb,
         int2 position,
         DirectionEnum direction,
-        int2 footprintSize,
         PlacementStamp stamp,
         Entity prefabDbEntity,
         in BuildingConfigElement config,
         in BufferLookup<BuildingPrefabElement> prefabBufferLookup)
     {
         var registryRead = new SpawnRegistryReadContext();
-        return SpawnConfiguredBuilding(ref ecb, position, direction, footprintSize,
+        return SpawnConfiguredBuilding(ref ecb, position, direction, int2.zero,
             stamp, prefabDbEntity, config, prefabBufferLookup, ref registryRead);
     }
 

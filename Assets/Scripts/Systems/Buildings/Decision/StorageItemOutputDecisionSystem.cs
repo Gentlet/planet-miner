@@ -143,44 +143,9 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
             return;
         }
 
-        int2 anchor = gridPos.Value;
-        int2 effectiveSize = footprint.GetEffectiveSize(dir.dir);
-
-        int2 foundBeltPos = int2.zero;
-        bool foundBelt = false;
-
-        // 후보 하나만 선택하는 고정 둘레 순서다. 여기서 공간을 확보하지 않고 Reservation이 다른 발신자와 중재한다.
-        // 2. 건물 둘레 순회 (하단 -> 우측 -> 상단 -> 좌측)
-        // 하단 변 (y = anchor.y - 1)
-        for (int x = 0; x < effectiveSize.x && !foundBelt; x++)
-        {
-            int2 p = new int2(anchor.x + x, anchor.y - 1);
-            CheckPerimeterCell(p, anchor, effectiveSize, ref foundBeltPos, ref foundBelt);
-        }
-
-        // 우측 변 (x = anchor.x + effectiveSize.x)
-        for (int y = 0; y < effectiveSize.y && !foundBelt; y++)
-        {
-            int2 p = new int2(anchor.x + effectiveSize.x, anchor.y + y);
-            CheckPerimeterCell(p, anchor, effectiveSize, ref foundBeltPos, ref foundBelt);
-        }
-
-        // 상단 변 (y = anchor.y + effectiveSize.y)
-        for (int x = 0; x < effectiveSize.x && !foundBelt; x++)
-        {
-            int2 p = new int2(anchor.x + x, anchor.y + effectiveSize.y);
-            CheckPerimeterCell(p, anchor, effectiveSize, ref foundBeltPos, ref foundBelt);
-        }
-
-        // 좌측 변 (x = anchor.x - 1)
-        for (int y = 0; y < effectiveSize.y && !foundBelt; y++)
-        {
-            int2 p = new int2(anchor.x - 1, anchor.y + y);
-            CheckPerimeterCell(p, anchor, effectiveSize, ref foundBeltPos, ref foundBelt);
-        }
-
-        // 3. 의사결정 기록
-        if (foundBelt)
+        if (BeltEntryUtility.TryFindBuildingOutputBelt(gridPos.Value, footprint.GetEffectiveSize(dir.dir),
+                BeltMap, ItemMap, PendingDemolitionLookup, ItemOwnershipLookup, BeltMovementStateLookup,
+                out int2 foundBeltPos))
         {
             // 첫 보관 실물을 출고 후보로 지정한다. 실제 제거/이동은 Reservation 승인 뒤 Apply가 수행한다.
             outputDecision.CanOutput = true;
@@ -196,45 +161,5 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
             outputDecision.TargetBeltPosition = int2.zero;
             outputDecisionEnabled.ValueRW = false;
         }
-    }
-
-    private void CheckPerimeterCell(
-        int2 cell,
-        int2 anchor,
-        int2 size,
-        ref int2 foundBeltPos,
-        ref bool foundBelt)
-    {
-        if (!BeltMap.TryGetValue(cell, out BeltInfo beltInfo))
-        {
-            return;
-        }
-
-        if (PendingDemolitionLookup.HasComponent(beltInfo.Entity))
-        {
-            return;
-        }
-
-        // 외향 벨트 판정: 벨트의 이전 타일이 건물 내부인가?
-        int2 prevPos = cell - beltInfo.Direction.ToInt2();
-        if (!IsInsideBuilding(prevPos, anchor, size))
-        {
-            return;
-        }
-
-        if (!BeltEntryUtility.HasEntrySpace(
-                cell, ItemMap, ItemOwnershipLookup, BeltMovementStateLookup))
-        {
-            return;
-        }
-
-        foundBeltPos = cell;
-        foundBelt = true;
-    }
-
-    private static bool IsInsideBuilding(int2 pos, int2 anchor, int2 size)
-    {
-        return pos.x >= anchor.x && pos.x < anchor.x + size.x &&
-               pos.y >= anchor.y && pos.y < anchor.y + size.y;
     }
 }

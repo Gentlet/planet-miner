@@ -92,8 +92,7 @@ public partial struct BuildingDemolitionCommandSystem : ISystem
         handle.Complete();
         while (legacyTargets.TryDequeue(out Entity target))
         {
-            Entity request = DroneTaskRequestUtility.SubmitCreate(state.EntityManager, DroneLogisticsTaskKindEnum.BuildingDemolition,
-                target, ItemTypeEnum.None);
+            Entity request = DroneTaskRequestUtility.SubmitBuildingDemolition(state.EntityManager, target);
             state.EntityManager.AddComponent<BuildingDemolitionAutomaticTaskRequest>(request);
         }
         state.Dependency = handle;

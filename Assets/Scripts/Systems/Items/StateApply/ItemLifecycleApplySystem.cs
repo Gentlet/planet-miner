@@ -3,8 +3,6 @@ using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
-using Unity.Rendering;
-using Unity.Transforms;
 
 /// <summary>
 /// 역할·목적: 생산 결과/직접 생성 요청을 실물 아이템으로 바꾸고 활성 삭제 요청의 실물을 제거한다.
@@ -66,14 +64,12 @@ public partial struct ItemLifecycleApplySystem : ISystem
         // Admission 이후 생성된 현장과 Admission을 거치지 않은 요청도 현재 현장 기준으로 재검사한다.
         var constructionFootprints = ConstructionSiteWorldItemUtility.CaptureFootprints(state.EntityManager, Allocator.TempJob);
 
-        bool hasPrefabDb = !_prefabDbQuery.IsEmptyIgnoreFilter;
-        Entity prefabDbEntity = hasPrefabDb ? _prefabDbQuery.GetSingletonEntity() : Entity.Null;
+        Entity prefabDbEntity = _prefabDbQuery.IsEmptyIgnoreFilter ? Entity.Null : _prefabDbQuery.GetSingletonEntity();
 
         // 1. [생산 결과 적용 Job] ProductResult -> 실제 Item + ProductItemElement
         var productResultJob = new ProductResultApplyJob
         {
             ECB = ecb,
-            HasPrefabDb = hasPrefabDb,
             PrefabDbEntity = prefabDbEntity,
             ItemPrefabBufferLookup = _itemPrefabBufferLookup
         };
@@ -85,7 +81,6 @@ public partial struct ItemLifecycleApplySystem : ISystem
             EntityHandle = SystemAPI.GetEntityTypeHandle(),
             SpawnItemRequestHandle = SystemAPI.GetComponentTypeHandle<SpawnItemRequest>(true),
             ECB = ecb,
-            HasPrefabDb = hasPrefabDb,
             PrefabDbEntity = prefabDbEntity,
             ItemPrefabBufferLookup = _itemPrefabBufferLookup,
             StoredBufferLookup = _storedBufferLookup,
@@ -113,7 +108,6 @@ public partial struct ItemLifecycleApplySystem : ISystem
 public partial struct ProductResultApplyJob : IJobEntity
 {
     public EntityCommandBuffer ECB;
-    public bool HasPrefabDb;
     public Entity PrefabDbEntity;
 
     [ReadOnly]
@@ -141,21 +135,14 @@ public partial struct ProductResultApplyJob : IJobEntity
 
             if (!prefabBufferChecked)
             {
-                hasPrefabBuffer = HasPrefabDb && PrefabDbEntity != Entity.Null &&
+                hasPrefabBuffer = PrefabDbEntity != Entity.Null &&
                     ItemPrefabBufferLookup.TryGetBuffer(PrefabDbEntity, out prefabBuffer);
                 prefabBufferChecked = true;
             }
             Entity prefabEntity = Entity.Null;
             if (hasPrefabBuffer)
             {
-                for (int i = 0; i < prefabBuffer.Length; i++)
-                {
-                    if (prefabBuffer[i].Type == result.ItemType)
-                    {
-                        prefabEntity = prefabBuffer[i].Prefab;
-                        break;
-                    }
-                }
+                PrefabLookupUtility.TryGetItemPrefab(prefabBuffer, result.ItemType, out prefabEntity);
             }
 
             if (prefabEntity == Entity.Null)
@@ -172,8 +159,7 @@ public partial struct ProductResultApplyJob : IJobEntity
             for (int countIndex = 0; countIndex < result.Count; countIndex++)
             {
                 Entity newItem = ItemLifecycleUtility.SpawnPrefabItem(
-                    ref ECB, prefabEntity, result.ItemType, int2.zero, float3.zero,
-                    ItemOwnership.Stored(producerEntity));
+                    ref ECB, prefabEntity, result.ItemType, int2.zero, ItemOwnership.Stored(producerEntity));
 
                 ECB.AppendToBuffer(
                     producerEntity,
@@ -196,27 +182,21 @@ public partial struct SpawnItemApplyJob : IJobChunk
     [ReadOnly] public EntityTypeHandle EntityHandle;
     [ReadOnly] public ComponentTypeHandle<SpawnItemRequest> SpawnItemRequestHandle;
 
-    private struct RegistryReadContext
-    {
-        public RegistryBufferReadCache<ItemPrefabElement> ItemPrefabBufferLookup;
-    }
-
     public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
     {
         var entities = chunk.GetNativeArray(EntityHandle);
         var spawnItemRequestValues = chunk.GetNativeArray(ref SpawnItemRequestHandle);
-        var registryRead = new RegistryReadContext();
+        var prefabBufferRead = new RegistryBufferReadCache<ItemPrefabElement>();
         var enumerator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
         while (enumerator.NextEntityIndex(out int index))
         {
             var requestValue = spawnItemRequestValues[index];
             ExecuteEntity(entities[index],
-                in requestValue, ref registryRead);
+                in requestValue, ref prefabBufferRead);
         }
     }
 
     public EntityCommandBuffer ECB;
-    public bool HasPrefabDb;
     public Entity PrefabDbEntity;
     [ReadOnly] public NativeArray<ConstructionSiteWorldItemUtility.Footprint> ConstructionFootprints;
 
@@ -229,18 +209,17 @@ public partial struct SpawnItemApplyJob : IJobChunk
     [ReadOnly]
     public BufferLookup<ProductItemElement> ProductBufferLookup;
 
-    private void ExecuteEntity(Entity requestEntity, in SpawnItemRequest request, ref RegistryReadContext registryRead)
+    private void ExecuteEntity(Entity requestEntity, in SpawnItemRequest request,
+        ref RegistryBufferReadCache<ItemPrefabElement> prefabBufferRead)
     {
         bool canSpawn = false;
         ItemOwnership ownership = default;
-        bool isWorld = false;
 
         switch (request.Destination)
         {
             case ItemSpawnDestination.World:
                 canSpawn = ConstructionSiteWorldItemUtility.IsWorldPositionAllowed(ConstructionFootprints, request.Position);
                 ownership = ItemOwnership.WorldItem;
-                isWorld = true;
                 break;
 
             case ItemSpawnDestination.Storage:
@@ -262,22 +241,11 @@ public partial struct SpawnItemApplyJob : IJobChunk
 
         if (canSpawn)
         {
-            float3 spawnPos = isWorld
-                ? new float3(request.Position.x, request.Position.y, 0f)
-                : float3.zero;
-
             Entity prefabEntity = Entity.Null;
-            if (HasPrefabDb && PrefabDbEntity != Entity.Null &&
-                registryRead.ItemPrefabBufferLookup.TryRead(ItemPrefabBufferLookup, PrefabDbEntity, out var buffer))
+            if (PrefabDbEntity != Entity.Null &&
+                prefabBufferRead.TryRead(ItemPrefabBufferLookup, PrefabDbEntity, out var buffer))
             {
-                for (int i = 0; i < buffer.Length; i++)
-                {
-                    if (buffer[i].Type == request.ItemType)
-                    {
-                        prefabEntity = buffer[i].Prefab;
-                        break;
-                    }
-                }
+                PrefabLookupUtility.TryGetItemPrefab(buffer, request.ItemType, out prefabEntity);
             }
 
             if (prefabEntity == Entity.Null)
@@ -292,7 +260,7 @@ public partial struct SpawnItemApplyJob : IJobChunk
             else
             {
                 Entity newItem = ItemLifecycleUtility.SpawnPrefabItem(
-                    ref ECB, prefabEntity, request.ItemType, request.Position, spawnPos, ownership);
+                    ref ECB, prefabEntity, request.ItemType, request.Position, ownership);
 
                 if (request.Destination == ItemSpawnDestination.Product)
                 {

@@ -25,6 +25,13 @@ public static class DroneTaskRequestUtility
         });
     }
 
+    /// <summary>철거를 접수하고 요청 엔티티를 반환한다. 작업 생성/연결/거부 결과는 EndSimulation 뒤 TryConsumeResult로 소비한다.</summary>
+    /// <exception cref="InvalidOperationException">World의 접수 순번이 유효하지 않거나 소진되었다.</exception>
+    public static Entity SubmitBuildingDemolition(EntityManager manager, Entity target)
+    {
+        return SubmitCreate(manager, DroneLogisticsTaskKindEnum.BuildingDemolition, target, ItemTypeEnum.None);
+    }
+
     public static Entity SubmitTransport(EntityManager manager, DroneLogisticsTaskKindEnum kind, Entity target,
         ItemTypeEnum type, int quantity, DroneTransportAreaEnum area)
     {

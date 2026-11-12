@@ -158,8 +158,8 @@ internal struct DroneStationLifecycleApplyJob : IJob
                 }
                 if (status == DroneStationRequestStatus.Applied && request.Operation != DroneStationOperation.Activate)
                 {
-                    if (DroneStationLifecycleUtility.ReserveSlot(request.Station, request.Drone, request.Operation,
-                        decision.SlotIndex, MaximumStack, Eligibility.Storages, Dedicated, Eligibility.Items, Eligibility.Docked, ranges, slots, Eligibility.Reserved) < 0)
+                    if (DroneStationLifecycleUtility.ReserveSlot(request, decision.SlotIndex, MaximumStack,
+                        Eligibility.Storages, Dedicated, Eligibility.Items, Eligibility.Docked, ranges, slots, Eligibility.Reserved) < 0)
                     {
                         status = DroneStationRequestStatus.NoSpace;
                     }

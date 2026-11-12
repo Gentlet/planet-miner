@@ -2,9 +2,35 @@ using System;
 using Unity.Mathematics;
 using UnityEngine;
 
-/// <summary>카메라의 월드 평면 시야를 기존 셀/청크 경계로 변환한다. 생성 상태나 완료 기록은 보유하지 않는다.</summary>
+/// <summary>카메라의 월드 평면 시야에서 청크 범위와 가까운 순서를 계산한다.</summary>
 public static class CameraChunkLoadUtility
 {
+    internal readonly struct ChunkCandidate : IComparable<ChunkCandidate>
+    {
+        internal readonly int2 Coordinate;
+        private readonly double _distanceSquared;
+
+        internal ChunkCandidate(int2 coordinate, Vector2 worldCenter)
+        {
+            Coordinate = coordinate;
+            double offset = (ChunkUtility.ChunkSize - 1) * 0.5d;
+            double x = coordinate.x * (double)ChunkUtility.ChunkSize + offset - worldCenter.x;
+            double y = coordinate.y * (double)ChunkUtility.ChunkSize + offset - worldCenter.y;
+            _distanceSquared = x * x + y * y;
+        }
+
+        public int CompareTo(ChunkCandidate other)
+        {
+            int distance = _distanceSquared.CompareTo(other._distanceSquared);
+            if (distance != 0)
+            {
+                return distance;
+            }
+            int row = Coordinate.y.CompareTo(other.Coordinate.y);
+            return row != 0 ? row : Coordinate.x.CompareTo(other.Coordinate.x);
+        }
+    }
+
     private static readonly Plane WorldPlane = new Plane(Vector3.forward, Vector3.zero);
 
     public static bool TryGetVisibleChunkRange(Camera camera, int marginInChunks,
