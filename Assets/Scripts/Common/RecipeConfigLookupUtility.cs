@@ -52,20 +52,7 @@ public static class RecipeConfigLookupUtility
                 return false;
             }
 
-            int availableAmount = 0;
-            for (int s = 0; s < storedItems.Length; s++)
-            {
-                var storedItem = storedItems[s];
-                if (storedItem.ItemType != ingredient.ItemType)
-                {
-                    continue;
-                }
-
-                if (CanConsumeStoredItem(storedItem.ItemEntity, destroyRequests))
-                {
-                    availableAmount++;
-                }
-            }
+            int availableAmount = StoredItemBufferUtility.CountConsumable(storedItems, ingredient.ItemType, destroyRequests);
 
             if (availableAmount < requiredAmount)
             {

@@ -151,20 +151,8 @@ public sealed class BuildingToolbarView : MonoBehaviour
         if (_rootObject != null)
         {
             _rootObject.SetActive(false);
-            DestroyOwned(_rootObject);
+            UnityObjectLifecycleUtility.DestroyOwned(_rootObject);
             _rootObject = null;
-        }
-    }
-
-    private static void DestroyOwned(Object value)
-    {
-        if (Application.isPlaying)
-        {
-            Destroy(value);
-        }
-        else
-        {
-            DestroyImmediate(value);
         }
     }
 }

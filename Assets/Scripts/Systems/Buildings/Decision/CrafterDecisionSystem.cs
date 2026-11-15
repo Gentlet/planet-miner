@@ -41,11 +41,6 @@ public partial struct CrafterDecisionSystem : ISystem
     }
 
     [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
-    [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
         if (!SystemAPI.HasSingleton<RecipeRegistry>())

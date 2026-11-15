@@ -43,7 +43,17 @@ public partial struct DroneTaskDecisionSystem : ISystem
         _registry = state.GetEntityQuery(ComponentType.ReadOnly<ItemRegistry>(), ComponentType.ReadOnly<ItemConfigElement>());
         _capacity = state.GetEntityQuery(ComponentType.ReadOnly<DroneCapacityState>());
         _stations = state.GetEntityQuery(ComponentType.ReadOnly<DroneStation>(), ComponentType.ReadOnly<DroneStationNetworkDecision>());
-        InitializeCreationQueries(ref state);
+        _creationResearch = state.GetEntityQuery(ComponentType.ReadOnly<ResearchRecoveryElement>(),
+            ComponentType.ReadOnly<StoredItemElement>(), ComponentType.ReadOnly<ResearchCycleState>());
+        _creationSites = state.GetEntityQuery(
+            ComponentType.ReadOnly<ConstructionSite>(),
+            ComponentType.ReadOnly<GridPosition>(),
+            ComponentType.ReadOnly<ConstructionMaterialRequirementElement>());
+        _creationItems = state.GetEntityQuery(ComponentType.ReadOnly<ItemIdentity>(),
+            ComponentType.ReadOnly<ItemOwnership>(), ComponentType.ReadOnly<GridPosition>());
+        _creationFootprints = state.GetEntityQuery(ComponentType.ReadOnly<ConstructionSite>(),
+            ComponentType.ReadOnly<GridPosition>(), ComponentType.ReadOnly<BuildingFootprint>(),
+            ComponentType.ReadOnly<Direction>());
     }
 
     public void OnUpdate(ref SystemState state)
@@ -73,7 +83,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         DroneTaskRequestDecisionUtility.Prepare(manager, _candidates, _taskRequests, tasks, sites, assignments);
         // Prepare가 취소 결정을 모두 기록한 뒤, 같은 Decision 호출 안에서만 읽는다.
         var cancellations = new DroneTaskRequestDecisionUtility.CancellationReadContext(manager, _candidates);
-        BuildCreationDecisions(ref state, ref cancellations);
+        BuildCreationDecisions(manager, tasks, taskReads, ref cancellations);
         using var busyWorkers = new NativeHashSet<Entity>(16, Allocator.Temp);
         using var claimedRecoveryItems = new NativeHashSet<Entity>(16, Allocator.Temp);
         using var removedRoutes = new NativeHashSet<Entity>(16, Allocator.Temp);
@@ -629,39 +639,21 @@ public partial struct DroneTaskDecisionSystem : ISystem
     }
 
     private EntityQuery _creationSites;
-    private EntityQuery _creationTasks;
     private EntityQuery _creationItems;
     private EntityQuery _creationFootprints;
     private EntityQuery _creationResearch;
 
-    private void InitializeCreationQueries(ref SystemState state)
+    private void BuildCreationDecisions(EntityManager manager, NativeArray<Entity> taskEntities,
+        NativeArray<TaskReadSnapshot> taskReads, ref DroneTaskRequestDecisionUtility.CancellationReadContext cancellations)
     {
-        _creationResearch = state.GetEntityQuery(ComponentType.ReadOnly<ResearchRecoveryElement>(),
-            ComponentType.ReadOnly<StoredItemElement>(), ComponentType.ReadOnly<ResearchCycleState>());
-        _creationSites = state.GetEntityQuery(
-            ComponentType.ReadOnly<ConstructionSite>(),
-            ComponentType.ReadOnly<GridPosition>(),
-            ComponentType.ReadOnly<ConstructionMaterialRequirementElement>());
-        _creationTasks = state.GetEntityQuery(ComponentType.ReadOnly<DroneLogisticsTask>());
-        _creationItems = state.GetEntityQuery(ComponentType.ReadOnly<ItemIdentity>(),
-            ComponentType.ReadOnly<ItemOwnership>(), ComponentType.ReadOnly<GridPosition>());
-        _creationFootprints = state.GetEntityQuery(ComponentType.ReadOnly<ConstructionSite>(),
-            ComponentType.ReadOnly<GridPosition>(), ComponentType.ReadOnly<BuildingFootprint>(),
-            ComponentType.ReadOnly<Direction>());
-    }
-
-    private void BuildCreationDecisions(ref SystemState state, ref DroneTaskRequestDecisionUtility.CancellationReadContext cancellations)
-    {
-        var manager = state.EntityManager;
         var decisions = manager.GetBuffer<DroneTaskCreationDecisionElement>(_candidates);
         decisions.Clear();
-        using var entities = _creationTasks.ToEntityArray(Allocator.Temp);
         using var tasks = new NativeList<DroneLogisticsTask>(Allocator.Temp);
-        foreach (Entity entity in entities)
+        for (int i = 0; i < taskEntities.Length; i++)
         {
-            if (!cancellations.IsPlanned(entity))
+            if (!cancellations.IsPlanned(taskEntities[i]))
             {
-                tasks.Add(manager.GetComponentData<DroneLogisticsTask>(entity));
+                tasks.Add(ReadTask(manager, taskEntities, taskReads, i));
             }
         }
         BuildSupplyCreationDecisions(manager, tasks.AsArray(), decisions);
@@ -672,6 +664,16 @@ public partial struct DroneTaskDecisionSystem : ISystem
     private void BuildResearchRecoveryCreationDecisions(EntityManager manager,
         NativeArray<DroneLogisticsTask> tasks, DynamicBuffer<DroneTaskCreationDecisionElement> decisions)
     {
+        // Closed 작업도 배정 정리가 끝날 때까지 같은 목적의 새 root를 막는다.
+        using var existingKeys = new NativeList<DroneTaskGenerationKey>(Allocator.Temp);
+        foreach (var task in tasks)
+        {
+            if (task.Kind == DroneLogisticsTaskKindEnum.StorageExport &&
+                task.Area == DroneTransportAreaEnum.Input && task.Purpose == DroneTransportPurposeEnum.ResearchRecovery)
+            {
+                existingKeys.Add(DroneTaskRequestDecisionUtility.Key(task));
+            }
+        }
         using var buildings = _creationResearch.ToEntityArray(Allocator.Temp);
         foreach (Entity building in buildings)
         {
@@ -688,19 +690,13 @@ public partial struct DroneTaskDecisionSystem : ISystem
                     continue;
                 }
                 int quantity = sourceRead.Count(item.ItemType);
-                if (quantity == 0 || DroneTaskRequestDecisionUtility.IsBlocked(manager, _candidates,
-                    DroneTaskGenerationKey.From(DroneLogisticsTaskKindEnum.StorageExport, building, item.ItemType,
-                        DroneTransportAreaEnum.Input, DroneTransportPurposeEnum.ResearchRecovery)))
+                var key = DroneTaskGenerationKey.From(DroneLogisticsTaskKindEnum.StorageExport, building, item.ItemType,
+                    DroneTransportAreaEnum.Input, DroneTransportPurposeEnum.ResearchRecovery);
+                if (quantity == 0 || DroneTaskRequestDecisionUtility.IsBlocked(manager, _candidates, key))
                 {
                     continue;
                 }
-                bool exists = false;
-                foreach (var task in tasks)
-                {
-                    exists |= task.Kind == DroneLogisticsTaskKindEnum.StorageExport && task.Target == building && task.ItemType == item.ItemType &&
-                        task.Area == DroneTransportAreaEnum.Input && task.Purpose == DroneTransportPurposeEnum.ResearchRecovery;
-                }
-                if (exists)
+                if (DroneTaskRequestDecisionUtility.ContainsGenerationKey(existingKeys, key))
                 {
                     continue;
                 }
@@ -710,6 +706,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
                     ItemType = item.ItemType, Quantity = quantity,
                     Area = DroneTransportAreaEnum.Input, Purpose = DroneTransportPurposeEnum.ResearchRecovery
                 });
+                existingKeys.Add(key);
             }
         }
     }
@@ -718,13 +715,13 @@ public partial struct DroneTaskDecisionSystem : ISystem
         NativeArray<DroneLogisticsTask> tasks, DynamicBuffer<DroneTaskCreationDecisionElement> decisions)
     {
         // Closed 작업도 연결 배정이 정리될 때까지 살아 있으므로 같은 품목의 새 root를 만들지 않는다.
-        using var existingTasks = new NativeList<CreationSupplyTaskKey>(Allocator.Temp);
+        using var existingKeys = new NativeList<DroneTaskGenerationKey>(Allocator.Temp);
         for (int i = 0; i < tasks.Length; i++)
         {
             var task = tasks[i];
             if (task.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply)
             {
-                existingTasks.Add(new CreationSupplyTaskKey { Site = task.Target, ItemType = task.ItemType });
+                existingKeys.Add(DroneTaskRequestDecisionUtility.Key(task));
             }
         }
 
@@ -748,12 +745,12 @@ public partial struct DroneTaskDecisionSystem : ISystem
                     continue;
                 }
 
-                if (HasCreationSupplyTask(existingTasks, site, requirement.ItemType))
+                var key = DroneTaskGenerationKey.From(DroneLogisticsTaskKindEnum.ConstructionSupply, site, requirement.ItemType);
+                if (DroneTaskRequestDecisionUtility.ContainsGenerationKey(existingKeys, key))
                 {
                     continue;
                 }
-                if (DroneTaskRequestDecisionUtility.IsBlocked(manager, _candidates,
-                    DroneTaskGenerationKey.From(DroneLogisticsTaskKindEnum.ConstructionSupply, site, requirement.ItemType)))
+                if (DroneTaskRequestDecisionUtility.IsBlocked(manager, _candidates, key))
                 {
                     continue;
                 }
@@ -765,7 +762,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
                     ItemType = requirement.ItemType,
                     RecoveryReason = DroneRecoveryReasonEnum.None
                 });
-                existingTasks.Add(new CreationSupplyTaskKey { Site = site, ItemType = requirement.ItemType });
+                existingKeys.Add(key);
             }
         }
     }
@@ -775,7 +772,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
     {
         // 이전에 방출된 실물과 현재 현장 footprint 안의 월드 실물만 회수 작업으로 만든다.
         // 취소 현장은 제외하고 방향을 한 번 적용하여 회수 필요 영역과 완공 차단 영역을 맞춘다.
-        using var footprints = new NativeList<CreationSiteFootprint>(Allocator.Temp);
+        using var footprints = new NativeList<ConstructionSiteWorldItemUtility.Footprint>(Allocator.Temp);
         using var footprintSites = _creationFootprints.ToEntityArray(Allocator.Temp);
         for (int i = 0; i < footprintSites.Length; i++)
         {
@@ -785,7 +782,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 continue;
             }
 
-            footprints.Add(new CreationSiteFootprint
+            footprints.Add(new ConstructionSiteWorldItemUtility.Footprint
             {
                 Origin = manager.GetComponentData<GridPosition>(site).Value,
                 Size = BuildingFootprintUtility.GetEffectiveSize(
@@ -827,7 +824,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
             if (reason == DroneRecoveryReasonEnum.None && hasRecovery)
                 reason = DroneRecoveryReasonEnum.DroneDrop;
             if (reason == DroneRecoveryReasonEnum.None &&
-                IsInsideCreationSite(manager.GetComponentData<GridPosition>(item).Value, footprints))
+                !ConstructionSiteWorldItemUtility.IsWorldPositionAllowed(footprints.AsArray(), manager.GetComponentData<GridPosition>(item).Value))
             {
                 reason = DroneRecoveryReasonEnum.SiteClearance;
             }
@@ -867,44 +864,5 @@ public partial struct DroneTaskDecisionSystem : ISystem
 
             sites[destination] = site;
         }
-    }
-
-    private static bool HasCreationSupplyTask(NativeList<CreationSupplyTaskKey> tasks, Entity site, ItemTypeEnum itemType)
-    {
-        for (int i = 0; i < tasks.Length; i++)
-        {
-            if (tasks[i].Site == site && tasks[i].ItemType == itemType)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool IsInsideCreationSite(int2 position, NativeList<CreationSiteFootprint> footprints)
-    {
-        for (int i = 0; i < footprints.Length; i++)
-        {
-            var footprint = footprints[i];
-            if (math.all(position >= footprint.Origin) && math.all(position < footprint.Origin + footprint.Size))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private struct CreationSiteFootprint
-    {
-        public int2 Origin;
-        public int2 Size;
-    }
-
-    private struct CreationSupplyTaskKey
-    {
-        public Entity Site;
-        public ItemTypeEnum ItemType;
     }
 }

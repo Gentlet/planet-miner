@@ -33,7 +33,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
 
     public void OnCreate(ref SystemState state)
     {
-        BuildingPlacementRequestUtility.GetOrCreateReceiptSequence(state.EntityManager);
+        WorldSequenceUtility.GetOrCreate(state.EntityManager, new BuildingPlacementReceiptSequence { NextValue = 1, CurrentTick = 1 });
         state.RequireForUpdate<BuildingSpatialIndexFence>();
         state.RequireForUpdate<ResourceSpatialIndexFence>();
         state.RequireForUpdate<ItemSpatialIndexFence>();
@@ -51,9 +51,9 @@ public partial struct BuildingPlacementCommandSystem : ISystem
         // 직접 읽기가 끝날 때까지 새 Job을 발행하지 않는다. 선행 Writer만 기다리고
         // 다른 Reader의 완료나 Validator의 부수 효과에는 의존하지 않는다.
         JobHandle.CombineDependencies(
-            SystemAPI.GetSingleton<BuildingSpatialIndexFence>().GetReaderDependency(),
-            SystemAPI.GetSingleton<ResourceSpatialIndexFence>().GetReaderDependency(),
-            SystemAPI.GetSingleton<ItemSpatialIndexFence>().GetReaderDependency()).Complete();
+            SystemAPI.GetSingleton<BuildingSpatialIndexFence>().State.GetReaderDependency(),
+            SystemAPI.GetSingleton<ResourceSpatialIndexFence>().State.GetReaderDependency(),
+            SystemAPI.GetSingleton<ItemSpatialIndexFence>().State.GetReaderDependency()).Complete();
 
         var buildingMap = SystemAPI.GetSingleton<BuildingSpatialIndex>().Map;
         var resourceMap = SystemAPI.GetSingleton<ResourceSpatialIndex>().Map;

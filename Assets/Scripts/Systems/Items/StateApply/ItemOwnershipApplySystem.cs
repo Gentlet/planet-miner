@@ -34,11 +34,6 @@ public partial struct ItemOwnershipApplySystem : ISystem
 
     }
 
-    [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
     public void OnUpdate(ref SystemState state)
     {
         _entityStorageInfoLookup.Update(ref state);
@@ -56,22 +51,6 @@ public partial struct ItemOwnershipApplySystem : ISystem
         var handle = job.Schedule(_requestQuery, state.Dependency);
         state.Dependency = handle;
         ecbSystem.AddJobHandleForProducer(state.Dependency);
-    }
-
-    /// <summary>
-    /// 활성 일반 Transfer의 예정 소유자를 포함한 조회 값. ItemOwnership의 원본을 여기서 변경하지 않는다.
-    /// TryTransferItem은 별도로 실제 Owner 일치를 검사하므로 예정 소유자만 보고 실물을 중복 이전하지 않는다.
-    /// </summary>
-    public static Entity EffectiveOwner(EntityManager manager, Entity item)
-    {
-        if (!manager.Exists(item)) return Entity.Null;
-        if (!manager.HasComponent<ItemOwnership>(item)) return Entity.Null;
-        if (manager.HasComponent<TransferOwnershipRequest>(item) &&
-            manager.IsComponentEnabled<TransferOwnershipRequest>(item))
-        {
-            return manager.GetComponentData<TransferOwnershipRequest>(item).TargetOwner;
-        }
-        return manager.GetComponentData<ItemOwnership>(item).Owner;
     }
 
     /// <summary>계획의 실물이 아직 존재하며 예상 소유자에게 있는지 확인한다.</summary>
@@ -246,7 +225,7 @@ public partial struct ItemOwnershipApplySystem : ISystem
             if (!IsActiveTransferEntity(manager, targetOwner)) return false;
             if (!manager.HasBuffer<StoredItemElement>(targetOwner)) return false;
             if (slotIndex < 0) return false;
-            if (ContainsStoredItem(manager.GetBuffer<StoredItemElement>(targetOwner, true), item)) return false;
+            if (StoredItemBufferUtility.ContainsEntity(manager.GetBuffer<StoredItemElement>(targetOwner, true), item)) return false;
             if (manager.HasComponent<DroneStationStorage>(targetOwner))
             {
                 if (!StationStorageUtility.IsItemSlotAllowed(slotIndex, manager.GetComponentData<Storage>(targetOwner).SlotCount,
@@ -320,15 +299,6 @@ public partial struct ItemOwnershipApplySystem : ISystem
             index = i;
         }
         return index;
-    }
-
-    private static bool ContainsStoredItem(DynamicBuffer<StoredItemElement> items, Entity item)
-    {
-        for (int i = 0; i < items.Length; i++)
-        {
-            if (items[i].ItemEntity == item) return true;
-        }
-        return false;
     }
 }
 

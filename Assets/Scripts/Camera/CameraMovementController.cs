@@ -31,13 +31,13 @@ public sealed class CameraMovementController : MonoBehaviour
         _camera = GetComponent<Camera>();
         if (!_camera.orthographic)
         {
-            RejectConfiguration("직교 카메라가 필요합니다.");
+            WorldInputConfigurationUtility.Reject(this, nameof(CameraMovementController), "직교 카메라가 필요합니다.");
             return;
         }
 
         if (!GetSettings().TryValidate(out string error))
         {
-            RejectConfiguration(error);
+            WorldInputConfigurationUtility.Reject(this, nameof(CameraMovementController), error);
         }
     }
 
@@ -103,11 +103,5 @@ public sealed class CameraMovementController : MonoBehaviour
         {
             transform.position += beforeZoom - afterZoom;
         }
-    }
-
-    private void RejectConfiguration(string reason)
-    {
-        Debug.LogError($"{nameof(CameraMovementController)}: {reason}", this);
-        enabled = false;
     }
 }

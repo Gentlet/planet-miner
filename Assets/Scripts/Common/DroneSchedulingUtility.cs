@@ -233,7 +233,7 @@ public static class DroneSchedulingUtility
         for (int slot = 0; slot < slots; slot++)
         {
             int candidate = StationStorageUtility.SearchSlot(slot, slots, storageRead.DedicatedSlotCount, type);
-            if (ReadSlotFreeQuantity(ref storageRead, type, candidate, maxStack) > 0) return candidate;
+            if (ReadSlotFreeQuantity(ref storageRead, type, candidate, maxStack, storageRead.SlotCount, storageRead.DedicatedSlotCount) > 0) return candidate;
         }
         return -1;
     }
@@ -266,15 +266,6 @@ public static class DroneSchedulingUtility
             return true;
         }
         return false;
-    }
-
-    public static bool CanStoreInSlot(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry, int slot,
-        DroneTransportAreaEnum area = default)
-    {
-        var storageRead = StationStorageUtility.StorageReadContext.Create(manager, storage);
-        if (!TryReadStorageLimit(manager, storage, type, registry, ref storageRead, out int slots, out int maxStack, area)) return false;
-        if (slot < 0 || slot >= slots) return false;
-        return ReadSlotFreeQuantity(ref storageRead, type, slot, maxStack) > 0;
     }
 
     private static bool TryReadStorageLimit(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry,
@@ -377,15 +368,9 @@ public static class DroneSchedulingUtility
         }
         for (int slot = 0; slot < slots && available < limit; slot++)
         {
-            available += math.min(limit - available, ReadSlotFreeQuantity(ref storageRead, type, slot, maxStack));
+            available += math.min(limit - available, ReadSlotFreeQuantity(ref storageRead, type, slot, maxStack, storageRead.SlotCount, storageRead.DedicatedSlotCount));
         }
         return available;
-    }
-
-    private static int ReadSlotFreeQuantity(ref StationStorageUtility.StorageReadContext storageRead,
-        ItemTypeEnum type, int slot, int maxStack)
-    {
-        return ReadSlotFreeQuantity(ref storageRead, type, slot, maxStack, storageRead.SlotCount, storageRead.DedicatedSlotCount);
     }
 
     private static int ReadSlotFreeQuantity(ref StationStorageUtility.StorageReadContext storageRead,
@@ -683,62 +668,108 @@ public static class DroneSchedulingUtility
 
     public static bool RouteIsCurrent(EntityManager manager, in DroneRouteEvaluationRequest request, int carryingCapacity)
     {
-        if (request.IsDropPositionSearch && request.Kind != DroneRouteKindEnum.Direct) return false;
-        if (request.Kind == DroneRouteKindEnum.Direct)
-            return DirectRouteIsCurrent(manager, request);
-        if (request.Kind == DroneRouteKindEnum.DirectToBuilding)
-        {
-            if (!IsIdleWorker(manager, request.Worker, carryingCapacity) || request.Source != Entity.Null ||
-                request.Assignment != Entity.Null || request.AssignmentRevision != 0 || request.EvaluationRevision == 0 ||
-                !DroneDemolitionUtility.IsApprovedTarget(manager, request.Destination)) return false;
-            var current = manager.GetComponentData<DroneWorkerObservation>(request.Worker);
-            return current.Revision == request.WorkerObservationRevision && math.all(current.Position == request.OriginPosition) &&
-                math.all(manager.GetComponentData<GridPosition>(request.Destination).Value == request.DestinationPosition);
-        }
-        if (!IsIdleWorker(manager, request.Worker, carryingCapacity))
+        if (request.IsDropPositionSearch && request.Kind != DroneRouteKindEnum.Direct)
         {
             return false;
         }
-
-        if (request.Assignment != Entity.Null || request.AssignmentRevision != 0 || request.EvaluationRevision == 0 ||
-            request.Kind != DroneRouteKindEnum.ViaSource)
+        bool direct = request.Kind == DroneRouteKindEnum.Direct;
+        bool demolition = request.Kind == DroneRouteKindEnum.DirectToBuilding;
+        if (direct)
         {
-            return false;
+            if (!IsRetargetingWorker(manager, request.Assignment, out var assignment, out _))
+            {
+                return false;
+            }
+            if (request.Source != Entity.Null)
+            {
+                return false;
+            }
+            if (request.EvaluationRevision == 0)
+            {
+                return false;
+            }
+            if (assignment.Worker != request.Worker || assignment.Revision != request.AssignmentRevision)
+            {
+                return false;
+            }
+        }
+        else
+        {
+            if (!IsIdleWorker(manager, request.Worker, carryingCapacity))
+            {
+                return false;
+            }
+            if (request.Assignment != Entity.Null)
+            {
+                return false;
+            }
+            if (request.AssignmentRevision != 0 || request.EvaluationRevision == 0)
+            {
+                return false;
+            }
+            if (demolition)
+            {
+                if (request.Source != Entity.Null)
+                {
+                    return false;
+                }
+                if (!DroneDemolitionUtility.IsApprovedTarget(manager, request.Destination))
+                {
+                    return false;
+                }
+            }
+            else if (request.Kind != DroneRouteKindEnum.ViaSource)
+            {
+                return false;
+            }
         }
 
-        // Preparation이 마지막 확정 위치를 관측에 연결한다. 여기서는 그 입력과 요청 스냅샷의 일치만 확인한다.
+        // 종류별 수행자 자격이 보장된 뒤 같은 관측 revision/위치 스냅샷을 한 번 대조한다.
         var observation = manager.GetComponentData<DroneWorkerObservation>(request.Worker);
-        if (request.WorkerObservationRevision != observation.Revision ||
-            !math.all(request.OriginPosition == observation.Position))
-        {
-            return false;
-        }
-
-        if (!IsActiveEntity(manager, request.Source) || !IsActiveEntity(manager, request.Destination))
-        {
-            return false;
-        }
-
-        return manager.HasComponent<GridPosition>(request.Source) && manager.HasComponent<GridPosition>(request.Destination) &&
-               !manager.HasComponent<PendingBuildingDemolition>(request.Source) &&
-               !manager.HasComponent<PendingBuildingDemolition>(request.Destination) &&
-               math.all(manager.GetComponentData<GridPosition>(request.Source).Value == request.SourcePosition) &&
-               math.all(manager.GetComponentData<GridPosition>(request.Destination).Value == request.DestinationPosition);
-    }
-
-    private static bool DirectRouteIsCurrent(EntityManager manager, in DroneRouteEvaluationRequest request)
-    {
-        if (!IsRetargetingWorker(manager, request.Assignment, out var assignment, out _)) return false;
-        if (request.Source != Entity.Null || request.EvaluationRevision == 0) return false;
-        if (assignment.Worker != request.Worker || assignment.Revision != request.AssignmentRevision) return false;
-        var observation = manager.GetComponentData<DroneWorkerObservation>(request.Worker);
-        // Preparation이 준비한 위치/관측 revision과 요청을 비교하며 실제 이동 원본을 중복 갱신하지 않는다.
         if (observation.Revision != request.WorkerObservationRevision ||
-            !math.all(observation.Position == request.OriginPosition)) return false;
-        if (request.IsDropPositionSearch) return request.Destination == Entity.Null;
-        if (!IsActiveEntity(manager, request.Destination)) return false;
-        if (manager.HasComponent<PendingBuildingDemolition>(request.Destination)) return false;
-        if (!manager.HasComponent<GridPosition>(request.Destination)) return false;
+            !math.all(observation.Position == request.OriginPosition))
+        {
+            return false;
+        }
+        if (request.IsDropPositionSearch)
+        {
+            return request.Destination == Entity.Null;
+        }
+        if (demolition)
+        {
+            return math.all(manager.GetComponentData<GridPosition>(request.Destination).Value == request.DestinationPosition);
+        }
+        if (!direct)
+        {
+            if (!IsActiveEntity(manager, request.Source))
+            {
+                return false;
+            }
+            if (!manager.HasComponent<GridPosition>(request.Source))
+            {
+                return false;
+            }
+            if (manager.HasComponent<PendingBuildingDemolition>(request.Source))
+            {
+                return false;
+            }
+            if (!math.all(manager.GetComponentData<GridPosition>(request.Source).Value == request.SourcePosition))
+            {
+                return false;
+            }
+        }
+        if (!IsActiveEntity(manager, request.Destination))
+        {
+            return false;
+        }
+        if (manager.HasComponent<PendingBuildingDemolition>(request.Destination))
+        {
+            return false;
+        }
+        if (!manager.HasComponent<GridPosition>(request.Destination))
+        {
+            return false;
+        }
         return math.all(manager.GetComponentData<GridPosition>(request.Destination).Value == request.DestinationPosition);
     }
 

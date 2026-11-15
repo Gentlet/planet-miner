@@ -235,9 +235,9 @@ public sealed class FloorChunkRenderController : MonoBehaviour
             if (display != null)
             {
                 display.SetActive(false);
-                FloorChunkMeshBuilder.DestroyOwned(display);
+                UnityObjectLifecycleUtility.DestroyOwned(display);
             }
-            FloorChunkMeshBuilder.DestroyOwned(mesh);
+            UnityObjectLifecycleUtility.DestroyOwned(mesh);
             throw;
         }
     }
@@ -270,9 +270,9 @@ public sealed class FloorChunkRenderController : MonoBehaviour
         if (display.Object != null)
         {
             display.Object.SetActive(false);
-            FloorChunkMeshBuilder.DestroyOwned(display.Object);
+            UnityObjectLifecycleUtility.DestroyOwned(display.Object);
         }
-        FloorChunkMeshBuilder.DestroyOwned(display.Mesh);
+        UnityObjectLifecycleUtility.DestroyOwned(display.Mesh);
     }
 
     private void ClearDisplays()

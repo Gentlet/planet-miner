@@ -15,11 +15,6 @@ public static class ResearchRecoveryUtility
             manager.HasBuffer<ResearchRecoveryElement>(entity) && !manager.HasComponent<PendingBuildingDemolition>(entity);
     }
 
-    public static bool IsCollectionSource(EntityManager manager, Entity entity)
-    {
-        return DroneSchedulingUtility.IsStorage(manager, entity) || IsSource(manager, entity);
-    }
-
     /// <summary>회수 부분집합이 있는 소유자만 목록으로 제한한다. 일반 보관/수행자는 이 필터를 통과한다.</summary>
     public static bool PassesRecoveryFilter(EntityManager manager, Entity source, Entity item)
     {
@@ -106,11 +101,6 @@ public static class ResearchRecoveryUtility
             }
             return count;
         }
-    }
-
-    public static int CollectionQuantity(EntityManager manager, Entity source, ItemTypeEnum type)
-    {
-        return IsSource(manager, source) ? CountValidatedSource(manager, source, type) : DroneSchedulingUtility.CountInventory(manager, source, type);
     }
 
     public static bool HasTaskNeed(EntityManager manager, in DroneLogisticsTask task)

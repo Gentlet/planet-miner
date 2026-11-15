@@ -39,7 +39,7 @@ public partial struct BuildingSpatialSyncSystem : ISystem
     {
         if (SystemAPI.TryGetSingletonRW<BuildingSpatialIndexFence>(out var fence))
         {
-            fence.ValueRW.Complete();
+            fence.ValueRW.State.Complete();
         }
 
         if (SystemAPI.TryGetSingleton<BuildingSpatialIndex>(out var index))
@@ -66,13 +66,13 @@ public partial struct BuildingSpatialSyncSystem : ISystem
         if (count == 0)
         {
             // 건물이 없어도 맵은 비워져야 함 (비동기 ClearJob)
-            var clearDep = fence.GetWriterDependency();
-            var clearOnlyJob = new ClearBuildingSpatialIndexJob
+            var clearDep = fence.State.GetWriterDependency();
+            var clearOnlyJob = new ClearSpatialMapJob<int2, BuildingInfo>
             {
                 Map = index.Map
             };
             var clearOnlyHandle = clearOnlyJob.Schedule(clearDep);
-            fence.SetWriter(clearOnlyHandle);
+            fence.State.SetWriter(clearOnlyHandle);
             state.Dependency = clearOnlyHandle;
             return;
         }
@@ -87,16 +87,16 @@ public partial struct BuildingSpatialSyncSystem : ISystem
 
         if (index.Map.Capacity < requiredCapacity)
         {
-            fence.Complete();
+            fence.State.Complete();
             index.Map.Capacity = math.max(1024, requiredCapacity * 2);
         }
 
         // 회전은 footprint 면적을 바꾸지 않는다. 등록은 회전된 셀을 사용하며 맵 Clear는 기존 Reader/Writer를 Fence로 기다린다.
         // Writer 의존성: 마지막 Writer와 이전 모든 Readers 완료 대기
-        var writerDep = fence.GetWriterDependency();
+        var writerDep = fence.State.GetWriterDependency();
 
         // 1. ClearJob 비동기 스케줄링
-        var clearJob = new ClearBuildingSpatialIndexJob
+        var clearJob = new ClearSpatialMapJob<int2, BuildingInfo>
         {
             Map = index.Map
         };
@@ -112,23 +112,9 @@ public partial struct BuildingSpatialSyncSystem : ISystem
         var populateHandle = populateJob.ScheduleParallel(_buildingQuery, populateDep);
 
         // 3. Fence에 신규 Writer 등록 및 이전 Readers 초기화
-        fence.SetWriter(populateHandle);
+        fence.State.SetWriter(populateHandle);
 
         state.Dependency = populateHandle;
-    }
-}
-
-/// <summary>
-/// 건물 공간 해시맵을 비동기로 초기화하는 Burst Job.
-/// </summary>
-[BurstCompile]
-public struct ClearBuildingSpatialIndexJob : IJob
-{
-    public NativeParallelHashMap<int2, BuildingInfo> Map;
-
-    public void Execute()
-    {
-        Map.Clear();
     }
 }
 

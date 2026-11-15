@@ -47,13 +47,11 @@ public readonly struct BuildingInfoDroneRow
 
 /// <summary>선택 원본의 화면 투영/편집 초안/요청 접수만 담당한다. 재고와 작업 상태는 ECS에 유지한다.</summary>
 [RequireComponent(typeof(WorldSelectionController))]
-public sealed class BuildingInfoController : MonoBehaviour
+public sealed class BuildingInfoController : PeriodicWorldView
 {
     private WorldSelectionController _selection;
     private World _world;
     private ulong _feedbackToken;
-    private readonly HashSet<Entity> _pending = new HashSet<Entity>();
-    private float _nextRefresh;
     private bool _noticeInitialized;
     private uint _observedResetRevision;
     private float _resetNoticeUntil;
@@ -88,47 +86,31 @@ public sealed class BuildingInfoController : MonoBehaviour
             _selection.Changed -= OnSelectionChanged;
         }
 
-        Disconnect();
-        HasSelection = false;
-        Changed?.Invoke();
-    }
-
-    private void Disconnect()
-    {
         WorldUiRequestFeedbackRelay.Unregister(_feedbackToken);
         _feedbackToken = 0;
-        _pending.Clear();
         _world = null;
+        HasSelection = false;
+        Changed?.Invoke();
     }
 
     private void OnSelectionChanged()
     {
         _noticeInitialized = false;
         _resetNoticeUntil = 0f;
-        _pending.Clear();
+        WorldUiRequestFeedbackRelay.ClearPending(_feedbackToken);
         Feedback = string.Empty;
         Refresh();
         SelectionChanged?.Invoke();
     }
 
-    private void LateUpdate()
-    {
-        if (Time.unscaledTime < _nextRefresh)
-        {
-            return;
-        }
-
-        _nextRefresh = Time.unscaledTime + 0.2f;
-        Refresh();
-    }
-
-    public void Refresh()
+    public override void Refresh()
     {
         if (!ReferenceEquals(_world, _selection.SelectedWorld))
         {
-            Disconnect();
+            WorldUiRequestFeedbackRelay.Unregister(_feedbackToken);
+            _feedbackToken = 0;
             _world = _selection.SelectedWorld;
-            RegisterFeedback();
+            _feedbackToken = WorldUiRequestFeedbackRelay.Register(_world, ReceiveFeedback);
         }
 
         Items.Clear();
@@ -320,21 +302,6 @@ public sealed class BuildingInfoController : MonoBehaviour
         }
     }
 
-    private void RegisterFeedback()
-    {
-        if (_world == null)
-        {
-            return;
-        }
-
-        if (!_world.IsCreated)
-        {
-            return;
-        }
-
-        _feedbackToken = WorldUiRequestFeedbackRelay.Register(_world, ReceiveFeedback);
-    }
-
     private void ReadItems(EntityManager manager, Entity entity)
     {
         var counts = new Dictionary<(DroneTransportAreaEnum, ItemTypeEnum), int>();
@@ -389,7 +356,7 @@ public sealed class BuildingInfoController : MonoBehaviour
 
         Entity indexOwner = query.GetSingletonEntity();
         // ECS 필드 의존성과 별개인 공유 Native 맵의 마지막 Writer만 완료한 뒤 동기적으로 읽는다.
-        manager.GetComponentData<ItemSpatialIndexFence>(indexOwner).GetReaderDependency().Complete();
+        manager.GetComponentData<ItemSpatialIndexFence>(indexOwner).State.GetReaderDependency().Complete();
         var index = manager.GetComponentData<ItemSpatialIndex>(indexOwner);
         var position = manager.GetComponentData<GridPosition>(entity).Value;
         if (!index.TryGetFirstItem(position, out Entity item, out var iterator))
@@ -549,7 +516,10 @@ public sealed class BuildingInfoController : MonoBehaviour
             return;
         }
 
-        Track(DroneTaskRequestUtility.SubmitTransport(_world.EntityManager, kind, _selection.Selected, type, quantity, area));
+        Entity request = DroneTaskRequestUtility.SubmitTransport(_world.EntityManager, kind, _selection.Selected, type, quantity, area);
+        WorldUiRequestFeedbackRelay.Track(_world.EntityManager, _feedbackToken, request);
+        Feedback = "요청 접수 대기";
+        Changed?.Invoke();
     }
 
     public void CancelTask(Entity task)
@@ -559,7 +529,10 @@ public sealed class BuildingInfoController : MonoBehaviour
             return;
         }
 
-        Track(DroneTaskRequestUtility.SubmitCancel(_world.EntityManager, task));
+        Entity request = DroneTaskRequestUtility.SubmitCancel(_world.EntityManager, task);
+        WorldUiRequestFeedbackRelay.Track(_world.EntityManager, _feedbackToken, request);
+        Feedback = "요청 접수 대기";
+        Changed?.Invoke();
     }
 
     public void RequestStation(Entity drone, DroneStationOperation operation)
@@ -569,27 +542,20 @@ public sealed class BuildingInfoController : MonoBehaviour
             return;
         }
 
-        Track(DroneStationRequestUtility.Submit(_world.EntityManager, drone, _selection.Selected, operation));
+        Entity request = DroneStationRequestUtility.Submit(_world.EntityManager, drone, _selection.Selected, operation);
+        WorldUiRequestFeedbackRelay.Track(_world.EntityManager, _feedbackToken, request);
+        Feedback = "요청 접수 대기";
+        Changed?.Invoke();
     }
 
-    public void SetRecipe(int recipe)
+    public void SubmitSettings(in PlannedBuildingSettings settings)
     {
         if (!CanSubmit())
         {
             return;
         }
 
-        BuildingSettingsUtility.Submit(_world.EntityManager, _selection.Selected, new PlannedBuildingSettings { HasRecipe = true, RecipeId = recipe });
-    }
-
-    public void SetFilter(StorageFilter filter)
-    {
-        if (!CanSubmit())
-        {
-            return;
-        }
-
-        BuildingSettingsUtility.Submit(_world.EntityManager, _selection.Selected, new PlannedBuildingSettings { HasStorageFilter = true, Filter = filter });
+        BuildingSettingsUtility.Submit(_world.EntityManager, _selection.Selected, settings);
     }
 
     private bool CanSubmit()
@@ -627,14 +593,6 @@ public sealed class BuildingInfoController : MonoBehaviour
         return _world.EntityManager.Exists(_selection.Selected);
     }
 
-    private void Track(Entity request)
-    {
-        _world.EntityManager.AddComponentData(request, new WorldUiRequestOwner { FeedbackToken = _feedbackToken });
-        _pending.Add(request);
-        Feedback = "요청 접수 대기";
-        Changed?.Invoke();
-    }
-
     private void ReceiveFeedback(WorldUiRequestFeedback result)
     {
         if (!isActiveAndEnabled)
@@ -642,7 +600,9 @@ public sealed class BuildingInfoController : MonoBehaviour
             return;
         }
 
-        if (!_pending.Remove(result.Request))
+
+        // 선택 갱신보다 이전 World의 결과 소비가 먼저 실행될 수 있다.
+        if (!ReferenceEquals(_world, World.DefaultGameObjectInjectionWorld))
         {
             return;
         }

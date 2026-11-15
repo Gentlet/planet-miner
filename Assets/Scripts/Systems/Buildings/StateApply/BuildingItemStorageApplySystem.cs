@@ -52,11 +52,6 @@ public partial struct BuildingItemStorageApplySystem : ISystem
     }
 
     [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
-    [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
         if (!SystemAPI.HasSingleton<BeltSpatialIndex>() || !SystemAPI.HasSingleton<BeltSpatialIndexFence>())
@@ -101,10 +96,10 @@ public partial struct BuildingItemStorageApplySystem : ISystem
             DestroyRequestLookup = _destroyRequestLookup
         };
 
-        var outputDep = JobHandle.CombineDependencies(inputHandle, beltFence.GetReaderDependency());
+        var outputDep = JobHandle.CombineDependencies(inputHandle, beltFence.State.GetReaderDependency());
         var outputHandle = outputJob.Schedule(_outputQuery, outputDep);
 
-        beltFence.AddReader(outputHandle);
+        beltFence.State.AddReader(outputHandle);
 
         state.Dependency = outputHandle;
     }
@@ -253,30 +248,9 @@ public partial struct BuildingItemOutputApplyJob : IJobEntity
             }
         }
 
-        // 아이템 엔티티의 월드 상태 복원
-        if (GridPositionLookup.HasComponent(itemToOutput))
-        {
-            GridPositionLookup[itemToOutput] = new GridPosition(targetBeltPos);
-        }
-
-        if (DirectionLookup.HasComponent(itemToOutput))
-        {
-            DirectionLookup[itemToOutput] = new Direction(beltInfo.Direction);
-        }
-
-        if (BeltMovementStateLookup.HasComponent(itemToOutput))
-        {
-            BeltMovementStateLookup[itemToOutput] = new BeltMovementState(0.0f);
-            BeltMovementStateLookup.SetComponentEnabled(itemToOutput, true);
-        }
-
-        if (TransformLookup.HasComponent(itemToOutput))
-        {
-            float2 center = new float2(targetBeltPos.x, targetBeltPos.y);
-            float2 dirFloat = new float2(beltInfo.Direction.ToInt2().x, beltInfo.Direction.ToInt2().y);
-            float2 visualPos = center + dirFloat * (0.0f - 0.5f);
-            TransformLookup[itemToOutput] = LocalTransform.FromPosition(new float3(visualPos.x, visualPos.y, 0f));
-        }
+        // 승인된 아이템의 월드 위치와 벨트 이동 상태 복원
+        BeltItemPlacementUtility.PlaceAtStart(itemToOutput, targetBeltPos, beltInfo.Direction,
+            ref GridPositionLookup, ref DirectionLookup, ref BeltMovementStateLookup, ref TransformLookup);
 
         // 소유권 이전 요청 발행 (ItemOwnershipApplySystem에서 WorldItem으로 최종 반영)
         if (TransferOwnershipRequestLookup.HasComponent(itemToOutput))

@@ -191,40 +191,6 @@ namespace PlanetMiner.Config
             return itemType;
         }
 
-        /// <summary>사전 등록된 원본 버퍼도 게시 입력과 같은 품목·출력 계약으로 검사한다. 수정하거나 복사하지 않는다.</summary>
-        public static void ValidateRegisteredConfig(
-            DynamicBuffer<RecipeConfigElement> recipes,
-            DynamicBuffer<RecipeIngredientElement> ingredients,
-            DynamicBuffer<RecipeOutputElement> outputs)
-        {
-            var recipeIds = new HashSet<int>();
-            for (int i = 0; i < recipes.Length; i++)
-            {
-                var recipe = recipes[i];
-                ValidateRecipeId(recipe.Id, recipeIds);
-                ValidateRecipeRange(recipe, ingredients.Length, outputs.Length);
-                var ingredientTypes = new HashSet<ItemTypeEnum>();
-                for (int ingredientIndex = 0; ingredientIndex < recipe.IngredientCount; ingredientIndex++)
-                {
-                    ValidateIngredientUniqueness(recipe.Id,
-                        ingredients[recipe.IngredientStart + ingredientIndex].ItemType, ingredientTypes);
-                }
-                for (int outputIndex = 0; outputIndex < recipe.OutputCount; outputIndex++)
-                {
-                    ValidateOutputRole(recipe.Id, outputs[recipe.OutputStart + outputIndex], outputIndex);
-                }
-            }
-
-            for (int i = 0; i < ingredients.Length; i++)
-            {
-                ValidateItemType(ingredients[i].ItemType, $"Ingredient at index {i}");
-            }
-            for (int i = 0; i < outputs.Length; i++)
-            {
-                ValidateOutput(outputs[i], i);
-            }
-        }
-
         /// <summary>전체 제품 초기화에서 사용하는 필수 목록이다. 잠긴 레시피도 데이터 자체는 시작 시 존재해야 한다.</summary>
         public static void ValidateRequiredRecipes(RecipeConfigData config)
         {
@@ -234,16 +200,6 @@ namespace PlanetMiner.Config
             }
             var ids = new HashSet<int>();
             foreach (var recipe in config.Recipes)
-            {
-                ids.Add(recipe.Id);
-            }
-            ValidateRequiredRecipeIds(ids);
-        }
-
-        public static void ValidateRequiredRecipes(in DynamicBuffer<RecipeConfigElement> recipes)
-        {
-            var ids = new HashSet<int>();
-            foreach (var recipe in recipes)
             {
                 ids.Add(recipe.Id);
             }
@@ -375,7 +331,7 @@ namespace PlanetMiner.Config
             }
         }
 
-        private static void ValidateConfig(RecipeConfigData config)
+        internal static void ValidateConfig(RecipeConfigData config)
         {
             var recipeIds = new HashSet<int>();
             foreach (var recipe in config.Recipes)

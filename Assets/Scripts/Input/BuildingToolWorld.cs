@@ -209,9 +209,9 @@ public static class BuildingToolWorld
         {
             return false;
         }
-        buildings.GetSingleton<BuildingSpatialIndexFence>().GetReaderDependency().Complete();
-        resources.GetSingleton<ResourceSpatialIndexFence>().GetReaderDependency().Complete();
-        items.GetSingleton<ItemSpatialIndexFence>().GetReaderDependency().Complete();
+        buildings.GetSingleton<BuildingSpatialIndexFence>().State.GetReaderDependency().Complete();
+        resources.GetSingleton<ResourceSpatialIndexFence>().State.GetReaderDependency().Complete();
+        items.GetSingleton<ItemSpatialIndexFence>().State.GetReaderDependency().Complete();
         var native = new NativeArray<PlacementCandidate>(candidates.Count, Allocator.Temp);
         var validation = new NativeArray<PlacementValidationResult>(candidates.Count, Allocator.Temp);
         var settings = new NativeArray<PlacementValidationCode>(candidates.Count, Allocator.Temp);

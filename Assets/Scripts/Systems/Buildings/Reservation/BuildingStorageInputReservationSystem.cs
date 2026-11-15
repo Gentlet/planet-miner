@@ -43,11 +43,6 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
     }
 
     [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
-    [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
         _storageLookup.Update(ref state);

@@ -40,10 +40,6 @@ public partial struct CrafterRecipeCommandSystem : ISystem
         _itemConfigLookup = state.GetBufferLookup<ItemConfigElement>(true);
     }
 
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
     public void OnUpdate(ref SystemState state)
     {
         if (_requestQuery.IsEmpty)

@@ -29,22 +29,6 @@ public sealed class SimulationOverviewView : MonoBehaviour
             }
         }
     }
-    private sealed class TaskRow
-    {
-        public readonly VisualElement Root = new VisualElement();
-        public readonly Label Text = new Label();
-        public readonly Button Select;
-        public Action Click;
-        public TaskRow()
-        {
-            Root.style.flexDirection = FlexDirection.Row;
-            Text.style.flexGrow = 1;
-            Text.style.whiteSpace = WhiteSpace.Normal;
-            Root.Add(Text);
-            Select = new Button(() => Click?.Invoke()) { text = "대상 조회" };
-            Root.Add(Select);
-        }
-    }
     private ResearchPanelController _research;
     private TaskOverviewController _tasks;
     private GameObject _rootObject;
@@ -61,7 +45,7 @@ public sealed class SimulationOverviewView : MonoBehaviour
     private Button _start;
     private VisualElement _taskRows;
     private readonly Dictionary<int, Button> _nodeButtons = new Dictionary<int, Button>();
-    private readonly List<TaskRow> _rows = new List<TaskRow>();
+    private readonly List<WorldUiActionRow> _rows = new List<WorldUiActionRow>();
     private int _layoutVersion = -1;
     private int _page;
     public int VisiblePage => _page;
@@ -292,7 +276,7 @@ public sealed class SimulationOverviewView : MonoBehaviour
         }
         while (_rows.Count < _tasks.Rows.Count)
         {
-            var row = new TaskRow();
+            var row = new WorldUiActionRow("대상 조회");
             _rows.Add(row);
             _taskRows.Add(row.Root);
         }
@@ -305,7 +289,7 @@ public sealed class SimulationOverviewView : MonoBehaviour
                 continue;
             }
             var data = _tasks.Rows[i];
-            row.Text.text = data.Text;
+            row.Label.text = data.Text;
             row.Click = () => _tasks.SelectTarget(data.Task);
         }
     }
@@ -323,7 +307,7 @@ public sealed class SimulationOverviewView : MonoBehaviour
         if (_rootObject != null)
         {
             _rootObject.SetActive(false);
-            Release(_rootObject);
+            UnityObjectLifecycleUtility.DestroyOwned(_rootObject);
         }
         _panel = null;
         _nodeButtons.Clear();
@@ -340,17 +324,5 @@ public sealed class SimulationOverviewView : MonoBehaviour
         _graphScroll = null;
         _rows.Clear();
         _page = 0;
-    }
-
-    private static void Release(UnityEngine.Object owned)
-    {
-        if (Application.isPlaying)
-        {
-            Destroy(owned);
-        }
-        else
-        {
-            DestroyImmediate(owned);
-        }
     }
 }

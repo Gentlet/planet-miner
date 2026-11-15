@@ -5,6 +5,19 @@ using Unity.Entities;
 /// <summary>기존 Task Decision의 요청 판단/제어 의도를 준비한다. 작업/예약/실물은 변경하지 않는다.</summary>
 internal static class DroneTaskRequestDecisionUtility
 {
+    /// <summary>호출자가 정규화한 작업 생성 키의 존재 여부를 판정한다.</summary>
+    internal static bool ContainsGenerationKey(NativeList<DroneTaskGenerationKey> keys, in DroneTaskGenerationKey candidate)
+    {
+        for (int i = 0; i < keys.Length; i++)
+        {
+            if (keys[i].Equals(candidate))
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
     internal struct Record
     {
         public Entity Entity;

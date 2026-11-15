@@ -7,19 +7,6 @@ using Unity.Entities;
 /// 정리·가시화: Producer 완료와 재생 뒤 새 실물/연결 자식의 장면 소유권을 해제한다. 공간 인덱스 갱신은 Synchronization까지 지연된다.
 /// </summary>
 [UpdateInGroup(typeof(CommandGroup), OrderLast = true)]
-public partial class EndCommandEntityCommandBufferSystem : EntityCommandBufferSystem
+public partial class EndCommandEntityCommandBufferSystem : RuntimePrefabEntityCommandBufferSystem
 {
-    private EntityQuery _pendingPrefabInstances;
-
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-        _pendingPrefabInstances = RuntimePrefabLifecycleUtility.CreatePendingSceneDetachQuery(this);
-    }
-
-    protected override void OnUpdate()
-    {
-        base.OnUpdate();
-        RuntimePrefabLifecycleUtility.DetachSceneOwnership(EntityManager, _pendingPrefabInstances);
-    }
 }

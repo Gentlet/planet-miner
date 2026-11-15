@@ -47,14 +47,14 @@ public static class BuildingInputSlotUtility
         for (int i = 0; i < ingredientCount; i++)
         {
             ItemTypeEnum itemType = ingredients[ingredientStart + i].ItemType;
-            if (HasEarlierIngredient(ingredients, ingredientStart, i, itemType))
+            long requiredAmount = SumRequiredAmountAtFirstOccurrence(ingredients, ingredientStart, ingredientCount, i, itemType);
+            if (requiredAmount == 0)
             {
                 continue;
             }
 
-            long requiredAmount = SumRequiredAmount(ingredients, ingredientStart, ingredientCount, i, itemType);
             int maxStack = ItemRegistry.GetMaxStack(items, itemType);
-            long requiredSlots = (requiredAmount - 1) / maxStack + 1;
+            long requiredSlots = RequiredSlotCount(requiredAmount, maxStack);
             if (requiredSlots > GameConstants.MaxStorageSlots - calculatedSlots.Length)
             {
                 error = BuildingInputSlotCalculationErrorEnum.SlotLimitExceeded;
@@ -69,6 +69,13 @@ public static class BuildingInputSlotUtility
 
         slots = calculatedSlots;
         return true;
+    }
+
+    /// <summary>검증된 비음수 수량과 양수 MaxStack의 슬롯 수를 오버플로 없이 올림 계산한다.</summary>
+    internal static long RequiredSlotCount(long quantity, int maximumStack)
+    {
+        long slots = quantity / maximumStack;
+        return quantity % maximumStack == 0 ? slots : slots + 1;
     }
 
     private static BuildingInputSlotCalculationErrorEnum ValidateIngredients(
@@ -106,32 +113,24 @@ public static class BuildingInputSlotUtility
         return BuildingInputSlotCalculationErrorEnum.None;
     }
 
-    private static bool HasEarlierIngredient(
-        DynamicBuffer<RecipeIngredientElement> ingredients, int ingredientStart, int index, ItemTypeEnum itemType)
-    {
-        for (int i = 0; i < index; i++)
-        {
-            if (ingredients[ingredientStart + i].ItemType == itemType)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static long SumRequiredAmount(
+    private static long SumRequiredAmountAtFirstOccurrence(
         DynamicBuffer<RecipeIngredientElement> ingredients, int ingredientStart, int ingredientCount,
-        int firstIndex, ItemTypeEnum itemType)
+        int candidateIndex, ItemTypeEnum itemType)
     {
         long amount = 0;
-        for (int i = firstIndex; i < ingredientCount; i++)
+        // ValidateIngredients가 양수 수량을 보장한다. 0은 앞선 행에서 이미 계산한 품목이다.
+        for (int i = 0; i < ingredientCount; i++)
         {
             var ingredient = ingredients[ingredientStart + i];
-            if (ingredient.ItemType == itemType)
+            if (ingredient.ItemType != itemType)
             {
-                amount += ingredient.Amount;
+                continue;
             }
+            if (i < candidateIndex)
+            {
+                return 0;
+            }
+            amount += ingredient.Amount;
         }
 
         return amount;

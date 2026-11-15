@@ -19,11 +19,10 @@ public readonly struct TaskOverviewRow
 
 /// <summary>전체 작업 원본을 조회한다. 대상 선택 외 명령/취소/우선순위 상태를 만들지 않는다.</summary>
 [RequireComponent(typeof(WorldSelectionController))]
-public sealed class TaskOverviewController : MonoBehaviour
+public sealed class TaskOverviewController : PeriodicWorldView
 {
     private World _world;
     private WorldSelectionController _selection;
-    private float _nextRefresh;
     public readonly List<TaskOverviewRow> Rows = new List<TaskOverviewRow>();
     public event Action Changed;
 
@@ -40,17 +39,7 @@ public sealed class TaskOverviewController : MonoBehaviour
         Changed?.Invoke();
     }
 
-    private void LateUpdate()
-    {
-        if (Time.unscaledTime < _nextRefresh)
-        {
-            return;
-        }
-        _nextRefresh = Time.unscaledTime + 0.2f;
-        Refresh();
-    }
-
-    public void Refresh()
+    public override void Refresh()
     {
         Rows.Clear();
         _world = World.DefaultGameObjectInjectionWorld;

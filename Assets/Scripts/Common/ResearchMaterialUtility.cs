@@ -9,11 +9,6 @@ public static class ResearchMaterialUtility
         return amount * BufferedCycleCount;
     }
 
-    public static long SlotCountForTwoCycles(int amount, int maximumStack)
-    {
-        return ((long)amount * BufferedCycleCount + maximumStack - 1) / maximumStack;
-    }
-
     public static bool HasMaterials(in ResearchDefinitionElement definition,
         DynamicBuffer<ResearchIngredientElement> ingredients, DynamicBuffer<StoredItemElement> stored,
         ComponentLookup<DestroyItemRequest> destroyRequests)
@@ -21,15 +16,7 @@ public static class ResearchMaterialUtility
         for (int i = 0; i < definition.IngredientCount; i++)
         {
             var ingredient = ingredients[definition.IngredientStart + i];
-            int count = 0;
-            foreach (var item in stored)
-            {
-                if (item.ItemType == ingredient.ItemType &&
-                    RecipeConfigLookupUtility.CanConsumeStoredItem(item.ItemEntity, destroyRequests))
-                {
-                    count++;
-                }
-            }
+            int count = StoredItemBufferUtility.CountConsumable(stored, ingredient.ItemType, destroyRequests);
             if (count < ingredient.Amount)
             {
                 return false;

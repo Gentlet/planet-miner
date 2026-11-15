@@ -47,11 +47,6 @@ public partial struct ItemLifecycleApplySystem : ISystem
 
     }
 
-    [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
     public void OnUpdate(ref SystemState state)
     {
         var ecbSystem = state.World.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>();

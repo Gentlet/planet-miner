@@ -13,7 +13,7 @@ public static class BuildingPlacementRequestUtility
         in BuildingPlacementRequest request,
         ReadOnlySpan<PlacementRequestCandidateElement> candidates)
     {
-        Entity sequenceEntity = GetOrCreateReceiptSequence(manager);
+        Entity sequenceEntity = WorldSequenceUtility.GetOrCreate(manager, new BuildingPlacementReceiptSequence { NextValue = 1, CurrentTick = 1 });
         var sequence = manager.GetComponentData<BuildingPlacementReceiptSequence>(sequenceEntity);
         ValidateSequence(sequence);
 
@@ -49,7 +49,7 @@ public static class BuildingPlacementRequestUtility
         BuildingPlacementReceiptSequence sequence = default;
         if (needsStamp)
         {
-            sequenceEntity = GetOrCreateReceiptSequence(manager);
+            sequenceEntity = WorldSequenceUtility.GetOrCreate(manager, new BuildingPlacementReceiptSequence { NextValue = 1, CurrentTick = 1 });
             sequence = manager.GetComponentData<BuildingPlacementReceiptSequence>(sequenceEntity);
             ValidateSequence(sequence);
             accepted.Stamp = new PlacementStamp(sequence.CurrentTick, 0, sequence.NextValue);
@@ -92,7 +92,7 @@ public static class BuildingPlacementRequestUtility
             {
                 if (batchStamp.IsDefault)
                 {
-                    Entity sequenceEntity = GetOrCreateReceiptSequence(manager);
+                    Entity sequenceEntity = WorldSequenceUtility.GetOrCreate(manager, new BuildingPlacementReceiptSequence { NextValue = 1, CurrentTick = 1 });
                     var sequence = manager.GetComponentData<BuildingPlacementReceiptSequence>(sequenceEntity);
                     ValidateSequence(sequence);
                     batchStamp = new PlacementStamp(sequence.CurrentTick, 0, sequence.NextValue++);
@@ -107,7 +107,7 @@ public static class BuildingPlacementRequestUtility
 
     public static void AdvanceTick(EntityManager manager)
     {
-        Entity entity = GetOrCreateReceiptSequence(manager);
+        Entity entity = WorldSequenceUtility.GetOrCreate(manager, new BuildingPlacementReceiptSequence { NextValue = 1, CurrentTick = 1 });
         var sequence = manager.GetComponentData<BuildingPlacementReceiptSequence>(entity);
         if (sequence.CurrentTick == 0 || sequence.CurrentTick == ulong.MaxValue)
         {
@@ -128,25 +128,12 @@ public static class BuildingPlacementRequestUtility
     /// <summary>공통 생성 API를 직접 사용하는 소유자에게도 같은 World 접수 순서의 불변 표식을 발급한다.</summary>
     public static PlacementStamp ReserveSpawnStamp(EntityManager manager)
     {
-        Entity entity = GetOrCreateReceiptSequence(manager);
+        Entity entity = WorldSequenceUtility.GetOrCreate(manager, new BuildingPlacementReceiptSequence { NextValue = 1, CurrentTick = 1 });
         var sequence = manager.GetComponentData<BuildingPlacementReceiptSequence>(entity);
         ValidateSequence(sequence);
         var stamp = new PlacementStamp(sequence.CurrentTick, 0, sequence.NextValue);
         sequence.NextValue++;
         manager.SetComponentData(entity, sequence);
         return stamp;
-    }
-
-    public static Entity GetOrCreateReceiptSequence(EntityManager manager)
-    {
-        using var query = manager.CreateEntityQuery(ComponentType.ReadWrite<BuildingPlacementReceiptSequence>());
-        if (!query.IsEmptyIgnoreFilter)
-        {
-            return query.GetSingletonEntity();
-        }
-
-        Entity entity = manager.CreateEntity(typeof(BuildingPlacementReceiptSequence));
-        manager.SetComponentData(entity, new BuildingPlacementReceiptSequence { NextValue = 1, CurrentTick = 1 });
-        return entity;
     }
 }

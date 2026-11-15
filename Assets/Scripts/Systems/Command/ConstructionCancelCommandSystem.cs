@@ -111,7 +111,6 @@ public partial struct CancelConstructionCommandJob : IJobEntity
         {
             sitePos = position.Value;
         }
-        float3 worldPos = new float3(sitePos.x, sitePos.y, 0f);
 
         // 현장에 도착한 실물만 반환한다. 미도착 요구량이나 다른 드론의 적재품은 여기서 새로 생성/이전하지 않는다.
         // Owner·좌표·렌더를 같은 ECB에 기록해 현장 삭제와 반환이 EndCommand에서 함께 확정되게 한다.
@@ -131,9 +130,7 @@ public partial struct CancelConstructionCommandJob : IJobEntity
                 }
 
                 ECB.SetComponent(item, ItemOwnership.WorldItem);
-                ECB.RemoveComponent<DisableRendering>(item);
-                ECB.SetComponent(item, new GridPosition(sitePos));
-                ECB.SetComponent(item, LocalTransform.FromPosition(worldPos));
+                ItemLifecycleUtility.RecordWorldReturnPresentationAndPosition(ref ECB, item, sitePos);
             }
         }
 

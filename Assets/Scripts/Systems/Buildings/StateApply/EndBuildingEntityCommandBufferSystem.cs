@@ -7,19 +7,6 @@ using Unity.Entities;
 /// 정리·가시화: 새 실물/연결 자식의 장면 소유권을 해제하고 ECB를 해제한다. 공간 인덱스는 Synchronization까지 유지한다.
 /// </summary>
 [UpdateInGroup(typeof(BuildingSimulationGroup), OrderLast = true)]
-public partial class EndBuildingEntityCommandBufferSystem : EntityCommandBufferSystem
+public partial class EndBuildingEntityCommandBufferSystem : RuntimePrefabEntityCommandBufferSystem
 {
-    private EntityQuery _pendingPrefabInstances;
-
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-        _pendingPrefabInstances = RuntimePrefabLifecycleUtility.CreatePendingSceneDetachQuery(this);
-    }
-
-    protected override void OnUpdate()
-    {
-        base.OnUpdate();
-        RuntimePrefabLifecycleUtility.DetachSceneOwnership(EntityManager, _pendingPrefabInstances);
-    }
 }

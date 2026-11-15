@@ -28,7 +28,7 @@ public partial struct PowerGridConnectionSyncSystem : ISystem
     {
         if (SystemAPI.TryGetSingletonRW<PowerGridConnectionIndexFence>(out var fence))
         {
-            fence.ValueRW.Complete();
+            fence.ValueRW.State.Complete();
         }
         if (SystemAPI.TryGetSingleton<PowerGridConnectionIndex>(out var index) && index.Map.IsCreated)
         {
@@ -44,26 +44,19 @@ public partial struct PowerGridConnectionSyncSystem : ISystem
         int count = _connectionQuery.CalculateEntityCount();
         if (index.Map.Capacity < count)
         {
-            fence.Complete();
+            fence.State.Complete();
             index.Map.Capacity = math.max(1024, count * 2);
         }
 
-        var dependency = JobHandle.CombineDependencies(state.Dependency, fence.GetWriterDependency());
-        var clearHandle = new ClearPowerGridConnectionIndexJob { Map = index.Map }.Schedule(dependency);
+        var dependency = JobHandle.CombineDependencies(state.Dependency, fence.State.GetWriterDependency());
+        var clearHandle = new ClearSpatialMapJob<Entity, PowerGridConnection> { Map = index.Map }.Schedule(dependency);
         var populateHandle = new PopulatePowerGridConnectionIndexJob
         {
             Writer = index.Map.AsParallelWriter()
         }.ScheduleParallel(_connectionQuery, clearHandle);
-        fence.SetWriter(populateHandle);
+        fence.State.SetWriter(populateHandle);
         state.Dependency = populateHandle;
     }
-}
-
-[BurstCompile]
-internal struct ClearPowerGridConnectionIndexJob : IJob
-{
-    public NativeParallelHashMap<Entity, PowerGridConnection> Map;
-    public void Execute() => Map.Clear();
 }
 
 [BurstCompile]

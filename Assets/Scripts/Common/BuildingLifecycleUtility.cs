@@ -17,23 +17,6 @@ public static class BuildingLifecycleUtility
         internal RegistryBufferReadCache<BuildingPrefabElement> Prefabs;
     }
 
-    public static Entity SpawnBuilding(
-        ref EntityCommandBuffer ecb,
-        int buildingId,
-        int2 position,
-        DirectionEnum direction,
-        int2 footprintSize,
-        PlacementStamp stamp,
-        Entity prefabDbEntity,
-        Entity configEntity,
-        in BufferLookup<BuildingPrefabElement> prefabBufferLookup,
-        in BufferLookup<BuildingConfigElement> configBufferLookup)
-    {
-        var registryRead = new SpawnRegistryReadContext();
-        return SpawnBuilding(ref ecb, buildingId, position, direction, footprintSize, stamp,
-            prefabDbEntity, configEntity, prefabBufferLookup, configBufferLookup, ref registryRead);
-    }
-
     internal static Entity SpawnBuilding(
         ref EntityCommandBuffer ecb,
         int buildingId,
@@ -54,16 +37,16 @@ public static class BuildingLifecycleUtility
 
         if (configEntity == Entity.Null)
         {
-            return RejectMissingConfiguration(ref ecb, buildingId);
+            return RejectMissingDefinition(ref ecb, buildingId, (FixedString32Bytes)"configuration");
         }
         if (!registryRead.Configs.TryRead(configBufferLookup, configEntity, out var configBuffer))
         {
-            return RejectMissingConfiguration(ref ecb, buildingId);
+            return RejectMissingDefinition(ref ecb, buildingId, (FixedString32Bytes)"configuration");
         }
 
         if (!BuildingConfigLookupUtility.TryGetConfig(configBuffer, buildingId, out var config))
         {
-            return RejectMissingConfiguration(ref ecb, buildingId);
+            return RejectMissingDefinition(ref ecb, buildingId, (FixedString32Bytes)"configuration");
         }
 
         return SpawnConfiguredBuilding(ref ecb, position, direction, footprintSize,
@@ -113,15 +96,15 @@ public static class BuildingLifecycleUtility
 
         if (prefabDbEntity == Entity.Null)
         {
-            return RejectMissingPrefab(ref ecb, config.BuildingId);
+            return RejectMissingDefinition(ref ecb, config.BuildingId, (FixedString32Bytes)"prefab");
         }
         if (!registryRead.Prefabs.TryRead(prefabBufferLookup, prefabDbEntity, out var buffer))
         {
-            return RejectMissingPrefab(ref ecb, config.BuildingId);
+            return RejectMissingDefinition(ref ecb, config.BuildingId, (FixedString32Bytes)"prefab");
         }
         if (!PrefabLookupUtility.TryGetBuildingPrefab(buffer, config.BuildingId, out Entity prefabEntity))
         {
-            return RejectMissingPrefab(ref ecb, config.BuildingId);
+            return RejectMissingDefinition(ref ecb, config.BuildingId, (FixedString32Bytes)"prefab");
         }
 
         float3 spawnPosition = new float3(position.x, position.y, 0f);
@@ -148,18 +131,11 @@ public static class BuildingLifecycleUtility
         return newBuilding;
     }
 
-    private static Entity RejectMissingConfiguration(ref EntityCommandBuffer ecb, int buildingId)
+    private static Entity RejectMissingDefinition(ref EntityCommandBuffer ecb, int buildingId, FixedString32Bytes definitionName)
     {
-        FixedString128Bytes message = "[BuildingLifecycleUtility] Missing configuration for building ID ";
-        message.Append(buildingId);
-        message.Append((FixedString128Bytes)". Spawn rejected.");
-        SimulationFailureUtility.Record(ref ecb, message);
-        return Entity.Null;
-    }
-
-    private static Entity RejectMissingPrefab(ref EntityCommandBuffer ecb, int buildingId)
-    {
-        FixedString128Bytes message = "[BuildingLifecycleUtility] Missing prefab for building ID ";
+        FixedString128Bytes message = "[BuildingLifecycleUtility] Missing ";
+        message.Append(definitionName);
+        message.Append((FixedString128Bytes)" for building ID ");
         message.Append(buildingId);
         message.Append((FixedString128Bytes)". Spawn rejected.");
         SimulationFailureUtility.Record(ref ecb, message);

@@ -37,11 +37,6 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
     }
 
     [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
-    [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
         if (!SystemAPI.HasSingleton<BuildingSpatialIndex>() ||
@@ -73,12 +68,12 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
         };
 
         // Reader 의존성: BuildingSpatialIndex 및 BeltSpatialIndex의 마지막 Writer 완료 대기 및 Reader 등록
-        var readersDep = Unity.Jobs.JobHandle.CombineDependencies(buildingFence.GetReaderDependency(), beltFence.GetReaderDependency());
+        var readersDep = Unity.Jobs.JobHandle.CombineDependencies(buildingFence.State.GetReaderDependency(), beltFence.State.GetReaderDependency());
         var jobDep = Unity.Jobs.JobHandle.CombineDependencies(state.Dependency, readersDep);
         var jobHandle = job.ScheduleParallel(_itemQuery, jobDep);
 
-        buildingFence.AddReader(jobHandle);
-        beltFence.AddReader(jobHandle);
+        buildingFence.State.AddReader(jobHandle);
+        beltFence.State.AddReader(jobHandle);
 
         state.Dependency = jobHandle;
     }

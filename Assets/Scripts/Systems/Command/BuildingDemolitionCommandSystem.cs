@@ -47,7 +47,7 @@ public partial struct BuildingDemolitionCommandSystem : ISystem
     public void OnUpdate(ref SystemState state)
     {
         using (var owned = _ownedRequests.ToEntityArray(Allocator.Temp))
-            foreach (Entity request in owned) DroneTaskRequestUtility.TryConsumeResult(state.EntityManager, request, out _);
+            foreach (Entity request in owned) RequestResultUtility.TryConsumeResult<DroneTaskRequest, DroneTaskRequestResult>(state.EntityManager, request, out _);
         if (_requests.IsEmptyIgnoreFilter && _pending.IsEmptyIgnoreFilter && _preparing.IsEmptyIgnoreFilter) return;
         var end = state.World.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
         var ecb = end.CreateCommandBuffer();

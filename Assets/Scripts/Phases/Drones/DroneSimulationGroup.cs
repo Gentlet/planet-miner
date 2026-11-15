@@ -6,24 +6,7 @@ using Unity.Entities;
 /// </summary>
 [UpdateInGroup(typeof(GameSimulationGroup))]
 [UpdateAfter(typeof(BuildingSimulationGroup))]
-public partial class DroneSimulationGroup : ComponentSystemGroup
+public partial class DroneSimulationGroup : FatalGuardedSimulationGroup
 {
-    private EntityQuery _fatalErrorQuery;
-
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-        _fatalErrorQuery = GetEntityQuery(ComponentType.ReadOnly<SimulationFatalError>());
-    }
-
-    protected override void OnUpdate()
-    {
-        // 공통 Fatal의 중단 범위를 따른다. EndBuilding Fatal의 기존 다음 틱 차단은 유지한다.
-        if (SimulationFailureUtility.ShouldAbortCurrentTick(_fatalErrorQuery))
-        {
-            return;
-        }
-        base.OnUpdate();
-    }
 }
 

@@ -16,15 +16,6 @@ using Unity.Transforms;
 [BurstCompile]
 public partial struct BeltMovementExecutionSystem : ISystem
 {
-    [BurstCompile]
-    public void OnCreate(ref SystemState state)
-    {
-    }
-
-    [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-    }
 
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
@@ -43,11 +34,11 @@ public partial struct BeltMovementExecutionSystem : ISystem
         };
 
         // Reader 의존성: 마지막 Writer가 끝난 뒤 읽기 실행
-        var jobDep = JobHandle.CombineDependencies(state.Dependency, beltFence.GetReaderDependency());
+        var jobDep = JobHandle.CombineDependencies(state.Dependency, beltFence.State.GetReaderDependency());
         var jobHandle = job.ScheduleParallel(jobDep);
 
         // Fence에 Reader Handle 등록
-        beltFence.AddReader(jobHandle);
+        beltFence.State.AddReader(jobHandle);
 
         state.Dependency = jobHandle;
     }

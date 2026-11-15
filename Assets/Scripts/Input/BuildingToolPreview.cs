@@ -110,33 +110,21 @@ public sealed class BuildingToolPreview : MonoBehaviour
         }
         foreach (var line in _outlines)
         {
-            DestroyOwned(line.gameObject);
+            UnityObjectLifecycleUtility.DestroyOwned(line.gameObject);
         }
         foreach (var line in _arrows)
         {
-            DestroyOwned(line.gameObject);
+            UnityObjectLifecycleUtility.DestroyOwned(line.gameObject);
         }
         _outlines.Clear();
         _arrows.Clear();
         if (_selection != null)
         {
-            DestroyOwned(_selection.gameObject);
+            UnityObjectLifecycleUtility.DestroyOwned(_selection.gameObject);
         }
         if (_material != null)
         {
-            DestroyOwned(_material);
-        }
-    }
-
-    private static void DestroyOwned(Object value)
-    {
-        if (Application.isPlaying)
-        {
-            Destroy(value);
-        }
-        else
-        {
-            DestroyImmediate(value);
+            UnityObjectLifecycleUtility.DestroyOwned(_material);
         }
     }
 }

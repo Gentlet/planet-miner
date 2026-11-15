@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using Unity.Collections;
 using Unity.Entities;
 
 /// <summary>
@@ -9,10 +11,57 @@ using Unity.Entities;
 /// </summary>
 public static class DroneActionRequestUtility
 {
+    /// <summary>호출 시점의 행동 요청을 접수 순서로 캡처한다. 반환 목록의 수명은 호출자가 소유한다.</summary>
+    internal static NativeList<PendingAction> ReadInReceiptOrder(EntityManager manager, EntityQuery requests, Allocator allocator)
+    {
+        using var entities = requests.ToEntityArray(Allocator.Temp);
+        var ordered = new NativeList<PendingAction>(entities.Length, allocator);
+        try
+        {
+            for (int i = 0; i < entities.Length; i++)
+            {
+                ordered.Add(new PendingAction
+                {
+                    Entity = entities[i],
+                    Request = manager.GetComponentData<DroneActionReadyRequest>(entities[i])
+                });
+            }
+            ordered.AsArray().Sort(new ReceiptComparer());
+            return ordered;
+        }
+        catch
+        {
+            ordered.Dispose();
+            throw;
+        }
+    }
+
+    internal struct PendingAction
+    {
+        internal Entity Entity;
+        internal DroneActionReadyRequest Request;
+    }
+
+    // 준비와 실물 반영이 같은 접수 순서와 Entity 동률 기준을 사용한다.
+    internal struct ReceiptComparer : IComparer<PendingAction>
+    {
+        public int Compare(PendingAction first, PendingAction second)
+        {
+            int order = first.Request.ReceiptSequence.CompareTo(second.Request.ReceiptSequence);
+            if (order != 0)
+            {
+                return order;
+            }
+
+            order = first.Entity.Index.CompareTo(second.Entity.Index);
+            return order != 0 ? order : first.Entity.Version.CompareTo(second.Entity.Version);
+        }
+    }
+
     /// <summary>시뮬레이션 전 외부 입력 또는 인계 Decision 전 자동 픽업/납품을 접수한다. 행동 번호와 별도로 World 접수 번호를 발급한다.</summary>
     public static Entity Submit(EntityManager manager, in DroneActionReadyRequest request)
     {
-        Entity sequenceEntity = GetOrCreateReceiptSequence(manager);
+        Entity sequenceEntity = WorldSequenceUtility.GetOrCreate(manager, new DroneActionReceiptSequence { NextValue = 1 });
         var sequence = manager.GetComponentData<DroneActionReceiptSequence>(sequenceEntity);
         if (sequence.NextValue == 0 || sequence.NextValue == ulong.MaxValue)
         {
@@ -59,18 +108,5 @@ public static class DroneActionRequestUtility
         result = completed;
         manager.DestroyEntity(entity);
         return true;
-    }
-
-    private static Entity GetOrCreateReceiptSequence(EntityManager manager)
-    {
-        using var query = manager.CreateEntityQuery(ComponentType.ReadWrite<DroneActionReceiptSequence>());
-        if (!query.IsEmptyIgnoreFilter)
-        {
-            return query.GetSingletonEntity();
-        }
-
-        Entity entity = manager.CreateEntity(typeof(DroneActionReceiptSequence));
-        manager.SetComponentData(entity, new DroneActionReceiptSequence { NextValue = 1 });
-        return entity;
     }
 }

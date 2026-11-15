@@ -97,21 +97,6 @@ public static class BuildingPlacementValidationUtility
         return new PlacementValidationResult(PlacementValidationCode.Success, hasGroundItems);
     }
 
-    private static bool TryResolveCandidate(
-        in NativeArray<BuildingConfigElement> configs,
-        ref PlacementCandidate candidate,
-        out BuildingConfigElement config)
-    {
-        if (!BuildingConfigLookupUtility.TryGetConfig(configs, candidate.BuildingId, out config))
-        {
-            return false;
-        }
-
-        candidate.TargetType = config.BuildingType;
-        candidate.TargetTier = config.Tier;
-        return true;
-    }
-
     /// <summary>
     /// ID로 해석한 건물 정의와 현재 점유를 기준으로 묶음 배치를 검증한다.
     /// </summary>
@@ -133,12 +118,14 @@ public static class BuildingPlacementValidationUtility
         for (int i = 0; i < candidates.Length; i++)
         {
             var candidate = candidates[i];
-            if (!TryResolveCandidate(configs, ref candidate, out var config))
+            if (!BuildingConfigLookupUtility.TryGetConfig(configs, candidate.BuildingId, out var config))
             {
                 results[i] = new PlacementValidationResult(PlacementValidationCode.UnknownBuildingId);
                 anyFailed = true;
                 continue;
             }
+            candidate.TargetType = config.BuildingType;
+            candidate.TargetTier = config.Tier;
             candidates[i] = candidate;
             if (settingsRejections.IsCreated && settingsRejections[i] != PlacementValidationCode.Success)
             {

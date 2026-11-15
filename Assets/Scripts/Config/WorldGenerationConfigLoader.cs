@@ -6,6 +6,15 @@ using Unity.Entities;
 using Unity.Collections;
 using UnityEngine;
 
+/// <summary>로더의 검증 성공 결과를 게시 단계로 전달하는 값. 게시 API는 월드/자원 값과 바닥 설정을 검사하며 바닥 목록의 항목/범위 검증은 로더가 담당한다.</summary>
+public struct WorldGenerationConfigData
+{
+    public uint WorldSeed;
+    public int InitialChunkSize;
+    public List<ResourceGenerationConfigElement> Resources;
+    public WorldGenerationConfigLoader.FloorGenerationDefinition Floor;
+}
+
 /// <summary>
 /// 역할·목적: Resources의 월드/자원/바닥 JSON을 검증해 시드·초기 청크 범위·가중치/변형 목록을 ECS에 게시한다.
 /// 입력·출력: JSON DTO를 검증된 managed 목록/바닥 정의로 바꾸며 오류는 로그와 false로 반환한다. 게시 함수는 새 설정 엔티티와 버퍼를 만든다.
@@ -78,41 +87,11 @@ public static class WorldGenerationConfigLoader
         public List<FloorVariantElement> Variants;
     }
 
-    /// <summary>
-    /// Resources 경로에서 JSON 설정을 로드하고 전수 검증을 통과한 설정을 반환합니다.
-    /// 유효성 검증 실패 시 설정을 반환하지 않으며 에러 로그를 남깁니다 (All-or-Nothing Fail-Fast).
-    /// </summary>
     public static bool TryLoadConfigFromResources(
         string resourcePath,
-        out uint worldSeed,
-        out List<ResourceGenerationConfigElement> elements, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
+        out WorldGenerationConfigData result, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
     {
-        return TryLoadConfigFromResources(resourcePath, out worldSeed, out _, out elements, itemIds);
-    }
-
-    /// <summary>
-    /// Resources 경로에서 JSON 설정을 로드하고 initialChunkSize를 포함하여 전수 검증을 통과한 설정을 반환합니다.
-    /// </summary>
-    public static bool TryLoadConfigFromResources(
-        string resourcePath,
-        out uint worldSeed,
-        out int initialChunkSize,
-        out List<ResourceGenerationConfigElement> elements, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
-    {
-        return TryLoadConfigFromResources(resourcePath, out worldSeed, out initialChunkSize, out elements, out _, itemIds);
-    }
-
-    public static bool TryLoadConfigFromResources(
-        string resourcePath,
-        out uint worldSeed,
-        out int initialChunkSize,
-        out List<ResourceGenerationConfigElement> elements,
-        out FloorGenerationDefinition floor, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
-    {
-        worldSeed = 0;
-        initialChunkSize = 0;
-        elements = null;
-        floor = null;
+        result = default;
 
         try
         {
@@ -124,65 +103,22 @@ public static class WorldGenerationConfigLoader
             }
 
             bool requireItemIds = string.Equals(resourcePath, DefaultResourcePath, StringComparison.OrdinalIgnoreCase);
-            return TryParseAndValidateJson(asset.text, out worldSeed, out initialChunkSize, out elements, out floor, itemIds, requireItemIds);
+            return TryParseAndValidateJson(asset.text, itemIds, out result, requireItemIds);
         }
         catch (Exception exception)
         {
-            worldSeed = 0;
-            initialChunkSize = 0;
-            elements = null;
-            floor = null;
+            result = default;
             Debug.LogError($"[WorldGenerationConfigLoader] Failed to read config at '{resourcePath}': {exception.Message}");
             return false;
         }
     }
 
-    /// <summary>
-    /// JSON 문자열을 파싱하고 유효성을 전수 검증합니다.
-    /// </summary>
+    /// <summary>모든 JSON 검증을 통과한 경우에만 결과를 완성한다. 실패 결과는 default다.</summary>
     public static bool TryParseAndValidateJson(
-        string jsonText,
-        out uint worldSeed,
-        out List<ResourceGenerationConfigElement> elements, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
+        string jsonText, IReadOnlyDictionary<int, ItemTypeEnum> itemIds,
+        out WorldGenerationConfigData result, bool requireItemIds = false)
     {
-        return TryParseAndValidateJson(jsonText, out worldSeed, out _, out elements, itemIds);
-    }
-
-    /// <summary>
-    /// JSON 문자열을 파싱하고 initialChunkSize를 포함하여 유효성을 전수 검증합니다.
-    /// </summary>
-    public static bool TryParseAndValidateJson(
-        string jsonText,
-        out uint worldSeed,
-        out int initialChunkSize,
-        out List<ResourceGenerationConfigElement> elements, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
-    {
-        return TryParseAndValidateJson(jsonText, out worldSeed, out initialChunkSize, out elements, out _, itemIds);
-    }
-
-    public static bool TryParseAndValidateJson(
-        string jsonText,
-        out uint worldSeed,
-        out int initialChunkSize,
-        out List<ResourceGenerationConfigElement> elements,
-        out FloorGenerationDefinition floor, IReadOnlyDictionary<int, ItemTypeEnum> itemIds = null)
-    {
-        return TryParseAndValidateJson(jsonText, out worldSeed, out initialChunkSize, out elements, out floor, itemIds, requireItemIds: false);
-    }
-
-    private static bool TryParseAndValidateJson(
-        string jsonText,
-        out uint worldSeed,
-        out int initialChunkSize,
-        out List<ResourceGenerationConfigElement> elements,
-        out FloorGenerationDefinition floor,
-        IReadOnlyDictionary<int, ItemTypeEnum> itemIds,
-        bool requireItemIds)
-    {
-        worldSeed = 0;
-        initialChunkSize = 0;
-        elements = null;
-        floor = null;
+        result = default;
 
         if (string.IsNullOrEmpty(jsonText))
         {
@@ -293,12 +229,15 @@ public static class WorldGenerationConfigLoader
             return false;
         }
 
-        worldSeed = configFile.worldSeed;
-        initialChunkSize = configFile.initialChunkSize > 0
-            ? configFile.initialChunkSize
-            : GameConstants.DefaultInitialChunkSize;
-        elements = validatedList;
-        floor = validatedFloor;
+        result = new WorldGenerationConfigData
+        {
+            WorldSeed = configFile.worldSeed,
+            InitialChunkSize = configFile.initialChunkSize > 0
+                ? configFile.initialChunkSize
+                : GameConstants.DefaultInitialChunkSize,
+            Resources = validatedList,
+            Floor = validatedFloor
+        };
         return true;
     }
 
@@ -349,7 +288,7 @@ public static class WorldGenerationConfigLoader
                 return false;
             }
             int id = biome.biomeId;
-            if (id / 100000 != 150 || id % 100000 == 0 ||
+            if (!ConfigIdUtility.IsInCategory(id, ConfigIdUtility.FloorBiomeCategory) ||
                 !ids.Add(id) || !IsPositiveFinite(biome.selectionWeight))
             {
                 Debug.LogError("[WorldGenerationConfigLoader] Invalid or duplicate floor biome id/weight.");
@@ -590,10 +529,6 @@ public static class WorldGenerationConfigLoader
         return true;
     }
 
-    /// <summary>제품 초기화는 자원과 바닥을 같은 게시 엔티티에서 요구한다. 자원 전용 게시 API는 격리 구성용이다.</summary>
-    public static bool HasCompleteConfig(EntityManager entityManager, Entity entity) =>
-        TryReadCompleteConfig(entityManager, entity, out _, out _, out _);
-
     private static bool TryReadCompleteConfig(EntityManager entityManager, Entity entity,
         out DynamicBuffer<ResourceGenerationConfigElement> resources, out DynamicBuffer<FloorBiomeElement> biomes,
         out DynamicBuffer<FloorVariantElement> variants)
@@ -622,34 +557,13 @@ public static class WorldGenerationConfigLoader
         return !variants.IsEmpty;
     }
 
-    /// <summary>명시적 자원 전용 게시 API. 전체 제품 초기화는 바닥을 포함한 오버로드를 사용한다.</summary>
-    public static Entity PublishConfig(
-        EntityManager entityManager,
-        uint worldSeed,
-        List<ResourceGenerationConfigElement> elements)
+    public static Entity PublishConfig(EntityManager entityManager, in WorldGenerationConfigData config)
     {
-        return PublishConfig(entityManager, worldSeed, GameConstants.DefaultInitialChunkSize, elements);
-    }
+        uint worldSeed = config.WorldSeed;
+        int initialChunkSize = config.InitialChunkSize;
+        var elements = config.Resources;
+        var floor = config.Floor;
 
-    /// <summary>
-    /// 검증된 월드 생성 설정(initialChunkSize 포함)을 ECS 싱글톤 엔티티와 DynamicBuffer로 게시합니다.
-    /// </summary>
-    public static Entity PublishConfig(
-        EntityManager entityManager,
-        uint worldSeed,
-        int initialChunkSize,
-        List<ResourceGenerationConfigElement> elements)
-    {
-        return PublishConfig(entityManager, worldSeed, initialChunkSize, elements, null);
-    }
-
-    public static Entity PublishConfig(
-        EntityManager entityManager,
-        uint worldSeed,
-        int initialChunkSize,
-        List<ResourceGenerationConfigElement> elements,
-        FloorGenerationDefinition floor)
-    {
         if (!TryValidateWorldSettings(worldSeed, initialChunkSize, out string settingsError))
             throw new ArgumentException(settingsError);
         if (elements == null)

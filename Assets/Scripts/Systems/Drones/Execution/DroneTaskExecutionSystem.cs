@@ -19,7 +19,7 @@ public partial struct DroneTaskExecutionSystem : ISystem
 
     public void OnCreate(ref SystemState state)
     {
-        _sequenceEntity = DroneTaskCreationUtility.GetOrCreateSequence(state.EntityManager);
+        _sequenceEntity = WorldSequenceUtility.GetOrCreate(state.EntityManager, new DroneTaskSequence { NextValue = 1 });
         _candidates = DroneSchedulingUtility.GetOrCreateCandidates(state.EntityManager);
         _taskRequests = state.GetEntityQuery(typeof(DroneTaskRequest), typeof(DroneTaskRequestDecision));
         _capacity = state.GetEntityQuery(ComponentType.ReadOnly<DroneCapacityState>());
@@ -78,7 +78,8 @@ public partial struct DroneTaskExecutionSystem : ISystem
         var sequence = manager.GetComponentData<DroneTaskSequence>(_sequenceEntity);
         // ECB에 새로 기록한 작업은 아직 쿼리에 없으므로 로컬 기록으로 같은 틱 중복 생성도 막는다.
         using var recorded = new NativeList<RecordedCreation>(Allocator.Temp);
-        ExecuteCreationRequests(manager, ecb, ref sequence, recorded);
+        using var keys = new NativeList<DroneTaskGenerationKey>(Allocator.Temp);
+        ExecuteCreationRequests(manager, ecb, ref sequence, recorded, keys);
         for (int i = 0; i < decisions.Length; i++)
         {
             var decision = decisions[i];
@@ -87,14 +88,15 @@ public partial struct DroneTaskExecutionSystem : ISystem
                 continue;
             }
 
-            if (HasRecordedCreation(recorded, decision))
+            var key = DroneTaskGenerationKey.From(decision.Kind, decision.Target, decision.ItemType, decision.Area, decision.Purpose);
+            if (DroneTaskRequestDecisionUtility.ContainsGenerationKey(keys, key))
             {
                 continue;
             }
 
             // 배정이 아니라 품목별 공급 root 또는 실물별 회수 root를 기록하고 실제 생성에만 순번을 사용한다.
-            Entity task = RecordCreation(ecb, decision, ref sequence);
-            recorded.Add(new RecordedCreation { Creation = decision, Task = task });
+            DroneTaskCreationUtility.RecordCreation(ecb, decision, ref sequence);
+            keys.Add(key);
         }
 
         manager.SetComponentData(_sequenceEntity, sequence);
@@ -103,30 +105,12 @@ public partial struct DroneTaskExecutionSystem : ISystem
 
     private struct RecordedCreation
     {
-        public DroneTaskCreationDecisionElement Creation;
         public Entity Request;
         public Entity Task;
     }
 
-    private static Entity RecordCreation(EntityCommandBuffer ecb, in DroneTaskCreationDecisionElement creation,
-        ref DroneTaskSequence sequence, bool hasExplicitRecoveryIntent = false, bool stationDemolition = false)
-    {
-        switch (creation.Kind)
-        {
-            case DroneLogisticsTaskKindEnum.BuildingDemolition:
-                return DroneTaskCreationUtility.CreateBuildingDemolitionTask(ecb, creation.Target, ref sequence, stationDemolition);
-            case DroneLogisticsTaskKindEnum.ConstructionSupply:
-                return DroneTaskCreationUtility.CreateConstructionSupplyTask(ecb, creation.Target, creation.ItemType, ref sequence);
-            case DroneLogisticsTaskKindEnum.WorldItemRecovery:
-                return DroneTaskCreationUtility.CreateRecoveryTask(ecb, creation.Target, creation.ItemType,
-                    creation.RecoveryReason, ref sequence, hasExplicitRecoveryIntent);
-            default:
-                return DroneTaskCreationUtility.CreateStorageTransportTask(ecb, creation.Target, creation.ItemType,
-                    creation.Kind, creation.Quantity, ref sequence, creation.Area, creation.Purpose);
-        }
-    }
-
-    private void ExecuteCreationRequests(EntityManager manager, EntityCommandBuffer ecb, ref DroneTaskSequence sequence, NativeList<RecordedCreation> recorded)
+    private void ExecuteCreationRequests(EntityManager manager, EntityCommandBuffer ecb, ref DroneTaskSequence sequence,
+        NativeList<RecordedCreation> recorded, NativeList<DroneTaskGenerationKey> keys)
     {
         using var requests = DroneTaskRequestDecisionUtility.ReadRequests(manager, _taskRequests);
         foreach (var record in requests)
@@ -159,11 +143,12 @@ public partial struct DroneTaskExecutionSystem : ISystem
 
             if (accepted && status == DroneTaskRequestStatusEnum.Created)
             {
-                task = RecordCreation(ecb, creation, ref sequence,
+                task = DroneTaskCreationUtility.RecordCreation(ecb, creation, ref sequence,
                     hasExplicitRecoveryIntent: request.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery,
                     stationDemolition: request.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition &&
                         manager.HasComponent<PreparingStationDemolition>(creation.Target));
-                recorded.Add(new RecordedCreation { Creation = creation, Request = record.Entity, Task = task });
+                recorded.Add(new RecordedCreation { Request = record.Entity, Task = task });
+                keys.Add(DroneTaskGenerationKey.From(creation.Kind, creation.Target, creation.ItemType, creation.Area, creation.Purpose));
             }
             else if (accepted && task == Entity.Null)
             {
@@ -212,22 +197,6 @@ public partial struct DroneTaskExecutionSystem : ISystem
         if (decision.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery)
         {
             return DroneSchedulingUtility.IsWorldItem(manager, decision.Target, decision.ItemType);
-        }
-
-        return false;
-    }
-
-    private static bool HasRecordedCreation(NativeList<RecordedCreation> recorded,
-        in DroneTaskCreationDecisionElement decision)
-    {
-        var key = DroneTaskGenerationKey.From(decision.Kind, decision.Target, decision.ItemType, decision.Area, decision.Purpose);
-        for (int i = 0; i < recorded.Length; i++)
-        {
-            var other = recorded[i].Creation;
-            if (key.Equals(DroneTaskGenerationKey.From(other.Kind, other.Target, other.ItemType, other.Area, other.Purpose)))
-            {
-                return true;
-            }
         }
 
         return false;

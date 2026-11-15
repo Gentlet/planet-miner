@@ -76,10 +76,6 @@ public partial struct BuildingLifecycleApplySystem : ISystem
         _configBufferLookup = state.GetBufferLookup<BuildingConfigElement>(true);
     }
 
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
     public void OnUpdate(ref SystemState state)
     {
         bool hasPendingDemolition = !_demolitionRequests.IsEmptyIgnoreFilter;
@@ -267,7 +263,6 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
         {
             sitePos = gridPosition.Value;
         }
-        float3 worldPos = new float3(sitePos.x, sitePos.y, 0f);
 
         // 기존 보관품은 새 환급품으로 대체하지 않는다. 같은 실물을 건물 위치에 반환하고
         // 활성 Destroy 실물은 반환에서 제외해 소비 예정 아이템을 되살리지 않는다.
@@ -288,10 +283,10 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
 
                 ECB.SetComponent(item, ItemOwnership.WorldItem);
                 if (!RecoveryMarks.HasComponent(item))
+                {
                     ECB.AddComponent(item, new DroneRecoveryPending { Reason = DroneRecoveryReasonEnum.BuildingDemolition });
-                ECB.RemoveComponent<DisableRendering>(item);
-                ECB.SetComponent(item, new GridPosition(sitePos));
-                ECB.SetComponent(item, LocalTransform.FromPosition(worldPos));
+                }
+                ItemLifecycleUtility.RecordWorldReturnPresentationAndPosition(ref ECB, item, sitePos);
             }
         }
 
@@ -313,10 +308,10 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
 
                 ECB.SetComponent(item, ItemOwnership.WorldItem);
                 if (!RecoveryMarks.HasComponent(item))
+                {
                     ECB.AddComponent(item, new DroneRecoveryPending { Reason = DroneRecoveryReasonEnum.BuildingDemolition });
-                ECB.RemoveComponent<DisableRendering>(item);
-                ECB.SetComponent(item, new GridPosition(sitePos));
-                ECB.SetComponent(item, LocalTransform.FromPosition(worldPos));
+                }
+                ItemLifecycleUtility.RecordWorldReturnPresentationAndPosition(ref ECB, item, sitePos);
             }
         }
 
@@ -411,8 +406,22 @@ public partial struct SpawnBuildingApplyJob : IJobChunk
         while (enumerator.NextEntityIndex(out int index))
         {
             var requestValue = spawnBuildingRequestValues[index];
-            ExecuteEntity(entities[index],
-                in requestValue, ref registryRead);
+            BuildingLifecycleUtility.SpawnBuilding(
+                ref ECB,
+                requestValue.BuildingId,
+                requestValue.Position,
+                requestValue.Direction,
+                requestValue.FootprintSize,
+                requestValue.Stamp,
+                PrefabDbEntity,
+                ConfigEntity,
+                in PrefabBufferLookup,
+                in ConfigBufferLookup,
+                ref registryRead.Spawn
+            );
+
+            // 요청 엔티티 소비 (Consume-on-Apply)
+            ECB.DestroyEntity(entities[index]);
         }
     }
 
@@ -425,26 +434,6 @@ public partial struct SpawnBuildingApplyJob : IJobChunk
 
     [ReadOnly]
     public BufferLookup<BuildingConfigElement> ConfigBufferLookup;
-
-    private void ExecuteEntity(Entity requestEntity, in SpawnBuildingRequest request, ref RegistryReadContext registryRead)
-    {
-        BuildingLifecycleUtility.SpawnBuilding(
-            ref ECB,
-            request.BuildingId,
-            request.Position,
-            request.Direction,
-            request.FootprintSize,
-            request.Stamp,
-            PrefabDbEntity,
-            ConfigEntity,
-            in PrefabBufferLookup,
-            in ConfigBufferLookup,
-            ref registryRead.Spawn
-        );
-
-        // 요청 엔티티 소비 (Consume-on-Apply)
-        ECB.DestroyEntity(requestEntity);
-    }
 }
 
 /// <summary>확인 뒤 대상이 소실된 root에 실패를 반환해 결과 대기가 남지 않게 한다.</summary>

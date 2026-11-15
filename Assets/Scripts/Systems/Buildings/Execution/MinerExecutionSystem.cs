@@ -29,11 +29,6 @@ public partial struct MinerExecutionSystem : ISystem
             .Build();
     }
 
-    [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
     public void OnUpdate(ref SystemState state)
     {
         _resourceNodeLookup.Update(ref state);

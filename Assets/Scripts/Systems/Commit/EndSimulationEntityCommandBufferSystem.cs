@@ -6,20 +6,7 @@ using Unity.Entities;
 /// 새 실물/연결 자식의 장면 소유권도 같은 경계에서 해제한다. 이 재생 뒤 Synchronization이 최종 월드를 읽는다.
 /// </summary>
 [UpdateInGroup(typeof(SimulationCommitGroup), OrderLast = true)]
-public partial class EndSimulationEntityCommandBufferSystem : EntityCommandBufferSystem
+public partial class EndSimulationEntityCommandBufferSystem : RuntimePrefabEntityCommandBufferSystem
 {
-    private EntityQuery _pendingPrefabInstances;
-
-    protected override void OnCreate()
-    {
-        base.OnCreate();
-        _pendingPrefabInstances = RuntimePrefabLifecycleUtility.CreatePendingSceneDetachQuery(this);
-    }
-
-    protected override void OnUpdate()
-    {
-        base.OnUpdate();
-        RuntimePrefabLifecycleUtility.DetachSceneOwnership(EntityManager, _pendingPrefabInstances);
-    }
 }
 

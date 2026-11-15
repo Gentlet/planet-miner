@@ -25,7 +25,7 @@ public static class DroneTaskRequestUtility
         });
     }
 
-    /// <summary>철거를 접수하고 요청 엔티티를 반환한다. 작업 생성/연결/거부 결과는 EndSimulation 뒤 TryConsumeResult로 소비한다.</summary>
+    /// <summary>철거를 접수하고 요청 엔티티를 반환한다. 작업 생성/연결/거부 결과는 EndSimulation 뒤 RequestResultUtility.TryConsumeResult로 소비한다.</summary>
     /// <exception cref="InvalidOperationException">World의 접수 순번이 유효하지 않거나 소진되었다.</exception>
     public static Entity SubmitBuildingDemolition(EntityManager manager, Entity target)
     {
@@ -46,7 +46,7 @@ public static class DroneTaskRequestUtility
     /// <summary>
     /// 시뮬레이션 전 메인 스레드 접수 시 양 끝 셀을 포함하는 범위의 바닥 실물을 한 번 선택한다.
     /// 활성 World 소유 실물 중 실제 벨트가 없는 셀만 선택한다.
-    /// 반환값은 기존 Create 요청 핸들이며 각 결과는 EndSimulation 뒤 TryConsumeResult로 소비한다.
+    /// 반환값은 기존 Create 요청 핸들이며 각 결과는 EndSimulation 뒤 RequestResultUtility.TryConsumeResult로 소비한다.
     /// 이후 유입/생성품을 계속 모집하는 영역 상태는 만들지 않는다.
     /// </summary>
     /// <exception cref="InvalidOperationException">선택분 전체의 접수번호가 부족하면 일부 요청도 접수하지 않고 거부한다.</exception>
@@ -117,29 +117,6 @@ public static class DroneTaskRequestUtility
         Entity request = manager.CreateEntity(typeof(DroneTaskRequest), typeof(DroneTaskRequestDecision), typeof(DroneTaskRequestExecution));
         manager.SetComponentData(request, value);
         return request;
-    }
-
-    public static bool TryConsumeResult(EntityManager manager, Entity request, out DroneTaskRequestResult result)
-    {
-        result = default;
-        if (request == Entity.Null)
-        {
-            return false;
-        }
-
-        if (manager.HasComponent<DroneTaskRequest>(request))
-        {
-            return false;
-        }
-
-        if (!manager.HasComponent<DroneTaskRequestResult>(request))
-        {
-            return false;
-        }
-
-        result = manager.GetComponentData<DroneTaskRequestResult>(request);
-        manager.DestroyEntity(request);
-        return true;
     }
 
     internal static void RecordResult(EntityCommandBuffer ecb, Entity request, DroneTaskRequestOperationEnum operation, DroneTaskRequestStatusEnum status, Entity task)

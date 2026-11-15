@@ -128,7 +128,7 @@ internal sealed class FloorChunkMeshBuilder : IDisposable
         }
         catch
         {
-            DestroyOwned(mesh);
+            UnityObjectLifecycleUtility.DestroyOwned(mesh);
             throw;
         }
     }
@@ -152,27 +152,11 @@ internal sealed class FloorChunkMeshBuilder : IDisposable
     {
         foreach (var material in _materials)
         {
-            DestroyOwned(material);
+            UnityObjectLifecycleUtility.DestroyOwned(material);
         }
         _materials.Clear();
         _tiles.Clear();
         _trianglesByMaterial.Clear();
         _chunkMaterials.Clear();
-    }
-
-    internal static void DestroyOwned(UnityEngine.Object value)
-    {
-        if (value == null)
-        {
-            return;
-        }
-        if (Application.isPlaying)
-        {
-            UnityEngine.Object.Destroy(value);
-        }
-        else
-        {
-            UnityEngine.Object.DestroyImmediate(value);
-        }
     }
 }

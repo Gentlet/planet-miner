@@ -10,6 +10,58 @@ using Unity.Mathematics;
 /// </summary>
 public static class BeltEntryUtility
 {
+    internal static Entity FindRoutingBelt(
+        int2 routerPosition,
+        in NativeParallelHashMap<int2, BeltInfo> beltMap,
+        in ComponentLookup<PendingBuildingDemolition> pendingDemolitionLookup,
+        in ComponentLookup<PlacementStamp> placementStampLookup,
+        bool incoming,
+        out DirectionEnum forwardDirection)
+    {
+        Entity bestBelt = Entity.Null;
+        PlacementStamp bestStamp = default;
+        bool hasBestStamp = false;
+        int2 bestPosition = default;
+        forwardDirection = DirectionEnum.Up;
+
+        // 입력/출력의 방향 조건을 적용한 뒤 동일한 설치 순서로 대표 벨트를 선택한다.
+        for (int i = 0; i < (int)DirectionEnum.Count; i++)
+        {
+            int2 neighborPosition = routerPosition + ((DirectionEnum)i).ToInt2();
+            if (!beltMap.TryGetValue(neighborPosition, out var belt))
+            {
+                continue;
+            }
+            if (pendingDemolitionLookup.HasComponent(belt.Entity))
+            {
+                continue;
+            }
+
+            bool matchesDirection = incoming
+                ? RoutingDirectionUtility.IsIncomingBelt(routerPosition, neighborPosition, belt.Direction)
+                : RoutingDirectionUtility.IsOutgoingBelt(routerPosition, neighborPosition, belt.Direction);
+            if (!matchesDirection)
+            {
+                continue;
+            }
+
+            bool hasStamp = placementStampLookup.TryGetComponent(belt.Entity, out var stamp);
+            if (bestBelt != Entity.Null && PlacementStamp.Compare(hasStamp, stamp, neighborPosition,
+                    hasBestStamp, bestStamp, bestPosition) >= 0)
+            {
+                continue;
+            }
+
+            bestBelt = belt.Entity;
+            bestStamp = stamp;
+            hasBestStamp = hasStamp;
+            bestPosition = neighborPosition;
+            forwardDirection = belt.Direction;
+        }
+
+        return bestBelt;
+    }
+
     internal static bool TryFindBuildingOutputBelt(
         int2 anchor,
         int2 size,

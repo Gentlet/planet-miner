@@ -9,53 +9,26 @@ using Unity.Entities;
 /// </summary>
 public static class DroneTaskCreationUtility
 {
-    /// <summary>
-    /// DroneTaskExecutionSystem의 OnCreate에서만 호출한다. 번호 상태는 World 수명 동안 유지한다.
-    /// </summary>
-    public static Entity GetOrCreateSequence(EntityManager entityManager)
+    internal static Entity RecordCreation(EntityCommandBuffer ecb, in DroneTaskCreationDecisionElement creation,
+        ref DroneTaskSequence sequence, bool hasExplicitRecoveryIntent = false, bool stationDemolition = false)
     {
-        using var query = entityManager.CreateEntityQuery(ComponentType.ReadWrite<DroneTaskSequence>());
-        if (!query.IsEmptyIgnoreFilter)
+        switch (creation.Kind)
         {
-            return query.GetSingletonEntity();
+            case DroneLogisticsTaskKindEnum.BuildingDemolition:
+                return CreateBuildingDemolitionTask(ecb, creation.Target, ref sequence, stationDemolition);
+            case DroneLogisticsTaskKindEnum.ConstructionSupply:
+                return CreateTask(ecb, creation.Target, creation.ItemType, creation.Kind,
+                    DroneRecoveryReasonEnum.None, ref sequence);
+            case DroneLogisticsTaskKindEnum.WorldItemRecovery:
+                return CreateTask(ecb, creation.Target, creation.ItemType, creation.Kind,
+                    creation.RecoveryReason, ref sequence, hasExplicitRecoveryIntent);
+            default:
+                Entity task = CreateTask(ecb, creation.Target, creation.ItemType, creation.Kind,
+                    DroneRecoveryReasonEnum.None, ref sequence, area: creation.Area, purpose: creation.Purpose);
+                ecb.AddComponent(task, new DroneTransportRequirement { Quantity = creation.Quantity });
+                ecb.AddComponent(task, new DroneTransportProgress());
+                return task;
         }
-
-        var entity = entityManager.CreateEntity(typeof(DroneTaskSequence));
-        entityManager.SetComponentData(entity, new DroneTaskSequence { NextValue = 1 });
-        return entity;
-    }
-
-    public static Entity CreateConstructionSupplyTask(
-        EntityCommandBuffer ecb,
-        Entity site,
-        ItemTypeEnum itemType,
-        ref DroneTaskSequence sequence)
-    {
-        return CreateTask(ecb, site, itemType, DroneLogisticsTaskKindEnum.ConstructionSupply,
-            DroneRecoveryReasonEnum.None, ref sequence);
-    }
-
-    public static Entity CreateRecoveryTask(
-        EntityCommandBuffer ecb,
-        Entity item,
-        ItemTypeEnum itemType,
-        DroneRecoveryReasonEnum reason,
-        ref DroneTaskSequence sequence,
-        bool hasExplicitRecoveryIntent = false)
-    {
-        return CreateTask(ecb, item, itemType, DroneLogisticsTaskKindEnum.WorldItemRecovery,
-            reason, ref sequence, hasExplicitRecoveryIntent);
-    }
-
-    public static Entity CreateStorageTransportTask(EntityCommandBuffer ecb, Entity target, ItemTypeEnum itemType,
-        DroneLogisticsTaskKindEnum kind, int quantity, ref DroneTaskSequence sequence,
-        DroneTransportAreaEnum area = default, DroneTransportPurposeEnum purpose = default)
-    {
-        Entity task = CreateTask(ecb, target, itemType, kind, DroneRecoveryReasonEnum.None, ref sequence,
-            area: area, purpose: purpose);
-        ecb.AddComponent(task, new DroneTransportRequirement { Quantity = quantity });
-        ecb.AddComponent(task, new DroneTransportProgress());
-        return task;
     }
 
     public static Entity CreateBuildingDemolitionTask(EntityCommandBuffer ecb, Entity target, ref DroneTaskSequence sequence,

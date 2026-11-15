@@ -38,7 +38,7 @@ public readonly struct WorldTaskVisualRecord
 /// 현장/작업 원본의 관찰자다. 현재 World의 Mesh 참조는 빌려 쓰고, 표시 GameObject/재질은 뷰가 소유한다.
 /// 남는 풀 객체는 숨겨 재사용하며 World 교체/뷰 종료에만 소유 객체를 해제한다. ECS 실물/점유/요청에는 참여하지 않는다.
 /// </summary>
-public sealed class WorldTaskVisualView : MonoBehaviour
+public sealed class WorldTaskVisualView : PeriodicWorldView
 {
     private sealed class GhostTemplate
     {
@@ -53,7 +53,6 @@ public sealed class WorldTaskVisualView : MonoBehaviour
         public GhostTemplate Template;
     }
     private World _world;
-    private float _nextRefresh;
     private Material _lineMaterial;
     private Material _ghostMaterial;
     private readonly List<Visual> _pool = new List<Visual>();
@@ -80,16 +79,6 @@ public sealed class WorldTaskVisualView : MonoBehaviour
         _ghostMaterial.SetFloat("_Cull", (float)CullMode.Off);
         _ghostMaterial.EnableKeyword("_SURFACE_TYPE_TRANSPARENT");
         _ghostMaterial.renderQueue = (int)RenderQueue.Transparent;
-        Refresh();
-    }
-
-    private void LateUpdate()
-    {
-        if (Time.unscaledTime < _nextRefresh)
-        {
-            return;
-        }
-        _nextRefresh = Time.unscaledTime + 0.2f;
         Refresh();
     }
 
@@ -153,7 +142,7 @@ public sealed class WorldTaskVisualView : MonoBehaviour
         }
     }
 
-    public void Refresh()
+    public override void Refresh()
     {
         World current = World.DefaultGameObjectInjectionWorld;
         if (!ReferenceEquals(current, _world))
@@ -246,7 +235,7 @@ public sealed class WorldTaskVisualView : MonoBehaviour
         {
             foreach (var part in visual.Parts)
             {
-                Release(part);
+                UnityObjectLifecycleUtility.DestroyOwned(part);
             }
             visual.Parts.Clear();
             visual.Template = template;
@@ -380,7 +369,7 @@ public sealed class WorldTaskVisualView : MonoBehaviour
     {
         foreach (var visual in _pool)
         {
-            Release(visual.Root);
+            UnityObjectLifecycleUtility.DestroyOwned(visual.Root);
         }
         _pool.Clear();
         _records.Clear();
@@ -393,23 +382,11 @@ public sealed class WorldTaskVisualView : MonoBehaviour
         _world = null;
         if (_lineMaterial != null)
         {
-            Release(_lineMaterial);
+            UnityObjectLifecycleUtility.DestroyOwned(_lineMaterial);
         }
         if (_ghostMaterial != null)
         {
-            Release(_ghostMaterial);
-        }
-    }
-
-    private static void Release(Object owned)
-    {
-        if (Application.isPlaying)
-        {
-            Destroy(owned);
-        }
-        else
-        {
-            DestroyImmediate(owned);
+            UnityObjectLifecycleUtility.DestroyOwned(_ghostMaterial);
         }
     }
 }

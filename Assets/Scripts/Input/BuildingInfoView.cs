@@ -1,4 +1,3 @@
-using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -7,22 +6,6 @@ using UnityEngine.UIElements;
 [RequireComponent(typeof(BuildingInfoController), typeof(WorldInputController))]
 public sealed class BuildingInfoView : MonoBehaviour
 {
-    private sealed class ActionRow
-    {
-        public readonly VisualElement Root = new VisualElement();
-        public readonly Label Label = new Label();
-        public readonly Button Button;
-        public Action Click;
-        public ActionRow()
-        {
-            Root.style.flexDirection = FlexDirection.Row;
-            Label.style.flexGrow = 1;
-            Label.style.whiteSpace = WhiteSpace.Normal;
-            Root.Add(Label);
-            Button = new Button(() => Click?.Invoke());
-            Root.Add(Button);
-        }
-    }
 
     private BuildingInfoController _controller;
     private GameObject _rootObject;
@@ -47,8 +30,8 @@ public sealed class BuildingInfoView : MonoBehaviour
     private VisualElement _tasks;
     private VisualElement _drones;
     private readonly List<Label> _itemRows = new List<Label>();
-    private readonly List<ActionRow> _taskRows = new List<ActionRow>();
-    private readonly List<ActionRow> _droneRows = new List<ActionRow>();
+    private readonly List<WorldUiActionRow> _taskRows = new List<WorldUiActionRow>();
+    private readonly List<WorldUiActionRow> _droneRows = new List<WorldUiActionRow>();
     private bool _resetDraft = true;
     private void OnEnable()
     {
@@ -144,7 +127,11 @@ public sealed class BuildingInfoView : MonoBehaviour
         {
             if (_recipe.index >= 0 && _recipe.index < _recipes.Count)
             {
-                _controller.SetRecipe(_recipes[_recipe.index]);
+                _controller.SubmitSettings(new PlannedBuildingSettings
+                {
+                    HasRecipe = true,
+                    RecipeId = _recipes[_recipe.index]
+                });
             }
         }) { text = "레시피 적용", name = "apply-recipe" });
         _filterMode = new DropdownField("입고 필터", new List<string> { "전체 허용", "허용 목록", "차단 목록" }, 0);
@@ -159,7 +146,11 @@ public sealed class BuildingInfoView : MonoBehaviour
                 filter.Mask.Set((byte)_filterTypes[i], _filterItems[i].value);
             }
 
-            _controller.SetFilter(filter);
+            _controller.SubmitSettings(new PlannedBuildingSettings
+            {
+                HasStorageFilter = true,
+                Filter = filter
+            });
         }) { text = "필터 적용", name = "apply-filter" });
     }
 
@@ -169,14 +160,14 @@ public sealed class BuildingInfoView : MonoBehaviour
         parent.Add(_transport);
         _transport.Add(new Label("일회성 운반 요청"));
         _area = new DropdownField("영역");
-        _area.RegisterValueChangedCallback(OnAreaChanged);
+        _area.RegisterValueChangedCallback(OnTransportChanged);
         _item = new DropdownField("품목");
         _quantity = new IntegerField("수량")
         {
             value = 1,
             name = "transport-quantity"
         };
-        _quantity.RegisterValueChangedCallback(OnQuantityChanged);
+        _quantity.RegisterValueChangedCallback(OnTransportChanged);
         _transport.Add(_area);
         _transport.Add(_item);
         _transport.Add(_quantity);
@@ -199,12 +190,7 @@ public sealed class BuildingInfoView : MonoBehaviour
         _controller.RequestTransport(kind, _areas[_area.index], _controller.ItemTypes[_item.index], _quantity.value);
     }
 
-    private void OnAreaChanged(ChangeEvent<string> change)
-    {
-        UpdateTransportButtons();
-    }
-
-    private void OnQuantityChanged(ChangeEvent<int> change)
+    private void OnTransportChanged(EventBase change)
     {
         UpdateTransportButtons();
     }
@@ -377,7 +363,7 @@ public sealed class BuildingInfoView : MonoBehaviour
     {
         while (_taskRows.Count < _controller.Tasks.Count)
         {
-            var row = new ActionRow();
+            var row = new WorldUiActionRow();
             _taskRows.Add(row);
             _tasks.Add(row.Root);
         }
@@ -402,7 +388,7 @@ public sealed class BuildingInfoView : MonoBehaviour
     {
         while (_droneRows.Count < _controller.Drones.Count * 2)
         {
-            var row = new ActionRow();
+            var row = new WorldUiActionRow();
             _droneRows.Add(row);
             _drones.Add(row.Root);
         }
@@ -441,18 +427,18 @@ public sealed class BuildingInfoView : MonoBehaviour
 
         if (_area != null)
         {
-            _area.UnregisterValueChangedCallback(OnAreaChanged);
+            _area.UnregisterValueChangedCallback(OnTransportChanged);
         }
 
         if (_quantity != null)
         {
-            _quantity.UnregisterValueChangedCallback(OnQuantityChanged);
+            _quantity.UnregisterValueChangedCallback(OnTransportChanged);
         }
 
         if (_rootObject != null)
         {
             _rootObject.SetActive(false);
-            Release(_rootObject);
+            UnityObjectLifecycleUtility.DestroyOwned(_rootObject);
         }
 
         _panel = null;
@@ -463,17 +449,5 @@ public sealed class BuildingInfoView : MonoBehaviour
         _filterTypes.Clear();
         _recipes.Clear();
         _areas.Clear();
-    }
-
-    private static void Release(UnityEngine.Object owned)
-    {
-        if (Application.isPlaying)
-        {
-            Destroy(owned);
-        }
-        else
-        {
-            DestroyImmediate(owned);
-        }
     }
 }

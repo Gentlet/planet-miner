@@ -41,11 +41,6 @@ public partial struct RoutingApplySystem : ISystem
     }
 
     [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
-    [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
         if (_activeTransferQuery.IsEmptyIgnoreFilter)
@@ -103,29 +98,8 @@ public partial struct RoutingApplyJob : IJobEntity
             int2 targetBeltPos = targetPosition.Value;
             DirectionEnum targetBeltDir = targetDirection.dir;
 
-            // 1. 아이템 그리드 좌표 및 방향 갱신
-            GridPositionLookup[item] = new GridPosition(targetBeltPos);
-
-            if (DirectionLookup.HasComponent(item))
-            {
-                DirectionLookup[item] = new Direction(targetBeltDir);
-            }
-
-            // 2. 벨트 진행도 0.0f로 재설정
-            if (BeltMovementStateLookup.HasComponent(item))
-            {
-                BeltMovementStateLookup[item] = new BeltMovementState(0.0f);
-                BeltMovementStateLookup.SetComponentEnabled(item, true);
-            }
-
-            // 3. LocalTransform을 대상 벨트 진입점 위치로 갱신
-            if (TransformLookup.HasComponent(item))
-            {
-                float2 center = new float2(targetBeltPos.x, targetBeltPos.y);
-                float2 dirFloat = new float2(targetBeltDir.ToInt2().x, targetBeltDir.ToInt2().y);
-                float2 visualPos = center + dirFloat * (0.0f - 0.5f);
-                TransformLookup[item] = LocalTransform.FromPosition(new float3(visualPos.x, visualPos.y, 0f));
-            }
+            BeltItemPlacementUtility.PlaceAtStart(item, targetBeltPos, targetBeltDir,
+                ref GridPositionLookup, ref DirectionLookup, ref BeltMovementStateLookup, ref TransformLookup);
 
             // 실물 전달 조건을 통과했을 때만 기준선과 커서를 전진한다. 후보 생성/경합 탈락만으로 포트 순서를 소비하지 않는다.
             // 4. Splitter 영속 라우팅 상태 갱신

@@ -6,14 +6,12 @@ using Unity.Entities;
 using UnityEngine;
 
 /// <summary>트리 루트/상세 조회/실제 활성 연구를 분리한다. 화면 초안 외 상태는 Registry에서 다시 읽는다.</summary>
-public sealed class ResearchPanelController : MonoBehaviour
+public sealed class ResearchPanelController : PeriodicWorldView
 {
     private World _world;
     private Entity _registry;
     private ulong _feedbackToken;
-    private readonly HashSet<Entity> _pending = new HashSet<Entity>();
     private string _definitionSignature;
-    private float _nextRefresh;
     public readonly List<ResearchUiNode> Nodes = new List<ResearchUiNode>();
     public readonly List<ResearchUiNode> VisibleNodes = new List<ResearchUiNode>();
     public int RootId { get; private set; }
@@ -41,7 +39,6 @@ public sealed class ResearchPanelController : MonoBehaviour
     {
         WorldUiRequestFeedbackRelay.Unregister(_feedbackToken);
         _feedbackToken = 0;
-        _pending.Clear();
         _world = null;
         _registry = Entity.Null;
         RootId = 0;
@@ -54,30 +51,14 @@ public sealed class ResearchPanelController : MonoBehaviour
         LayoutVersion++;
     }
 
-    private void LateUpdate()
-    {
-        if (Time.unscaledTime < _nextRefresh)
-        {
-            return;
-        }
-        _nextRefresh = Time.unscaledTime + 0.2f;
-        Refresh();
-    }
-
-    public void Refresh()
+    public override void Refresh()
     {
         World current = World.DefaultGameObjectInjectionWorld;
         if (!ReferenceEquals(current, _world))
         {
             Disconnect();
             _world = current;
-            if (_world != null)
-            {
-                if (_world.IsCreated)
-                {
-                    _feedbackToken = WorldUiRequestFeedbackRelay.Register(_world, ReceiveFeedback);
-                }
-            }
+            _feedbackToken = WorldUiRequestFeedbackRelay.Register(_world, ReceiveFeedback);
         }
         Ready = false;
         Nodes.Clear();
@@ -311,8 +292,7 @@ public sealed class ResearchPanelController : MonoBehaviour
             return Entity.Null;
         }
         Entity request = ResearchSelectionRequestUtility.Submit(_world.EntityManager, node.Id);
-        _world.EntityManager.AddComponentData(request, new WorldUiRequestOwner { FeedbackToken = _feedbackToken });
-        _pending.Add(request);
+        WorldUiRequestFeedbackRelay.Track(_world.EntityManager, _feedbackToken, request);
         Feedback = "연구 선택 요청 대기";
         Changed?.Invoke();
         return request;
@@ -320,7 +300,7 @@ public sealed class ResearchPanelController : MonoBehaviour
 
     private void ReceiveFeedback(WorldUiRequestFeedback feedback)
     {
-        if (!isActiveAndEnabled || !_pending.Remove(feedback.Request))
+        if (!isActiveAndEnabled)
         {
             return;
         }

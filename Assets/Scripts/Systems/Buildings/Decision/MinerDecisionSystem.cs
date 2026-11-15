@@ -6,7 +6,6 @@ using Unity.Entities;
 [UpdateInGroup(typeof(BuildingDecisionGroup))]
 public partial struct MinerDecisionSystem : ISystem
 {
-    public void OnCreate(ref SystemState state) { }
     public void OnUpdate(ref SystemState state)
     {
         state.Dependency = new DecideMinerExecutionJob

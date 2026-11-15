@@ -29,7 +29,7 @@ public partial struct DroneStationSpatialSyncSystem : ISystem
     [BurstCompile]
     public void OnDestroy(ref SystemState state)
     {
-        if (SystemAPI.TryGetSingletonRW<DroneStationSpatialIndexFence>(out var fence)) fence.ValueRW.Complete();
+        if (SystemAPI.TryGetSingletonRW<DroneStationSpatialIndexFence>(out var fence)) fence.ValueRW.State.Complete();
         if (SystemAPI.TryGetSingleton<DroneStationSpatialIndex>(out var index) && index.Map.IsCreated) index.Map.Dispose();
     }
 
@@ -41,11 +41,11 @@ public partial struct DroneStationSpatialSyncSystem : ISystem
         int count = _stations.CalculateEntityCount();
         if (index.Map.Capacity < count)
         {
-            fence.Complete();
+            fence.State.Complete();
             index.Map.Capacity = math.max(16, count * 2);
         }
-        var dependency = JobHandle.CombineDependencies(state.Dependency, fence.GetWriterDependency());
-        var clear = new ClearDroneStationSpatialIndexJob { Map = index.Map }.Schedule(dependency);
+        var dependency = JobHandle.CombineDependencies(state.Dependency, fence.State.GetWriterDependency());
+        var clear = new ClearSpatialMapJob<Entity, DroneStationCoverage> { Map = index.Map }.Schedule(dependency);
         var populate = new PopulateDroneStationSpatialIndexJob
         {
             EntityHandle = SystemAPI.GetEntityTypeHandle(),
@@ -58,16 +58,9 @@ public partial struct DroneStationSpatialSyncSystem : ISystem
             ConfigLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
             Writer = index.Map.AsParallelWriter()
         }.ScheduleParallel(_stations, clear);
-        fence.SetWriter(populate);
+        fence.State.SetWriter(populate);
         state.Dependency = populate;
     }
-}
-
-[BurstCompile]
-internal struct ClearDroneStationSpatialIndexJob : IJob
-{
-    public NativeParallelHashMap<Entity, DroneStationCoverage> Map;
-    public void Execute() => Map.Clear();
 }
 
 [BurstCompile]

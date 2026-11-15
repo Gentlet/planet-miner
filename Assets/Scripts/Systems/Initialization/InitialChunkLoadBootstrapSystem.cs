@@ -17,10 +17,6 @@ public partial struct InitialChunkLoadBootstrapSystem : ISystem
         state.RequireForUpdate<ResourceGenerationSettings>();
     }
 
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
     public void OnUpdate(ref SystemState state)
     {
         var settings = SystemAPI.GetSingleton<ResourceGenerationSettings>();

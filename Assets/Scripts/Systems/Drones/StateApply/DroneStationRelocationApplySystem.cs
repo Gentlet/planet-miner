@@ -28,8 +28,7 @@ public partial struct DroneStationRelocationApplySystem : ISystem
                 if (manager.HasBuffer<DroneStationReservedSlotElement>(relocation.Destination))
                 {
                     var rows = manager.GetBuffer<DroneStationReservedSlotElement>(relocation.Destination);
-                    for (int i = rows.Length - 1; i >= 0; i--)
-                        if (rows[i].Drone == intent.Drone) rows.RemoveAt(i);
+                    DroneStationRelocationUtility.ReleaseSlots(rows, intent.Drone);
                 }
                 if (intent.Completed && manager.HasComponent<PreparingStationDemolition>(relocation.Source))
                 {

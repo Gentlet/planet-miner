@@ -193,7 +193,7 @@ public partial class ItemConfigInitSystem : SystemBase
             ValidateMaxStack(parsedType, item.MaxStack);
             if (requireItemIds || item.ItemId != 0)
             {
-                if (!IsItemId(item.ItemId))
+                if (!ConfigIdUtility.IsInCategory(item.ItemId, ConfigIdUtility.ItemCategory))
                 {
                     throw new ArgumentException($"Item '{parsedType}' requires an ItemId in category 120.", nameof(jsonText));
                 }
@@ -239,8 +239,6 @@ public partial class ItemConfigInitSystem : SystemBase
         }
     }
 
-    private static bool IsItemId(int itemId) => itemId / 100000 == 120 && itemId % 100000 != 0;
-
     private static void ValidateRegisteredItems(DynamicBuffer<ItemConfigElement> items)
     {
         int count = Enum.GetValues(typeof(ItemTypeEnum)).Length;
@@ -264,7 +262,7 @@ public partial class ItemConfigInitSystem : SystemBase
                 }
                 continue;
             }
-            if (item.ItemId != 0 && (!IsItemId(item.ItemId) || !itemIds.Add(item.ItemId)))
+            if (item.ItemId != 0 && (!ConfigIdUtility.IsInCategory(item.ItemId, ConfigIdUtility.ItemCategory) || !itemIds.Add(item.ItemId)))
             {
                 throw new ArgumentException($"The pre-registered ItemRegistry has an invalid or duplicate ItemId {item.ItemId}.");
             }

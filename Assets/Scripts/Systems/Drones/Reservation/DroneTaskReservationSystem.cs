@@ -327,17 +327,23 @@ public partial struct DroneTaskReservationSystem : ISystem
     private static bool EarlierRetarget(EntityManager manager, in DroneTaskCandidateDecisionElement left,
         in DroneTaskCandidateDecisionElement right)
     {
-        ulong leftOrder = RetargetOrder(manager, left.Assignment);
-        ulong rightOrder = RetargetOrder(manager, right.Assignment);
-        if (leftOrder != rightOrder) return leftOrder < rightOrder;
+        ulong leftOrder = ulong.MaxValue;
+        if (manager.HasComponent<DroneTaskAssignment>(left.Assignment))
+        {
+            leftOrder = DroneSchedulingUtility.AssignmentCreationSequence(manager,
+                manager.GetComponentData<DroneTaskAssignment>(left.Assignment));
+        }
+        ulong rightOrder = ulong.MaxValue;
+        if (manager.HasComponent<DroneTaskAssignment>(right.Assignment))
+        {
+            rightOrder = DroneSchedulingUtility.AssignmentCreationSequence(manager,
+                manager.GetComponentData<DroneTaskAssignment>(right.Assignment));
+        }
+        if (leftOrder != rightOrder)
+        {
+            return leftOrder < rightOrder;
+        }
         return left.Assignment.Index < right.Assignment.Index;
-    }
-
-    private static ulong RetargetOrder(EntityManager manager, Entity entity)
-    {
-        if (!manager.HasComponent<DroneTaskAssignment>(entity)) return ulong.MaxValue;
-        return DroneSchedulingUtility.AssignmentCreationSequence(manager,
-            manager.GetComponentData<DroneTaskAssignment>(entity));
     }
 
     [BurstCompile]

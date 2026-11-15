@@ -155,7 +155,8 @@ public struct ApplyGameBootstrapJob : IJob
         }
 
         using var worldItemPositions = new NativeList<int2>(Allocator.Temp);
-        CollectWorldItemPositions(worldItemPositions);
+        ConstructionCompletionUtility.CollectWorldItemPositions(
+            ItemEntities, DestroyRequests, ItemOwners, Positions, worldItemPositions);
         if (!ValidateBootstrapConflictsAndRecordFailure(config.Footprint, configs, worldItemPositions.AsArray()))
         {
             ECB.DestroyEntity(request);
@@ -234,23 +235,6 @@ public struct ApplyGameBootstrapJob : IJob
             }
         }
         return mainCount == 1;
-    }
-
-    private void CollectWorldItemPositions(NativeList<int2> positions)
-    {
-        for (int i = 0; i < ItemEntities.Length; i++)
-        {
-            Entity item = ItemEntities[i];
-            if (DestroyRequests.HasComponent(item) && DestroyRequests.IsComponentEnabled(item))
-            {
-                continue;
-            }
-            if (!ItemOwners[item].IsWorldItem)
-            {
-                continue;
-            }
-            positions.Add(Positions[item].Value);
-        }
     }
 
     private bool ValidateBootstrapConflictsAndRecordFailure(int2 size, DynamicBuffer<BuildingConfigElement> configs,

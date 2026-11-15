@@ -11,6 +11,14 @@ using Unity.Transforms;
 /// </summary>
 public static class ItemLifecycleUtility
 {
+    /// <summary>월드 반환의 표시/위치 명령을 순서대로 기록한다. 호출자는 Owner를 앞서 기록하고 철거에서는 필요한 회수 표식도 먼저 기록한다.</summary>
+    internal static void RecordWorldReturnPresentationAndPosition(ref EntityCommandBuffer ecb, Entity item, int2 position)
+    {
+        ecb.RemoveComponent<DisableRendering>(item);
+        ecb.SetComponent(item, new GridPosition(position));
+        ecb.SetComponent(item, LocalTransform.FromPosition(new float3(position.x, position.y, 0f)));
+    }
+
     /// <summary>실물 삭제 기록의 공통 진입점. 호출자는 소유 버퍼를 먼저 정리하고 Playback 경계를 선택한다.</summary>
     public static void RecordDestroy(ref EntityCommandBuffer ecb, Entity item)
     {

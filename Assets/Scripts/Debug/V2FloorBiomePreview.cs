@@ -103,10 +103,10 @@ public sealed class V2FloorBiomePreview : MonoBehaviour
         if (previewObject != null)
         {
             previewObject.SetActive(false);
-            FloorChunkMeshBuilder.DestroyOwned(previewObject);
+            UnityObjectLifecycleUtility.DestroyOwned(previewObject);
         }
-        FloorChunkMeshBuilder.DestroyOwned(sprite);
-        FloorChunkMeshBuilder.DestroyOwned(texture);
+        UnityObjectLifecycleUtility.DestroyOwned(sprite);
+        UnityObjectLifecycleUtility.DestroyOwned(texture);
         previewObject = null;
         sprite = null;
         texture = null;

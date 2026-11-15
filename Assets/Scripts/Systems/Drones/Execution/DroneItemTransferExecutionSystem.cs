@@ -1,4 +1,3 @@
-using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -18,23 +17,6 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
     private EntityQuery _registry;
     private EntityQuery _sites;
 
-    private struct PendingAction
-    {
-        public Entity Entity;
-        public DroneActionReadyRequest Request;
-    }
-
-    private struct ReceiptComparer : IComparer<PendingAction>
-    {
-        public int Compare(PendingAction first, PendingAction second)
-        {
-            int order = first.Request.ReceiptSequence.CompareTo(second.Request.ReceiptSequence);
-            if (order != 0) return order;
-            order = first.Entity.Index.CompareTo(second.Entity.Index);
-            return order != 0 ? order : first.Entity.Version.CompareTo(second.Entity.Version);
-        }
-    }
-
     public void OnCreate(ref SystemState state)
     {
         _requests = state.GetEntityQuery(ComponentType.ReadOnly<DroneActionReadyRequest>(),
@@ -49,20 +31,10 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
     {
         state.CompleteDependency();
         var manager = state.EntityManager;
-        using var entities = _requests.ToEntityArray(Allocator.Temp);
         using var sites = _sites.ToEntityArray(Allocator.Temp);
-        using var ordered = new NativeList<PendingAction>(entities.Length, Allocator.Temp);
         Entity registry = _registry.IsEmptyIgnoreFilter ? Entity.Null : _registry.GetSingletonEntity();
-        for (int i = 0; i < entities.Length; i++)
-        {
-            ordered.Add(new PendingAction
-            {
-                Entity = entities[i], Request = manager.GetComponentData<DroneActionReadyRequest>(entities[i])
-            });
-        }
-        // 작업 생성 우선순위와 별개로 실제 행동은 World 접수 순번을 따른다.
-        // 여기서는 각 계획만 준비하고 실물/공간 경합의 성공분은 Lifecycle Apply가 정산한다.
-        ordered.AsArray().Sort(new ReceiptComparer());
+        // 실제 행동은 작업 생성 우선순위와 별개인 World 접수 순서를 따른다.
+        using var ordered = DroneActionRequestUtility.ReadInReceiptOrder(manager, _requests, Allocator.Temp);
         for (int i = 0; i < ordered.Length; i++)
         {
             PrepareRequest(manager, ordered[i].Entity, ordered[i].Request, registry, sites);
@@ -101,7 +73,10 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
                 break;
             case DroneActionKindEnum.RecoverWorldItem:
                 decision.WantedQuantity = 1;
-                PrepareRecovery(manager, assignment, items, sites);
+                if (DroneWorldItemRecoveryUtility.CanRecoverAssignedItem(manager, assignment, sites))
+                {
+                    items.Add(new DroneItemTransferItemDecisionElement { ItemEntity = assignment.Source });
+                }
                 decision.MaximumQuantity = items.Length;
                 break;
             case DroneActionKindEnum.SupplyConstructionSite:
@@ -172,22 +147,6 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
                 DroneSchedulingUtility.IsTransportKind(task.Kind) && assignment.SourceArea == DroneTransportAreaEnum.GeneralStorage);
         }
         return math.min(limit, items.Length);
-    }
-
-    private static void PrepareRecovery(EntityManager manager, in DroneTaskAssignment assignment,
-        DynamicBuffer<DroneItemTransferItemDecisionElement> items, NativeArray<Entity> sites)
-    {
-        // 지정된 월드 실물 하나만 계획한다. 자동 단독 현장 정리는 현재 현장 자격이 필요하다.
-        // 승인된 명시 의도가 합쳐졌다면 현장 종료 뒤에도 일반 바닥 자격으로 진행한다.
-        // 이후 적재 출처가 Recovery로 유지되어 보관처 입고 전에는 건설 공급으로 전용되지 않는다.
-        if (!DroneSchedulingUtility.IsStorage(manager, assignment.Destination)) return;
-        if (!ItemOwnershipApplySystem.CanTransferItem(manager, assignment.Source, assignment.ItemType, Entity.Null)) return;
-        var task = manager.GetComponentData<DroneLogisticsTask>(assignment.Task);
-        if (!DroneWorldItemRecoveryUtility.IsReasonValid(manager, task, sites))
-        {
-            return;
-        }
-        items.Add(new DroneItemTransferItemDecisionElement { ItemEntity = assignment.Source });
     }
 
     private static int PrepareSupply(EntityManager manager, Entity entity, in DroneTaskAssignment assignment,

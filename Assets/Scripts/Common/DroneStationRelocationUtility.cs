@@ -1,9 +1,21 @@
 using Unity.Collections;
 using Unity.Entities;
 
-/// <summary>예약 조회/기존 운송의 입고 자격/철거 확인 완료 조건을 공유한다. 원본은 변경하지 않는다.</summary>
+/// <summary>정거장 이주의 자격/예약 조회와 지정 드론의 슬롯 반환을 공유한다. 반환 시점과 완료 정산은 각 호출자가 소유한다.</summary>
 public static class DroneStationRelocationUtility
 {
+    /// <summary>재계획 또는 종료 소유자가 지정한 드론의 예약 행을 모두 제거한다.</summary>
+    internal static void ReleaseSlots(DynamicBuffer<DroneStationReservedSlotElement> reservations, Entity drone)
+    {
+        for (int i = reservations.Length - 1; i >= 0; i--)
+        {
+            if (reservations[i].Drone == drone)
+            {
+                reservations.RemoveAt(i);
+            }
+        }
+    }
+
     /// <summary>준비 전에 이미 수집한 운송만 마무리한다. 이관 대상 확정 뒤 새 드론을 추가하지 않는다.</summary>
     public static bool CanReceiveCommittedDroneCargo(EntityManager manager, Entity station, Entity assignmentEntity,
         Entity worker = default)

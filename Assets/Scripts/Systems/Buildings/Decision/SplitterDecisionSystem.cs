@@ -42,11 +42,6 @@ public partial struct SplitterDecisionSystem : ISystem
     }
 
     [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
-    [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
         if (!SystemAPI.HasSingleton<BeltSpatialIndex>() ||
@@ -82,13 +77,13 @@ public partial struct SplitterDecisionSystem : ISystem
             PendingBuildingDemolitionLookup = _pendingBuildingDemolitionLookup
         };
 
-        var readDep = JobHandle.CombineDependencies(beltFence.GetReaderDependency(), itemFence.GetReaderDependency());
+        var readDep = JobHandle.CombineDependencies(beltFence.State.GetReaderDependency(), itemFence.State.GetReaderDependency());
         var jobDep = JobHandle.CombineDependencies(state.Dependency, readDep);
 
         var jobHandle = decisionJob.ScheduleParallel(_splitterQuery, jobDep);
 
-        beltFence.AddReader(jobHandle);
-        itemFence.AddReader(jobHandle);
+        beltFence.State.AddReader(jobHandle);
+        itemFence.State.AddReader(jobHandle);
 
         state.Dependency = jobHandle;
     }
@@ -149,11 +144,11 @@ public partial struct SplitterDecisionJob : IJobEntity
 
         if (inputBelt == Entity.Null)
         {
-            inputBelt = FindBestIncomingBelt(splitterPos, out forwardDir);
+            inputBelt = BeltEntryUtility.FindRoutingBelt(splitterPos, BeltMap, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: true, out forwardDir);
         }
         else if (!GridPositionLookup.TryGetComponent(inputBelt, out var currentInputPosition))
         {
-            inputBelt = FindBestIncomingBelt(splitterPos, out forwardDir);
+            inputBelt = BeltEntryUtility.FindRoutingBelt(splitterPos, BeltMap, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: true, out forwardDir);
         }
         else
         {
@@ -162,7 +157,7 @@ public partial struct SplitterDecisionJob : IJobEntity
             if (!BeltMap.TryGetValue(inputBeltPos, out BeltInfo currentInputInfo) ||
                 !RoutingDirectionUtility.IsIncomingBelt(splitterPos, inputBeltPos, currentInputInfo.Direction))
             {
-                inputBelt = FindBestIncomingBelt(splitterPos, out forwardDir);
+                inputBelt = BeltEntryUtility.FindRoutingBelt(splitterPos, BeltMap, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: true, out forwardDir);
                 hasInputPosition = false;
             }
         }
@@ -207,7 +202,7 @@ public partial struct SplitterDecisionJob : IJobEntity
 
                 if (RoutingDirectionUtility.IsOutgoingBelt(splitterPos, targetPos, beltInfo.Direction))
                 {
-                    if (IsTargetBeltAvailable(targetPos))
+                    if (BeltEntryUtility.HasEntrySpace(targetPos, ItemMap, ItemOwnershipLookup, BeltMovementStateLookup))
                     {
                         targetBelt = beltInfo.Entity;
                         break;
@@ -227,60 +222,5 @@ public partial struct SplitterDecisionJob : IJobEntity
         decision.SourceBelt = inputBelt;
         decision.TargetBelt = targetBelt;
         decisionEnabled.ValueRW = true;
-    }
-
-    private Entity FindBestIncomingBelt(int2 routerPos, out DirectionEnum forwardDir)
-    {
-        Entity bestBelt = Entity.Null;
-        PlacementStamp bestStamp = default;
-        bool hasBestStamp = false;
-        int2 bestPosition = default;
-        forwardDir = DirectionEnum.Up;
-
-        for (int i = 0; i < (int)DirectionEnum.Count; i++)
-        {
-            DirectionEnum dir = (DirectionEnum)i;
-            int2 neighborPos = routerPos + dir.ToInt2();
-
-            if (BeltMap.TryGetValue(neighborPos, out BeltInfo beltInfo))
-            {
-                if (PendingBuildingDemolitionLookup.HasComponent(beltInfo.Entity))
-                {
-                    continue;
-                }
-
-                if (RoutingDirectionUtility.IsIncomingBelt(routerPos, neighborPos, beltInfo.Direction))
-                {
-                    PlacementStamp stamp = default;
-                    bool hasStamp = PlacementStampLookup.TryGetComponent(beltInfo.Entity, out stamp);
-
-                    if (bestBelt == Entity.Null)
-                    {
-                        bestBelt = beltInfo.Entity;
-                        bestStamp = stamp;
-                        hasBestStamp = hasStamp;
-                        bestPosition = neighborPos;
-                        forwardDir = beltInfo.Direction;
-                    }
-                    else if (PlacementStamp.Compare(hasStamp, stamp, neighborPos,
-                                 hasBestStamp, bestStamp, bestPosition) < 0)
-                    {
-                        bestBelt = beltInfo.Entity;
-                        bestStamp = stamp;
-                        hasBestStamp = hasStamp;
-                        bestPosition = neighborPos;
-                        forwardDir = beltInfo.Direction;
-                    }
-                }
-            }
-        }
-
-        return bestBelt;
-    }
-
-    private bool IsTargetBeltAvailable(int2 targetPos)
-    {
-        return BeltEntryUtility.HasEntrySpace(
-            targetPos, ItemMap, ItemOwnershipLookup, BeltMovementStateLookup);
     }
 }

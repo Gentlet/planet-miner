@@ -51,11 +51,6 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
         _configBufferLookup = state.GetBufferLookup<BuildingConfigElement>(true);
     }
 
-    [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
     public void OnUpdate(ref SystemState state)
     {
         if (_siteQuery.IsEmptyIgnoreFilter)
@@ -74,7 +69,12 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
         // 일반 Ownership과 지난 틱 드론 실물 인계가 반영된 원본을 모은다. 공간 인덱스로 완공을 판단하지 않는다.
         // Job에는 이번 검사 동안만 쓰는 위치 복사본을 전달하고 완료 후 Dispose한다.
         state.CompleteDependency();
-        var worldItemPositions = CollectWorldItemPositions(ref state);
+        using var items = _worldItemQuery.ToEntityArray(Allocator.Temp);
+        var worldItemPositions = new NativeList<int2>(Allocator.TempJob);
+        var owners = state.GetComponentLookup<ItemOwnership>(true);
+        var positions = state.GetComponentLookup<GridPosition>(true);
+        ConstructionCompletionUtility.CollectWorldItemPositions(
+            items, _destroyRequestLookup, owners, positions, worldItemPositions);
 
         Entity prefabDbEntity = _prefabDbQuery.IsEmptyIgnoreFilter ? Entity.Null : _prefabDbQuery.GetSingletonEntity();
         Entity configEntity = _buildingConfigQuery.IsEmptyIgnoreFilter ? Entity.Null : _buildingConfigQuery.GetSingletonEntity();
@@ -100,29 +100,6 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
         var completionHandle = completionJob.Schedule(_siteQuery, state.Dependency);
         state.Dependency = worldItemPositions.Dispose(completionHandle);
         ecbSystem.AddJobHandleForProducer(state.Dependency);
-    }
-
-    private NativeList<int2> CollectWorldItemPositions(ref SystemState state)
-    {
-        var manager = state.EntityManager;
-        var positions = new NativeList<int2>(Allocator.TempJob);
-        using var items = _worldItemQuery.ToEntityArray(Allocator.Temp);
-        for (int i = 0; i < items.Length; i++)
-        {
-            Entity item = items[i];
-            // EndBuilding에서 삭제될 활성 Destroy 실물은 더 이상 바닥 정리를 막지 않는다.
-            // 수납 아이템의 GridPosition은 월드에 보이는 실물이 아니므로 Owner=Null만 포함한다.
-            if (IsPendingItemDestruction(item)) continue;
-            if (!manager.GetComponentData<ItemOwnership>(item).IsWorldItem) continue;
-            positions.Add(manager.GetComponentData<GridPosition>(item).Value);
-        }
-
-        return positions;
-    }
-
-    private bool IsPendingItemDestruction(Entity item)
-    {
-        return _destroyRequestLookup.HasComponent(item) && _destroyRequestLookup.IsComponentEnabled(item);
     }
 }
 

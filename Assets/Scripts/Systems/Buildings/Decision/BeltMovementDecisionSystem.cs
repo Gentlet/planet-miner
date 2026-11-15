@@ -29,11 +29,6 @@ public partial struct BeltMovementDecisionSystem : ISystem
     }
 
     [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
-    [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
         if (!SystemAPI.HasSingleton<BeltSpatialIndex>() || 
@@ -71,13 +66,13 @@ public partial struct BeltMovementDecisionSystem : ISystem
         };
 
         // Reader 의존성: Belt 및 Item의 마지막 Writer가 끝난 뒤 읽기 실행
-        var readersDep = JobHandle.CombineDependencies(beltFence.GetReaderDependency(), itemFence.GetReaderDependency());
+        var readersDep = JobHandle.CombineDependencies(beltFence.State.GetReaderDependency(), itemFence.State.GetReaderDependency());
         var jobDep = JobHandle.CombineDependencies(state.Dependency, readersDep);
         var jobHandle = job.ScheduleParallel(jobDep);
 
         // Fence에 Reader Handle 등록
-        beltFence.AddReader(jobHandle);
-        itemFence.AddReader(jobHandle);
+        beltFence.State.AddReader(jobHandle);
+        itemFence.State.AddReader(jobHandle);
 
         state.Dependency = jobHandle;
     }

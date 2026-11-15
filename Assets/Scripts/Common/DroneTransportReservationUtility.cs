@@ -63,20 +63,6 @@ public static class DroneTransportReservationUtility
         return quantity;
     }
 
-    public static int ReadInFlightQuantity(Entity task, in DroneTransportProgress progress,
-        DynamicBuffer<DroneTransportPendingReservationElement> pending)
-    {
-        int quantity = progress.ReservedQuantity;
-        for (int i = 0; i < pending.Length; i++)
-        {
-            if (pending[i].Reservation.Task == task)
-            {
-                quantity -= pending[i].Reservation.RemainingQuantity;
-            }
-        }
-        return quantity;
-    }
-
     public static bool TryReserve(Entity task, in DroneTransportRequirement requirement,
         ref DroneTransportProgress progress, int maximumQuantity, out DroneTransportReservation reservation)
     {

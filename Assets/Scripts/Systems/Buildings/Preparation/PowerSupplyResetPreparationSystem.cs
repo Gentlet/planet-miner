@@ -5,7 +5,6 @@ using Unity.Entities;
 [UpdateInGroup(typeof(SimulationPreparationGroup), OrderFirst = true)]
 public partial struct PowerSupplyResetPreparationSystem : ISystem
 {
-    public void OnCreate(ref SystemState state) { }
     public void OnUpdate(ref SystemState state)
     {
         var validationOwner = state.World.GetOrCreateSystemManaged<PowerValidationInitializationSystem>();

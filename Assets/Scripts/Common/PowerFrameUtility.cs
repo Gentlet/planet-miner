@@ -1,34 +1,9 @@
 using Unity.Entities;
 using Unity.Mathematics;
 
-/// <summary>전력 준비 결과의 대표 조회와 공급에 따른 작업 시간 계산. 상태·집계의 생성/갱신은 각 소유 시스템이 담당한다.</summary>
+/// <summary>확정 전력 공급에 따른 작업 자격/시간과 에너지 반올림 계산. 상태/집계는 각 소유 시스템이 작성한다.</summary>
 public static class PowerFrameUtility
 {
-    public static Entity GetRepresentative(Entity entity, ComponentLookup<PowerPole> poles,
-        ComponentLookup<PowerGridConnectionDecision> connections, ComponentLookup<PowerGridTopologyDecision> topology)
-    {
-        Entity pole = poles.HasComponent(entity) ? entity : connections[entity].PowerPole;
-        if (pole == Entity.Null)
-        {
-            return Entity.Null;
-        }
-        return topology[pole].RepresentativePole;
-    }
-
-    /// <summary>작업 결정은 배정 자격을 확인하고 실제 시간 누적은 Execution이 담당한다.</summary>
-    public static bool HasAllocatedPower(Entity entity,
-        ComponentLookup<PowerDemand> demands, ComponentLookup<PowerSupplyResult> supplies)
-    {
-        if (!demands.TryGetComponent(entity, out var demand) || !supplies.TryGetComponent(entity, out var supply))
-        {
-            return false;
-        }
-        if (!demands.IsComponentEnabled(entity))
-        {
-            return false;
-        }
-        return demand.RequestedEnergy > 0f && supply.AllocatedEnergy > 0f && supply.SupplyRatio > 0f;
-    }
 
     public static bool HasAllocatedPower(Entity entity,
         ComponentLookup<PowerDemand> demands, ComponentLookup<PowerSupplyResult> supplies, out float powerTimeRatio)

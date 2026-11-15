@@ -5,6 +5,22 @@ using Unity.Mathematics;
 /// <summary>사용자 일반 회수의 바닥 자격과 기존 회수 사유의 유효성을 공유한다. 실물 소유권은 변경하지 않는다.</summary>
 public static class DroneWorldItemRecoveryUtility
 {
+    /// <summary>지정 실물의 현재 회수 자격을 확인한다. 계획 준비와 실제 인계 직전에 각각 호출한다.</summary>
+    internal static bool CanRecoverAssignedItem(EntityManager manager, in DroneTaskAssignment assignment,
+        NativeArray<Entity> sites)
+    {
+        if (!DroneSchedulingUtility.IsStorage(manager, assignment.Destination))
+        {
+            return false;
+        }
+        if (!ItemOwnershipApplySystem.CanTransferItem(manager, assignment.Source, assignment.ItemType, Entity.Null))
+        {
+            return false;
+        }
+        var task = manager.GetComponentData<DroneLogisticsTask>(assignment.Task);
+        return IsReasonValid(manager, task, sites);
+    }
+
     public static bool IsFloorItem(EntityManager manager, Entity item, ItemTypeEnum type)
     {
         if (!DroneSchedulingUtility.IsWorldItem(manager, item, type))

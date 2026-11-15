@@ -106,8 +106,8 @@ internal struct DecideDroneStationNetworkJob : IJob
             for (int j = i + 1; j < Stations.Length; j++)
             {
                 if (!Bounds[i].Overlaps(Bounds[j])) continue;
-                int left = FindRoot(i);
-                int right = FindRoot(j);
+                int left = NetworkUnionUtility.FindRoot(Parents.AsArray(), i);
+                int right = NetworkUnionUtility.FindRoot(Parents.AsArray(), j);
                 if (left == right) continue;
                 if (CompareStations(Stations[left], Stations[right], ref leftRootKey) <= 0)
                 {
@@ -124,21 +124,11 @@ internal struct DecideDroneStationNetworkJob : IJob
             Entity station = Stations[i];
             DecisionLookup[station] = new DroneStationNetworkDecision
             {
-                RepresentativeStation = Stations[FindRoot(i)],
+                RepresentativeStation = Stations[NetworkUnionUtility.FindRoot(Parents.AsArray(), i)],
                 ActivityBounds = Bounds[i]
             };
             DecisionLookup.SetComponentEnabled(station, true);
         }
-    }
-
-    private int FindRoot(int index)
-    {
-        while (Parents[index] != index)
-        {
-            Parents[index] = Parents[Parents[index]];
-            index = Parents[index];
-        }
-        return index;
     }
 
     private struct StationComparisonKey

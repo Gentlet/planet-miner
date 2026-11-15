@@ -17,7 +17,7 @@ public enum StorageFilterMode : byte
 /// 역할·목적: 0~127 품목 번호의 허용/차단 비트를 저장하는 128비트 값 형식이다.
 /// 부착 엔티티: 독립 ECS 컴포넌트가 아니며 StorageFilter.Mask에 포함한다.
 /// 생성·이용: CrafterRecipeCommandSystem(Command)이 레시피 입력 품목 비트를 설정하고 StorageFilter.IsItemAllowed가 읽는다. 범위 밖 번호는 IsSet=false다.
-/// 제거: Clear는 값의 비트만 0으로 되돌린다. 값을 포함한 필터의 수명을 따른다.
+/// 수명: 값을 포함한 필터의 수명을 따른다.
 /// </summary>
 public struct FixedBitSet
 {
@@ -53,15 +53,6 @@ public struct FixedBitSet
             if (value) Part1 |= (1UL << (index - 64));
             else Part1 &= ~(1UL << (index - 64));
         }
-    }
-
-    /// <summary>
-    /// 모든 비트를 0으로 초기화.
-    /// </summary>
-    public void Clear()
-    {
-        Part0 = 0;
-        Part1 = 0;
     }
 }
 

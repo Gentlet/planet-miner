@@ -38,11 +38,6 @@ public partial struct CrafterExecutionSystem : ISystem
             .Build();
     }
 
-    [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
     public void OnUpdate(ref SystemState state)
     {
         if (!SystemAPI.HasSingleton<RecipeRegistry>())
@@ -184,26 +179,8 @@ public partial struct CrafterExecutionJob : IJobChunk
             for (int i = 0; i < recipe.IngredientCount; i++)
             {
                 var ingredient = ingredients[recipe.IngredientStart + i];
-                int remainingToConsume = ingredient.Amount;
-
-                for (int s = storedItems.Length - 1; s >= 0 && remainingToConsume > 0; s--)
-                {
-                    var storedItem = storedItems[s];
-                    if (storedItem.ItemType != ingredient.ItemType)
-                    {
-                        continue;
-                    }
-
-                    Entity itemEntity = storedItem.ItemEntity;
-                    if (!RecipeConfigLookupUtility.CanConsumeStoredItem(itemEntity, DestroyItemRequestLookup))
-                    {
-                        continue;
-                    }
-
-                    storedItems.RemoveAt(s);
-                    DestroyItemRequestLookup.SetComponentEnabled(itemEntity, true);
-                    remainingToConsume--;
-                }
+                StoredItemBufferUtility.ConsumeRequiredItems(
+                    storedItems, ingredient.ItemType, ingredient.Amount, ref DestroyItemRequestLookup);
             }
 
             state.IsCraftingActive = true;

@@ -120,7 +120,10 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                     {
                         continue;
                     }
-                    RemoveReservation(old.Destination, member.Drone);
+                    if (Reserved.TryGetBuffer(old.Destination, out var reservations))
+                    {
+                        DroneStationRelocationUtility.ReleaseSlots(reservations, member.Drone);
+                    }
                 }
                 using var plans = new NativeList<SlotReservationPlan>(Allocator.Temp);
                 using var flights = new NativeList<DroneFlightStation>(Allocator.Temp);
@@ -234,7 +237,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                                     BuildChargingStationsForCohort(flights, actors[actor].Source, plans, sourceChargingSlotsAfterDeparture, geometry);
                                     chargingStationsReady = true;
                                 }
-                                var path = DroneFlightPlanningUtility.Plan(GetActorRouteOriginPosition(actors[actor], actor, origins), GetStationCenterPosition(slots[slot].Station, geometry),
+                                var path = DroneFlightPlanningUtility.Plan(GetActorRouteOriginPosition(actors[actor], actor, origins), geometry[slots[slot].Station].Center,
                                     Maximum, Maximum, Rate, flights);
                                 distance = path.Status == DroneRouteEvaluationStatusEnum.Reachable ? path.Distance : float.MaxValue;
                                 distances.Add(key, distance);
@@ -300,7 +303,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             BuildChargingStationsForCohort(flights, actors[0].Source, plans, sourceChargingSlotsAfterDeparture, geometry);
             for (int i = 0; i < plans.Length; i++)
             {
-                if (DroneFlightPlanningUtility.Plan(GetActorRouteOriginPosition(actors[i], i, origins), GetStationCenterPosition(plans[i].Destination, geometry),
+                if (DroneFlightPlanningUtility.Plan(GetActorRouteOriginPosition(actors[i], i, origins), geometry[plans[i].Destination].Center,
                     Maximum, Maximum, Rate, flights).Status != DroneRouteEvaluationStatusEnum.Reachable)
                 {
                     return false;
@@ -335,7 +338,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                     if (!distances.TryGetValue(key, out float distance))
                     {
                         var path = DroneFlightPlanningUtility.Plan(GetActorRouteOriginPosition(actors[actor], actor, origins),
-                            GetStationCenterPosition(slots[firstSlotIndex].Station, geometry), Maximum, Maximum, Rate, flights);
+                            geometry[slots[firstSlotIndex].Station].Center, Maximum, Maximum, Rate, flights);
                         distance = path.Status == DroneRouteEvaluationStatusEnum.Reachable ? path.Distance : float.MaxValue;
                         distances.Add(key, distance);
                     }
@@ -436,9 +439,6 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             }
             return origin.Position;
         }
-
-        private static float2 GetStationCenterPosition(Entity station,
-            NativeHashMap<Entity, StationGeometryRead> geometry) => geometry[station].Center;
 
         private static bool IsStationEarlierForTieBreak(Entity left, Entity right,
             NativeHashMap<Entity, StationGeometryRead> geometry)
@@ -566,16 +566,6 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                     Network = row.Network, HasStamp = row.HasStamp, Stamp = row.Stamp
                 });
             }
-        }
-
-        private void RemoveReservation(Entity station, Entity drone)
-        {
-            if (!Reserved.TryGetBuffer(station, out var rows))
-            {
-                return;
-            }
-            for (int i = rows.Length - 1; i >= 0; i--)
-                if (rows[i].Drone == drone) rows.RemoveAt(i);
         }
     }
 }

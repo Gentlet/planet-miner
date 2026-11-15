@@ -248,7 +248,7 @@ public static class ResearchConfigLoader
         for (int i = 0; i < data.Definitions.Count; i++)
         {
             var definition = data.Definitions[i];
-            if (!IsResearchId(definition.StableId) ||
+            if (!ConfigIdUtility.IsInCategory(definition.StableId, ConfigIdUtility.ResearchCategory) ||
                 !indices.TryAdd(definition.StableId, i))
             {
                 throw new ArgumentException("Research IDs must use category 140 and be unique.");
@@ -439,7 +439,7 @@ public static class ResearchConfigLoader
             {
                 throw new ArgumentException("Research input layout requires positive configured item stack sizes.");
             }
-            researchSlots += ResearchMaterialUtility.SlotCountForTwoCycles(maximum, item.MaxStack);
+            researchSlots += BuildingInputSlotUtility.RequiredSlotCount((long)maximum * ResearchMaterialUtility.BufferedCycleCount, item.MaxStack);
         }
         if (researchSlots > GameConstants.MaxStorageSlots)
         {
@@ -492,7 +492,11 @@ public static class ResearchConfigLoader
                 }
                 if (reward.Type == ResearchRewardTypeEnum.BuildingUnlock)
                 {
-                    ValidateBuildingReward(buildings, definition.StableId, reward);
+                    if (!BuildingConfigLookupUtility.TryGetConfig(buildings, reward.BuildingId, out var building) ||
+                        building.RequiredResearch != definition.StableId)
+                    {
+                        throw new ArgumentException($"Building reward ID {reward.BuildingId} has no matching BuildingConfig.RequiredResearch.");
+                    }
                 }
             }
         }
@@ -511,16 +515,6 @@ public static class ResearchConfigLoader
             {
                 throw new ArgumentException($"Building ID {building.BuildingId} refers to missing research or a mismatched unlock reward.");
             }
-        }
-    }
-
-    private static void ValidateBuildingReward(
-        DynamicBuffer<BuildingConfigElement> buildings, int researchId, in ResearchRewardElement reward)
-    {
-        if (!BuildingConfigLookupUtility.TryGetConfig(buildings, reward.BuildingId, out var building) ||
-            building.RequiredResearch != researchId)
-        {
-            throw new ArgumentException($"Building reward ID {reward.BuildingId} has no matching BuildingConfig.RequiredResearch.");
         }
     }
 
@@ -636,14 +630,12 @@ public static class ResearchConfigLoader
     private static int ReadId(JToken token, string name)
     {
         int id = ReadInteger(token, name);
-        if (!IsResearchId(id))
+        if (!ConfigIdUtility.IsInCategory(id, ConfigIdUtility.ResearchCategory))
         {
             throw new ArgumentException($"Research '{name}' must use category 140.");
         }
         return id;
     }
-
-    internal static bool IsResearchId(int id) => id / 100000 == 140 && id % 100000 != 0;
 
     private static string ReadText(JObject entry, string name, int capacity, bool allowEmpty)
     {

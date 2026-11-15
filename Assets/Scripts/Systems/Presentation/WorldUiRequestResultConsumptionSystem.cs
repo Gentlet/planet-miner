@@ -25,7 +25,7 @@ public partial struct WorldUiRequestResultConsumptionSystem : ISystem
             string message;
             if (manager.HasComponent<DroneTaskRequestResult>(request))
             {
-                if (!DroneTaskRequestUtility.TryConsumeResult(manager, request, out var result))
+                if (!RequestResultUtility.TryConsumeResult<DroneTaskRequest, DroneTaskRequestResult>(manager, request, out var result))
                 {
                     continue;
                 }
@@ -34,7 +34,7 @@ public partial struct WorldUiRequestResultConsumptionSystem : ISystem
             }
             else if (manager.HasComponent<ResearchSelectionResult>(request))
             {
-                if (!ResearchSelectionRequestUtility.TryConsumeResult(manager, request, out var result))
+                if (!RequestResultUtility.TryConsumeResult<ResearchSelectionRequest, ResearchSelectionResult>(manager, request, out var result))
                 {
                     continue;
                 }

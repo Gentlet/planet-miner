@@ -107,8 +107,8 @@ internal struct BuildPowerGridTopologyJob : IJob
                 {
                     continue;
                 }
-                int leftRoot = FindRoot(parents, i);
-                int rightRoot = FindRoot(parents, j);
+                int leftRoot = NetworkUnionUtility.FindRoot(parents, i);
+                int rightRoot = NetworkUnionUtility.FindRoot(parents, j);
                 parents[math.max(leftRoot, rightRoot)] = math.min(leftRoot, rightRoot);
             }
         }
@@ -125,7 +125,7 @@ internal struct BuildPowerGridTopologyJob : IJob
             {
                 continue;
             }
-            retainedGridOwners.TryAdd(existingGrid, FindRoot(parents, i));
+            retainedGridOwners.TryAdd(existingGrid, NetworkUnionUtility.FindRoot(parents, i));
         }
     }
 
@@ -134,7 +134,7 @@ internal struct BuildPowerGridTopologyJob : IJob
     {
         for (int root = 0; root < Poles.Length; root++)
         {
-            if (FindRoot(parents, root) != root)
+            if (NetworkUnionUtility.FindRoot(parents, root) != root)
             {
                 continue;
             }
@@ -142,7 +142,7 @@ internal struct BuildPowerGridTopologyJob : IJob
             Entity grid = Entity.Null;
             for (int i = root; i < Poles.Length; i++)
             {
-                if (FindRoot(parents, i) != root)
+                if (NetworkUnionUtility.FindRoot(parents, i) != root)
                 {
                     continue;
                 }
@@ -162,7 +162,7 @@ internal struct BuildPowerGridTopologyJob : IJob
             }
             for (int i = root; i < Poles.Length; i++)
             {
-                if (FindRoot(parents, i) != root)
+                if (NetworkUnionUtility.FindRoot(parents, i) != root)
                 {
                     continue;
                 }
@@ -174,16 +174,6 @@ internal struct BuildPowerGridTopologyJob : IJob
                 };
             }
         }
-    }
-
-    private static int FindRoot(NativeArray<int> parents, int index)
-    {
-        while (parents[index] != index)
-        {
-            parents[index] = parents[parents[index]];
-            index = parents[index];
-        }
-        return index;
     }
 }
 

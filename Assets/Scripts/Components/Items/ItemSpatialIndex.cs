@@ -1,6 +1,5 @@
 using Unity.Collections;
 using Unity.Entities;
-using Unity.Jobs;
 using Unity.Mathematics;
 
 /// <summary>
@@ -14,11 +13,6 @@ using Unity.Mathematics;
 public struct ItemSpatialIndex : IComponentData
 {
     public NativeParallelMultiHashMap<int2, Entity> Map;
-
-    /// <summary>
-    /// Job/Burst 내부에서 안전하게 읽기 전용으로 전달할 수 있는 뷰를 반환.
-    /// </summary>
-    public NativeParallelMultiHashMap<int2, Entity>.ReadOnly AsReadOnly() => Map.AsReadOnly();
 
     /// <summary>
     /// 해당 좌표에 첫 번째 아이템이 존재하는지 확인하고 이터레이터를 가져옵니다.
@@ -82,46 +76,6 @@ public struct ItemSpatialIndex : IComponentData
 /// </summary>
 public struct ItemSpatialIndexFence : IFenceComponent
 {
-    private JobHandle _lastWriter;
-    private JobHandle _readers;
-
-    /// <summary>
-    /// Reader Job이 대기해야 하는 마지막 Writer JobHandle을 반환.
-    /// </summary>
-    public JobHandle GetReaderDependency() => _lastWriter;
-
-    /// <summary>
-    /// Reader JobHandle을 Fence의 Reader 목록에 결합.
-    /// </summary>
-    public void AddReader(JobHandle readerHandle)
-    {
-        _readers = JobHandle.CombineDependencies(_readers, readerHandle);
-    }
-
-    /// <summary>
-    /// Writer Job이 대기해야 하는 선행 의존성(마지막 Writer + 모든 Readers)을 반환.
-    /// </summary>
-    public JobHandle GetWriterDependency()
-    {
-        return JobHandle.CombineDependencies(_lastWriter, _readers);
-    }
-
-    /// <summary>
-    /// 새 Writer JobHandle을 등록하고 이전 Readers 목록을 초기화.
-    /// </summary>
-    public void SetWriter(JobHandle writerHandle)
-    {
-        _lastWriter = writerHandle;
-        _readers = default;
-    }
-
-    /// <summary>
-    /// Capacity 재할당 등 메인 스레드의 직접 조작이 필요한 경우 모든 작업을 동기 완료.
-    /// </summary>
-    public void Complete()
-    {
-        JobHandle.CombineDependencies(_lastWriter, _readers).Complete();
-        _lastWriter = default;
-        _readers = default;
-    }
+    /// <summary>인덱스별 독립 의존성. ref로 수정하거나 수정한 전체 컴포넌트를 저장한다.</summary>
+    public NativeContainerFence State;
 }

@@ -8,6 +8,18 @@ using Unity.Mathematics;
 /// </summary>
 public static class RoutingDirectionUtility
 {
+    public const int RightQuarterTurns = 1;
+    public const int LeftQuarterTurns = -1;
+    public const int OppositeQuarterTurns = 2;
+
+    /// <summary>양수는 시계, 음수는 반시계 회전이다. 회전량을 먼저 정규화해 모든 int 입력을 처리한다.</summary>
+    public static DirectionEnum RotateQuarterTurns(DirectionEnum direction, int clockwiseQuarterTurns)
+    {
+        int count = (int)DirectionEnum.Count;
+        int turns = ((clockwiseQuarterTurns % count) + count) % count;
+        return (DirectionEnum)(((int)direction + turns) % count);
+    }
+
     public const byte RoutingPortCount = 3;
 
     /// <summary>
@@ -20,9 +32,9 @@ public static class RoutingDirectionUtility
             case 0:
                 return forward;
             case 1:
-                return RotateRight(forward);
+                return RotateQuarterTurns(forward, clockwiseQuarterTurns: RightQuarterTurns);
             default:
-                return RotateLeft(forward);
+                return RotateQuarterTurns(forward, clockwiseQuarterTurns: LeftQuarterTurns);
         }
     }
 
@@ -34,11 +46,11 @@ public static class RoutingDirectionUtility
         switch (portIndex % RoutingPortCount)
         {
             case 0:
-                return Opposite(forward);
+                return RotateQuarterTurns(forward, clockwiseQuarterTurns: OppositeQuarterTurns);
             case 1:
-                return RotateLeft(forward);
+                return RotateQuarterTurns(forward, clockwiseQuarterTurns: LeftQuarterTurns);
             default:
-                return RotateRight(forward);
+                return RotateQuarterTurns(forward, clockwiseQuarterTurns: RightQuarterTurns);
         }
     }
 
@@ -49,7 +61,7 @@ public static class RoutingDirectionUtility
     {
         if (outputDirection == forward)
             return 0;
-        if (outputDirection == RotateRight(forward))
+        if (outputDirection == RotateQuarterTurns(forward, clockwiseQuarterTurns: RightQuarterTurns))
             return 1;
         return 2;
     }
@@ -59,9 +71,9 @@ public static class RoutingDirectionUtility
     /// </summary>
     public static byte GetMergerPortIndex(DirectionEnum forward, DirectionEnum inputDirection)
     {
-        if (inputDirection == Opposite(forward))
+        if (inputDirection == RotateQuarterTurns(forward, clockwiseQuarterTurns: OppositeQuarterTurns))
             return 0;
-        if (inputDirection == RotateLeft(forward))
+        if (inputDirection == RotateQuarterTurns(forward, clockwiseQuarterTurns: LeftQuarterTurns))
             return 1;
         return 2;
     }
@@ -106,16 +118,6 @@ public static class RoutingDirectionUtility
     }
 
     /// <summary>
-    /// 배치 확정 순서를 비교.
-    /// </summary>
-    public static bool IsEarlierPlacement(
-        in PlacementStamp candidate,
-        in PlacementStamp current)
-    {
-        return candidate.IsEarlierThan(current);
-    }
-
-    /// <summary>
     /// 인접 벨트가 라우터를 향하는 입력 벨트인지 검사.
     /// </summary>
     public static bool IsIncomingBelt(
@@ -135,20 +137,5 @@ public static class RoutingDirectionUtility
         DirectionEnum beltDirection)
     {
         return math.all(routerPosition + beltDirection.ToInt2() == beltPosition);
-    }
-
-    public static DirectionEnum RotateRight(DirectionEnum direction)
-    {
-        return (DirectionEnum)(((int)direction + 1) % (int)DirectionEnum.Count);
-    }
-
-    public static DirectionEnum RotateLeft(DirectionEnum direction)
-    {
-        return (DirectionEnum)(((int)direction + (int)DirectionEnum.Count - 1) % (int)DirectionEnum.Count);
-    }
-
-    public static DirectionEnum Opposite(DirectionEnum direction)
-    {
-        return (DirectionEnum)(((int)direction + 2) % (int)DirectionEnum.Count);
     }
 }

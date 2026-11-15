@@ -35,11 +35,6 @@ public partial struct MinerWorkPreparationSystem : ISystem
     }
 
     [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
-    [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
         state.Dependency = new ResetMinerWorkPreparationJob().ScheduleParallel(state.Dependency);
@@ -78,10 +73,10 @@ public partial struct MinerWorkPreparationSystem : ISystem
             ItemConfigLookup = _itemConfigLookup
         };
 
-        var jobDep = Unity.Jobs.JobHandle.CombineDependencies(state.Dependency, resFence.GetReaderDependency());
+        var jobDep = Unity.Jobs.JobHandle.CombineDependencies(state.Dependency, resFence.State.GetReaderDependency());
         var jobHandle = job.ScheduleParallel(_minerQuery, jobDep);
 
-        resFence.AddReader(jobHandle);
+        resFence.State.AddReader(jobHandle);
 
         state.Dependency = jobHandle;
     }

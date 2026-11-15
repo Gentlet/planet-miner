@@ -233,9 +233,6 @@ internal struct AllocatePowerBudgetsJob : IJob
         return input;
     }
 
-    private double GetRatedEnergy(int index, in BuildingType type, ref DynamicBuffer<BuildingConfigElement> configs) =>
-        GetGeneratorPowerSettings(index, type, ref configs).RatedEnergy;
-
     private void AllocateGenerators(Entity representative, BuildingTypeEnum kind, double required,
         ref DynamicBuffer<BuildingConfigElement> configs)
     {
@@ -249,7 +246,7 @@ internal struct AllocatePowerBudgetsJob : IJob
             var type = ReadGeneratorType(i);
             if (type.Type == kind && GeneratorInputs[i].Representative == representative)
             {
-                remainingRated += GetRatedEnergy(i, type, ref configs);
+                remainingRated += GetGeneratorPowerSettings(i, type, ref configs).RatedEnergy;
             }
         }
         var limited = new NativeParallelHashSet<Entity>(math.max(1, Generators.Length), Allocator.Temp);
@@ -271,7 +268,7 @@ internal struct AllocatePowerBudgetsJob : IJob
                     continue;
                 }
                 var plan = GeneratorPlans[generator];
-                double rated = GetRatedEnergy(i, type, ref configs);
+                double rated = GetGeneratorPowerSettings(i, type, ref configs).RatedEnergy;
                 if (plan.AvailableEnergy < rated * utilization)
                 {
                     plan.AllocatedEnergy = plan.AvailableEnergy;
@@ -299,7 +296,7 @@ internal struct AllocatePowerBudgetsJob : IJob
                     continue;
                 }
                 var plan = GeneratorPlans[generator];
-                plan.AllocatedEnergy = PowerFrameUtility.RoundEnergyDown(GetRatedEnergy(i, type, ref configs) * utilization,
+                plan.AllocatedEnergy = PowerFrameUtility.RoundEnergyDown(GetGeneratorPowerSettings(i, type, ref configs).RatedEnergy * utilization,
                     plan.AvailableEnergy);
                 GeneratorPlans[generator] = plan;
             }

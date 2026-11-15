@@ -132,7 +132,7 @@ public sealed class WorldInputController : MonoBehaviour
         _pointerWorld = null;
         if (!TryCreateActions(_bindingOverrides, true, out var actions, out var move, out var boost, out string error))
         {
-            RejectConfiguration(error);
+            WorldInputConfigurationUtility.Reject(this, nameof(WorldInputController), error);
             return;
         }
         _ownedActions = actions;
@@ -524,11 +524,5 @@ public sealed class WorldInputController : MonoBehaviour
         {
             FrameReady?.Invoke(CurrentFrame);
         }
-    }
-
-    private void RejectConfiguration(string reason)
-    {
-        Debug.LogError($"{nameof(WorldInputController)}: {reason}", this);
-        enabled = false;
     }
 }

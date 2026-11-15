@@ -39,7 +39,7 @@ public partial struct ResourceSpatialSyncSystem : ISystem
     {
         if (SystemAPI.TryGetSingletonRW<ResourceSpatialIndexFence>(out var fence))
         {
-            fence.ValueRW.Complete();
+            fence.ValueRW.State.Complete();
         }
 
         if (SystemAPI.TryGetSingleton<ResourceSpatialIndex>(out var index))
@@ -66,29 +66,29 @@ public partial struct ResourceSpatialSyncSystem : ISystem
         if (count == 0)
         {
             // 자원이 없어도 맵은 비워져야 함 (비동기 ClearJob)
-            var clearDep = fence.GetWriterDependency();
-            var clearOnlyJob = new ClearResourceSpatialIndexJob
+            var clearDep = fence.State.GetWriterDependency();
+            var clearOnlyJob = new ClearSpatialMapJob<int2, Entity>
             {
                 Map = index.Map
             };
             var clearOnlyHandle = clearOnlyJob.Schedule(clearDep);
-            fence.SetWriter(clearOnlyHandle);
+            fence.State.SetWriter(clearOnlyHandle);
             state.Dependency = clearOnlyHandle;
             return;
         }
 
         if (index.Map.Capacity < count)
         {
-            fence.Complete();
+            fence.State.Complete();
             index.Map.Capacity = math.max(1024, count * 2);
         }
 
         // Native 맵 Clear는 ECS 값 의존성만으로 보호되지 않는다. 기존 Reader/Writer를 Fence로 함께 기다린다.
         // Writer 의존성: 마지막 Writer와 이전 모든 Readers 완료 대기
-        var writerDep = fence.GetWriterDependency();
+        var writerDep = fence.State.GetWriterDependency();
 
         // 1. ClearJob 비동기 스케줄링
-        var clearJob = new ClearResourceSpatialIndexJob
+        var clearJob = new ClearSpatialMapJob<int2, Entity>
         {
             Map = index.Map
         };
@@ -104,23 +104,9 @@ public partial struct ResourceSpatialSyncSystem : ISystem
         var populateHandle = populateJob.ScheduleParallel(_resourceQuery, populateDep);
 
         // 3. Fence에 신규 Writer 등록 및 이전 Readers 초기화
-        fence.SetWriter(populateHandle);
+        fence.State.SetWriter(populateHandle);
 
         state.Dependency = populateHandle;
-    }
-}
-
-/// <summary>
-/// 자원 공간 해시맵을 비동기로 초기화하는 Burst Job.
-/// </summary>
-[BurstCompile]
-public struct ClearResourceSpatialIndexJob : IJob
-{
-    public NativeParallelHashMap<int2, Entity> Map;
-
-    public void Execute()
-    {
-        Map.Clear();
     }
 }
 

@@ -90,19 +90,19 @@ public partial class WorldInvariantValidationSystem : SystemBase
     {
         if (SystemAPI.TryGetSingletonRW<BeltSpatialIndexFence>(out var beltFenceRw))
         {
-            beltFenceRw.ValueRW.Complete();
+            beltFenceRw.ValueRW.State.Complete();
         }
         if (SystemAPI.TryGetSingletonRW<ItemSpatialIndexFence>(out var itemFenceRw))
         {
-            itemFenceRw.ValueRW.Complete();
+            itemFenceRw.ValueRW.State.Complete();
         }
         if (SystemAPI.TryGetSingletonRW<BuildingSpatialIndexFence>(out var buildingFenceRw))
         {
-            buildingFenceRw.ValueRW.Complete();
+            buildingFenceRw.ValueRW.State.Complete();
         }
         if (SystemAPI.TryGetSingletonRW<ResourceSpatialIndexFence>(out var resourceFenceRw))
         {
-            resourceFenceRw.ValueRW.Complete();
+            resourceFenceRw.ValueRW.State.Complete();
         }
 
         if (!SystemAPI.TryGetSingleton<ItemSpatialIndex>(out var itemSpatialIndex))

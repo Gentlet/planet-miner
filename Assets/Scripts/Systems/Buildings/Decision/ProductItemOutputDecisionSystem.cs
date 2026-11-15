@@ -34,11 +34,6 @@ public partial struct ProductItemOutputDecisionSystem : ISystem
     }
 
     [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
-    [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
         if (!SystemAPI.HasSingleton<BeltSpatialIndex>() ||
@@ -68,13 +63,13 @@ public partial struct ProductItemOutputDecisionSystem : ISystem
             PendingDemolitionLookup = _pendingDemolitionLookup
         };
 
-        var readDep = Unity.Jobs.JobHandle.CombineDependencies(beltFence.GetReaderDependency(), itemFence.GetReaderDependency());
+        var readDep = Unity.Jobs.JobHandle.CombineDependencies(beltFence.State.GetReaderDependency(), itemFence.State.GetReaderDependency());
         var jobDep = Unity.Jobs.JobHandle.CombineDependencies(state.Dependency, readDep);
 
         var jobHandle = job.ScheduleParallel(_buildingQuery, jobDep);
 
-        beltFence.AddReader(jobHandle);
-        itemFence.AddReader(jobHandle);
+        beltFence.State.AddReader(jobHandle);
+        itemFence.State.AddReader(jobHandle);
 
         state.Dependency = jobHandle;
     }

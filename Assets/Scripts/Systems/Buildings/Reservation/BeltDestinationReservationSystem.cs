@@ -44,11 +44,6 @@ public partial struct BeltDestinationReservationSystem : ISystem
     }
 
     [BurstCompile]
-    public void OnDestroy(ref SystemState state)
-    {
-    }
-
-    [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
         if (!SystemAPI.HasSingleton<BeltSpatialIndex>() ||
@@ -98,7 +93,7 @@ public partial struct BeltDestinationReservationSystem : ISystem
             PlacementStampLookup = _placementStampLookup
         };
 
-        var readDep = Unity.Jobs.JobHandle.CombineDependencies(beltFence.GetReaderDependency(), itemFence.GetReaderDependency());
+        var readDep = Unity.Jobs.JobHandle.CombineDependencies(beltFence.State.GetReaderDependency(), itemFence.State.GetReaderDependency());
         var jobDep = Unity.Jobs.JobHandle.CombineDependencies(state.Dependency, readDep);
 
         var jobHandle = Unity.Jobs.IJobExtensions.Schedule(reservationJob, jobDep);
@@ -106,8 +101,8 @@ public partial struct BeltDestinationReservationSystem : ISystem
         buildingOutputEntities.Dispose(jobHandle);
         routingTransferEntities.Dispose(jobHandle);
 
-        beltFence.AddReader(jobHandle);
-        itemFence.AddReader(jobHandle);
+        beltFence.State.AddReader(jobHandle);
+        itemFence.State.AddReader(jobHandle);
 
         state.Dependency = jobHandle;
     }
@@ -265,7 +260,7 @@ public struct BeltDestinationReservationJob : Unity.Jobs.IJob
             int2 targetPos = targetArray[t];
 
             // 1. 대상 벨트 타일의 여유 공간 확인 (수용량 및 입구 최소 간격)
-            bool spaceAvailable = CheckTargetSpace(targetPos);
+            bool spaceAvailable = BeltEntryUtility.HasEntrySpace(targetPos, ItemMap, ItemOwnershipLookup, BeltMovementStateLookup);
 
             // 2. 해당 대상 타일로 진입하려는 외부 후보 목록 수집
             var candidates = new NativeList<DestinationCandidate>(4, Allocator.Temp);
@@ -318,12 +313,6 @@ public struct BeltDestinationReservationJob : Unity.Jobs.IJob
         }
 
         targetArray.Dispose();
-    }
-
-    private bool CheckTargetSpace(int2 targetPos)
-    {
-        return BeltEntryUtility.HasEntrySpace(
-            targetPos, ItemMap, ItemOwnershipLookup, BeltMovementStateLookup);
     }
 
     /// <summary>

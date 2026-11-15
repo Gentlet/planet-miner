@@ -261,7 +261,7 @@ public static class BuildingConfigLoader
     private static BuildingConfigElement DecodeBuilding(BuildingRow row)
     {
         if (!string.IsNullOrEmpty(row.LegacyRequiredResearch) ||
-            (row.RequiredResearchId != 0 && !ResearchConfigLoader.IsResearchId(row.RequiredResearchId)))
+            (row.RequiredResearchId != 0 && !ConfigIdUtility.IsInCategory(row.RequiredResearchId, ConfigIdUtility.ResearchCategory)))
         {
             throw new JsonSerializationException($"Building {row.BuildingType}/{row.Tier} requires a numeric requiredResearchId in category 140 or 0.");
         }
@@ -512,8 +512,9 @@ public static class BuildingConfigLoader
 
     private static bool ValidateDefinition(in BuildingConfigElement config)
     {
-        if (!ValidateFootprint(config.BuildingType, config.Footprint))
+        if (config.Footprint.x <= 0 || config.Footprint.y <= 0)
         {
+            Debug.LogError($"[BuildingConfigLoader] {config.BuildingType} has invalid footprint. Both dimensions must be positive.");
             return false;
         }
         if (!ValidatePublishedPower(config))
@@ -538,16 +539,6 @@ public static class BuildingConfigLoader
         if (!DroneStationRangeUtility.IsStationType(config.BuildingType) && config.DroneStationRangeInChunks != 0)
         {
             Debug.LogError("[BuildingConfigLoader] Only MainFacility and DroneStation can define a drone station range.");
-            return false;
-        }
-        return true;
-    }
-
-    private static bool ValidateFootprint(BuildingTypeEnum type, int2 footprint)
-    {
-        if (footprint.x <= 0 || footprint.y <= 0)
-        {
-            Debug.LogError($"[BuildingConfigLoader] {type} has invalid footprint. Both dimensions must be positive.");
             return false;
         }
         return true;

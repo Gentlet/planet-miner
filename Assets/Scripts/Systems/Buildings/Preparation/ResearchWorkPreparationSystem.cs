@@ -173,7 +173,7 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
             // 완료 자체는 새 반환을 만들지 않는다. 기존 회수 대기만 실제 보관 관계에 맞춰 정리한다.
             for (int i = recovery.Length - 1; i >= 0; i--)
             {
-                if (!ContainsStored(stored, recovery[i].Item))
+                if (!StoredItemBufferUtility.ContainsEntity(stored, recovery[i].Item))
                 {
                     recovery.RemoveAt(i);
                 }
@@ -271,7 +271,7 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
             {
                 continue;
             }
-            long count = ResearchMaterialUtility.SlotCountForTwoCycles(maximum, item.MaxStack);
+            long count = BuildingInputSlotUtility.RequiredSlotCount((long)maximum * ResearchMaterialUtility.BufferedCycleCount, item.MaxStack);
             for (int i = 0; i < count; i++)
             {
                 slots.Add(new BuildingInputSlotElement(item.ItemType));
@@ -283,17 +283,5 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
     {
         public int Maximum;
         public int KeptCount;
-    }
-
-    private static bool ContainsStored(DynamicBuffer<StoredItemElement> stored, Entity item)
-    {
-        foreach (var entry in stored)
-        {
-            if (entry.ItemEntity == item)
-            {
-                return true;
-            }
-        }
-        return false;
     }
 }

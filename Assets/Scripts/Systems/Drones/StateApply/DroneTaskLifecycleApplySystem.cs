@@ -1,6 +1,6 @@
+using System.Collections.Generic;
 using Unity.Collections;
 using Unity.Entities;
-using System.Collections.Generic;
 using Unity.Mathematics;
 
 /// <summary>
@@ -31,12 +31,16 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         _assignments = state.GetEntityQuery(ComponentType.ReadWrite<DroneTaskAssignment>());
         _actionRequests = state.GetEntityQuery(ComponentType.ReadOnly<DroneActionReadyRequest>());
         _actionResults = state.GetEntityQuery(ComponentType.ReadOnly<DroneItemTransferResult>());
-        InitializeActionTransfer(ref state);
+        _actionRegistry = state.GetEntityQuery(ComponentType.ReadOnly<ItemRegistry>(), ComponentType.ReadOnly<ItemConfigElement>());
+        _pendingResults = new NativeHashSet<Entity>(16, Allocator.Persistent);
     }
 
     public void OnDestroy(ref SystemState state)
     {
-        DisposeActionTransfer();
+        if (_pendingResults.IsCreated)
+        {
+            _pendingResults.Dispose();
+        }
     }
 
     public void OnUpdate(ref SystemState state)
@@ -294,51 +298,14 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
     private EntityQuery _actionRegistry;
     private NativeHashSet<Entity> _pendingResults;
 
-    private struct PendingAction
-    {
-        public Entity Entity;
-        public DroneActionReadyRequest Request;
-    }
-
-    private struct ReceiptComparer : IComparer<PendingAction>
-    {
-        public int Compare(PendingAction first, PendingAction second)
-        {
-            int order = first.Request.ReceiptSequence.CompareTo(second.Request.ReceiptSequence);
-            if (order != 0) return order;
-            order = first.Entity.Index.CompareTo(second.Entity.Index);
-            return order != 0 ? order : first.Entity.Version.CompareTo(second.Entity.Version);
-        }
-    }
-
-    private void InitializeActionTransfer(ref SystemState state)
-    {
-        _actionRegistry = state.GetEntityQuery(ComponentType.ReadOnly<ItemRegistry>(), ComponentType.ReadOnly<ItemConfigElement>());
-        _pendingResults = new NativeHashSet<Entity>(16, Allocator.Persistent);
-    }
-
-    private void DisposeActionTransfer()
-    {
-        if (_pendingResults.IsCreated) _pendingResults.Dispose();
-    }
-
     private void ApplyActionTransfers(EntityManager manager, EntityCommandBuffer ecb)
     {
         ClearPublishedRequests(manager);
         if (_actionRequests.IsEmptyIgnoreFilter) return;
         Entity registry = _actionRegistry.IsEmptyIgnoreFilter ? Entity.Null : _actionRegistry.GetSingletonEntity();
-        using var entities = _actionRequests.ToEntityArray(Allocator.Temp);
         using var sites = _sites.ToEntityArray(Allocator.Temp);
-        using var ordered = new NativeList<PendingAction>(entities.Length, Allocator.Temp);
-        for (int i = 0; i < entities.Length; i++)
-        {
-            ordered.Add(new PendingAction
-            {
-                Entity = entities[i], Request = manager.GetComponentData<DroneActionReadyRequest>(entities[i])
-            });
-        }
-        // 수행자별 행동 번호와 별개로 World 접수 순서를 적용해 같은 실물/보관 공간을 요청 배열 순서로 선점하지 않는다.
-        ordered.AsArray().Sort(new ReceiptComparer());
+        // 준비와 같은 비교자를 사용하되 실제 반영 시점의 요청을 다시 캡처한다.
+        using var ordered = DroneActionRequestUtility.ReadInReceiptOrder(manager, _actionRequests, Allocator.Temp);
         var slotBudgets = new Dictionary<Entity, List<DroneItemTransferSlotDecisionElement>>();
         var inputBudgets = new Dictionary<(Entity, ItemTypeEnum), int>();
         // 모든 행동 전의 입력 한도를 고정한다. 같은 드론 단계의 픽업으로 생긴 여유는 다시 배분하지 않는다.
@@ -444,7 +411,8 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
                 moved = StoreCargo(manager, requestEntity, request.Action.Assignment, assignment, registry, eligible, plan.MaximumQuantity, slotBudgets, inputBudgets, ecb);
                 break;
             case DroneActionKindEnum.DropCargo:
-                moved = DropCargo(manager, assignment, request.WorldPosition, ecb, eligible, plan.MaximumQuantity);
+                moved = MoveCargo(manager, assignment, manager.GetBuffer<StoredItemElement>(assignment.Worker),
+                    request.WorldPosition, plan.MaximumQuantity, ecb, drop: true, eligible);
                 break;
         }
 
@@ -512,17 +480,20 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
     private static int RecoverWorldItem(EntityManager manager, in DroneTaskAssignment assignment,
         EntityCommandBuffer ecb, NativeArray<Entity> sites)
     {
-        if (!DroneSchedulingUtility.IsStorage(manager, assignment.Destination)) return 0;
-        if (!ItemOwnershipApplySystem.CanTransferItem(manager, assignment.Source, assignment.ItemType, Entity.Null)) return 0;
-        var task = manager.GetComponentData<DroneLogisticsTask>(assignment.Task);
-        if (!DroneWorldItemRecoveryUtility.IsReasonValid(manager, task, sites))
+        if (!DroneWorldItemRecoveryUtility.CanRecoverAssignedItem(manager, assignment, sites))
         {
             return 0;
         }
         int2 position = (int2)math.floor(manager.GetComponentData<DroneWorkerObservation>(assignment.Worker).Position.xy);
         if (!ItemOwnershipApplySystem.TryTransferItem(manager, assignment.Source, assignment.ItemType,
-            Entity.Null, assignment.Worker, 0, position, ecb)) return 0;
-        if (manager.HasComponent<DroneRecoveryPending>(assignment.Source)) ecb.RemoveComponent<DroneRecoveryPending>(assignment.Source);
+                Entity.Null, assignment.Worker, 0, position, ecb))
+        {
+            return 0;
+        }
+        if (manager.HasComponent<DroneRecoveryPending>(assignment.Source))
+        {
+            ecb.RemoveComponent<DroneRecoveryPending>(assignment.Source);
+        }
         return 1;
     }
 
@@ -614,13 +585,6 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
             inputBudgets[inputKey] -= moved;
         }
         return moved;
-    }
-
-    private static int DropCargo(EntityManager manager, in DroneTaskAssignment assignment, int2 position,
-        EntityCommandBuffer ecb, DynamicBuffer<DroneItemTransferItemDecisionElement> eligible, int maximum)
-    {
-        var cargo = manager.GetBuffer<StoredItemElement>(assignment.Worker);
-        return MoveCargo(manager, assignment, cargo, position, maximum, ecb, true, eligible);
     }
 
     private static int MoveCargo(EntityManager manager, in DroneTaskAssignment assignment,

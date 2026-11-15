@@ -27,12 +27,6 @@ public static class BuildingSettingsUtility
         return mask;
     }
 
-    public static bool IsAllowed(EntityManager manager, BuildingTypeEnum type, in PlannedBuildingSettings settings)
-    {
-        var read = new SettingsReadContext(manager);
-        return IsAllowed(type, settings, ref read);
-    }
-
     internal static bool IsAllowed(BuildingTypeEnum type, in PlannedBuildingSettings settings, ref SettingsReadContext read)
     {
         if (settings.HasRecipe)
@@ -124,7 +118,8 @@ public static class BuildingSettingsUtility
             return Entity.Null;
         }
         var type = manager.GetComponentData<BuildingType>(target).Type;
-        if (!settings.HasValues || !IsAllowed(manager, type, settings))
+        var read = new SettingsReadContext(manager);
+        if (!settings.HasValues || !IsAllowed(type, settings, ref read))
         {
             return Entity.Null;
         }

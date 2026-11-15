@@ -20,26 +20,4 @@ public static class ResearchSelectionRequestUtility
         manager.SetComponentData(request, new ResearchSelectionRequest { ResearchId = researchId, Sequence = next });
         return request;
     }
-
-    /// <summary>EndCommand가 요청을 소비하고 결과를 공개한 뒤 한 번 반환하며 요청/결과 엔티티를 함께 제거한다.</summary>
-    public static bool TryConsumeResult(EntityManager manager, Entity request, out ResearchSelectionResult result)
-    {
-        result = default;
-        if (request == Entity.Null)
-        {
-            return false;
-        }
-        if (manager.HasComponent<ResearchSelectionRequest>(request))
-        {
-            return false;
-        }
-        if (!manager.HasComponent<ResearchSelectionResult>(request))
-        {
-            return false;
-        }
-
-        result = manager.GetComponentData<ResearchSelectionResult>(request);
-        manager.DestroyEntity(request);
-        return true;
-    }
 }

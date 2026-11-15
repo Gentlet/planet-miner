@@ -99,19 +99,8 @@ internal partial struct ExecuteResearchJob : IJobChunk
             for (int i = 0; i < definition.IngredientCount; i++)
             {
                 var ingredient = ingredients[definition.IngredientStart + i];
-                int remaining = ingredient.Amount;
-                for (int j = stored.Length - 1; j >= 0 && remaining > 0; j--)
-                {
-                    var item = stored[j];
-                    if (item.ItemType != ingredient.ItemType ||
-                        !RecipeConfigLookupUtility.CanConsumeStoredItem(item.ItemEntity, DestroyRequests))
-                    {
-                        continue;
-                    }
-                    stored.RemoveAt(j);
-                    DestroyRequests.SetComponentEnabled(item.ItemEntity, true);
-                    remaining--;
-                }
+                StoredItemBufferUtility.ConsumeRequiredItems(
+                    stored, ingredient.ItemType, ingredient.Amount, ref DestroyRequests);
             }
             cycle = new ResearchCycleState { ResearchId = definition.StableId };
         }
