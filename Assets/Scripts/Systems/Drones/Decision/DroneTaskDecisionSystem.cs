@@ -171,6 +171,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         // 이미 적재한 자재의 목적지를 먼저 판단한다. 최종 선택·수량 확보 순서는 Reservation이 정한다.
         BuildRetargetCandidates(manager, networks, assignments, tasks, taskReads, sites, storages, registry, routesByKey,
             routeDecisions, usedRoutes, candidates, pendingPublications, carryingCapacity, ref cancellations);
+        using var storagesByNetwork = new StorageCandidatesByNetwork(manager, storages, networks);
         for (int w = 0; w < workers.Length; w++)
         {
             Entity worker = workers[w];
@@ -247,10 +248,11 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 float bestDistance = float.MaxValue;
                 // 공급은 재고가 있는 공급원을, 회수는 보관 가능한 목적지를 비교한다.
                 // 빈 드론의 ViaSource 결과는 드론→공급원/월드 실물→목적지의 전체 실제 이동거리다.
-                for (int s = 0; s < storages.Length; s++)
+                var networkStorages = storagesByNetwork.GetStorages(network);
+                for (int s = 0; s < networkStorages.Length; s++)
                 {
-                    Entity storage = storages[s];
-                    if (storage == task.Target || !DroneTaskNetworkUtility.IsTargetInNetwork(manager, networks, network, storage))
+                    Entity storage = networkStorages[s];
+                    if (storage == task.Target)
                     {
                         continue;
                     }
@@ -355,6 +357,85 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 Kind = usedRoutes.Contains(routes[r]) ? DroneRouteDecisionKindEnum.Retain : DroneRouteDecisionKindEnum.Remove,
                 ExistingRequest = routes[r]
             });
+        }
+    }
+
+    // 이번 호출에서 읽은 망과 창고의 회전 범위만 사용한다. 창고는 겹치는 각 망의 목록에 독립적으로 들어간다.
+    private readonly struct StorageCandidatesByNetwork : IDisposable
+    {
+        private readonly EntityManager _manager;
+        private readonly NativeArray<Entity> _storages;
+        private readonly NativeArray<DroneStationNetworkDecision> _stations;
+        private readonly NativeList<DroneStationActivityBounds> _storageBounds;
+        private readonly NativeList<DroneStationActivityBounds> _networkBounds;
+        private readonly NativeList<Entity> _candidates;
+        private readonly NativeHashMap<Entity, int2> _ranges;
+
+        public StorageCandidatesByNetwork(EntityManager manager, NativeArray<Entity> storages,
+            NativeArray<DroneStationNetworkDecision> stations)
+        {
+            _manager = manager;
+            _storages = storages;
+            _stations = stations;
+            _storageBounds = new NativeList<DroneStationActivityBounds>(Allocator.Temp);
+            _networkBounds = new NativeList<DroneStationActivityBounds>(Allocator.Temp);
+            _candidates = new NativeList<Entity>(Allocator.Temp);
+            _ranges = new NativeHashMap<Entity, int2>(1, Allocator.Temp);
+        }
+
+        // 반환한 목록은 다른 망의 후보를 추가하기 전에 순회한다.
+        public NativeArray<Entity> GetStorages(Entity network)
+        {
+            if (!_ranges.TryGetValue(network, out int2 range))
+            {
+                int start = _candidates.Length;
+                AppendCandidates(network);
+                range = new int2(start, _candidates.Length - start);
+                _ranges.Add(network, range);
+            }
+            return _candidates.AsArray().GetSubArray(range.x, range.y);
+        }
+
+        private void AppendCandidates(Entity network)
+        {
+            if (_storageBounds.IsEmpty)
+            {
+                foreach (Entity storage in _storages)
+                {
+                    _storageBounds.Add(DroneTaskNetworkUtility.ReadTargetBounds(_manager, storage));
+                }
+            }
+
+            _networkBounds.Clear();
+            foreach (var station in _stations)
+            {
+                if (station.RepresentativeStation == network)
+                {
+                    _networkBounds.Add(station.ActivityBounds);
+                }
+            }
+
+            // 창고 쿼리 순서를 보존하고, 같은 망에 속한 정거장이 여러 개 겹쳐도 한 번만 추가한다.
+            for (int i = 0; i < _storages.Length; i++)
+            {
+                var bounds = _storageBounds[i];
+                foreach (var stationBounds in _networkBounds)
+                {
+                    if (stationBounds.Overlaps(bounds))
+                    {
+                        _candidates.Add(_storages[i]);
+                        break;
+                    }
+                }
+            }
+        }
+
+        public void Dispose()
+        {
+            _ranges.Dispose();
+            _candidates.Dispose();
+            _networkBounds.Dispose();
+            _storageBounds.Dispose();
         }
     }
 

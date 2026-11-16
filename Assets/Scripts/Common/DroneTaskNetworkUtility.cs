@@ -33,20 +33,7 @@ public static class DroneTaskNetworkUtility
     public static bool IsTargetInNetwork(EntityManager manager, NativeArray<DroneStationNetworkDecision> stations,
         Entity network, Entity target)
     {
-        int2 position = manager.GetComponentData<GridPosition>(target).Value;
-        int2 size = new int2(1, 1);
-        if (manager.HasComponent<BuildingType>(target))
-        {
-            size = BuildingFootprintUtility.GetEffectiveSize(manager.GetComponentData<BuildingFootprint>(target).Size,
-                manager.GetComponentData<Direction>(target).dir);
-        }
-        var bounds = new DroneStationActivityBounds
-        {
-            MinX = position.x,
-            MinY = position.y,
-            MaxX = (long)position.x + size.x - 1,
-            MaxY = (long)position.y + size.y - 1
-        };
+        var bounds = ReadTargetBounds(manager, target);
         for (int i = 0; i < stations.Length; i++)
         {
             if (stations[i].RepresentativeStation == network && stations[i].ActivityBounds.Overlaps(bounds))
@@ -55,5 +42,23 @@ public static class DroneTaskNetworkUtility
             }
         }
         return false;
+    }
+
+    internal static DroneStationActivityBounds ReadTargetBounds(EntityManager manager, Entity target)
+    {
+        int2 position = manager.GetComponentData<GridPosition>(target).Value;
+        int2 size = new int2(1, 1);
+        if (manager.HasComponent<BuildingType>(target))
+        {
+            size = BuildingFootprintUtility.GetEffectiveSize(manager.GetComponentData<BuildingFootprint>(target).Size,
+                manager.GetComponentData<Direction>(target).dir);
+        }
+        return new DroneStationActivityBounds
+        {
+            MinX = position.x,
+            MinY = position.y,
+            MaxX = (long)position.x + size.x - 1,
+            MaxY = (long)position.y + size.y - 1
+        };
     }
 }
