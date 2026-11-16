@@ -814,9 +814,9 @@ public static class DroneSchedulingUtility
     }
 
     // 현재 요청의 미평가 결과는 보존해 후속 평가를 기다린다.
-    internal static bool IsRouteInvalid(EntityManager manager, Entity requestEntity, int carryingCapacity)
+    internal static bool IsRouteInvalid(EntityManager manager, Entity requestEntity,
+        in DroneRouteEvaluationRequest request, int carryingCapacity)
     {
-        var request = manager.GetComponentData<DroneRouteEvaluationRequest>(requestEntity);
         if (!RouteIsCurrent(manager, request, carryingCapacity))
         {
             return true;

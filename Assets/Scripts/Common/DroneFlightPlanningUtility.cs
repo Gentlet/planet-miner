@@ -33,7 +33,12 @@ internal struct DroneFlightPlan
 internal static class DroneFlightPlanningUtility
 {
     public static DroneFlightPlan Plan(float2 origin, float2 goal, float charge, float maximum,
-        float rate, NativeList<DroneFlightStation> stations)
+        float rate, NativeList<DroneFlightStation> stations) =>
+        PlanWithinDistance(origin, goal, charge, maximum, rate, stations, float.PositiveInfinity);
+
+    // 거리 제한으로 제외된 결과도 미선택 상태를 사용한다. 제한이 있는 호출자는 Reachable만 읽는다.
+    private static DroneFlightPlan PlanWithinDistance(float2 origin, float2 goal, float charge, float maximum,
+        float rate, NativeList<DroneFlightStation> stations, float exclusiveDistanceLimit)
     {
         var result = new DroneFlightPlan
         {
@@ -44,6 +49,10 @@ internal static class DroneFlightPlanningUtility
         float direct = math.distance(origin, goal);
         if (direct * rate <= charge)
         {
+            if (direct >= exclusiveDistanceLimit)
+            {
+                return result;
+            }
             result.Status = DroneRouteEvaluationStatusEnum.Reachable;
             result.Distance = direct;
             result.RemainingCharge = math.max(0f, charge - direct * rate);
@@ -104,7 +113,7 @@ internal static class DroneFlightPlanningUtility
                         continue;
                     }
                     float total = distances[node] + distance;
-                    if (total < distances[next])
+                    if (total < exclusiveDistanceLimit && total < distances[next])
                     {
                         distances[next] = total;
                         previous[next] = node;
@@ -166,7 +175,11 @@ internal static class DroneFlightPlanningUtility
             {
                 continue;
             }
-            var prefix = Plan(origin, stations[i].Position, charge, maximum, rate, stations);
+            // 거리 합은 줄어들지 않는다. 기존 최선과 동률인 경유는 선택하지 않으므로
+            // 첫 경유점까지의 탐색도 기존 전체 거리보다 짧은 경로만 필요하다.
+            float distanceLimit = best.Status == DroneRouteEvaluationStatusEnum.Reachable
+                ? best.Distance : float.PositiveInfinity;
+            var prefix = PlanWithinDistance(origin, stations[i].Position, charge, maximum, rate, stations, distanceLimit);
             if (prefix.Status != DroneRouteEvaluationStatusEnum.Reachable)
             {
                 continue;
@@ -176,12 +189,17 @@ internal static class DroneFlightPlanningUtility
             {
                 continue;
             }
+            float throughSourceDistance = prefix.Distance + toSource.Distance;
+            if (throughSourceDistance >= distanceLimit)
+            {
+                continue;
+            }
             var toDestination = Plan(source, destination, toSource.RemainingCharge, maximum, rate, stations);
             if (toDestination.Status != DroneRouteEvaluationStatusEnum.Reachable)
             {
                 continue;
             }
-            float distance = prefix.Distance + toSource.Distance + toDestination.Distance;
+            float distance = throughSourceDistance + toDestination.Distance;
             if (best.Status != DroneRouteEvaluationStatusEnum.Reachable || distance < best.Distance)
             {
                 best = prefix;
@@ -211,7 +229,6 @@ internal static class DroneFlightPlanningUtility
     private static int SelectReturnStation(float2 origin, NativeList<DroneFlightStation> stations,
         bool evaluateEnergy, float charge, float maximum, float energyPerDistance, out DroneFlightPlan selectedPlan)
     {
-        selectedPlan = default;
         Entity network = Entity.Null;
         int2 cell = (int2)math.floor(origin);
         for (int i = 0; i < stations.Length; i++)
@@ -222,17 +239,35 @@ internal static class DroneFlightPlanningUtility
                 break;
             }
         }
+        // 도달 가능한 같은 망 정거장이 있으면 거리와 관계없이 그 망에서 귀환점을 고른다.
+        if (network != Entity.Null)
+        {
+            int sameNetworkStation = SelectReturnCandidate(origin, stations, network, selectSameNetwork: true, evaluateEnergy,
+                charge, maximum, energyPerDistance, out selectedPlan);
+            if (sameNetworkStation >= 0)
+            {
+                return sameNetworkStation;
+            }
+        }
+        return SelectReturnCandidate(origin, stations, network, selectSameNetwork: false, evaluateEnergy,
+            charge, maximum, energyPerDistance, out selectedPlan);
+    }
+
+    private static int SelectReturnCandidate(float2 origin, NativeList<DroneFlightStation> stations,
+        Entity network, bool selectSameNetwork, bool evaluateEnergy, float charge, float maximum, float energyPerDistance,
+        out DroneFlightPlan selectedPlan)
+    {
+        selectedPlan = default;
         int selected = -1;
         float distance = float.MaxValue;
-        bool selectedSameNetwork = false;
         for (int i = 0; i < stations.Length; i++)
         {
             var station = stations[i];
-            if (!station.CanDock)
+            bool sameNetwork = network != Entity.Null && station.Network == network;
+            if (!station.CanDock || sameNetwork != selectSameNetwork)
             {
                 continue;
             }
-            bool sameNetwork = network != Entity.Null && station.Network == network;
             var candidatePlan = evaluateEnergy
                 ? Plan(origin, station.Position, charge, maximum, energyPerDistance, stations)
                 : new DroneFlightPlan { Status = DroneRouteEvaluationStatusEnum.Reachable,
@@ -242,27 +277,11 @@ internal static class DroneFlightPlanningUtility
                 continue;
             }
             float candidateDistance = candidatePlan.Distance;
-            bool preferred = selected < 0;
-            if (selected >= 0)
-            {
-                if (sameNetwork != selectedSameNetwork)
-                {
-                    preferred = sameNetwork;
-                }
-                else if (candidateDistance != distance)
-                {
-                    preferred = candidateDistance < distance;
-                }
-                else
-                {
-                    preferred = Compare(station, stations[selected]) < 0;
-                }
-            }
-            if (preferred)
+            if (selected < 0 || candidateDistance < distance ||
+                (candidateDistance == distance && Compare(station, stations[selected]) < 0))
             {
                 selected = i;
                 distance = candidateDistance;
-                selectedSameNetwork = sameNetwork;
                 selectedPlan = candidatePlan;
             }
         }

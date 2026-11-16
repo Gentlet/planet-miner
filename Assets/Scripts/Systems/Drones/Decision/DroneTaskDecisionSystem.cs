@@ -1,3 +1,4 @@
+using System;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -86,7 +87,6 @@ public partial struct DroneTaskDecisionSystem : ISystem
         BuildCreationDecisions(manager, tasks, taskReads, ref cancellations);
         using var busyWorkers = new NativeHashSet<Entity>(16, Allocator.Temp);
         using var claimedRecoveryItems = new NativeHashSet<Entity>(16, Allocator.Temp);
-        using var removedRoutes = new NativeHashSet<Entity>(16, Allocator.Temp);
         using var usedRoutes = new NativeHashSet<Entity>(16, Allocator.Temp);
 
         // 무효 작업/배정을 신규 수집 후보에서 제외하되 여기서 원본을 닫거나 연결을 끊지 않는다.
@@ -161,16 +161,16 @@ public partial struct DroneTaskDecisionSystem : ISystem
             }
             if (assignment.NextAction == DroneActionKindEnum.RecoverWorldItem) claimedRecoveryItems.Add(assignment.Source);
         }
-        FindInvalidRoutes(manager, routes, removedRoutes, carryingCapacity);
+        using var routesByKey = new NativeHashMap<RouteRequestKey, Entity>(math.max(1, routes.Length), Allocator.Temp);
+        IndexCurrentRoutes(manager, routes, routesByKey, carryingCapacity);
 
         Entity registry = _registry.IsEmptyIgnoreFilter ? Entity.Null : _registry.GetSingletonEntity();
-        using var pendingRoutes = new NativeList<DroneRouteEvaluationRequest>(Allocator.Temp);
         var candidates = manager.GetBuffer<DroneTaskCandidateDecisionElement>(_candidates);
         var pendingPublications = manager.GetBuffer<DroneTaskPendingPublicationElement>(_candidates);
         var pendingTransport = manager.GetBuffer<DroneTransportPendingReservationElement>(_candidates, true);
         // 이미 적재한 자재의 목적지를 먼저 판단한다. 최종 선택·수량 확보 순서는 Reservation이 정한다.
-        BuildRetargetCandidates(manager, networks, assignments, tasks, taskReads, sites, storages, registry, routes, pendingRoutes,
-            routeDecisions, removedRoutes, usedRoutes, candidates, pendingPublications, carryingCapacity, ref cancellations);
+        BuildRetargetCandidates(manager, networks, assignments, tasks, taskReads, sites, storages, registry, routesByKey,
+            routeDecisions, usedRoutes, candidates, pendingPublications, carryingCapacity, ref cancellations);
         for (int w = 0; w < workers.Length; w++)
         {
             Entity worker = workers[w];
@@ -207,7 +207,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
                     }
                     if (assigned) continue;
                     Entity direct = FindOrRequestRoute(manager, worker, observation, Entity.Null, task.Target,
-                        routes, pendingRoutes, routeDecisions, removedRoutes, usedRoutes, carryingCapacity, demolition: true);
+                        routesByKey, routeDecisions, usedRoutes, demolition: true);
                     if (direct == Entity.Null)
                     {
                         continue;
@@ -279,7 +279,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
                     Entity source = sourceIsStorage ? storage : task.Target;
                     Entity destination = sourceIsStorage ? task.Target : storage;
                     Entity route = FindOrRequestRoute(manager, worker, observation, source, destination,
-                        routes, pendingRoutes, routeDecisions, removedRoutes, usedRoutes, carryingCapacity);
+                        routesByKey, routeDecisions, usedRoutes);
                     if (route == Entity.Null)
                     {
                         waitingForRoutes = true;
@@ -358,48 +358,68 @@ public partial struct DroneTaskDecisionSystem : ISystem
         }
     }
 
-    private static void FindInvalidRoutes(EntityManager manager, NativeArray<Entity> routes,
-        NativeHashSet<Entity> removedRoutes, int carryingCapacity)
+    private static void IndexCurrentRoutes(EntityManager manager, NativeArray<Entity> routes,
+        NativeHashMap<RouteRequestKey, Entity> routesByKey, int carryingCapacity)
     {
-        // 관측/배정 revision과 대상 위치가 달라진 결과를 재사용하지 않는다.
-        // 제외 목록은 이번 판단에만 쓰며 실제 요청 삭제는 아래 경로 의도와 Execution을 거친다.
+        // 현재 관측과 경로 결과가 일치하는 요청만 넣고, 키가 같으면 쿼리에서 처음 만난 요청을 유지한다.
+        // 후보 판단 동안 이 원본은 바뀌지 않는다. 실제 삭제와 생성은 Execution 의도를 거친다.
         for (int i = 0; i < routes.Length; i++)
         {
-            if (DroneSchedulingUtility.IsRouteInvalid(manager, routes[i], carryingCapacity))
+            Entity route = routes[i];
+            var request = manager.GetComponentData<DroneRouteEvaluationRequest>(route);
+            if (DroneSchedulingUtility.IsRouteInvalid(manager, route, request, carryingCapacity))
             {
-                removedRoutes.Add(routes[i]);
+                continue;
             }
+            var key = new RouteRequestKey(request.Worker, request.Source, request.Destination, request.Assignment,
+                request.AssignmentRevision, request.IsDropPositionSearch);
+            routesByKey.TryAdd(key, route);
         }
     }
 
-    private Entity FindOrRequestRoute(EntityManager manager, Entity worker, DroneWorkerObservation observation,
-        Entity source, Entity destination, NativeArray<Entity> routes,
-        NativeList<DroneRouteEvaluationRequest> pending, DynamicBuffer<DroneRouteDecisionElement> routeDecisions,
-        NativeHashSet<Entity> removedRoutes, NativeHashSet<Entity> usedRoutes, int carryingCapacity,
-        Entity assignment = default, uint assignmentRevision = 0, bool dropPositionSearch = false, bool demolition = false)
+    private readonly struct RouteRequestKey : IEquatable<RouteRequestKey>
     {
-        // 같은 관측·배정에 대한 기존 요청은 유지하고, 이번 틱 미게시 요청은 중복 생성하지 않는다.
-        // 실제 거리 계산은 외부 평가자가 담당하므로 새 요청 의도를 만든 틱에는 후보를 확정하지 않는다.
-        for (int i = 0; i < routes.Length; i++)
+        private readonly Entity _worker;
+        private readonly Entity _source;
+        private readonly Entity _destination;
+        private readonly Entity _assignment;
+        private readonly uint _assignmentRevision;
+        private readonly bool _dropPositionSearch;
+
+        public RouteRequestKey(Entity worker, Entity source, Entity destination, Entity assignment,
+            uint assignmentRevision, bool dropPositionSearch)
         {
-            if (removedRoutes.Contains(routes[i])) continue;
-            var request = manager.GetComponentData<DroneRouteEvaluationRequest>(routes[i]);
-            if (request.Worker == worker && request.Source == source && request.Destination == destination &&
-                request.Assignment == assignment && request.AssignmentRevision == assignmentRevision &&
-                request.IsDropPositionSearch == dropPositionSearch &&
-                DroneSchedulingUtility.RouteIsCurrent(manager, request, carryingCapacity))
-            {
-                usedRoutes.Add(routes[i]);
-                return routes[i];
-            }
+            _worker = worker;
+            _source = source;
+            _destination = destination;
+            _assignment = assignment;
+            _assignmentRevision = assignmentRevision;
+            _dropPositionSearch = dropPositionSearch;
         }
 
-        for (int i = 0; i < pending.Length; i++)
+        public bool Equals(RouteRequestKey other) =>
+            _worker == other._worker && _source == other._source && _destination == other._destination &&
+            _assignment == other._assignment && _assignmentRevision == other._assignmentRevision &&
+            _dropPositionSearch == other._dropPositionSearch;
+
+        public override int GetHashCode() =>
+            HashCode.Combine(_worker, _source, _destination, _assignment, _assignmentRevision, _dropPositionSearch);
+    }
+
+    private Entity FindOrRequestRoute(EntityManager manager, Entity worker, DroneWorkerObservation observation,
+        Entity source, Entity destination, NativeHashMap<RouteRequestKey, Entity> routesByKey,
+        DynamicBuffer<DroneRouteDecisionElement> routeDecisions, NativeHashSet<Entity> usedRoutes,
+        Entity assignment = default, uint assignmentRevision = 0, bool dropPositionSearch = false, bool demolition = false)
+    {
+        // Null 값은 이번 판단에서 생성 의도만 작성한 요청이다. EndSimulation 공개 전에는 사용하지 않는다.
+        var key = new RouteRequestKey(worker, source, destination, assignment, assignmentRevision, dropPositionSearch);
+        if (routesByKey.TryGetValue(key, out Entity route))
         {
-            if (pending[i].Worker == worker && pending[i].Source == source && pending[i].Destination == destination &&
-                pending[i].Assignment == assignment && pending[i].AssignmentRevision == assignmentRevision &&
-                pending[i].IsDropPositionSearch == dropPositionSearch)
-                return Entity.Null;
+            if (route != Entity.Null)
+            {
+                usedRoutes.Add(route);
+            }
+            return route;
         }
 
         _evaluationRevision++;
@@ -420,7 +440,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
             Destination = destination,
             DestinationPosition = destination == Entity.Null ? int2.zero : manager.GetComponentData<GridPosition>(destination).Value
         };
-        pending.Add(next);
+        routesByKey.Add(key, Entity.Null);
         routeDecisions.Add(new DroneRouteDecisionElement { Kind = DroneRouteDecisionKindEnum.Create, Request = next });
         return Entity.Null;
     }
@@ -434,8 +454,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
 
     private void BuildRetargetCandidates(EntityManager manager, NativeArray<DroneStationNetworkDecision> networks, NativeArray<Entity> assignments,
         NativeArray<Entity> tasks, NativeArray<TaskReadSnapshot> taskReads, NativeArray<Entity> sites, NativeArray<Entity> storages, Entity registry,
-        NativeArray<Entity> routes, NativeList<DroneRouteEvaluationRequest> pending,
-        DynamicBuffer<DroneRouteDecisionElement> routeDecisions, NativeHashSet<Entity> removedRoutes,
+        NativeHashMap<RouteRequestKey, Entity> routesByKey, DynamicBuffer<DroneRouteDecisionElement> routeDecisions,
         NativeHashSet<Entity> usedRoutes, DynamicBuffer<DroneTaskCandidateDecisionElement> candidates,
         DynamicBuffer<DroneTaskPendingPublicationElement> pendingPublications, int capacity,
         ref DroneTaskRequestDecisionUtility.CancellationReadContext cancellations)
@@ -465,7 +484,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
             if (origin == DroneCargoOriginEnum.Supply)
             {
                 selection = FindCargoDestination(manager, networks, network, entity, assignment, observation, sites, true, assignments, sites,
-                    registry, routes, pending, routeDecisions, removedRoutes, usedRoutes, pendingPublications, capacity,
+                    registry, routesByKey, routeDecisions, usedRoutes, pendingPublications, capacity,
                     out destination, out route);
                 if (selection == CargoDestinationSelectionEnum.Waiting) continue;
                 if (selection == CargoDestinationSelectionEnum.Selected)
@@ -481,13 +500,13 @@ public partial struct DroneTaskDecisionSystem : ISystem
             if (selection == CargoDestinationSelectionEnum.NoDestination)
             {
                 selection = FindCargoDestination(manager, networks, network, entity, assignment, observation, storages, false, assignments, sites,
-                    registry, routes, pending, routeDecisions, removedRoutes, usedRoutes, pendingPublications, capacity,
+                    registry, routesByKey, routeDecisions, usedRoutes, pendingPublications, capacity,
                     out destination, out route);
                 if (selection == CargoDestinationSelectionEnum.Waiting) continue;
                 if (selection == CargoDestinationSelectionEnum.Selected) action = DroneActionKindEnum.StoreCargo;
             }
             if (action == DroneActionKindEnum.DropCargo && !TrySelectDropPosition(manager, networks, network, entity, assignment, observation,
-                routes, pending, routeDecisions, removedRoutes, usedRoutes, capacity, out route, out dropPosition)) continue;
+                routesByKey, routeDecisions, usedRoutes, capacity, out route, out dropPosition)) continue;
             if (quantity <= 0) continue;
             candidates.Add(new DroneTaskCandidateDecisionElement
             {
@@ -508,8 +527,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
 
     private bool TrySelectDropPosition(EntityManager manager, NativeArray<DroneStationNetworkDecision> networks,
         Entity network, Entity entity, in DroneTaskAssignment assignment, in DroneWorkerObservation observation,
-        NativeArray<Entity> routes, NativeList<DroneRouteEvaluationRequest> pending,
-        DynamicBuffer<DroneRouteDecisionElement> routeDecisions, NativeHashSet<Entity> removedRoutes,
+        NativeHashMap<RouteRequestKey, Entity> routesByKey, DynamicBuffer<DroneRouteDecisionElement> routeDecisions,
         NativeHashSet<Entity> usedRoutes, int capacity, out Entity route, out int2 position)
     {
         route = Entity.Null;
@@ -519,7 +537,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         if (ConstructionSiteWorldItemUtility.IsWorldPositionAllowed(manager, position)) return true;
 
         route = FindOrRequestRoute(manager, assignment.Worker, observation, Entity.Null, Entity.Null,
-            routes, pending, routeDecisions, removedRoutes, usedRoutes, capacity, entity, assignment.Revision, true);
+            routesByKey, routeDecisions, usedRoutes, entity, assignment.Revision, true);
         if (route == Entity.Null) return false;
         if (!DroneSchedulingUtility.TryReadRoute(manager, route, capacity, out var result)) return false;
         if (result.Status != DroneRouteEvaluationStatusEnum.Reachable) return false;
@@ -536,9 +554,9 @@ public partial struct DroneTaskDecisionSystem : ISystem
 
     private CargoDestinationSelectionEnum FindCargoDestination(EntityManager manager, NativeArray<DroneStationNetworkDecision> networks, Entity network, Entity entity,
         in DroneTaskAssignment assignment, in DroneWorkerObservation observation, NativeArray<Entity> destinations, bool supply,
-        NativeArray<Entity> assignments, NativeArray<Entity> sites, Entity registry, NativeArray<Entity> routes,
-        NativeList<DroneRouteEvaluationRequest> pending, DynamicBuffer<DroneRouteDecisionElement> routeDecisions,
-        NativeHashSet<Entity> removedRoutes, NativeHashSet<Entity> usedRoutes,
+        NativeArray<Entity> assignments, NativeArray<Entity> sites, Entity registry,
+        NativeHashMap<RouteRequestKey, Entity> routesByKey, DynamicBuffer<DroneRouteDecisionElement> routeDecisions,
+        NativeHashSet<Entity> usedRoutes,
         DynamicBuffer<DroneTaskPendingPublicationElement> pendingPublications, int capacity,
         out Entity bestDestination, out Entity bestRoute)
     {
@@ -569,7 +587,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
             }
             else if (!DroneSchedulingUtility.HasStorageSpace(manager, destination, assignment.ItemType, registry)) continue;
             Entity route = FindOrRequestRoute(manager, assignment.Worker, observation, Entity.Null, destination,
-                routes, pending, routeDecisions, removedRoutes, usedRoutes, capacity, entity, assignment.Revision);
+                routesByKey, routeDecisions, usedRoutes, entity, assignment.Revision);
             if (route == Entity.Null)
             {
                 waiting = true;
