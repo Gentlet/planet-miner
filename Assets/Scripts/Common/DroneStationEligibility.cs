@@ -3,6 +3,23 @@ using Unity.Entities;
 using Unity.Mathematics;
 using Unity.Transforms;
 
+internal readonly struct DroneStationDockFootprint
+{
+    public readonly Entity Station;
+    private readonly int2 _anchor;
+    private readonly int2 _size;
+
+    public DroneStationDockFootprint(Entity station, int2 anchor, int2 size)
+    {
+        Station = station;
+        _anchor = anchor;
+        _size = size;
+    }
+
+    public bool Contains(int2 cell) => math.all(cell >= _anchor) &&
+        (long)cell.x < (long)_anchor.x + _size.x && (long)cell.y < (long)_anchor.y + _size.y;
+}
+
 /// <summary>
 /// Decision과 최종 Apply가 공유하는 출고/정박/수납 자격 검사다.
 /// 역할 구성은 QueryMask로 확인하고 값은 필요한 RO Lookup에서 직접 읽는다. ECS 상태를 복제하지 않는다.
@@ -234,21 +251,28 @@ internal struct DroneStationEligibility
 
     private bool IsAtStation(Entity drone, Entity station)
     {
+        return TryReadDockFootprint(station, out var footprint) && TryReadWorkerCell(drone, out var cell) &&
+            footprint.Contains(cell);
+    }
+
+    public bool TryReadDockFootprint(Entity station, out DroneStationDockFootprint bounds)
+    {
+        bounds = default;
         if (!Footprints.TryGetComponent(station, out var footprint) ||
-            !Directions.TryGetComponent(station, out var direction) ||
-            !Positions.TryGetComponent(drone, out var dronePosition))
+            !Directions.TryGetComponent(station, out var direction))
         {
             return false;
         }
+        bounds = new DroneStationDockFootprint(station, Positions[station].Value, footprint.GetEffectiveSize(direction.dir));
+        return true;
+    }
+
+    public bool TryReadWorkerCell(Entity drone, out int2 cell)
+    {
+        cell = default;
+        if (!Positions.TryGetComponent(drone, out var dronePosition)) return false;
         float3 position = Transforms[drone].Position;
-        if (!math.all(math.isfinite(position)))
-        {
-            return false;
-        }
-        int2 cell = dronePosition.Value;
-        int2 anchor = Positions[station].Value;
-        int2 size = footprint.GetEffectiveSize(direction.dir);
-        return math.all(math.floor(position.xy) == cell) && math.all(cell >= anchor) &&
-            (long)cell.x < (long)anchor.x + size.x && (long)cell.y < (long)anchor.y + size.y;
+        cell = dronePosition.Value;
+        return math.all(math.isfinite(position)) && math.all(math.floor(position.xy) == cell);
     }
 }

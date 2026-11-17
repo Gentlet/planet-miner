@@ -53,8 +53,10 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
         using var storages = _storages.ToEntityArray(Allocator.Temp);
         using var assignments = _assignments.ToEntityArray(Allocator.Temp);
         using var requests = _requests.ToComponentDataArray<DroneStationRequest>(Allocator.Temp);
-        using var busy = new NativeHashSet<Entity>(math.max(1, requests.Length), Allocator.Temp);
-        foreach (var request in requests) busy.Add(request.Drone);
+        using var excludedWorkers = new NativeHashSet<Entity>(math.max(1, workers.Length), Allocator.Temp);
+        foreach (var request in requests) excludedWorkers.Add(request.Drone);
+        DroneStationAutomationUtility.AddWorkersWithTaskDecisionPriority(manager, _candidates,
+            SystemAPI.GetComponentLookup<DroneWorkerObservation>(true), excludedWorkers);
         using var flights = new NativeList<DroneFlightStation>(Allocator.TempJob);
         DroneStationAutomationUtility.BuildStations(manager, stations, flights);
         using var plans = new NativeList<DroneStationActivationPlan>(Allocator.TempJob);
@@ -65,6 +67,12 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
         Entity registry = _registry.GetSingletonEntity();
         _eligibility.Update(ref state);
         var eligibility = _eligibility;
+        using var dockFootprints = new NativeList<DroneStationDockFootprint>(stations.Length, Allocator.Temp);
+        // 겹치는 footprint에서도 현재 정거장 쿼리 순서대로 첫 유효한 후보를 선택한다.
+        foreach (Entity station in stations)
+        {
+            if (eligibility.TryReadDockFootprint(station, out var footprint)) dockFootprints.Add(footprint);
+        }
         var dedicated = SystemAPI.GetComponentLookup<DroneStationStorage>(true);
         var storageLookup = SystemAPI.GetBufferLookup<StorageSlotElement>(true);
         int maximumStack = ItemRegistry.GetMaxStack(manager.GetBuffer<ItemConfigElement>(registry, true), ItemTypeEnum.Drone);
@@ -76,12 +84,8 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
         foreach (Entity worker in workers)
         {
             if (manager.HasComponent<DroneStationRelocation>(worker)) continue;
-            if (busy.Contains(worker)) continue;
-            if (DroneStationAutomationUtility.HasTaskDecisionPriority(manager, _candidates, worker))
-            {
-                continue;
-            }
-            Entity station = DroneStationAutomationUtility.FindCurrentStation(manager, worker, stations, eligibility);
+            if (excludedWorkers.Contains(worker)) continue;
+            Entity station = DroneStationAutomationUtility.FindCurrentStation(manager, worker, dockFootprints, eligibility);
             if (station == Entity.Null) continue;
             bool docked = manager.HasComponent<DroneDocked>(worker);
             Entity assignment = manager.GetComponentData<DroneWorkerAssignment>(worker).Assignment;

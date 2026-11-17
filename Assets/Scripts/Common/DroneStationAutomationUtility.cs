@@ -68,31 +68,22 @@ internal static class DroneStationAutomationUtility
         }
     }
 
-    public static bool HasTaskDecisionPriority(EntityManager manager, Entity candidates, Entity worker)
+    public static void AddWorkersWithTaskDecisionPriority(EntityManager manager, Entity candidates,
+        ComponentLookup<DroneWorkerObservation> observations, NativeHashSet<Entity> workers)
     {
         foreach (var candidate in manager.GetBuffer<DroneTaskCandidateDecisionElement>(candidates, true))
         {
-            if (candidate.Worker == worker && candidate.Quantity > 0)
-            {
-                return true;
-            }
+            if (candidate.Quantity > 0) workers.Add(candidate.Worker);
         }
         foreach (var plan in manager.GetBuffer<DroneTransportPlanDecisionElement>(candidates, true))
         {
-            if (plan.Candidate.Worker == worker && plan.Candidate.Quantity > 0)
-            {
-                return true;
-            }
+            if (plan.Candidate.Quantity > 0) workers.Add(plan.Candidate.Worker);
         }
-        uint revision = manager.GetComponentData<DroneWorkerObservation>(worker).Revision;
         foreach (var route in manager.GetBuffer<DroneRouteDecisionElement>(candidates, true))
         {
             if (route.Kind == DroneRouteDecisionKindEnum.Create)
             {
-                if (route.Request.Worker == worker)
-                {
-                    return true;
-                }
+                workers.Add(route.Request.Worker);
                 continue;
             }
             if (route.Kind != DroneRouteDecisionKindEnum.Retain)
@@ -100,29 +91,30 @@ internal static class DroneStationAutomationUtility
                 continue;
             }
             var request = manager.GetComponentData<DroneRouteEvaluationRequest>(route.ExistingRequest);
-            if (request.Worker != worker || request.WorkerObservationRevision != revision)
-            {
-                continue;
-            }
+            if (workers.Contains(request.Worker)) continue;
+            if (!observations.TryGetComponent(request.Worker, out var observation)) continue;
+            if (request.WorkerObservationRevision != observation.Revision) continue;
             // 미평가 경로는 실행 불가가 아니다. 출고된 수행자 역할을 평가/선택이 끝날 때까지 유지한다.
             if (DroneSchedulingUtility.ReadCurrentRouteResult(manager, route.ExistingRequest).Status == DroneRouteEvaluationStatusEnum.None)
             {
-                return true;
+                workers.Add(request.Worker);
             }
         }
-        return false;
     }
 
-    public static Entity FindCurrentStation(EntityManager manager, Entity worker, NativeArray<Entity> stations, DroneStationEligibility eligibility)
+    public static Entity FindCurrentStation(EntityManager manager, Entity worker,
+        NativeList<DroneStationDockFootprint> dockFootprints, DroneStationEligibility eligibility)
     {
         if (manager.HasComponent<DroneDocked>(worker)) return manager.GetComponentData<DroneDocked>(worker).Station;
         Entity arrived = manager.GetComponentData<DroneMovementState>(worker).ChargingStation;
         if (arrived != Entity.Null && manager.Exists(arrived) && eligibility.StationMask.MatchesIgnoreFilter(arrived)) return arrived;
         if (manager.GetComponentData<DroneActivityState>(worker).Activity != DroneActivityKind.Idle) return Entity.Null;
-        foreach (Entity station in stations)
+        if (!eligibility.TryReadWorkerCell(worker, out var cell)) return Entity.Null;
+        foreach (var footprint in dockFootprints)
         {
-            var request = new DroneStationRequest { Drone = worker, Station = station, Operation = DroneStationOperation.Dock };
-            if (eligibility.Validate(request, float.MaxValue, true) == DroneStationRequestStatus.Applied) return station;
+            if (!footprint.Contains(cell)) continue;
+            var request = new DroneStationRequest { Drone = worker, Station = footprint.Station, Operation = DroneStationOperation.Dock };
+            if (eligibility.Validate(request, float.MaxValue, true) == DroneStationRequestStatus.Applied) return footprint.Station;
         }
         return Entity.Null;
     }
