@@ -6,7 +6,7 @@ using Unity.Mathematics;
 
 /// <summary>
 /// 역할·목적: Synchronization에서 현재 월드 실물을 셀별 ItemSpatialIndex로 재구축한다.
-/// 입력·생성자: 실물 수명주기/Ownership/이동이 반영한 ItemIdentity·GridPosition·ItemOwnership. 수납 실물도 쿼리하되 Owner=Null만 등록한다.
+/// 입력·생성자: 월드 실물의 ItemIdentity와 GridPosition. 삭제 예정 실물은 제외한다.
 /// 출력·소유권: Persistent 멀티맵을 Clear→병렬 등록하고 Fence에 최종 Writer를 게시한다. 소유권/위치 원본은 변경하지 않는다.
 /// 이용·가시화: 배치·벨트 판단과 개발 검증이 Fence로 최종 Writer를 기다려 읽는다. 실물 인계 시점과 공간 맵 게시 시점은 구분한다.
 /// 정리: 실물이 없어도 맵을 비운다. 용량 변경/종료 때 Fence를 완료하고 종료 시 맵을 Dispose한다. ECB 기록은 없다.
@@ -16,7 +16,7 @@ using Unity.Mathematics;
 public partial struct ItemSpatialSyncSystem : ISystem
 {
     // 월드 아이템 및 보관(Stored) 아이템을 모두 포함하는 아이템 쿼리
-    // 실제 월드 아이템 필터링은 Job 내부에서 ItemOwnership.IsWorldItem으로 수행.
+    // 쿼리에서 월드 실물과 삭제 예정 여부를 확인한다.
     private EntityQuery _itemQuery;
 
     [BurstCompile]
@@ -32,7 +32,7 @@ public partial struct ItemSpatialSyncSystem : ISystem
         state.EntityManager.AddComponentData(singletonEntity, new ItemSpatialIndexFence());
 
         _itemQuery = SystemAPI.QueryBuilder()
-            .WithAll<ItemIdentity, GridPosition, ItemOwnership>()
+            .WithAll<ItemIdentity, GridPosition>().WithNone<DestroyItemRequest>()
             .Build();
     }
 
@@ -130,15 +130,13 @@ public struct ClearItemSpatialIndexJob : IJob
 /// 월드 아이템 엔티티들을 공간 멀티 해시맵에 병렬 등록하는 Burst Job.
 /// </summary>
 [BurstCompile]
+[WithNone(typeof(DestroyItemRequest))]
 public partial struct PopulateItemSpatialIndexJob : IJobEntity
 {
     public NativeParallelMultiHashMap<int2, Entity>.ParallelWriter Writer;
 
-    public void Execute(Entity entity, in GridPosition pos, in ItemOwnership ownership)
+    public void Execute(Entity entity, in GridPosition pos, in ItemIdentity item)
     {
-        if (ownership.IsWorldItem)
-        {
-            Writer.Add(pos.Value, entity);
-        }
+        Writer.Add(pos.Value, entity);
     }
 }

@@ -30,11 +30,13 @@ public struct ResearchInputLimitElement : IBufferElementData
     public int MaximumQuantity;
 }
 
-/// <summary>StoredItemElement 중 회수 대기인 실물의 분류다. 소유자는 연구건물이며 실제 픽업만 기존 인계 소유자가 처리한다.</summary>
+/// <summary>연구 슬롯의 회수 가능 수량이다. 소유자는 연구건물이며 실제 픽업만 기존 인계 소유자가 처리한다.</summary>
 [InternalBufferCapacity(0)]
 public struct ResearchRecoveryElement : IBufferElementData
 {
-    public Entity Item;
+    public int SlotIndex;
+    public ItemTypeEnum ItemType;
+    public int Quantity;
 }
 
 /// <summary>Execution이 한 주기 완료를 기록하고 StateApply가 EndBuilding에 소비하는 전역 기여 결과다.</summary>

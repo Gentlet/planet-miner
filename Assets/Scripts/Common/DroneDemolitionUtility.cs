@@ -44,7 +44,7 @@ public static class DroneDemolitionUtility
         Entity worker = assignment.Worker;
         if (!DroneSchedulingUtility.IsActiveEntity(manager, worker) ||
             manager.GetComponentData<DroneWorkerAssignment>(worker).Assignment != entity) return false;
-        if (!manager.GetBuffer<StoredItemElement>(worker, true).IsEmpty) return false;
+        if (manager.GetComponentData<DroneCargoState>(worker).Quantity != 0) return false;
         var observation = manager.GetComponentData<DroneWorkerObservation>(worker);
         if (observation.Revision != observationRevision) return false;
         float charge = manager.GetComponentData<DroneBatteryState>(worker).CurrentCharge;

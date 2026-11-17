@@ -10,8 +10,8 @@ using Unity.Mathematics;
 public enum ItemSpawnDestination : byte
 {
     World,      // 필드/바닥/그리드에 월드 아이템으로 스폰 (TargetOwner = Entity.Null)
-    Storage,    // TargetOwner의 StoredItemElement(보관함/재료함)에 적재
-    Product     // TargetOwner의 ProductItemElement(생산물 출력 대기 버퍼)에 적재
+    Storage,    // TargetOwner의 StorageSlotElement(보관함/재료함)에 적재
+    Product     // TargetOwner의 ProductSlotElement(생산물 출력 대기 버퍼)에 적재
 }
 
 /// <summary>
@@ -67,22 +67,4 @@ public struct SpawnItemRequest : IRequestComponent, IEnableableComponent
 /// </summary>
 public struct DestroyItemRequest : IEnableableRequest
 {
-}
-
-/// <summary>
-/// 역할·목적: 기존 아이템의 Owner와 렌더 상태를 일반 입출고 경계에서 변경하도록 요청한다. 소유 버퍼·위치 이동과 구분한다.
-/// 부착 엔티티: 소유권이 바뀔 아이템 실물 엔티티다.
-/// 생성: ItemLifecycleUtility가 비활성으로 준비하고 BuildingItemStorageApplySystem(StateApply)이 버퍼·위치 변경 후 TargetOwner를 기록하여 활성화한다.
-/// 이용: ItemOwnershipApplySystem(StateApply)이 유효한 대상이면 Owner·렌더 ECB를 반영하고 활성 Destroy/없는 대상은 변경 없이 요청만 소비한다.
-/// 제거: 처리 후 즉시 비활성화하며 컴포넌트는 실물 삭제까지 유지한다. BuildingDemolitionCommandSystem(Command)은 승인 건물의 이전 Transfer를 비활성화한다.
-/// 드론의 공통 실물 인계 API는 새 Transfer 요청을 발행하지 않고 버퍼·Owner·위치·렌더를 함께 반영한다. TargetOwner=Null은 월드 소유다.
-/// </summary>
-public struct TransferOwnershipRequest : IEnableableRequest
-{
-    public Entity TargetOwner; // 새로운 소유자 (Entity.Null이면 월드로 방출)
-
-    public TransferOwnershipRequest(Entity targetOwner)
-    {
-        TargetOwner = targetOwner;
-    }
 }

@@ -23,13 +23,20 @@ public enum DroneStationRelocationStageEnum : byte
     Count
 }
 
-/// <summary>
-/// 같은 Entity의 정거장 재배치 진행이다. 슬롯 예약은 목적지 역참조와 같은 소유자가 관리한다.
-/// Reservation이 최초 목적지를 기록하고 무효 목적지를 재계획한다. 단계/요청은 Apply가 EndSimulation에 기록한다.
-/// HasDeparted만 이동 뒤 Execution이 갱신하여 취소 시 실제 출발 여부를 구분한다.
-/// </summary>
+/// <summary>활성 이관 수행자에서 철거 작업의 고정 멤버 인덱스로 연결한다.</summary>
 public struct DroneStationRelocation : IComponentData
 {
+    public Entity Task;
+    public int MemberIndex;
+}
+
+/// <summary>철거 작업의 고정 인덱스. 출고 전 수량과 수납 후 결과를 수행자 수명에서 분리한다.</summary>
+[InternalBufferCapacity(0)]
+public struct DroneStationRelocationMemberElement : IBufferElementData
+{
+    public Entity Drone;
+    public int SourceSlotIndex;
+    public bool Finished;
     public Entity Source;
     public Entity Task;
     public Entity Destination;
@@ -38,23 +45,28 @@ public struct DroneStationRelocation : IComponentData
     public Entity Request;
     public float2 DeparturePosition;
     public bool HasDeparted;
+
+    public readonly bool DepartureCommitted => HasDeparted || (SourceSlotIndex >= 0 && Drone != Entity.Null);
 }
 
-/// <summary>목적지의 영속 도착 슬롯 예약이다. 일반 입고/정박은 제외하고 해당 Drone만 사용할 수 있다.</summary>
+/// <summary>철거 작업과 멤버 인덱스로 식별하는 목적지 슬롯 예약. 해당 멤버의 도착만 허용한다.</summary>
 [InternalBufferCapacity(0)]
 public struct DroneStationReservedSlotElement : IBufferElementData
 {
-    public Entity Drone;
+    public Entity Task;
+    public int MemberIndex;
     public int SlotIndex;
 }
 
-/// <summary>전원 자격이 준비된 원본 정거장의 이번 틱 후보다. Actor Null은 빈 정거장을 뜻한다.</summary>
+/// <summary>전원 자격이 준비된 원본 정거장의 이번 틱 후보다. 수납 재고 후보는 출발 슬롯으로 식별한다. 멤버 인덱스가 음수이면 빈 정거장이다.</summary>
 [InternalBufferCapacity(0)]
 public struct DroneStationRelocationCandidateElement : IBufferElementData
 {
     public Entity Source;
     public Entity Task;
     public Entity Drone;
+    public int MemberIndex;
+    public int SourceSlotIndex;
     public bool Replan;
     public ulong CreationSequence;
 }
@@ -63,6 +75,8 @@ public struct DroneStationRelocationCandidateElement : IBufferElementData
 [InternalBufferCapacity(0)]
 public struct DroneStationRelocationIntentElement : IBufferElementData
 {
+    public Entity Task;
+    public int MemberIndex;
     public Entity Drone;
     public DroneStationRelocationStageEnum Stage;
     public Entity Request;

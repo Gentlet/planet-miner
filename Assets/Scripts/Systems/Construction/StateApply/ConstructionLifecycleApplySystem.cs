@@ -6,9 +6,9 @@ using Unity.Mathematics;
 
 /// <summary>
 /// 역할·목적: 남은 현장의 바닥 정리 상태와 실제 도착 자재로 완공 여부를 판단한다. 취소는 Command에서 먼저 확정된다.
-/// 처리 단계: BuildingStateApply 마지막. 지난 틱 드론 결과와 이번 건물 처리의 현재 Owner/GridPosition/활성 Destroy를 읽는다.
+/// 처리 단계: BuildingStateApply 마지막. 현장 도착량과 월드 아이템의 위치 및 삭제 예정 여부를 읽는다.
 /// 출력·소유권: AwaitingItemClearance를 갱신하고 공통 SpawnBuilding으로 완공 건물을 직접 생성한다. 공급/예약 정산은 드론 관리 소유자에게 둔다.
-/// 정리·가시화: 생성 성공분만 자재/현장 삭제를 EndBuilding에 기록한다. 생성 실패 시 보존하고 공간 인덱스는 Synchronization에서 갱신한다.
+/// 정리·가시화: 건물이 생성될 때만 도착 수량을 보유한 현장 삭제를 EndBuilding에 기록한다. 공간 인덱스는 Synchronization에서 갱신한다.
 /// 현장 내부 새 World Spawn/드론 방출은 해당 생산 경계가 막으므로 예정 월드 위치를 별도 원본으로 보관하지 않는다.
 /// </summary>
 [UpdateInGroup(typeof(BuildingStateApplyGroup), OrderLast = true)]
@@ -20,7 +20,6 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
     private EntityQuery _worldItemQuery;
     private ComponentLookup<DestroyItemRequest> _destroyRequestLookup;
 
-    private BufferLookup<StoredItemElement> _storedBufferLookup;
     private ComponentLookup<PlacementStamp> _stampLookup;
     private BufferLookup<BuildingPrefabElement> _prefabBufferLookup;
     private BufferLookup<BuildingConfigElement> _configBufferLookup;
@@ -42,10 +41,9 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
             .Build();
 
         _worldItemQuery = state.GetEntityQuery(ComponentType.ReadOnly<ItemIdentity>(),
-            ComponentType.ReadOnly<ItemOwnership>(), ComponentType.ReadOnly<GridPosition>());
+            ComponentType.ReadOnly<GridPosition>());
         _destroyRequestLookup = state.GetComponentLookup<DestroyItemRequest>(true);
 
-        _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
         _stampLookup = state.GetComponentLookup<PlacementStamp>(true);
         _prefabBufferLookup = state.GetBufferLookup<BuildingPrefabElement>(true);
         _configBufferLookup = state.GetBufferLookup<BuildingConfigElement>(true);
@@ -61,7 +59,6 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
         var ecbSystem = state.World.GetOrCreateSystemManaged<EndBuildingEntityCommandBufferSystem>();
         var ecb = ecbSystem.CreateCommandBuffer();
 
-        _storedBufferLookup.Update(ref state);
         _stampLookup.Update(ref state);
         _prefabBufferLookup.Update(ref state);
         _configBufferLookup.Update(ref state);
@@ -71,10 +68,9 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
         state.CompleteDependency();
         using var items = _worldItemQuery.ToEntityArray(Allocator.Temp);
         var worldItemPositions = new NativeList<int2>(Allocator.TempJob);
-        var owners = state.GetComponentLookup<ItemOwnership>(true);
         var positions = state.GetComponentLookup<GridPosition>(true);
         ConstructionCompletionUtility.CollectWorldItemPositions(
-            items, _destroyRequestLookup, owners, positions, worldItemPositions);
+            items, _destroyRequestLookup, positions, worldItemPositions);
 
         Entity prefabDbEntity = _prefabDbQuery.IsEmptyIgnoreFilter ? Entity.Null : _prefabDbQuery.GetSingletonEntity();
         Entity configEntity = _buildingConfigQuery.IsEmptyIgnoreFilter ? Entity.Null : _buildingConfigQuery.GetSingletonEntity();
@@ -90,7 +86,6 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
             ECB = ecb,
             PrefabDbEntity = prefabDbEntity,
             ConfigEntity = configEntity,
-            StoredLookup = _storedBufferLookup,
             StampLookup = _stampLookup,
             PrefabBufferLookup = _prefabBufferLookup,
             ConfigBufferLookup = _configBufferLookup,
@@ -155,10 +150,7 @@ public partial struct ConstructionCompletionApplyJob : IJobChunk
     [ReadOnly]
     public NativeArray<int2> WorldItemPositions;
 
-    [ReadOnly]
-    public BufferLookup<StoredItemElement> StoredLookup;
-
-    [ReadOnly]
+[ReadOnly]
     public ComponentLookup<PlacementStamp> StampLookup;
 
     [ReadOnly]
@@ -237,20 +229,6 @@ public partial struct ConstructionCompletionApplyJob : IJobChunk
             }
         }
 
-        // 생성 명령이 확보된 뒤에만 보관 실물과 현장을 소비한다. 프리팹 실패가 자재 손실로 이어지지 않게 한다.
-        if (StoredLookup.TryGetBuffer(siteEntity, out var storedItems))
-        {
-            for (int i = 0; i < storedItems.Length; i++)
-            {
-                Entity itemEntity = storedItems[i].ItemEntity;
-                if (itemEntity != Entity.Null)
-                {
-                    ECB.DestroyEntity(itemEntity);
-                }
-            }
-        }
-
-        // 6. 공사 현장 엔티티 파괴 (동일 ECB Playback 틱에 발생하므로 점유 공백 0 달성)
         ECB.DestroyEntity(siteEntity);
     }
 }

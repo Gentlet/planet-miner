@@ -39,7 +39,7 @@ public partial struct DroneStationLifecycleReservationSystem : ISystem
             TransportPendingLookup = SystemAPI.GetBufferLookup<DroneTransportPendingReservationElement>(true),
             ActionLookup = SystemAPI.GetComponentLookup<DroneActionReadyRequest>(true),
             Storages = SystemAPI.GetComponentLookup<Storage>(true), Dedicated = SystemAPI.GetComponentLookup<DroneStationStorage>(true),
-            Items = SystemAPI.GetBufferLookup<StoredItemElement>(true), Docked = SystemAPI.GetBufferLookup<DockedDroneElement>(true),
+            Items = SystemAPI.GetBufferLookup<StorageSlotElement>(true), Docked = SystemAPI.GetBufferLookup<DockedDroneElement>(true),
             Docks = SystemAPI.GetComponentLookup<DroneDocked>(true),
             Reserved = SystemAPI.GetBufferLookup<DroneStationReservedSlotElement>(true),
             MaximumStack = ItemRegistry.GetMaxStack(SystemAPI.GetSingletonBuffer<ItemConfigElement>(true), ItemTypeEnum.Drone)
@@ -61,7 +61,7 @@ internal struct DroneStationLifecycleReservationJob : IJob
     [ReadOnly] public ComponentLookup<DroneActionReadyRequest> ActionLookup;
     [ReadOnly] public ComponentLookup<Storage> Storages;
     [ReadOnly] public ComponentLookup<DroneStationStorage> Dedicated;
-    [ReadOnly] public BufferLookup<StoredItemElement> Items;
+    [ReadOnly] public BufferLookup<StorageSlotElement> Items;
     [ReadOnly] public BufferLookup<DockedDroneElement> Docked;
     [ReadOnly] public ComponentLookup<DroneDocked> Docks;
     [ReadOnly] public BufferLookup<DroneStationReservedSlotElement> Reserved;
@@ -71,6 +71,7 @@ internal struct DroneStationLifecycleReservationJob : IJob
     {
         using var records = new NativeList<DroneStationRequestRecord>(Requests.Length, Allocator.Temp);
         DroneStationLifecycleUtility.ReadSortedRequests(Requests, RequestLookup, Decisions, records);
+        var withdrawals = new NativeHashMap<int3, int>(math.max(1, Requests.Length), Allocator.Temp);
         using var chosen = new NativeHashSet<Entity>(16, Allocator.Temp);
         using var busy = new NativeHashSet<Entity>(16, Allocator.Temp);
         DroneStationLifecycleUtility.GatherBusyWorkers(PendingOwners, PendingLookup, TransportPendingLookup, Actions, ActionLookup, busy);
@@ -82,6 +83,18 @@ internal struct DroneStationLifecycleReservationJob : IJob
             var decision = record.Decision;
             if (!decision.Eligible)
             {
+                continue;
+            }
+            if (request.Operation == DroneStationOperation.ActivateStored)
+            {
+                var key = new int3(request.Station.Index, request.Station.Version, request.SourceSlotIndex);
+                withdrawals.TryGetValue(key, out int used);
+                var slot = Items[request.Station][request.SourceSlotIndex];
+                decision.Approved = slot.ItemType == ItemTypeEnum.Drone && slot.Quantity > used;
+                decision.SlotIndex = request.SourceSlotIndex;
+                if (decision.Approved) withdrawals[key] = used + 1;
+                else decision.Status = DroneStationRequestStatus.NoSpace;
+                Decisions[record.Entity] = decision;
                 continue;
             }
             if (chosen.Contains(request.Drone))
@@ -117,5 +130,6 @@ internal struct DroneStationLifecycleReservationJob : IJob
             }
             Decisions[record.Entity] = decision;
         }
+        withdrawals.Dispose();
     }
 }

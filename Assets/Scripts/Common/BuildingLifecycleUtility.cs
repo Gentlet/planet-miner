@@ -119,10 +119,12 @@ public static class BuildingLifecycleUtility
         ecb.AddComponent(newBuilding, stamp);
         ecb.SetComponent(newBuilding, LocalTransform.FromPosition(spawnPosition));
 
-        AttachTypeSpecificComponents(ref ecb, newBuilding, config.BuildingType, direction, speed, storageCapacity);
+        int totalStorageCapacity = config.BuildingType is BuildingTypeEnum.MainFacility or BuildingTypeEnum.DroneStation
+            ? storageCapacity + config.DroneStationStorageCapacity
+            : storageCapacity;
+        AttachTypeSpecificComponents(ref ecb, newBuilding, config.BuildingType, direction, speed, totalStorageCapacity);
         if (DroneStationRangeUtility.IsStationType(config.BuildingType))
         {
-            ecb.SetComponent(newBuilding, new Storage(storageCapacity + config.DroneStationStorageCapacity));
             ecb.AddComponent(newBuilding, new DroneStationStorage { DedicatedSlotCount = config.DroneStationStorageCapacity });
             ecb.AddBuffer<DockedDroneElement>(newBuilding);
             ecb.AddBuffer<DroneChargingPreparationElement>(newBuilding);
@@ -165,7 +167,7 @@ public static class BuildingLifecycleUtility
                 ecb.SetComponentEnabled<MinerWorkPreparation>(building, false);
                 ecb.AddComponent<MinerDecision>(building);
                 ecb.SetComponentEnabled<MinerDecision>(building, false);
-                ecb.AddBuffer<ProductItemElement>(building);
+                ecb.AddBuffer<ProductSlotElement>(building);
                 ecb.AddBuffer<ProductResult>(building);
                 ecb.AddComponent<BuildingItemOutputDecision>(building);
                 ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);
@@ -185,8 +187,8 @@ public static class BuildingLifecycleUtility
                 ecb.AddComponent(building, new Storage(0));
                 ecb.AddComponent(building, new StorageFilter(StorageFilterMode.Whitelist));
                 ecb.AddBuffer<BuildingInputSlotElement>(building);
-                ecb.AddBuffer<StoredItemElement>(building);
-                ecb.AddBuffer<ProductItemElement>(building);
+                ecb.AddBuffer<StorageSlotElement>(building);
+                ecb.AddBuffer<ProductSlotElement>(building);
                 ecb.AddBuffer<ProductResult>(building);
                 ecb.AddComponent<BuildingItemOutputDecision>(building);
                 ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);
@@ -247,7 +249,7 @@ public static class BuildingLifecycleUtility
                 ecb.SetComponentEnabled<ResearchDecision>(building, false);
                 ecb.AddComponent(building, new Storage(0));
                 ecb.AddComponent(building, new StorageFilter(StorageFilterMode.Whitelist));
-                ecb.AddBuffer<StoredItemElement>(building);
+                ecb.AddBuffer<StorageSlotElement>(building);
                 ecb.AddBuffer<BuildingInputSlotElement>(building);
                 ecb.AddBuffer<ResearchInputLimitElement>(building);
                 ecb.AddBuffer<ResearchRecoveryElement>(building);
@@ -307,7 +309,8 @@ public static class BuildingLifecycleUtility
     private static void AttachStorageComponents(ref EntityCommandBuffer ecb, Entity building, int storageCapacity)
     {
         ecb.AddComponent(building, new Storage(storageCapacity));
-        ecb.AddBuffer<StoredItemElement>(building);
+        var slots = ecb.AddBuffer<StorageSlotElement>(building);
+        slots.Resize(storageCapacity, Unity.Collections.NativeArrayOptions.ClearMemory);
         ecb.AddComponent(building, new StorageFilter());
         ecb.AddComponent<BuildingItemOutputDecision>(building);
         ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);

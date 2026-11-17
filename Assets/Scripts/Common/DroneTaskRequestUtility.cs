@@ -54,7 +54,7 @@ public static class DroneTaskRequestUtility
     {
         int2 min = math.min(first, last);
         int2 max = math.max(first, last);
-        using var query = manager.CreateEntityQuery(typeof(ItemIdentity), typeof(ItemOwnership), typeof(GridPosition));
+        using var query = manager.CreateEntityQuery(typeof(ItemIdentity), typeof(GridPosition));
         using var items = query.ToEntityArray(Allocator.Temp);
         using var belts = DroneWorldItemRecoveryUtility.ReadBeltPositions(manager);
         var selected = new List<Entity>();

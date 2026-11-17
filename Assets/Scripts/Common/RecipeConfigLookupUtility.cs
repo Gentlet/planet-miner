@@ -41,8 +41,7 @@ public static class RecipeConfigLookupUtility
     public static bool HasRequiredIngredients(
         in RecipeConfigElement recipe,
         DynamicBuffer<RecipeIngredientElement> ingredients,
-        DynamicBuffer<StoredItemElement> storedItems,
-        in ComponentLookup<DestroyItemRequest> destroyRequests)
+        DynamicBuffer<StorageSlotElement> storedItems)
     {
         for (int i = 0; i < recipe.IngredientCount; i++)
         {
@@ -52,7 +51,7 @@ public static class RecipeConfigLookupUtility
                 return false;
             }
 
-            int availableAmount = StoredItemBufferUtility.CountConsumable(storedItems, ingredient.ItemType, destroyRequests);
+            int availableAmount = InventorySlotUtility.Count(storedItems, ingredient.ItemType);
 
             if (availableAmount < requiredAmount)
             {

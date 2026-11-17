@@ -36,34 +36,3 @@ public struct ItemIdentity : IComponentData
         Type = type;
     }
 }
-
-/// <summary>
-/// 역할·목적: 아이템의 현재 소유자 원본이다. Owner=Null은 월드 실물, 그 외는 해당 건물·현장·드론에 수납된 실물이다.
-/// 부착 엔티티: 아이템 실물 엔티티이며 소유자의 StoredItemElement/ProductItemElement 참조와 함께 정합성을 유지한다.
-/// 생성: ItemLifecycleUtility가 생성 목적지에 맞게 Owner를 아이템 생성 ECB에 기록한다.
-/// 이용: ItemOwnershipApplySystem(StateApply)이 일반 Transfer와 공통 TryTransferItem 인계를 반영한다. ConstructionCancelCommandSystem(Command)·BuildingLifecycleApplySystem(StateApply)은 기존 실물 반환을 기록한다.
-/// 입출고·제작·드론·완공 판단과 ItemSpatialSyncSystem(Synchronization)이 읽는다. 수납 실물의 GridPosition은 월드 점유 근거로 사용하지 않는다.
-/// 제거: 실물 삭제 시 함께 제거한다. Owner 변경은 아이템 엔티티의 삭제·재생성이 아니다.
-/// </summary>
-public struct ItemOwnership : IComponentData
-{
-    public Entity Owner;
-
-    public bool IsWorldItem => Owner == Entity.Null;
-    public bool IsStored => Owner != Entity.Null;
-
-    public ItemOwnership(Entity owner)
-    {
-        Owner = owner;
-    }
-
-    /// <summary>
-    /// 소유자가 없는 월드 아이템 상태 인스턴스.
-    /// </summary>
-    public static ItemOwnership WorldItem => new ItemOwnership(Entity.Null);
-
-    /// <summary>
-    /// 특정 소유자에게 귀속된 수납 아이템 상태 인스턴스.
-    /// </summary>
-    public static ItemOwnership Stored(Entity owner) => new ItemOwnership(owner);
-}

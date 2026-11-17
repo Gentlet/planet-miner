@@ -13,7 +13,7 @@ public struct DockedDroneElement : IBufferElementData
     public int SlotIndex;
 }
 
-/// <summary>활성 드론의 정박 장소와 슬롯 원본. ItemOwnership과 상호 배타적이며 배정 상태를 복제하지 않는다.</summary>
+/// <summary>활성 드론의 정박 장소와 슬롯 원본. 활성 정박은 해당 슬롯 전체를 점유한다.</summary>
 public struct DroneDocked : IComponentData
 {
     public Entity Station;

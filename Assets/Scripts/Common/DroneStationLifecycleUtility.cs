@@ -10,12 +10,6 @@ internal struct DroneStationRequestRecord
     public DroneStationDecision Decision;
 }
 
-internal struct DroneStationVisualChange
-{
-    public Entity Actor;
-    public Entity Prefab;
-}
-
 internal struct DroneStationSlotRange
 {
     public int Start;
@@ -30,7 +24,7 @@ internal struct DroneStationSlot
     public Entity Docked;
 }
 
-/// <summary>요청 순서/작업 경합/한 호출의 슬롯 예산을 처리한다. 메인 스레드의 표시 기록은 마지막 메서드에만 둔다.</summary>
+/// <summary>요청 순서를 정하고 작업 경합과 호출별 슬롯 예산을 중재한다.</summary>
 internal static class DroneStationLifecycleUtility
 {
     private struct RequestComparer : IComparer<DroneStationRequestRecord>
@@ -85,7 +79,7 @@ internal static class DroneStationLifecycleUtility
 
     public static int ReserveSlot(in DroneStationRequest request, int preferred, int maxStack,
         ComponentLookup<Storage> storages, ComponentLookup<DroneStationStorage> dedicated,
-        BufferLookup<StoredItemElement> items, BufferLookup<DockedDroneElement> docked,
+        BufferLookup<StorageSlotElement> items, BufferLookup<DockedDroneElement> docked,
         NativeParallelHashMap<Entity, DroneStationSlotRange> ranges, NativeList<DroneStationSlot> slots,
         BufferLookup<DroneStationReservedSlotElement> reserved)
     {
@@ -102,17 +96,11 @@ internal static class DroneStationLifecycleUtility
             {
                 slots.Add(default);
             }
-            foreach (var item in items[station])
+            var inventory = items[station];
+            for (int index = 0; index < range.Count; index++)
             {
-                if (item.SlotIndex < 0 || item.SlotIndex >= range.Count)
-                {
-                    continue;
-                }
-                int index = range.Start + item.SlotIndex;
-                var slot = slots[index];
-                slot.Type = item.ItemType;
-                slot.Count++;
-                slots[index] = slot;
+                var item = inventory[index];
+                slots[range.Start + index] = new DroneStationSlot { Type = item.ItemType, Count = item.Quantity };
             }
             foreach (var dock in docked[station])
             {
@@ -127,13 +115,13 @@ internal static class DroneStationLifecycleUtility
             ranges.Add(station, range);
         }
         bool hasReservations = reserved.TryGetBuffer(station, out var reservations);
-        int promised = hasReservations ? DroneStationRelocationUtility.ReservedSlot(reservations, drone) : -1;
+        int promised = hasReservations ? DroneStationRelocationUtility.ReservedSlot(reservations, request.RelocationTask, request.RelocationMemberIndex) : -1;
         if (promised >= 0) preferred = promised;
         for (int index = 0; index < range.Count; index++)
         {
             int candidate = preferred >= 0 ? preferred : StationStorageUtility.SearchSlot(index, range.Count, range.Dedicated, ItemTypeEnum.Drone);
             var slot = slots[range.Start + candidate];
-            if (hasReservations && DroneStationRelocationUtility.IsReserved(reservations, candidate, drone))
+            if (hasReservations && DroneStationRelocationUtility.IsReserved(reservations, candidate, request.RelocationTask, request.RelocationMemberIndex))
             {
                 continue;
             }
@@ -154,15 +142,4 @@ internal static class DroneStationLifecycleUtility
         return -1;
     }
 
-    /// <summary>데이터 Job의 승인된 표시 목록만 읽는다. 역할/소유권/결과와 같은 EndSimulation에 기록한다.</summary>
-    public static void RecordAppearance(EntityManager manager, EntityCommandBuffer ecb, NativeArray<DroneStationVisualChange> changes)
-    {
-        foreach (var change in changes)
-        {
-            if (manager.HasComponent<RenderMeshArray>(change.Prefab))
-            {
-                ecb.AddSharedComponent(change.Actor, manager.GetSharedComponent<RenderMeshArray>(change.Prefab));
-            }
-        }
-    }
 }

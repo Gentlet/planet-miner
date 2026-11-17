@@ -11,23 +11,22 @@ using Unity.Transforms;
 [UpdateBefore(typeof(DroneStationLifecycleDecisionSystem))]
 public partial struct DroneStationRelocationDecisionSystem : ISystem
 {
-    private EntityQuery _sources, _stations, _actors, _results, _assignments;
+    private EntityQuery _sources, _stations, _rosters, _results, _assignments;
     private Entity _candidates;
 
     public void OnCreate(ref SystemState state)
     {
         _candidates = DroneSchedulingUtility.GetOrCreateCandidates(state.EntityManager);
-        _sources = state.GetEntityQuery(typeof(PreparingStationDemolition), typeof(StoredItemElement), typeof(DockedDroneElement));
+        _sources = state.GetEntityQuery(typeof(PreparingStationDemolition), typeof(StorageSlotElement), typeof(DockedDroneElement));
         _stations = state.GetEntityQuery(typeof(DroneStation), typeof(DroneStationStorage), typeof(Storage),
-            typeof(DroneStationNetworkDecision), typeof(GridPosition), typeof(StoredItemElement), typeof(DockedDroneElement),
+            typeof(DroneStationNetworkDecision), typeof(GridPosition), typeof(StorageSlotElement), typeof(DockedDroneElement),
             typeof(DroneStationReservedSlotElement));
-        _actors = state.GetEntityQuery(new EntityQueryDesc
+        _rosters = state.GetEntityQuery(new EntityQueryDesc
         {
-            All = new[] { ComponentType.ReadOnly<DroneStationRelocation>() },
+            All = new[] { ComponentType.ReadOnly<DroneStationRelocationMemberElement>() },
             Options = EntityQueryOptions.IncludeDisabledEntities
         });
         _assignments = state.GetEntityQuery(typeof(DroneTaskAssignment));
-        _results = state.GetEntityQuery(typeof(DroneStationRelocationRequest), typeof(DroneStationResult));
         state.RequireForUpdate<DroneBatteryConfig>();
         state.RequireForUpdate<DroneMovementConfig>();
     }
@@ -36,7 +35,7 @@ public partial struct DroneStationRelocationDecisionSystem : ISystem
     {
         state.CompleteDependency();
         var manager = state.EntityManager;
-        if (_sources.IsEmptyIgnoreFilter && _actors.IsEmptyIgnoreFilter && _results.IsEmptyIgnoreFilter)
+        if (_sources.IsEmptyIgnoreFilter && _rosters.IsEmptyIgnoreFilter)
         {
             manager.GetBuffer<DroneStationRelocationCandidateElement>(_candidates).Clear();
             manager.GetBuffer<DroneStationRelocationIntentElement>(_candidates).Clear();
@@ -64,62 +63,65 @@ public partial struct DroneStationRelocationDecisionSystem : ISystem
             foreach (Entity assignment in incomingAssignments)
                 receivingCommittedCargo |= DroneStationRelocationUtility.CanReceiveCommittedDroneCargo(manager, source, assignment);
             if (receivingCommittedCargo) continue;
-            using var members = new NativeList<Entity>(Allocator.Temp);
-            bool ready = true;
-            foreach (var row in manager.GetBuffer<StoredItemElement>(source, true))
+            if (!manager.HasBuffer<DroneStationRelocationMemberElement>(preparation.Task)) continue;
+            using var members = new NativeList<DroneStationRelocationCandidateElement>(Allocator.Temp);
+            var inventory = manager.GetBuffer<StorageSlotElement>(source, true);
+            for (int slot = 0; slot < inventory.Length; slot++)
             {
-                if (row.ItemType != ItemTypeEnum.Drone) continue;
-                if (!DroneSchedulingUtility.IsActiveEntity(manager, row.ItemEntity) ||
-                    DroneSchedulingUtility.HasDestroy(manager, row.ItemEntity) ||
-                    manager.HasComponent<DroneStationRelocation>(row.ItemEntity))
-                {
-                    ready = false;
-                    break;
-                }
-                if (manager.HasComponent<DroneBatteryState>(row.ItemEntity) &&
-                    manager.GetComponentData<DroneBatteryState>(row.ItemEntity).CurrentCharge != maximum)
-                {
-                    ready = false;
-                    break;
-                }
-                members.Add(row.ItemEntity);
+                var entry = inventory[slot];
+                if (entry.ItemType != ItemTypeEnum.Drone) continue;
+                for (int copy = 0; copy < entry.Quantity; copy++)
+                    members.Add(new DroneStationRelocationCandidateElement
+                    {
+                        Source = source, Task = preparation.Task, SourceSlotIndex = slot, MemberIndex = members.Length
+                    });
             }
-            if (!ready) continue;
+            bool ready = true;
             foreach (var row in manager.GetBuffer<DockedDroneElement>(source, true))
             {
                 Entity drone = row.Drone;
                 if (!DroneSchedulingUtility.IsActiveEntity(manager, drone) || manager.HasComponent<DroneStationRelocation>(drone) ||
                     manager.GetComponentData<DroneWorkerAssignment>(drone).Assignment != Entity.Null ||
-                    !manager.GetBuffer<StoredItemElement>(drone, true).IsEmpty ||
+                    manager.GetComponentData<DroneCargoState>(drone).Quantity != 0 ||
                     manager.GetComponentData<DroneCargoState>(drone).Origin != DroneCargoOriginEnum.None ||
                     manager.GetComponentData<DroneBatteryState>(drone).CurrentCharge != maximum)
                 {
                     ready = false;
                     break;
                 }
-                members.Add(drone);
+                members.Add(new DroneStationRelocationCandidateElement
+                {
+                    Source = source, Task = preparation.Task, Drone = drone,
+                    SourceSlotIndex = -1, MemberIndex = members.Length
+                });
             }
             if (!ready) continue;
-            if (members.IsEmpty) proposals.Add(new DroneStationRelocationCandidateElement { Source = source, Task = preparation.Task });
-            foreach (Entity drone in members)
-                proposals.Add(new DroneStationRelocationCandidateElement { Source = source, Task = preparation.Task, Drone = drone });
+            if (members.IsEmpty) proposals.Add(new DroneStationRelocationCandidateElement
+                { Source = source, Task = preparation.Task, MemberIndex = -1 });
+            else proposals.AddRange(members.AsArray());
         }
-        using var actors = _actors.ToEntityArray(Allocator.Temp);
-        foreach (Entity drone in actors)
+        using var tasks = _rosters.ToEntityArray(Allocator.Temp);
+        foreach (Entity task in tasks)
         {
-            var relocation = manager.GetComponentData<DroneStationRelocation>(drone);
-            bool stopUnstarted = DroneStationRelocationUtility.ShouldStopUnstartedRelocation(manager, relocation, _candidates);
-            bool destinationValid = DroneSchedulingUtility.IsStorage(manager, relocation.Destination) &&
-                DroneStationRelocationUtility.ReservedSlot(manager, relocation.Destination, drone) == relocation.SlotIndex;
-            if (!destinationValid && !(stopUnstarted && !relocation.HasDeparted))
-                proposals.Add(new DroneStationRelocationCandidateElement
-                { Source = relocation.Source, Task = relocation.Task, Drone = drone, Replan = true });
-            PrepareActor(manager, drone, relocation, stopUnstarted, destinationValid, maximum, config, flights, intents);
+            // 요청 접수·결과 소비가 구조를 바꾸므로 조회한 버퍼를 반복 중에 보관하지 않는다.
+            using var roster = manager.GetBuffer<DroneStationRelocationMemberElement>(task, true).ToNativeArray(Allocator.Temp);
+            for (int index = 0; index < roster.Length; index++)
+            {
+                var relocation = roster[index];
+                if (relocation.Finished) continue;
+                bool stopUnstarted = DroneStationRelocationUtility.ShouldStopUnstartedRelocation(manager, relocation, _candidates);
+                bool destinationValid = DroneSchedulingUtility.IsStorage(manager, relocation.Destination) &&
+                    DroneStationRelocationUtility.ReservedSlot(manager, relocation.Destination, task, index) == relocation.SlotIndex;
+                bool settledResult = relocation.Request != Entity.Null && manager.HasComponent<DroneStationResult>(relocation.Request);
+                if (!destinationValid && !settledResult && !(stopUnstarted && !relocation.DepartureCommitted))
+                    proposals.Add(new DroneStationRelocationCandidateElement
+                    {
+                        Source = relocation.Source, Task = task, Drone = relocation.Drone, Replan = true,
+                        MemberIndex = index, SourceSlotIndex = relocation.SourceSlotIndex
+                    });
+                PrepareActor(manager, index, relocation, stopUnstarted, destinationValid, maximum, config, flights, intents);
+            }
         }
-        using (var results = _results.ToEntityArray(Allocator.Temp))
-            foreach (Entity result in results)
-                if (!manager.HasComponent<DroneStationRelocation>(manager.GetComponentData<DroneStationResult>(result).Drone))
-                    DroneStationRequestUtility.TryConsumeResult(manager, result, out _);
         var proposalValues = proposals.AsArray();
         for (int i = 0; i < proposalValues.Length; i++)
         {
@@ -156,25 +158,30 @@ public partial struct DroneStationRelocationDecisionSystem : ISystem
             order = a.Source.Index.CompareTo(b.Source.Index);
             if (order != 0) return order;
             order = a.Task.Index.CompareTo(b.Task.Index);
-            return order != 0 ? order : a.Drone.Index.CompareTo(b.Drone.Index);
+            return order != 0 ? order : a.MemberIndex.CompareTo(b.MemberIndex);
         }
     }
 
-    private static void PrepareActor(EntityManager manager, Entity drone, in DroneStationRelocation relocation,
+    private static void PrepareActor(EntityManager manager, int memberIndex, in DroneStationRelocationMemberElement relocation,
         bool stopUnstarted, bool destinationValid, float maximum, in DroneMovementConfig config,
         NativeList<DroneFlightStation> allFlights, NativeList<DroneStationRelocationIntentElement> intents)
     {
+        Entity drone = relocation.Drone;
         bool hasDocked = manager.HasComponent<DroneDocked>(drone);
         Entity dockedStation = hasDocked ? manager.GetComponentData<DroneDocked>(drone).Station : Entity.Null;
         Hold(manager, drone, dockedStation);
-        var intent = new DroneStationRelocationIntentElement { Drone = drone, Stage = relocation.Stage };
+        var intent = new DroneStationRelocationIntentElement
+        {
+            Task = relocation.Task, MemberIndex = memberIndex, Drone = drone, Stage = relocation.Stage
+        };
         if (relocation.Request != Entity.Null)
         {
             if (!DroneStationRequestUtility.TryConsumeResult(manager, relocation.Request, out var result)) return;
             if (result.Status == DroneStationRequestStatus.Applied)
             {
-                if (result.Operation == DroneStationOperation.Activate)
+                if ((result.Operation is DroneStationOperation.Activate or DroneStationOperation.ActivateStored))
                 {
+                    intent.Drone = result.Drone;
                     intent.Stage = DroneStationRelocationStageEnum.Travelling;
                     intent.SetDeparturePosition = !relocation.HasDeparted;
                 }
@@ -188,7 +195,9 @@ public partial struct DroneStationRelocationDecisionSystem : ISystem
                     intent.Completed = true;
                 }
             }
-            if (stopUnstarted && !relocation.HasDeparted)
+            bool activatedStock = result.Status == DroneStationRequestStatus.Applied &&
+                result.Operation == DroneStationOperation.ActivateStored;
+            if (stopUnstarted && !relocation.DepartureCommitted && !intent.Completed && !activatedStock)
             {
                 intent.Finish = true;
                 intent.Completed = false;
@@ -196,9 +205,19 @@ public partial struct DroneStationRelocationDecisionSystem : ISystem
             intents.Add(intent);
             return;
         }
-        if (stopUnstarted && !relocation.HasDeparted)
+        if (stopUnstarted && !relocation.DepartureCommitted)
         {
             intent.Finish = true;
+            intents.Add(intent);
+            return;
+        }
+        if (relocation.Stage == DroneStationRelocationStageEnum.WaitingForActivation && drone == Entity.Null)
+        {
+            if (!destinationValid) return;
+            Entity request = DroneStationRequestUtility.Submit(manager, Entity.Null, relocation.Source,
+                DroneStationOperation.ActivateStored, relocation.SourceSlotIndex, relocation.Task, memberIndex);
+            manager.AddComponent<DroneStationRelocationRequest>(request);
+            intent.Request = request;
             intents.Add(intent);
             return;
         }
@@ -248,7 +267,7 @@ public partial struct DroneStationRelocationDecisionSystem : ISystem
                 for (int slot = 0; slot < slotCount; slot++)
                 {
                     bool occupied = sourceStorage.IsDockOccupied(slot) || sourceStorage.IsReserved(slot);
-                    foreach (var item in sourceStorage.StoredItems) occupied |= item.SlotIndex == slot;
+                    occupied |= sourceStorage.StoredItems[slot].Quantity > 0;
                     if (!occupied)
                     {
                         station.CanDock = true;
@@ -294,7 +313,8 @@ public partial struct DroneStationRelocationDecisionSystem : ISystem
     private static void Submit(EntityManager manager, Entity drone, Entity station, DroneStationOperation operation,
         ref DroneStationRelocationIntentElement intent, NativeList<DroneStationRelocationIntentElement> intents)
     {
-        Entity request = DroneStationRequestUtility.Submit(manager, drone, station, operation);
+        Entity request = DroneStationRequestUtility.Submit(manager, drone, station, operation,
+            relocationTask: intent.Task, relocationMemberIndex: intent.MemberIndex);
         manager.AddComponent<DroneStationRelocationRequest>(request);
         intent.Request = request;
         intents.Add(intent);

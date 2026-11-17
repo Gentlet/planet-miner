@@ -227,7 +227,7 @@ public partial class PrefabDatabaseInitializationSystem : SystemBase
         }
         if (DroneSpawnUtility.HasWorkerComponents(EntityManager, prefab) ||
             EntityManager.HasComponent<DroneBatteryState>(prefab) ||
-            EntityManager.HasComponent<ItemIdentity>(prefab) || EntityManager.HasComponent<ItemOwnership>(prefab))
+            EntityManager.HasComponent<ItemIdentity>(prefab))
         {
             error = "Drone prefab must not contain runtime worker, battery, cargo or item ownership state.";
             return false;

@@ -17,7 +17,7 @@ public partial struct CrafterDecisionSystem : ISystem
 {
     private EntityQuery _crafterQuery;
     private ComponentLookup<PendingBuildingDemolition> _pendingDemolitionLookup;
-    private ComponentLookup<DestroyItemRequest> _destroyItemRequestLookup;
+
     private BufferLookup<RecipeConfigElement> _recipeConfigLookup;
     private BufferLookup<RecipeIngredientElement> _recipeIngredientLookup;
     private BufferLookup<RecipeOutputElement> _recipeOutputLookup;
@@ -27,7 +27,7 @@ public partial struct CrafterDecisionSystem : ISystem
     public void OnCreate(ref SystemState state)
     {
         _pendingDemolitionLookup = state.GetComponentLookup<PendingBuildingDemolition>(true);
-        _destroyItemRequestLookup = state.GetComponentLookup<DestroyItemRequest>(true);
+
         _recipeConfigLookup = state.GetBufferLookup<RecipeConfigElement>(true);
         _recipeIngredientLookup = state.GetBufferLookup<RecipeIngredientElement>(true);
         _recipeOutputLookup = state.GetBufferLookup<RecipeOutputElement>(true);
@@ -35,7 +35,7 @@ public partial struct CrafterDecisionSystem : ISystem
 
         _crafterQuery = SystemAPI.QueryBuilder()
             .WithAllRW<CrafterDecision, CrafterStateDecision>()
-            .WithAll<CrafterState, StoredItemElement, ProductItemElement, ProductResult>()
+            .WithAll<CrafterState, StorageSlotElement, ProductSlotElement, ProductResult>()
             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
             .Build();
     }
@@ -49,7 +49,7 @@ public partial struct CrafterDecisionSystem : ISystem
         }
 
         _pendingDemolitionLookup.Update(ref state);
-        _destroyItemRequestLookup.Update(ref state);
+
         _recipeConfigLookup.Update(ref state);
         _recipeIngredientLookup.Update(ref state);
         _recipeOutputLookup.Update(ref state);
@@ -75,11 +75,11 @@ public partial struct CrafterDecisionSystem : ISystem
             CrafterDecisionHandle = SystemAPI.GetComponentTypeHandle<CrafterDecision>(false),
             CrafterStateDecisionHandle = SystemAPI.GetComponentTypeHandle<CrafterStateDecision>(false),
             CrafterStateHandle = SystemAPI.GetComponentTypeHandle<CrafterState>(true),
-            ProductItemElementHandle = SystemAPI.GetBufferTypeHandle<ProductItemElement>(true),
+            ProductSlotElementHandle = SystemAPI.GetBufferTypeHandle<ProductSlotElement>(true),
             ProductResultHandle = SystemAPI.GetBufferTypeHandle<ProductResult>(true),
             RecipeRegistryEntity = recipeRegistryEntity,
             PendingDemolitionLookup = _pendingDemolitionLookup,
-            DestroyItemRequestLookup = _destroyItemRequestLookup,
+
             RecipeConfigLookup = _recipeConfigLookup,
             RecipeIngredientLookup = _recipeIngredientLookup,
             RecipeOutputLookup = _recipeOutputLookup,
@@ -104,7 +104,7 @@ public partial struct CrafterDecisionJob : IJobChunk
     public ComponentTypeHandle<CrafterDecision> CrafterDecisionHandle;
     public ComponentTypeHandle<CrafterStateDecision> CrafterStateDecisionHandle;
     [ReadOnly] public ComponentTypeHandle<CrafterState> CrafterStateHandle;
-    [ReadOnly] public BufferTypeHandle<ProductItemElement> ProductItemElementHandle;
+    [ReadOnly] public BufferTypeHandle<ProductSlotElement> ProductSlotElementHandle;
     [ReadOnly] public BufferTypeHandle<ProductResult> ProductResultHandle;
 
     private struct RegistryReadContext
@@ -123,7 +123,7 @@ public partial struct CrafterDecisionJob : IJobChunk
         var crafterStateDecisionValues = chunk.GetNativeArray(ref CrafterStateDecisionHandle);
         var crafterStateDecisionEnabled = chunk.GetEnabledMask(ref CrafterStateDecisionHandle);
         var crafterStateValues = chunk.GetNativeArray(ref CrafterStateHandle);
-        var productItemElementValues = chunk.GetBufferAccessorRO(ref ProductItemElementHandle);
+        var productItemElementValues = chunk.GetBufferAccessorRO(ref ProductSlotElementHandle);
         var productResultValues = chunk.GetBufferAccessorRO(ref ProductResultHandle);
         var registryRead = new RegistryReadContext();
         var enumerator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -153,10 +153,7 @@ public partial struct CrafterDecisionJob : IJobChunk
     [ReadOnly]
     public ComponentLookup<PendingBuildingDemolition> PendingDemolitionLookup;
 
-    [ReadOnly]
-    public ComponentLookup<DestroyItemRequest> DestroyItemRequestLookup;
-
-    [ReadOnly]
+[ReadOnly]
     public BufferLookup<RecipeConfigElement> RecipeConfigLookup;
 
     [ReadOnly]
@@ -177,7 +174,7 @@ public partial struct CrafterDecisionJob : IJobChunk
         ref CrafterStateDecision stateDecision,
         EnabledRefRW<CrafterStateDecision> stateDecisionEnabled,
         in CrafterState state,
-        in DynamicBuffer<ProductItemElement> productItems,
+        in DynamicBuffer<ProductSlotElement> productItems,
         in DynamicBuffer<ProductResult> productResults, ref RegistryReadContext registryRead)
     {
         decision.PowerTimeRatio = 0f;
@@ -280,20 +277,8 @@ public partial struct CrafterDecisionJob : IJobChunk
                 continue;
             }
 
-            int countInSlot = 0;
-            for (int p = 0; p < productItems.Length; p++)
-            {
-                if (productItems[p].SlotIndex == outIdx)
-                {
-                    countInSlot++;
-                }
-            }
-
-            int maxStack = (hasItemRegistry && output.ItemType != ItemTypeEnum.None)
-                ? ItemRegistry.GetMaxStack(itemConfigs, output.ItemType)
-                : 0;
-
-            if (countInSlot + output.Amount > maxStack)
+            int maxStack = hasItemRegistry ? ItemRegistry.GetMaxStack(itemConfigs, output.ItemType) : 0;
+            if (InventorySlotUtility.ProductFreeQuantity(productItems, outIdx, output.ItemType, maxStack) < output.Amount)
             {
                 canProduceOutput = false;
                 break;

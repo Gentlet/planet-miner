@@ -35,16 +35,8 @@ public static class DroneItemTransferUtility
 
     public static bool CargoHasSingleType(EntityManager manager, Entity worker, ItemTypeEnum type)
     {
-        var cargo = manager.GetBuffer<StoredItemElement>(worker, true);
-        for (int i = 0; i < cargo.Length; i++)
-        {
-            if (cargo[i].ItemType != type) return false;
-            Entity item = cargo[i].ItemEntity;
-            if (!manager.Exists(item)) return false;
-            if (!manager.HasComponent<ItemIdentity>(item)) return false;
-            if (manager.GetComponentData<ItemIdentity>(item).Type != type) return false;
-        }
-        return true;
+        var cargo = manager.GetComponentData<DroneCargoState>(worker);
+        return cargo.Quantity == 0 || (cargo.Quantity > 0 && cargo.ItemType == type);
     }
 
     public static void ReduceReservation(EntityManager manager, Entity assignmentEntity,
@@ -71,5 +63,30 @@ public static class DroneItemTransferUtility
             rows[i] = row;
             remaining -= amount;
         }
+    }
+
+    internal static int FindWithdrawal(in DynamicBuffer<DroneInventoryWithdrawalElement> budget, Entity owner,
+        bool product, int slot, ItemTypeEnum type)
+    {
+        for (int index = 0; index < budget.Length; index++)
+        {
+            var row = budget[index];
+            if (row.Owner == owner && row.Product == product && row.SlotIndex == slot && row.ItemType == type) return index;
+        }
+        return -1;
+    }
+
+    internal static void CaptureWithdrawal(DynamicBuffer<DroneInventoryWithdrawalElement> budget, Entity owner,
+        bool product, int slot, ItemTypeEnum type, int quantity)
+    {
+        if (quantity <= 0 || FindWithdrawal(budget, owner, product, slot, type) >= 0) return;
+        budget.Add(new DroneInventoryWithdrawalElement
+        {
+            Owner = owner,
+            Product = product,
+            SlotIndex = slot,
+            ItemType = type,
+            Remaining = quantity
+        });
     }
 }

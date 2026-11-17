@@ -98,7 +98,7 @@ public static class DroneSpawnUtility
         return manager.HasComponent<DroneWorker>(entity) || manager.HasComponent<DroneWorkerObservation>(entity) ||
             manager.HasComponent<DroneWorkerAssignment>(entity) || manager.HasComponent<DroneCargoState>(entity) ||
             manager.HasComponent<DroneActivityState>(entity) || manager.HasComponent<DroneDocked>(entity) ||
-            manager.HasBuffer<StoredItemElement>(entity) || manager.HasComponent<DroneMovementState>(entity) ||
+            manager.HasComponent<DroneMovementState>(entity) ||
             manager.HasComponent<DroneMovementDecision>(entity) || manager.HasComponent<DroneMovementResult>(entity);
     }
 
@@ -155,7 +155,7 @@ public static class DroneSpawnUtility
             : float4x4.identity;
     }
 
-    private static void RecordInitialState(ref EntityCommandBuffer ecb, Entity drone, LocalTransform transform,
+    internal static void RecordInitialState(ref EntityCommandBuffer ecb, Entity drone, LocalTransform transform,
         float3 position, int2 cell, float charge, bool hasGridPosition, bool hasLocalToWorld, bool hasBattery,
         float4x4 postTransform)
     {
@@ -192,7 +192,6 @@ public static class DroneSpawnUtility
         ecb.AddComponent<DroneMovementState>(drone);
         ecb.AddComponent<DroneMovementDecision>(drone);
         ecb.AddComponent<DroneMovementResult>(drone);
-        ecb.AddBuffer<StoredItemElement>(drone);
         if (!hasBattery)
         {
             ecb.AddComponent(drone, new DroneBatteryState { CurrentCharge = charge });

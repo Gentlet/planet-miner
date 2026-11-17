@@ -29,7 +29,7 @@ public static class DroneTransportEndpointUtility
         var type = manager.GetComponentData<BuildingType>(owner).Type;
         if (area == DroneTransportAreaEnum.Product)
         {
-            return (type == BuildingTypeEnum.Miner || type == BuildingTypeEnum.Crafter) && manager.HasBuffer<ProductItemElement>(owner);
+            return (type == BuildingTypeEnum.Miner || type == BuildingTypeEnum.Crafter) && manager.HasBuffer<ProductSlotElement>(owner);
         }
 
         if (area != DroneTransportAreaEnum.Input)
@@ -37,7 +37,7 @@ public static class DroneTransportEndpointUtility
             return false;
         }
 
-        return (type == BuildingTypeEnum.Crafter || type == BuildingTypeEnum.CoalGenerator || type == BuildingTypeEnum.ResearchBuilding) && manager.HasComponent<Storage>(owner) && manager.HasBuffer<StoredItemElement>(owner);
+        return (type == BuildingTypeEnum.Crafter || type == BuildingTypeEnum.CoalGenerator || type == BuildingTypeEnum.ResearchBuilding) && manager.HasComponent<Storage>(owner) && manager.HasBuffer<StorageSlotElement>(owner);
     }
 
     public static bool IsTarget(EntityManager manager, in DroneLogisticsTask task)
@@ -57,59 +57,25 @@ public static class DroneTransportEndpointUtility
 
     public static int CountSource(EntityManager manager, Entity owner, ItemTypeEnum type, DroneTransportAreaEnum area, DroneTransportPurposeEnum purpose = default)
     {
-        if (!IsArea(manager, owner, area))
-        {
-            return 0;
-        }
-
-        if (purpose == DroneTransportPurposeEnum.ResearchRecovery)
-        {
-            return ResearchRecoveryUtility.Count(manager, owner, type);
-        }
-
-        if (area == DroneTransportAreaEnum.GeneralStorage)
-        {
-            if (type == ItemTypeEnum.Drone && manager.HasComponent<PreparingStationDemolition>(owner))
-            {
-                return 0;
-            }
-
-            int general = manager.GetComponentData<Storage>(owner).SlotCount - StationStorageUtility.ReadDedicatedCount(manager, owner);
-            int quantity = 0;
-            foreach (var entry in manager.GetBuffer<StoredItemElement>(owner, true))
-            {
-                if (entry.SlotIndex < general && entry.ItemType == type && ItemOwnershipApplySystem.CanTransferItem(manager, entry.ItemEntity, type, owner))
-                {
-                    quantity++;
-                }
-            }
-
-            return quantity;
-        }
-
-        int count = 0;
+        if (!IsArea(manager, owner, area)) return 0;
+        if (purpose == DroneTransportPurposeEnum.ResearchRecovery) return ResearchRecoveryUtility.Count(manager, owner, type);
         if (area == DroneTransportAreaEnum.Product)
         {
-            foreach (var item in manager.GetBuffer<ProductItemElement>(owner, true))
-            {
-                if (item.ItemType == type && ItemOwnershipApplySystem.CanTransferItem(manager, item.ItemEntity, type, owner))
-                {
-                    count++;
-                }
-            }
-        }
-        else
-        {
-            foreach (var item in manager.GetBuffer<StoredItemElement>(owner, true))
-            {
-                if (item.ItemType == type && ItemOwnershipApplySystem.CanTransferItem(manager, item.ItemEntity, type, owner))
-                {
-                    count++;
-                }
-            }
+            int outputQuantity = 0;
+            foreach (var slot in manager.GetBuffer<ProductSlotElement>(owner, true))
+                if (slot.ItemType == type) outputQuantity += slot.Quantity;
+            return outputQuantity;
         }
 
-        return count;
+        if (type == ItemTypeEnum.Drone && manager.HasComponent<PreparingStationDemolition>(owner)) return 0;
+        var inventory = manager.GetBuffer<StorageSlotElement>(owner, true);
+        int count = area == DroneTransportAreaEnum.GeneralStorage
+            ? inventory.Length - StationStorageUtility.ReadDedicatedCount(manager, owner)
+            : inventory.Length;
+        int quantity = 0;
+        for (int slot = 0; slot < count; slot++)
+            if (inventory[slot].ItemType == type) quantity += inventory[slot].Quantity;
+        return quantity;
     }
 
     public static int SourceQuantity(EntityManager manager, in DroneLogisticsTask task, Entity source)
@@ -196,11 +162,11 @@ public static class DroneTransportEndpointUtility
         }
 
         int stored = 0;
-        foreach (var entry in manager.GetBuffer<StoredItemElement>(owner, true))
+        foreach (var entry in manager.GetBuffer<StorageSlotElement>(owner, true))
         {
             if (entry.ItemType == type)
             {
-                stored++;
+                stored += entry.Quantity;
             }
         }
 

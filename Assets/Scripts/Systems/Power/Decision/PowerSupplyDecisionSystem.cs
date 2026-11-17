@@ -34,7 +34,7 @@ public partial struct PowerSupplyDecisionSystem : ISystem
             Validation = validationOwner.Validation, ConfigEntity = configEntity,
             ConfigLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
             FuelLookup = SystemAPI.GetComponentLookup<FuelEnergyState>(true),
-            StoredLookup = SystemAPI.GetBufferLookup<StoredItemElement>(true),
+            StoredLookup = SystemAPI.GetBufferLookup<StorageSlotElement>(true),
             DeltaTime = math.min(SystemAPI.Time.DeltaTime, GameConstants.MaxSimulationDeltaTime)
         }.ScheduleParallel(_generatorQuery, dependency);
         state.Dependency = prepare;
@@ -54,7 +54,7 @@ internal struct PreparePowerAvailabilityJob : IJobChunk
     public Entity ConfigEntity;
     [ReadOnly] public BufferLookup<BuildingConfigElement> ConfigLookup;
     [ReadOnly] public ComponentLookup<FuelEnergyState> FuelLookup;
-    [ReadOnly] public BufferLookup<StoredItemElement> StoredLookup;
+    [ReadOnly] public BufferLookup<StorageSlotElement> StoredLookup;
     public float DeltaTime;
 
     public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
@@ -90,7 +90,7 @@ internal struct PreparePowerAvailabilityJob : IJobChunk
         float maximumEnergy = config.Power.MaximumGeneration * DeltaTime;
         plan.AvailableEnergy = type.Type == BuildingTypeEnum.CoalGenerator
             ? PowerFrameUtility.RoundEnergyDown(System.Math.Min(maximumEnergy,
-                (double)FuelLookup[entity].RemainingEnergy + StoredLookup[entity].Length * (double)config.Power.CoalEnergyPerItem), maximumEnergy)
+                (double)FuelLookup[entity].RemainingEnergy + InventorySlotUtility.Count(StoredLookup[entity], ItemTypeEnum.Coal) * (double)config.Power.CoalEnergyPerItem), maximumEnergy)
             : maximumEnergy;
         available.ValueRW = plan.AvailableEnergy > 0f;
         prepared.ValueRW = true;

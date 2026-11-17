@@ -6,15 +6,14 @@ using Unity.Entities;
 public partial struct DroneStationLifecycleDecisionSystem : ISystem
 {
     private EntityQueryMask _stationMask;
-    private EntityQueryMask _itemMask;
     private EntityQueryMask _workerMask;
     private DroneStationEligibility _eligibility;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        DroneStationEligibility.CreateMasks(ref state, out _stationMask, out _itemMask, out _workerMask);
-        _eligibility = DroneStationEligibility.Create(ref state, _stationMask, _itemMask, _workerMask);
+        DroneStationEligibility.CreateMasks(ref state, out _stationMask, out _workerMask);
+        _eligibility = DroneStationEligibility.Create(ref state, _stationMask, _workerMask);
         state.RequireForUpdate<PrefabDatabaseReady>();
         state.RequireForUpdate<DroneBatteryConfig>();
     }

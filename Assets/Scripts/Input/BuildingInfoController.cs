@@ -36,12 +36,14 @@ public readonly struct BuildingInfoDroneRow
     public readonly string Text;
     public readonly bool Stored;
     public readonly bool Docked;
-    public BuildingInfoDroneRow(Entity drone, string text, bool stored, bool docked)
+    public readonly int SlotIndex;
+    public BuildingInfoDroneRow(Entity drone, string text, bool stored, bool docked, int slotIndex = -1)
     {
         Drone = drone;
         Text = text;
         Stored = stored;
         Docked = docked;
+        SlotIndex = slotIndex;
     }
 }
 
@@ -296,39 +298,41 @@ public sealed class BuildingInfoController : PeriodicWorldView
                 _text.AppendLine("배정 작업 없음");
             }
         }
-        if (manager.HasBuffer<StoredItemElement>(drone))
+        if (manager.HasComponent<DroneCargoState>(drone))
         {
-            _text.AppendLine("실제 적재 " + manager.GetBuffer<StoredItemElement>(drone, true).Length + "개");
+            _text.AppendLine("실제 적재 " + manager.GetComponentData<DroneCargoState>(drone).Quantity + "개");
         }
     }
 
     private void ReadItems(EntityManager manager, Entity entity)
     {
         var counts = new Dictionary<(DroneTransportAreaEnum, ItemTypeEnum), int>();
-        if (manager.HasBuffer<StoredItemElement>(entity))
+        if (manager.HasBuffer<StorageSlotElement>(entity))
         {
             bool general = DroneSchedulingUtility.IsStorage(manager, entity);
             int generalSlots = manager.HasComponent<Storage>(entity) ? manager.GetComponentData<Storage>(entity).SlotCount - StationStorageUtility.ReadDedicatedCount(manager, entity) : int.MaxValue;
-            foreach (var item in manager.GetBuffer<StoredItemElement>(entity, true))
+            var inventory = manager.GetBuffer<StorageSlotElement>(entity, true);
+            for (int index = 0; index < inventory.Length; index++)
             {
-                if (general && item.SlotIndex >= generalSlots)
+                var item = inventory[index];
+                if (item.Quantity <= 0 || (general && index >= generalSlots))
                 {
                     continue;
                 }
 
                 var key = (general ? DroneTransportAreaEnum.GeneralStorage : DroneTransportAreaEnum.Input, item.ItemType);
                 counts.TryGetValue(key, out int count);
-                counts[key] = count + 1;
+                counts[key] = count + item.Quantity;
             }
         }
 
-        if (manager.HasBuffer<ProductItemElement>(entity))
+        if (manager.HasBuffer<ProductSlotElement>(entity))
         {
-            foreach (var item in manager.GetBuffer<ProductItemElement>(entity, true))
+            foreach (var item in manager.GetBuffer<ProductSlotElement>(entity, true))
             {
                 var key = (DroneTransportAreaEnum.Product, item.ItemType);
                 counts.TryGetValue(key, out int count);
-                counts[key] = count + 1;
+                counts[key] = count + item.Quantity;
             }
         }
 
@@ -371,12 +375,12 @@ public sealed class BuildingInfoController : PeriodicWorldView
                 continue;
             }
 
-            if (!manager.HasComponent<ItemIdentity>(item) || !manager.HasComponent<ItemOwnership>(item))
+            if (!manager.HasComponent<ItemIdentity>(item))
             {
                 continue;
             }
 
-            if (!manager.GetComponentData<ItemOwnership>(item).IsWorldItem)
+            if (DroneSchedulingUtility.HasDestroy(manager, item))
             {
                 continue;
             }
@@ -472,22 +476,15 @@ public sealed class BuildingInfoController : PeriodicWorldView
                     waiting++;
                 }
             }
-            int stored = 0;
-            foreach (var entry in manager.GetBuffer<StoredItemElement>(entity, true))
-            {
-                if (entry.ItemType == ItemTypeEnum.Drone)
-                {
-                    stored++;
-                }
-            }
+            int stored = InventorySlotUtility.Count(manager.GetBuffer<StorageSlotElement>(entity, true), ItemTypeEnum.Drone);
             _text.AppendLine("수납 " + stored + " / 정박 " + docked + " / 충전 " + charging + " / 충전 대기 " + waiting);
         }
-        foreach (var item in manager.GetBuffer<StoredItemElement>(entity, true))
+        var slots = manager.GetBuffer<StorageSlotElement>(entity, true);
+        for (int index = 0; index < slots.Length; index++)
         {
-            if (item.ItemType == ItemTypeEnum.Drone)
-            {
-                Drones.Add(new BuildingInfoDroneRow(item.ItemEntity, "슬롯 " + item.SlotIndex + " / 수납 드론", true, false));
-            }
+            var slot = slots[index];
+            if (slot.ItemType == ItemTypeEnum.Drone && slot.Quantity > 0)
+                Drones.Add(new BuildingInfoDroneRow(Entity.Null, $"슬롯 {index} / 수납 드론 {slot.Quantity}기", true, false, index));
         }
 
         using var query = manager.CreateEntityQuery(typeof(DroneWorker), typeof(GridPosition));
@@ -535,14 +532,14 @@ public sealed class BuildingInfoController : PeriodicWorldView
         Changed?.Invoke();
     }
 
-    public void RequestStation(Entity drone, DroneStationOperation operation)
+    public void RequestStation(Entity drone, DroneStationOperation operation, int sourceSlotIndex = -1)
     {
         if (!CanSubmit())
         {
             return;
         }
 
-        Entity request = DroneStationRequestUtility.Submit(_world.EntityManager, drone, _selection.Selected, operation);
+        Entity request = DroneStationRequestUtility.Submit(_world.EntityManager, drone, _selection.Selected, operation, sourceSlotIndex);
         WorldUiRequestFeedbackRelay.Track(_world.EntityManager, _feedbackToken, request);
         Feedback = "요청 접수 대기";
         Changed?.Invoke();

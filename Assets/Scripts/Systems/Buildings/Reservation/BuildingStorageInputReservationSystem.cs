@@ -7,7 +7,7 @@ using Unity.Mathematics;
 
 /// <summary>
 /// 역할·목적: Reservation에서 같은 틱 건물 입고 후보의 저장 슬롯 경합을 중재한다.
-/// 입력·생성자: BuildingItemInputDecisionSystem의 활성 후보, 기존 StoredItemElement와 입력 전용 슬롯/품목 스택 한도.
+/// 입력·생성자: BuildingItemInputDecisionSystem의 활성 후보, 기존 StorageSlotElement와 입력 전용 슬롯/품목 스택 한도.
 /// 출력·소유권: 허용 결정의 TargetSlotIndex 또는 거부/비활성 상태만 쓴다. 저장 실물 버퍼는 변경하지 않는다.
 /// 이번 Job의 PendingAdditions로 앞서 승인한 품목/수량을 합산하여 같은 빈 슬롯의 중복 사용을 막는다. 영속 예약이 아니다.
 /// 이용·정리: BuildingItemStorageApplySystem이 승인 슬롯에 입고한다. 임시 집계는 Job 완료 후 해제하며 ECB 기록은 없다.
@@ -19,7 +19,7 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
     private ComponentLookup<Storage> _storageLookup;
     private ComponentLookup<DroneStationStorage> _stationStorageLookup;
     private BufferLookup<DockedDroneElement> _dockedLookup;
-    private BufferLookup<StoredItemElement> _storedBufferLookup;
+    private BufferLookup<StorageSlotElement> _storedBufferLookup;
     private BufferLookup<BuildingInputSlotElement> _inputSlotLookup;
     private BufferLookup<ItemConfigElement> _itemConfigLookup;
     private EntityQuery _inputQuery;
@@ -31,7 +31,7 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
         _storageLookup = state.GetComponentLookup<Storage>(true);
         _stationStorageLookup = state.GetComponentLookup<DroneStationStorage>(true);
         _dockedLookup = state.GetBufferLookup<DockedDroneElement>(true);
-        _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
+        _storedBufferLookup = state.GetBufferLookup<StorageSlotElement>(true);
         _inputSlotLookup = state.GetBufferLookup<BuildingInputSlotElement>(true);
         _itemConfigLookup = state.GetBufferLookup<ItemConfigElement>(true);
         _itemRegistryQuery = state.GetEntityQuery(ComponentType.ReadOnly<ItemRegistry>());
@@ -135,7 +135,7 @@ public partial struct BuildingStorageInputReservationJob : IJobChunk
     [ReadOnly] public ComponentLookup<PreparingStationDemolition> PreparingLookup;
 
     [ReadOnly]
-    public BufferLookup<StoredItemElement> StoredBufferLookup;
+    public BufferLookup<StorageSlotElement> StoredBufferLookup;
 
     [ReadOnly]
     public BufferLookup<BuildingInputSlotElement> InputSlotLookup;
@@ -172,7 +172,7 @@ public partial struct BuildingStorageInputReservationJob : IJobChunk
         int slotCount = storage.SlotCount;
         int dedicated = StationStorageLookup.TryGetComponent(building, out var stationStorage)
             ? stationStorage.DedicatedSlotCount : 0;
-        if (slotCount <= 0)
+        if (slotCount <= 0 || storedBuffer.Length != slotCount)
         {
             inputDecision.CanDeposit = false;
             inputDecision.TargetSlotIndex = -1;
@@ -214,21 +214,10 @@ public partial struct BuildingStorageInputReservationJob : IJobChunk
         var slotOccupancy = new FixedList512Bytes<int>();
         var slotTypes = new FixedList512Bytes<ItemTypeEnum>();
 
-        for (int s = 0; s < safeSlotCount; s++)
+        for (int slot = 0; slot < safeSlotCount; slot++)
         {
-            slotOccupancy.Add(0);
-            // 전용 슬롯은 비어 있어도 품목이 정해져 있다. 같은 프레임의 예약끼리도 스택을 공유한다.
-            slotTypes.Add(hasInputSlots ? inputSlots[s].ItemType : (ItemTypeEnum)255);
-        }
-
-        for (int b = 0; b < storedBuffer.Length; b++)
-        {
-            int slot = storedBuffer[b].SlotIndex;
-            if (slot >= 0 && slot < safeSlotCount)
-            {
-                slotOccupancy[slot] = slotOccupancy[slot] + 1;
-                slotTypes[slot] = storedBuffer[b].ItemType;
-            }
+            slotOccupancy.Add(storedBuffer[slot].Quantity);
+            slotTypes.Add(storedBuffer[slot].ItemType);
         }
 
         // 저장 버퍼는 입고 전이므로 같은 Job에서 먼저 승인된 후보의 품목/수량을 합산해야 한다.

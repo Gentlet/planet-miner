@@ -11,30 +11,30 @@ public static class ResearchRecoveryUtility
             return false;
         }
         return manager.HasComponent<ResearchCycleState>(entity) &&
-            manager.HasComponent<GridPosition>(entity) && manager.HasBuffer<StoredItemElement>(entity) &&
+            manager.HasComponent<GridPosition>(entity) && manager.HasBuffer<StorageSlotElement>(entity) &&
             manager.HasBuffer<ResearchRecoveryElement>(entity) && !manager.HasComponent<PendingBuildingDemolition>(entity);
     }
 
-    /// <summary>회수 부분집합이 있는 소유자만 목록으로 제한한다. 일반 보관/수행자는 이 필터를 통과한다.</summary>
-    public static bool PassesRecoveryFilter(EntityManager manager, Entity source, Entity item)
-    {
-        if (!manager.HasBuffer<ResearchRecoveryElement>(source))
-        {
-            return true;
-        }
-        return ContainsRecoveryItem(manager.GetBuffer<ResearchRecoveryElement>(source, true), item);
-    }
-
-    private static bool ContainsRecoveryItem(DynamicBuffer<ResearchRecoveryElement> recovery, Entity item)
+    internal static int ReadSlotQuantity(DynamicBuffer<ResearchRecoveryElement> recovery, int slotIndex, ItemTypeEnum type)
     {
         foreach (var entry in recovery)
         {
-            if (entry.Item == item)
-            {
-                return true;
-            }
+            if (entry.SlotIndex == slotIndex && entry.ItemType == type) return entry.Quantity;
         }
-        return false;
+        return 0;
+    }
+
+    internal static void ConsumeSlot(DynamicBuffer<ResearchRecoveryElement> recovery, int slotIndex, ItemTypeEnum type, int quantity)
+    {
+        for (int index = 0; index < recovery.Length; index++)
+        {
+            var entry = recovery[index];
+            if (entry.SlotIndex != slotIndex || entry.ItemType != type) continue;
+            entry.Quantity -= quantity;
+            if (entry.Quantity <= 0) recovery.RemoveAt(index);
+            else recovery[index] = entry;
+            return;
+        }
     }
 
     public static int Count(EntityManager manager, Entity source, ItemTypeEnum type)
@@ -57,7 +57,7 @@ public static class ResearchRecoveryUtility
     {
         private readonly EntityManager _manager;
         private readonly Entity _source;
-        private DynamicBuffer<StoredItemElement> _storedItems;
+        private DynamicBuffer<StorageSlotElement> _storedItems;
         private DynamicBuffer<ResearchRecoveryElement> _recovery;
 
         internal ValidatedSourceReadContext(EntityManager manager, Entity source)
@@ -68,13 +68,13 @@ public static class ResearchRecoveryUtility
             _recovery = default;
         }
 
-        internal DynamicBuffer<StoredItemElement> StoredItems
+        internal DynamicBuffer<StorageSlotElement> StoredItems
         {
             get
             {
                 if (!_storedItems.IsCreated)
                 {
-                    _storedItems = _manager.GetBuffer<StoredItemElement>(_source, true);
+                    _storedItems = _manager.GetBuffer<StorageSlotElement>(_source, true);
                 }
                 return _storedItems;
             }
@@ -83,21 +83,13 @@ public static class ResearchRecoveryUtility
         internal int Count(ItemTypeEnum type)
         {
             int count = 0;
-            foreach (var item in StoredItems)
+            var storage = StoredItems;
+            if (!_recovery.IsCreated) _recovery = _manager.GetBuffer<ResearchRecoveryElement>(_source, true);
+            foreach (var entry in _recovery)
             {
-                if (type != ItemTypeEnum.None && item.ItemType != type)
-                {
-                    continue;
-                }
-                if (!_recovery.IsCreated)
-                {
-                    _recovery = _manager.GetBuffer<ResearchRecoveryElement>(_source, true);
-                }
-                if (ContainsRecoveryItem(_recovery, item.ItemEntity) &&
-                    ItemOwnershipApplySystem.CanTransferItem(_manager, item.ItemEntity, item.ItemType, _source))
-                {
-                    count++;
-                }
+                if ((type == ItemTypeEnum.None || entry.ItemType == type) &&
+                    (uint)entry.SlotIndex < (uint)storage.Length && storage[entry.SlotIndex].ItemType == entry.ItemType)
+                    count += Unity.Mathematics.math.min(entry.Quantity, storage[entry.SlotIndex].Quantity);
             }
             return count;
         }

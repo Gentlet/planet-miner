@@ -11,28 +11,27 @@ using Unity.Transforms;
 [UpdateBefore(typeof(DroneStationLifecycleDecisionSystem))]
 public partial struct DroneStationAutomationDecisionSystem : ISystem
 {
-    private EntityQuery _stations, _workers, _stored, _tasks, _sites, _storages, _assignments, _requests, _results, _registry;
+    private EntityQuery _stations, _workers, _tasks, _sites, _storages, _assignments, _requests, _results, _registry;
     private Entity _candidates;
-    private EntityQueryMask _stationMask, _itemMask, _workerMask;
+    private EntityQueryMask _stationMask, _workerMask;
     private DroneStationEligibility _eligibility;
 
     public void OnCreate(ref SystemState state)
     {
         _candidates = DroneSchedulingUtility.GetOrCreateCandidates(state.EntityManager);
         _stations = SystemAPI.QueryBuilder().WithAll<DroneStation, DroneStationNetworkDecision, DroneStationStorage, Storage>()
-            .WithAll<GridPosition, StoredItemElement, DockedDroneElement>().WithNone<PendingBuildingDemolition>().Build();
+            .WithAll<GridPosition, StorageSlotElement, DockedDroneElement>().WithNone<PendingBuildingDemolition>().Build();
         _workers = SystemAPI.QueryBuilder().WithAll<DroneWorker, DroneWorkerAssignment, DroneMovementState, DroneBatteryState>()
-            .WithAll<DroneCargoState, DroneActivityState, LocalTransform, StoredItemElement>().Build();
-        _stored = SystemAPI.QueryBuilder().WithAll<ItemIdentity, ItemOwnership, LocalTransform>().WithNone<DroneWorker>().Build();
+            .WithAll<DroneCargoState, DroneActivityState, LocalTransform>().Build();
         _tasks = SystemAPI.QueryBuilder().WithAll<DroneLogisticsTask>().Build();
         _sites = SystemAPI.QueryBuilder().WithAll<ConstructionSite, GridPosition>().Build();
-        _storages = SystemAPI.QueryBuilder().WithAll<BuildingType, Storage, StoredItemElement, GridPosition>().Build();
+        _storages = SystemAPI.QueryBuilder().WithAll<BuildingType, Storage, StorageSlotElement, GridPosition>().Build();
         _assignments = SystemAPI.QueryBuilder().WithAll<DroneTaskAssignment>().Build();
         _requests = SystemAPI.QueryBuilder().WithAll<DroneStationRequest>().Build();
         _results = SystemAPI.QueryBuilder().WithAll<DroneAutomaticStationRequest, DroneStationResult>().Build();
         _registry = SystemAPI.QueryBuilder().WithAll<ItemRegistry, ItemConfigElement>().Build();
-        DroneStationEligibility.CreateMasks(ref state, out _stationMask, out _itemMask, out _workerMask);
-        _eligibility = DroneStationEligibility.Create(ref state, _stationMask, _itemMask, _workerMask);
+        DroneStationEligibility.CreateMasks(ref state, out _stationMask, out _workerMask);
+        _eligibility = DroneStationEligibility.Create(ref state, _stationMask, _workerMask);
         state.RequireForUpdate<PrefabDatabaseReady>();
         state.RequireForUpdate<DroneMovementConfig>();
         state.RequireForUpdate<DroneBatteryConfig>();
@@ -49,7 +48,6 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
         using var stations = _stations.ToEntityArray(Allocator.Temp);
         using var networks = _stations.ToComponentDataArray<DroneStationNetworkDecision>(Allocator.Temp);
         using var workers = _workers.ToEntityArray(Allocator.Temp);
-        using var stored = _stored.ToEntityArray(Allocator.Temp);
         using var tasks = _tasks.ToEntityArray(Allocator.Temp);
         using var sites = _sites.ToEntityArray(Allocator.Temp);
         using var storages = _storages.ToEntityArray(Allocator.Temp);
@@ -68,6 +66,7 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
         _eligibility.Update(ref state);
         var eligibility = _eligibility;
         var dedicated = SystemAPI.GetComponentLookup<DroneStationStorage>(true);
+        var storageLookup = SystemAPI.GetBufferLookup<StorageSlotElement>(true);
         int maximumStack = ItemRegistry.GetMaxStack(manager.GetBuffer<ItemConfigElement>(registry, true), ItemTypeEnum.Drone);
         using var slotRanges = new NativeParallelHashMap<Entity, DroneStationSlotRange>(1, Allocator.Temp);
         using var slotPreview = new NativeList<DroneStationSlot>(Allocator.Temp);
@@ -115,7 +114,7 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
                 DroneStationAutomationUtility.PrepareResume(manager, worker, station, assignment, networks, storages, sites, registry, plans);
                 continue;
             }
-            if (docked && !linked && manager.GetBuffer<StoredItemElement>(worker, true).IsEmpty)
+            if (docked && !linked && manager.GetComponentData<DroneCargoState>(worker).Quantity == 0)
                 DroneStationAutomationUtility.PrepareDemand(manager, _candidates, worker, station, tasks, sites, storages,
                     assignments, networks, registry, capacity, maximum, plans);
             var request = new DroneStationRequest { Drone = worker, Station = station, Operation = DroneStationOperation.Store };
@@ -131,38 +130,80 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
             slotPreview.Clear();
             int preferred = docked ? manager.GetComponentData<DroneDocked>(worker).SlotIndex : -1;
             if (DroneStationLifecycleUtility.ReserveSlot(request, preferred, maximumStack,
-                eligibility.Storages, dedicated, eligibility.Items, eligibility.Docked, slotRanges, slotPreview, eligibility.Reserved) < 0) continue;
+                eligibility.Storages, dedicated, storageLookup, eligibility.Docked, slotRanges, slotPreview, eligibility.Reserved) < 0) continue;
             intents.Add(new DroneStationAutomationIntent { Drone = request.Drone, Station = request.Station, Operation = request.Operation });
         }
-        foreach (Entity item in stored)
+        if (tasks.Length > 0)
         {
-            if (busy.Contains(item) || manager.GetComponentData<ItemIdentity>(item).Type != ItemTypeEnum.Drone) continue;
-            Entity station = manager.GetComponentData<ItemOwnership>(item).Owner;
-            if (station == Entity.Null || !manager.Exists(station) || !eligibility.StationMask.MatchesIgnoreFilter(station)) continue;
-            var request = new DroneStationRequest { Drone = item, Station = station, Operation = DroneStationOperation.Activate };
-            if (eligibility.Validate(request, maximum, true) != DroneStationRequestStatus.Applied) continue;
-            DroneStationAutomationUtility.PrepareDemand(manager, _candidates, item, station, tasks, sites, storages,
-                assignments, networks, registry, capacity, maximum, plans);
+            foreach (Entity station in stations)
+            {
+                if (manager.HasComponent<PreparingStationDemolition>(station)) continue;
+                var inventory = storageLookup[station];
+                for (int slot = 0; slot < inventory.Length; slot++)
+                {
+                    if (inventory[slot].ItemType != ItemTypeEnum.Drone) continue;
+                    int alreadyRequested = 0;
+                    foreach (var request in requests)
+                    {
+                        if (request.Operation == DroneStationOperation.ActivateStored &&
+                            request.Station == station && request.SourceSlotIndex == slot) alreadyRequested++;
+                    }
+                    int count = inventory[slot].Quantity - alreadyRequested;
+                    if (count <= 0) continue;
+                    DroneStationAutomationUtility.PrepareDemand(manager, _candidates, Entity.Null, station, tasks,
+                        sites, storages, assignments, networks, registry, capacity, maximum, plans, slot, count);
+                }
+            }
         }
         using var outcomes = new NativeArray<DroneFlightPlan>(plans.Length, Allocator.TempJob);
         new EvaluateActivationRoutesJob { Plans = plans.AsArray(), Stations = flights, Results = outcomes,
             Maximum = maximum, Rate = config.EnergyPerDistance }.Schedule(plans.Length, 32).Complete();
         using var activated = new NativeHashSet<Entity>(math.max(1, plans.Length), Allocator.Temp);
+        var plannedStock = new NativeHashMap<int3, int>(math.max(1, plans.Length), Allocator.Temp);
+        var plannedDemand = new NativeHashMap<Entity, int>(math.max(1, tasks.Length), Allocator.Temp);
         for (int i = 0; i < plans.Length; i++)
         {
             var plan = plans[i];
-            if (activated.Contains(plan.Drone) || outcomes[i].Status != DroneRouteEvaluationStatusEnum.Reachable) continue;
+            if ((plan.StockSlot < 0 && activated.Contains(plan.Drone)) ||
+                outcomes[i].Status != DroneRouteEvaluationStatusEnum.Reachable) continue;
             // 현재 정거장에서 충전을 더 기다려야 하는 경로는 출고하지 않는다.
             if (outcomes[i].ChargingStation == plan.Station && math.all(outcomes[i].NextPosition == plan.Origin)) continue;
-            activated.Add(plan.Drone);
-            intents.Add(new DroneStationAutomationIntent { Drone = plan.Drone, Station = plan.Station,
-                Operation = DroneStationOperation.Activate, DemandTask = plan.Task, Quantity = plan.Quantity });
+            if (plan.StockSlot < 0)
+            {
+                activated.Add(plan.Drone);
+                intents.Add(new DroneStationAutomationIntent { Drone = plan.Drone, Station = plan.Station,
+                    Operation = DroneStationOperation.Activate, DemandTask = plan.Task, Quantity = plan.Quantity });
+                if (plan.Task != Entity.Null)
+                {
+                    plannedDemand.TryGetValue(plan.Task, out int used);
+                    plannedDemand[plan.Task] = used + plan.Quantity;
+                }
+                continue;
+            }
+            var stockKey = new int3(plan.Station.Index, plan.Station.Version, plan.StockSlot);
+            plannedStock.TryGetValue(stockKey, out int departing);
+            plannedDemand.TryGetValue(plan.Task, out int demandUsed);
+            int remaining = DroneStationAutomationUtility.ReadDemand(manager, plan.Task,
+                manager.GetComponentData<DroneLogisticsTask>(plan.Task), assignments, _candidates) - demandUsed;
+            while (departing < plan.StockOrdinal && remaining > 0)
+            {
+                int quantity = math.min(plan.Quantity, remaining);
+                intents.Add(new DroneStationAutomationIntent { Station = plan.Station, StockSlot = plan.StockSlot,
+                    Operation = DroneStationOperation.ActivateStored, DemandTask = plan.Task, Quantity = quantity });
+                departing++;
+                remaining -= quantity;
+                demandUsed += quantity;
+            }
+            plannedStock[stockKey] = departing;
+            plannedDemand[plan.Task] = demandUsed;
         }
+        plannedStock.Dispose();
+        plannedDemand.Dispose();
         // 요청 접수의 구조 변경 전에 모든 원본/Lookup 읽기를 끝낸다.
         foreach (var intent in intents)
         {
-            if (intent.Operation != DroneStationOperation.Activate && activated.Contains(intent.Drone)) continue;
-            Entity request = DroneStationRequestUtility.Submit(manager, intent.Drone, intent.Station, intent.Operation);
+            if ((intent.Operation is DroneStationOperation.Dock or DroneStationOperation.Store) && activated.Contains(intent.Drone)) continue;
+            Entity request = DroneStationRequestUtility.Submit(manager, intent.Drone, intent.Station, intent.Operation, intent.StockSlot);
             manager.AddComponentData(request, new DroneAutomaticStationRequest { DemandTask = intent.DemandTask, Quantity = intent.Quantity });
         }
     }

@@ -68,7 +68,7 @@ public static class BeltEntryUtility
         in NativeParallelHashMap<int2, BeltInfo> beltMap,
         in NativeParallelMultiHashMap<int2, Entity> itemMap,
         in ComponentLookup<PendingBuildingDemolition> pendingDemolitionLookup,
-        in ComponentLookup<ItemOwnership> ownershipLookup,
+        in ComponentLookup<DestroyItemRequest> destroyLookup,
         in ComponentLookup<BeltMovementState> movementLookup,
         out int2 beltPosition)
     {
@@ -77,7 +77,7 @@ public static class BeltEntryUtility
         {
             beltPosition = new int2(anchor.x + x, anchor.y - 1);
             if (CanOutputToBelt(beltPosition, anchor, size, beltMap, itemMap, pendingDemolitionLookup,
-                    ownershipLookup, movementLookup))
+                    destroyLookup, movementLookup))
             {
                 return true;
             }
@@ -87,7 +87,7 @@ public static class BeltEntryUtility
         {
             beltPosition = new int2(anchor.x + size.x, anchor.y + y);
             if (CanOutputToBelt(beltPosition, anchor, size, beltMap, itemMap, pendingDemolitionLookup,
-                    ownershipLookup, movementLookup))
+                    destroyLookup, movementLookup))
             {
                 return true;
             }
@@ -97,7 +97,7 @@ public static class BeltEntryUtility
         {
             beltPosition = new int2(anchor.x + x, anchor.y + size.y);
             if (CanOutputToBelt(beltPosition, anchor, size, beltMap, itemMap, pendingDemolitionLookup,
-                    ownershipLookup, movementLookup))
+                    destroyLookup, movementLookup))
             {
                 return true;
             }
@@ -107,7 +107,7 @@ public static class BeltEntryUtility
         {
             beltPosition = new int2(anchor.x - 1, anchor.y + y);
             if (CanOutputToBelt(beltPosition, anchor, size, beltMap, itemMap, pendingDemolitionLookup,
-                    ownershipLookup, movementLookup))
+                    destroyLookup, movementLookup))
             {
                 return true;
             }
@@ -124,7 +124,7 @@ public static class BeltEntryUtility
         in NativeParallelHashMap<int2, BeltInfo> beltMap,
         in NativeParallelMultiHashMap<int2, Entity> itemMap,
         in ComponentLookup<PendingBuildingDemolition> pendingDemolitionLookup,
-        in ComponentLookup<ItemOwnership> ownershipLookup,
+        in ComponentLookup<DestroyItemRequest> destroyLookup,
         in ComponentLookup<BeltMovementState> movementLookup)
     {
         if (!beltMap.TryGetValue(beltPosition, out BeltInfo belt))
@@ -145,13 +145,13 @@ public static class BeltEntryUtility
             return false;
         }
 
-        return HasEntrySpace(beltPosition, itemMap, ownershipLookup, movementLookup);
+        return HasEntrySpace(beltPosition, itemMap, destroyLookup, movementLookup);
     }
 
     internal static Entity FindItemAtBeltEnd(
         int2 beltPosition,
         in NativeParallelMultiHashMap<int2, Entity> itemMap,
-        in ComponentLookup<ItemOwnership> ownershipLookup,
+        in ComponentLookup<DestroyItemRequest> destroyLookup,
         in ComponentLookup<BeltMovementState> movementLookup)
     {
         if (!itemMap.TryGetFirstValue(beltPosition, out Entity item, out var iterator))
@@ -163,12 +163,7 @@ public static class BeltEntryUtility
         float maxProgress = 1f - GameConstants.AlignmentEpsilon;
         do
         {
-            if (!ownershipLookup.TryGetComponent(item, out var ownership))
-            {
-                continue;
-            }
-
-            if (!ownership.IsWorldItem)
+            if (destroyLookup.HasComponent(item) && destroyLookup.IsComponentEnabled(item))
             {
                 continue;
             }
@@ -198,7 +193,7 @@ public static class BeltEntryUtility
     public static bool HasEntrySpace(
         int2 targetPosition,
         in NativeParallelMultiHashMap<int2, Entity> itemMap,
-        in ComponentLookup<ItemOwnership> ownershipLookup,
+        in ComponentLookup<DestroyItemRequest> destroyLookup,
         in ComponentLookup<BeltMovementState> movementLookup)
     {
         if (!itemMap.TryGetFirstValue(targetPosition, out Entity item, out var iterator))
@@ -213,12 +208,7 @@ public static class BeltEntryUtility
 
         do
         {
-            if (!ownershipLookup.TryGetComponent(item, out var ownership))
-            {
-                continue;
-            }
-
-            if (!ownership.IsWorldItem)
+            if (destroyLookup.HasComponent(item) && destroyLookup.IsComponentEnabled(item))
             {
                 continue;
             }

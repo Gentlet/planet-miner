@@ -62,7 +62,8 @@ public partial struct DroneStationActivationReservationSystem : ISystem
             foreach (var record in records)
             {
                 var automatic = Automatic[record.Entity];
-                if (record.Request.Operation != DroneStationOperation.Activate)
+                if (record.Request.Operation != DroneStationOperation.Activate &&
+                    record.Request.Operation != DroneStationOperation.ActivateStored)
                 {
                     continue;
                 }

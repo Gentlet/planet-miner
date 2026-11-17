@@ -12,7 +12,6 @@ using Unity.Transforms;
 /// 정리·가시화: 적용 여부와 관계없이 전달 결정을 비활성화한다. ECB 기록은 없고 공간 인덱스는 Synchronization에서 갱신한다.
 /// </summary>
 [UpdateInGroup(typeof(BuildingStateApplyGroup))]
-[UpdateBefore(typeof(ItemOwnershipApplySystem))]
 [BurstCompile]
 public partial struct RoutingApplySystem : ISystem
 {

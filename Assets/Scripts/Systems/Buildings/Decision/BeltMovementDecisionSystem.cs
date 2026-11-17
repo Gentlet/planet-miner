@@ -16,7 +16,7 @@ using Unity.Mathematics;
 public partial struct BeltMovementDecisionSystem : ISystem
 {
     private ComponentLookup<BeltMovementState> _beltMovementStateLookup;
-    private ComponentLookup<ItemOwnership> _itemOwnershipLookup;
+    private ComponentLookup<DestroyItemRequest> _destroyRequestLookup;
     private ComponentLookup<PendingBuildingDemolition> _pendingBuildingDemolitionLookup;
 
     [BurstCompile]
@@ -24,7 +24,7 @@ public partial struct BeltMovementDecisionSystem : ISystem
     {
         state.RequireForUpdate<ResearchStatBonuses>();
         _beltMovementStateLookup = state.GetComponentLookup<BeltMovementState>(true);
-        _itemOwnershipLookup = state.GetComponentLookup<ItemOwnership>(true);
+        _destroyRequestLookup = state.GetComponentLookup<DestroyItemRequest>(true);
         _pendingBuildingDemolitionLookup = state.GetComponentLookup<PendingBuildingDemolition>(true);
     }
 
@@ -51,7 +51,7 @@ public partial struct BeltMovementDecisionSystem : ISystem
         ref var itemFence = ref SystemAPI.GetSingletonRW<ItemSpatialIndexFence>().ValueRW;
 
         _beltMovementStateLookup.Update(ref state);
-        _itemOwnershipLookup.Update(ref state);
+        _destroyRequestLookup.Update(ref state);
         _pendingBuildingDemolitionLookup.Update(ref state);
 
         var job = new BeltMovementDecisionJob
@@ -61,7 +61,7 @@ public partial struct BeltMovementDecisionSystem : ISystem
             BeltMap = beltIndex.Map,
             ItemMap = itemIndex.Map,
             BeltMovementStateLookup = _beltMovementStateLookup,
-            ItemOwnershipLookup = _itemOwnershipLookup,
+            DestroyItemRequestLookup = _destroyRequestLookup,
             PendingBuildingDemolitionLookup = _pendingBuildingDemolitionLookup
         };
 
@@ -82,6 +82,7 @@ public partial struct BeltMovementDecisionSystem : ISystem
 /// 벨트 위 활성화된 각 아이템의 이동 가능 거리를 병렬로 계산하는 Safe Burst Job.
 /// </summary>
 [BurstCompile]
+[WithNone(typeof(DestroyItemRequest))]
 public partial struct BeltMovementDecisionJob : IJobEntity
 {
     public float DeltaTime;
@@ -97,7 +98,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
     public ComponentLookup<BeltMovementState> BeltMovementStateLookup;
 
     [ReadOnly]
-    public ComponentLookup<ItemOwnership> ItemOwnershipLookup;
+    public ComponentLookup<DestroyItemRequest> DestroyItemRequestLookup;
 
     [ReadOnly]
     public ComponentLookup<PendingBuildingDemolition> PendingBuildingDemolitionLookup;
@@ -106,17 +107,8 @@ public partial struct BeltMovementDecisionJob : IJobEntity
         Entity entity,
         ref BeltMovementDecision decision,
         in BeltMovementState state,
-        in GridPosition gridPos,
-        in ItemOwnership ownership)
+        in GridPosition gridPos)
     {
-        // 1. 월드 아이템이 아니면 벨트 위에서 이동할 수 없음
-        if (!ownership.IsWorldItem)
-        {
-            decision.PlannedProgress = 0.0f;
-            decision.IsBlocked = true;
-            return;
-        }
-
         // 2. 현재 타일에 벨트가 존재하지 않으면 이동 불가 (바닥에 멈춤)
         if (!BeltMap.TryGetValue(gridPos.Value, out BeltInfo currentBelt))
         {
@@ -150,8 +142,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
             do
             {
                 if (otherItem != entity &&
-                    ItemOwnershipLookup.TryGetComponent(otherItem, out var otherOwnership) &&
-                    otherOwnership.IsWorldItem &&
+                    !(DestroyItemRequestLookup.HasComponent(otherItem) && DestroyItemRequestLookup.IsComponentEnabled(otherItem)) &&
                     BeltMovementStateLookup.TryGetComponent(otherItem, out var otherState) &&
                     BeltMovementStateLookup.IsComponentEnabled(otherItem))
                 {
@@ -207,8 +198,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
             do
             {
                 if (nextItem != entity &&
-                    ItemOwnershipLookup.TryGetComponent(nextItem, out var nextOwnership) &&
-                    nextOwnership.IsWorldItem &&
+                    !(DestroyItemRequestLookup.HasComponent(nextItem) && DestroyItemRequestLookup.IsComponentEnabled(nextItem)) &&
                     BeltMovementStateLookup.TryGetComponent(nextItem, out var nextState) &&
                     BeltMovementStateLookup.IsComponentEnabled(nextItem))
                 {

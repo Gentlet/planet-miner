@@ -45,7 +45,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
             Stamps = SystemAPI.GetComponentLookup<PlacementStamp>(true),
             Construction = SystemAPI.GetComponentLookup<ConstructionSite>(true),
             Storages = SystemAPI.GetComponentLookup<Storage>(true),
-            Items = SystemAPI.GetBufferLookup<StoredItemElement>(true), Docks = SystemAPI.GetBufferLookup<DockedDroneElement>(true)
+            Items = SystemAPI.GetBufferLookup<StorageSlotElement>(true), Docks = SystemAPI.GetBufferLookup<DockedDroneElement>(true)
         }.Schedule(JobHandle.CombineDependencies(state.Dependency, stationOwnersReady, siteOwnersReady));
         var config = SystemAPI.GetSingleton<DroneMovementConfig>();
         float maximum = SystemAPI.GetSingleton<DroneBatteryConfig>().MaximumCharge;
@@ -88,7 +88,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
         [ReadOnly] public ComponentLookup<PlacementStamp> Stamps;
         [ReadOnly] public ComponentLookup<ConstructionSite> Construction;
         [ReadOnly] public ComponentLookup<Storage> Storages;
-        [ReadOnly] public BufferLookup<StoredItemElement> Items;
+        [ReadOnly] public BufferLookup<StorageSlotElement> Items;
         [ReadOnly] public BufferLookup<DockedDroneElement> Docks;
 
         public void Execute()
@@ -120,10 +120,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
                     for (int slot = 0; slot < slotCount; slot++)
                     {
                         bool occupied = reservations.IsCreated && DroneStationRelocationUtility.IsReserved(reservations, slot);
-                        for (int item = 0; item < items.Length; item++)
-                        {
-                            occupied |= items[item].SlotIndex == slot;
-                        }
+                        occupied |= items[slot].Quantity > 0;
                         for (int dock = 0; dock < docks.Length; dock++)
                         {
                             occupied |= docks[dock].SlotIndex == slot;

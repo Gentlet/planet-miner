@@ -33,27 +33,20 @@ public static class ResearchStatusTextUtility
             text.AppendLine("로컬 1주기 " + elapsed.ToString("F2") + "/" + definition.CycleDuration.ToString("F2"));
             bool materialsReady = true;
             var ingredients = manager.GetBuffer<ResearchIngredientElement>(registry, true);
-            DynamicBuffer<StoredItemElement> storedItems = default;
+            DynamicBuffer<StorageSlotElement> storedItems = default;
             for (int i = 0; i < definition.IngredientCount; i++)
             {
                 var ingredient = ingredients[definition.IngredientStart + i];
                 int count = 0;
                 if (!storedItems.IsCreated)
                 {
-                    storedItems = manager.GetBuffer<StoredItemElement>(building, true);
+                    storedItems = manager.GetBuffer<StorageSlotElement>(building, true);
                 }
-                foreach (var stored in storedItems)
-                {
-                    if (stored.ItemType == ingredient.ItemType &&
-                        ItemOwnershipApplySystem.CanTransferItem(manager, stored.ItemEntity, stored.ItemType, building))
-                    {
-                        count++;
-                    }
-                }
+                count = InventorySlotUtility.Count(storedItems, ingredient.ItemType);
                 materialsReady &= count >= ingredient.Amount;
                 text.AppendLine("1주기 " + ingredient.ItemType + " " + count + "/" + ingredient.Amount);
             }
-            int recovery = manager.HasBuffer<ResearchRecoveryElement>(building) ? manager.GetBuffer<ResearchRecoveryElement>(building, true).Length : 0;
+            int recovery = ResearchRecoveryUtility.Count(manager, building, ItemTypeEnum.None);
             text.AppendLine("회수 대기 " + recovery + "개");
             float ratio = manager.HasComponent<PowerSupplyResult>(building) ? manager.GetComponentData<PowerSupplyResult>(building).SupplyRatio : 0f;
             bool demolitionPending = manager.HasComponent<PendingBuildingDemolition>(building);

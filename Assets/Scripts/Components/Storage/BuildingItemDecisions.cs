@@ -37,10 +37,10 @@ public struct BuildingItemInputDecision : IComponentData, IEnableableComponent
 
 /// <summary>
 /// 역할·목적: 보관/생산 건물에서 이번 틱 벨트로 내보낼 실물 하나와 대상 벨트를 전달한다.
-/// 부착 엔티티: StoredItemElement 또는 ProductItemElement를 가진 완공 건물 엔티티다.
+/// 부착 엔티티: StorageSlotElement 또는 ProductSlotElement를 가진 완공 건물 엔티티다.
 /// 생성: BuildingLifecycleUtility가 비활성으로 준비하고 StorageItemOutputDecisionSystem/ProductItemOutputDecisionSystem(Decision)이 출고 후보를 작성한다.
 /// 이용: BeltDestinationReservationSystem(Reservation)이 목적지 경합을 중재하고 BuildingItemStorageApplySystem(StateApply)이 실물 버퍼 제거·벨트 위치·Transfer 요청을 반영한다.
-/// 제거: Apply 후 비활성화하며 컴포넌트는 건물 삭제까지 유지한다. 아이템 Owner 변경은 이어지는 ItemOwnershipApplySystem이 담당한다.
+/// 제거: Apply 후 비활성화하며 컴포넌트는 건물 삭제까지 유지한다. 월드 실물과 출고는 EndBuilding에서 공개한다.
 /// </summary>
 public struct BuildingItemOutputDecision : IComponentData, IEnableableComponent
 {
@@ -50,19 +50,23 @@ public struct BuildingItemOutputDecision : IComponentData, IEnableableComponent
     public bool CanOutput;
 
     /// <summary>
-    /// 방출할 대상 아이템 엔티티 (건물 StoredItemElement 버퍼의 FIFO 0번 아이템 등).
+    /// 방출할 품목. 출발 버퍼 구분과 슬롯 번호는 별도 필드다.
     /// </summary>
-    public Entity ItemToOutput;
+    public ItemTypeEnum ItemType;
+    public int SourceSlotIndex;
+    public bool FromProduct;
 
     /// <summary>
     /// 아이템이 올려질 대상 외향 벨트의 그리드 좌표.
     /// </summary>
     public int2 TargetBeltPosition;
 
-    public BuildingItemOutputDecision(bool canOutput, Entity itemToOutput, int2 targetBeltPosition)
+    public BuildingItemOutputDecision(bool canOutput, ItemTypeEnum itemType, int2 targetBeltPosition)
     {
         CanOutput = canOutput;
-        ItemToOutput = itemToOutput;
+        ItemType = itemType;
+        SourceSlotIndex = 0;
+        FromProduct = false;
         TargetBeltPosition = targetBeltPosition;
     }
 }

@@ -35,9 +35,9 @@ public partial struct DroneTaskDecisionSystem : ISystem
         _tasks = state.GetEntityQuery(ComponentType.ReadOnly<DroneLogisticsTask>());
         _sites = state.GetEntityQuery(ComponentType.ReadOnly<ConstructionSite>(), ComponentType.ReadOnly<GridPosition>());
         _storages = state.GetEntityQuery(ComponentType.ReadOnly<BuildingType>(), ComponentType.ReadOnly<Storage>(),
-            ComponentType.ReadOnly<StoredItemElement>(), ComponentType.ReadOnly<GridPosition>());
+            ComponentType.ReadOnly<StorageSlotElement>(), ComponentType.ReadOnly<GridPosition>());
         _workers = state.GetEntityQuery(ComponentType.ReadOnly<DroneWorker>(), ComponentType.ReadOnly<DroneWorkerObservation>(),
-            ComponentType.ReadOnly<DroneWorkerAssignment>(), ComponentType.ReadOnly<DroneCargoState>(), ComponentType.ReadOnly<StoredItemElement>());
+            ComponentType.ReadOnly<DroneWorkerAssignment>(), ComponentType.ReadOnly<DroneCargoState>());
         _routes = state.GetEntityQuery(ComponentType.ReadOnly<DroneRouteEvaluationRequest>());
         _assignments = state.GetEntityQuery(ComponentType.ReadOnly<DroneTaskAssignment>());
         _transportReservations = state.GetEntityQuery(ComponentType.ReadOnly<DroneTransportReservation>());
@@ -45,13 +45,13 @@ public partial struct DroneTaskDecisionSystem : ISystem
         _capacity = state.GetEntityQuery(ComponentType.ReadOnly<DroneCapacityState>());
         _stations = state.GetEntityQuery(ComponentType.ReadOnly<DroneStation>(), ComponentType.ReadOnly<DroneStationNetworkDecision>());
         _creationResearch = state.GetEntityQuery(ComponentType.ReadOnly<ResearchRecoveryElement>(),
-            ComponentType.ReadOnly<StoredItemElement>(), ComponentType.ReadOnly<ResearchCycleState>());
+            ComponentType.ReadOnly<StorageSlotElement>(), ComponentType.ReadOnly<ResearchCycleState>());
         _creationSites = state.GetEntityQuery(
             ComponentType.ReadOnly<ConstructionSite>(),
             ComponentType.ReadOnly<GridPosition>(),
             ComponentType.ReadOnly<ConstructionMaterialRequirementElement>());
         _creationItems = state.GetEntityQuery(ComponentType.ReadOnly<ItemIdentity>(),
-            ComponentType.ReadOnly<ItemOwnership>(), ComponentType.ReadOnly<GridPosition>());
+            ComponentType.ReadOnly<GridPosition>());
         _creationFootprints = state.GetEntityQuery(ComponentType.ReadOnly<ConstructionSite>(),
             ComponentType.ReadOnly<GridPosition>(), ComponentType.ReadOnly<BuildingFootprint>(),
             ComponentType.ReadOnly<Direction>());

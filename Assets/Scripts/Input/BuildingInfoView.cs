@@ -410,10 +410,12 @@ public sealed class BuildingInfoView : MonoBehaviour
                 continue;
             }
 
-            var operation = data.Stored || (!secondary && data.Docked) ? DroneStationOperation.Activate : (secondary ? DroneStationOperation.Store : DroneStationOperation.Dock);
+            var operation = data.Stored ? DroneStationOperation.ActivateStored :
+                (!secondary && data.Docked) ? DroneStationOperation.Activate :
+                secondary ? DroneStationOperation.Store : DroneStationOperation.Dock;
             row.Label.text = data.Text;
-            row.Button.text = operation.ToString();
-            row.Click = () => _controller.RequestStation(data.Drone, operation);
+            row.Button.text = data.Stored ? "1기 출고" : operation.ToString();
+            row.Click = () => _controller.RequestStation(data.Drone, operation, data.SlotIndex);
         }
     }
 

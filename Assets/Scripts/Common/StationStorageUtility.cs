@@ -65,7 +65,7 @@ public static class StationStorageUtility
         private bool _readSlots, _readDedicated, _readStored, _readDocks, _readReservations, _readInputPresence, _readInputs;
         private int _slots, _dedicated;
         private bool _hasDocks, _hasReservations, _hasInputs;
-        private DynamicBuffer<StoredItemElement> _stored;
+        private DynamicBuffer<StorageSlotElement> _stored;
         private DynamicBuffer<DockedDroneElement> _docks;
         private DynamicBuffer<DroneStationReservedSlotElement> _reservations;
         private DynamicBuffer<BuildingInputSlotElement> _inputs;
@@ -99,13 +99,13 @@ public static class StationStorageUtility
             }
         }
 
-        internal DynamicBuffer<StoredItemElement> StoredItems
+        internal DynamicBuffer<StorageSlotElement> StoredItems
         {
             get
             {
                 if (!_readStored)
                 {
-                    _stored = _manager.GetBuffer<StoredItemElement>(_storage, true);
+                    _stored = _manager.GetBuffer<StorageSlotElement>(_storage, true);
                     _readStored = true;
                 }
                 return _stored;

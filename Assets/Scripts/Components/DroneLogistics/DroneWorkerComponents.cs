@@ -17,12 +17,12 @@ public enum DroneCargoOriginEnum : byte
 
 /// <summary>
 /// 역할·목적: 드론 작업을 수행할 엔티티를 식별하는 태그다. 최대 적재량이나 행동 상태를 저장하지 않는다.
-/// 부착 엔티티: DroneWorkerObservation·DroneWorkerAssignment·DroneCargoState·StoredItemElement를 갖춘 드론 수행자 엔티티다.
+/// 부착 엔티티: DroneWorkerObservation·DroneWorkerAssignment·DroneCargoState를 갖춘 드론 수행자 엔티티다.
 /// 생성: DroneSpawnUtility가 초기 구성을 기록하고 DroneStationLifecycleApplySystem이 출고/수납 역할 전환을 EndSimulation에 공개한다.
 /// 이용: Decision의 DroneTaskDecisionSystem이 수행자를 조회하고 DroneItemTransferDecisionSystem이 행동 자격을 검사한다.
 /// DroneTaskReservationSystem(Reservation), DroneTaskExecutionSystem/DroneItemTransferExecutionSystem(Execution), DroneTaskAssignmentPublishSystem/DroneTaskLifecycleApplySystem(StateApply)도 공통 검증 Utility로 수행자 자격을 검사한다.
 /// 제거: 작업·배정 종료로 제거하지 않는다. 수행자 등록 해제·삭제의 수명주기는 후속이며 엔티티 삭제 시 함께 사라진다.
-/// 공통 최대 적재량은 World의 DroneCapacityState, 실제 적재 실물은 StoredItemElement와 ItemOwnership이 소유한다.
+/// 공통 최대 적재량은 World의 DroneCapacityState, 실제 적재 품목과 수량은 DroneCargoState가 소유한다.
 /// </summary>
 public struct DroneWorker : IComponentData
 {
@@ -59,9 +59,9 @@ public struct DroneWorkerAssignment : IComponentData
 }
 
 /// <summary>
-/// 역할·목적: 현재 적재품의 Supply/Recovery 출처를 유지하여 회수품의 현장 직접 공급을 제한한다. 실물·품목·수량의 원본은 StoredItemElement다.
+/// 역할·목적: 현재 적재품의 Supply/Recovery 출처를 유지하여 회수품의 현장 직접 공급을 제한한다. 품목과 수량도 이 상태가 소유한다.
 /// 부착 엔티티: DroneWorker가 있는 드론 수행자 엔티티다.
-/// 생성: DroneSpawnUtility가 호출자의 EndSimulation ECB에 Origin=None과 빈 StoredItemElement 버퍼를 기록한다.
+/// 생성: DroneSpawnUtility가 호출자의 EndSimulation ECB에 빈 화물 상태를 기록한다.
 /// 이용: StateApply의 DroneTaskLifecycleApplySystem이 성공한 수집에 출처를 설정하고 보관·공급·방출 후 빈 적재가 되면 None으로 되돌린다.
 /// Decision의 DroneTaskDecisionSystem은 출처별 재배정 목적지를 구분하며 DroneItemTransferDecisionSystem 및 후속 phase의 공통 검증도 출처 제약을 확인한다.
 /// 제거: 상위 작업 종료·재배정으로 지우지 않는다. 빈 적재에서 None으로 초기화하되 컴포넌트는 수행자 삭제까지 유지한다.
@@ -69,5 +69,8 @@ public struct DroneWorkerAssignment : IComponentData
 /// </summary>
 public struct DroneCargoState : IComponentData
 {
+    public ItemTypeEnum ItemType;
+    public int Quantity;
+    public bool BlockAutomaticRecoveryOnDrop;
     public DroneCargoOriginEnum Origin;
 }

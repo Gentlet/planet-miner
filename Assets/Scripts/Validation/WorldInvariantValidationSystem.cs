@@ -8,7 +8,7 @@ using Unity.Mathematics;
 using UnityEngine;
 
 /// <summary>
-/// 역할·목적: Editor/Development Build에서 Synchronization 마지막에 아이템·벨트·소유 버퍼·자원 및 미소비 요청/결정의 정합성을 검사한다.
+/// 역할·목적: Editor/Development Build에서 Synchronization 마지막에 아이템·벨트·보관 수량·자원 및 미소비 요청/결정의 정합성을 검사한다.
 /// 입력·생성자: 여섯 phase가 반영한 ECS 원본과 SpatialSyncSystem의 공간 인덱스. 직접 맵 조회 전 네 Fence를 완료한다.
 /// 출력·소유권: 위반 누적 수와 세션별 진단 파일을 기록하고 Debug.Break를 호출한다. 도메인 상태를 복구하거나 요청을 대신 소비하지 않는다.
 /// 이용·정리: 개발자/테스트가 로그와 누적 수를 확인한다. 검사 주기는 프레임 간격으로 조정하며 임시 검사용 컨테이너는 검사 뒤 해제한다.
@@ -120,8 +120,8 @@ public partial class WorldInvariantValidationSystem : SystemBase
         // 벨트 이동 계획 소비와 위치/간격 검사.
         ValidateBeltInvariants(itemSpatialIndex, ref beltMovementLookup);
 
-        // 소유 버퍼/Owner 참조와 보관 슬롯 규칙 검사.
-        ValidateStorageInvariants(itemSpatialIndex, ref beltMovementLookup);
+        // 저장 슬롯과 보관 수량의 정합성을 검사한다.
+        ValidateStorageInvariants();
         ValidateDroneStationInvariants();
 
         // 승인된 입출고/라우팅 결정의 잔류 검사.
@@ -141,37 +141,11 @@ public partial class WorldInvariantValidationSystem : SystemBase
             return;
         }
 
-        // 1. [정방향 검증] World Item -> ItemSpatialIndex 등록 여부 확인
-        foreach (var (pos, ownership, entity) in 
-                 SystemAPI.Query<RefRO<GridPosition>, RefRO<ItemOwnership>>()
-                          .WithAll<ItemIdentity>()
-                          .WithEntityAccess())
+        foreach (var (pos, entity) in SystemAPI.Query<RefRO<GridPosition>>()
+                     .WithAll<ItemIdentity>().WithNone<DestroyItemRequest>().WithEntityAccess())
         {
-            if (ownership.ValueRO.IsWorldItem)
-            {
-                int2 targetPos = pos.ValueRO.Value;
-                if (!spatialIndex.ContainsItemAt(targetPos, entity))
-                {
-                    ReportViolation(
-                        "ItemSpatial",
-                        $"World Item ({entity.Index}:{entity.Version}) is not registered in ItemSpatialIndex at position ({targetPos.x}, {targetPos.y}). Spatial sync may be missing.",
-                        entity
-                    );
-                }
-            }
-            else
-            {
-                // Stored Item: 보관 대상 Owner 엔티티의 실존 여부 확인 (고아 수납 아이템 방어)
-                Entity owner = ownership.ValueRO.Owner;
-                if (!SystemAPI.Exists(owner))
-                {
-                    ReportViolation(
-                        "ItemOwnership",
-                        $"Stored Item ({entity.Index}:{entity.Version}) references non-existent (destroyed) Owner Entity ({owner.Index}:{owner.Version}). Ownership cleanup may be missing.",
-                        entity
-                    );
-                }
-            }
+            if (!spatialIndex.ContainsItemAt(pos.ValueRO.Value, entity))
+                ReportViolation("ItemSpatial", "World item is missing from its grid cell.", entity);
         }
 
         // 2. [역방향 검증] ItemSpatialIndex -> 실제 월드 아이템 정합성 확인
@@ -195,25 +169,15 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 }
 
                 // 필수 컴포넌트 보유 확인
-                if (!SystemAPI.TryGetComponent<ItemOwnership>(itemEntity, out var ownership) ||
+                if (!SystemAPI.HasComponent<ItemIdentity>(itemEntity) ||
                     !SystemAPI.TryGetComponent<GridPosition>(itemEntity, out var gridPos))
                 {
                     ReportViolation(
                         "SpatialIndex",
-                        $"Entity ({itemEntity.Index}:{itemEntity.Version}) indexed at ({pos.x}, {pos.y}) lacks ItemOwnership or GridPosition component.",
+                        $"Entity ({itemEntity.Index}:{itemEntity.Version}) indexed at ({pos.x}, {pos.y}) lacks ItemIdentity or GridPosition component.",
                         itemEntity
                     );
                     continue;
-                }
-
-                // 보관(Stored) 아이템이 잘못 등록되었는지 확인
-                if (!ownership.IsWorldItem)
-                {
-                    ReportViolation(
-                        "SpatialIndex",
-                        $"Stored item ({itemEntity.Index}:{itemEntity.Version}, Owner={ownership.Owner.Index}:{ownership.Owner.Version}) is erroneously registered in ItemSpatialIndex at ({pos.x}, {pos.y}).",
-                        itemEntity
-                    );
                 }
 
                 // 좌표 일치 확인
@@ -238,18 +202,6 @@ public partial class WorldInvariantValidationSystem : SystemBase
     /// </summary>
     private void ValidateRequestLifecycleInvariants()
     {
-        // 1. TransferOwnershipRequest 잔류 감시 (StateApplyGroup에서 처리 및 비활성화되었어야 함)
-        foreach (var (_, entity) in 
-                 SystemAPI.Query<RefRO<TransferOwnershipRequest>>()
-                          .WithEntityAccess())
-        {
-            ReportViolation(
-                "RequestLifecycle",
-                $"TransferOwnershipRequest remained enabled on Entity ({entity.Index}:{entity.Version}) at the end of the frame (SynchronizationGroup). Request was not consumed in BuildingStateApplyGroup.",
-                entity
-            );
-        }
-
         // 2. DestroyItemRequest 잔류 감시 (StateApplyGroup에서 처리 및 엔티티가 파괴되었어야 함)
         foreach (var (_, entity) in 
                  SystemAPI.Query<RefRO<DestroyItemRequest>>()
@@ -300,22 +252,11 @@ public partial class WorldInvariantValidationSystem : SystemBase
         }
 
         // 2. 고아 벨트 아이템 감시 (벨트가 없는 위치인데 BeltMovementState가 활성화된 경우)
-        foreach (var (pos, ownership, entity) in 
-                 SystemAPI.Query<RefRO<GridPosition>, RefRO<ItemOwnership>>()
-                          .WithAll<BeltMovementState>()
-                          .WithEntityAccess())
+        foreach (var (pos, entity) in SystemAPI.Query<RefRO<GridPosition>>()
+                     .WithAll<ItemIdentity, BeltMovementState>().WithEntityAccess())
         {
-            if (ownership.ValueRO.IsWorldItem)
-            {
-                if (!beltIndex.HasBeltAt(pos.ValueRO.Value))
-                {
-                    ReportViolation(
-                        "BeltInvariant",
-                        $"Item ({entity.Index}:{entity.Version}) has active BeltMovementState at ({pos.ValueRO.Value.x}, {pos.ValueRO.Value.y}), but no belt building exists at this position.",
-                        entity
-                    );
-                }
-            }
+            if (!beltIndex.HasBeltAt(pos.ValueRO.Value))
+                ReportViolation("BeltInvariant", "Item with active belt movement has no belt at its position.", entity);
         }
 
         // 3 & 4. 벨트 타일별 아이템 수용량 및 간격 침범 감시
@@ -323,7 +264,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
         try
         {
             var beltMovementLookup = sharedBeltMovementLookup ??= SystemAPI.GetComponentLookup<BeltMovementState>(true);
-            var itemOwnershipLookup = SystemAPI.GetComponentLookup<ItemOwnership>(true);
+            var itemIdentityLookup = SystemAPI.GetComponentLookup<ItemIdentity>(true);
 
             var progressList = new NativeList<float>(16, Allocator.Temp);
             var entityList = new NativeList<Entity>(16, Allocator.Temp);
@@ -341,8 +282,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 {
                     do
                     {
-                        if (itemOwnershipLookup.TryGetComponent(itemEntity, out var ownership) &&
-                            ownership.IsWorldItem &&
+                        if (itemIdentityLookup.HasComponent(itemEntity) &&
                             beltMovementLookup.TryGetComponent(itemEntity, out var movement) &&
                             beltMovementLookup.IsComponentEnabled(itemEntity))
                         {
@@ -407,8 +347,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
                     {
                         do
                         {
-                            if (itemOwnershipLookup.TryGetComponent(nextItem, out var nextOwnership) &&
-                                nextOwnership.IsWorldItem &&
+                            if (itemIdentityLookup.HasComponent(nextItem) &&
                                 beltMovementLookup.TryGetComponent(nextItem, out var nextMovement) &&
                                 beltMovementLookup.IsComponentEnabled(nextItem))
                             {
@@ -448,510 +387,92 @@ public partial class WorldInvariantValidationSystem : SystemBase
     }
 
     /// <summary>
-    /// Storage 없는 현장을 포함한 소유 버퍼의 참조 유일성·실존·타입·Owner를 검증한다.
+    /// 저장 슬롯, 생산품, 화물, 현장 도착량과 연구 회수량의 품목·수량을 검증한다.
     /// </summary>
-    private void ValidateOwnedBufferReferences()
+    private void ValidateStorageInvariants()
     {
-        // Entity(Index, Version) 전체를 키로 사용하고 두 버퍼 종류/모든 소유자가 공유한다.
-        var referencedItems = new HashSet<Entity>();
-        foreach (var (buffer, owner) in SystemAPI.Query<DynamicBuffer<StoredItemElement>>().WithEntityAccess())
+        bool hasRegistry = SystemAPI.TryGetSingletonBuffer<ItemConfigElement>(out var items, true);
+        var inputs = SystemAPI.GetBufferLookup<BuildingInputSlotElement>(true);
+        var storageBuffers = SystemAPI.GetBufferLookup<StorageSlotElement>(true);
+        foreach (var (capacity, owner) in SystemAPI.Query<RefRO<Storage>>()
+                     .WithOptions(EntityQueryOptions.IncludeDisabledEntities).WithEntityAccess())
         {
-            for (int i = 0; i < buffer.Length; i++)
+            if (!storageBuffers.TryGetBuffer(owner, out var slots))
             {
-                var element = buffer[i];
-                ValidateOwnedItemReference(owner, element.ItemEntity, element.ItemType, "Stored", referencedItems);
-            }
-        }
-
-        foreach (var (buffer, owner) in SystemAPI.Query<DynamicBuffer<ProductItemElement>>().WithEntityAccess())
-        {
-            for (int i = 0; i < buffer.Length; i++)
-            {
-                var element = buffer[i];
-                ValidateOwnedItemReference(owner, element.ItemEntity, element.ItemType, "Product", referencedItems);
-            }
-        }
-    }
-
-    private void ValidateOwnedItemReference(
-        Entity owner, Entity item, ItemTypeEnum recordedType, string bufferKind, HashSet<Entity> referencedItems)
-    {
-        if (!referencedItems.Add(item))
-        {
-            ReportOwnedBufferViolation(owner, item, bufferKind, "Duplicate owned item reference");
-        }
-
-        if (!EntityManager.Exists(item))
-        {
-            ReportOwnedBufferViolation(owner, item, bufferKind, "Non-existent or destroyed item");
-            return;
-        }
-
-        if (!EntityManager.HasComponent<ItemIdentity>(item))
-        {
-            ReportOwnedBufferViolation(owner, item, bufferKind, "Missing ItemIdentity");
-        }
-        else if (EntityManager.GetComponentData<ItemIdentity>(item).Type != recordedType)
-        {
-            ReportOwnedBufferViolation(owner, item, bufferKind, $"ItemIdentity differs from recorded type {recordedType}");
-        }
-
-        if (!EntityManager.HasComponent<ItemOwnership>(item))
-        {
-            ReportOwnedBufferViolation(owner, item, bufferKind, "Missing ItemOwnership");
-            return;
-        }
-
-        Entity actualOwner = EntityManager.GetComponentData<ItemOwnership>(item).Owner;
-        if (actualOwner != owner)
-        {
-            ReportOwnedBufferViolation(owner, item, bufferKind, $"Ownership mismatch, actual owner ({actualOwner.Index}:{actualOwner.Version})");
-        }
-    }
-
-    private void ReportOwnedBufferViolation(Entity owner, Entity item, string bufferKind, string reason)
-    {
-        // 정상 아이템을 검사할 때는 항목별 진단 문자열을 만들지 않는다.
-        ReportViolation("StorageInvariant",
-            $"{reason}: {bufferKind} buffer of ({owner.Index}:{owner.Version}), item ({item.Index}:{item.Version}).", owner);
-    }
-
-    /// <summary>
-    /// 소유권 양방향 무결성 및 월드 상태 비활성화를 검사하고,
-    /// Storage에만 슬롯 범위·품목·정원·필터 규칙을 적용한다.
-    /// </summary>
-    private void ValidateStorageInvariants(in ItemSpatialIndex itemSpatialIndex,
-        ref ComponentLookup<BeltMovementState>? sharedBeltMovementLookup)
-    {
-        StorageValidationRegistryContext registryContext = default;
-        // 참조 무결성은 Storage 용량과 독립적이다. 공사 현장의 보관 버퍼도 검사한다.
-        ValidateOwnedBufferReferences();
-
-        // 1. [정방향 검증] Stored Item -> Storage Buffer
-        var beltMovementLookup = sharedBeltMovementLookup ??= SystemAPI.GetComponentLookup<BeltMovementState>(true);
-        var inputDecisionLookup = SystemAPI.GetComponentLookup<BuildingItemInputDecision>(true);
-        var storedBufferLookup = SystemAPI.GetBufferLookup<StoredItemElement>(true);
-        var productBufferLookup = SystemAPI.GetBufferLookup<ProductItemElement>(true);
-
-        foreach (var (ownership, identity, entity) in
-                 SystemAPI.Query<RefRO<ItemOwnership>, RefRO<ItemIdentity>>()
-                          .WithEntityAccess())
-        {
-            if (ownership.ValueRO.IsWorldItem)
-            {
+                ReportViolation("StorageInvariant", "Storage is missing its slot buffer.", owner);
                 continue;
             }
-
-            Entity owner = ownership.ValueRO.Owner;
-
-            // A. 첫 버퍼 조회로 Owner의 생존 여부를 확인한다.
-            bool hasStoredBuffer = storedBufferLookup.TryGetBuffer(owner, out var buffer, out bool ownerExists);
-            if (!ownerExists)
+            int count = capacity.ValueRO.SlotCount;
+            if (count < 0 || count > GameConstants.MaxStorageSlots || count != slots.Length)
             {
-                ReportViolation(
-                    "StorageInvariant",
-                    $"Stored Item ({entity.Index}:{entity.Version}) references non-existent (destroyed) Owner Entity ({owner.Index}:{owner.Version}).",
-                    entity
-                );
+                ReportViolation("StorageInvariant", "Storage slot length differs from configured capacity.", owner);
                 continue;
             }
-
-            // B. Owner 엔티티의 StoredItemElement 또는 ProductItemElement 버퍼 보유 여부 확인
-            bool hasProductBuffer = productBufferLookup.TryGetBuffer(owner, out var prodBuffer);
-
-            if (!hasStoredBuffer && !hasProductBuffer)
+            bool hasInput = inputs.TryGetBuffer(owner, out var layout);
+            if (hasInput && layout.Length != count)
+                ReportViolation("StorageInvariant", "Input slot layout differs from storage capacity.", owner);
+            for (int index = 0; index < count; index++)
             {
-                ReportViolation(
-                    "StorageInvariant",
-                    $"Stored Item ({entity.Index}:{entity.Version}) references Owner ({owner.Index}:{owner.Version}), but Owner lacks DynamicBuffer<StoredItemElement> or DynamicBuffer<ProductItemElement>.",
-                    entity
-                );
-                continue;
-            }
-
-            // C. 버퍼 내에 해당 아이템 엔티티가 실제로 등록되어 있는지 확인
-            bool foundInBuffer = false;
-            ItemTypeEnum bufferItemType = ItemTypeEnum.None;
-
-            if (hasProductBuffer)
-            {
-                for (int i = 0; i < prodBuffer.Length; i++)
-                {
-                    if (prodBuffer[i].ItemEntity == entity)
-                    {
-                        foundInBuffer = true;
-                        bufferItemType = prodBuffer[i].ItemType;
-                        break;
-                    }
-                }
-            }
-            
-            if (!foundInBuffer && hasStoredBuffer)
-            {
-                for (int i = 0; i < buffer.Length; i++)
-                {
-                    if (buffer[i].ItemEntity == entity)
-                    {
-                        foundInBuffer = true;
-                        bufferItemType = buffer[i].ItemType;
-                        break;
-                    }
-                }
-            }
-
-            if (!foundInBuffer)
-            {
-                ReportViolation(
-                    "StorageInvariant",
-                    $"Stored Item ({entity.Index}:{entity.Version}) specifies Owner ({owner.Index}:{owner.Version}), but is NOT found in the Owner's storage/product buffer.",
-                    entity
-                );
-            }
-            else
-            {
-                // D. 아이템 타입 일치 확인
-                var itemType = identity.ValueRO.Type;
-                if (bufferItemType != itemType)
-                {
-                    ReportViolation(
-                        "StorageInvariant",
-                        $"Item type mismatch: Item entity ({entity.Index}:{entity.Version}) is {itemType}, but buffer in Storage ({owner.Index}:{owner.Version}) records {bufferItemType}.",
-                        entity
-                    );
-                }
-            }
-
-            // E. 보관된 아이템의 월드 시뮬레이션 컴포넌트 비활성화 확인
-            if (beltMovementLookup.HasComponent(entity) && beltMovementLookup.IsComponentEnabled(entity))
-            {
-                ReportViolation(
-                    "StorageInvariant",
-                    $"Stored Item ({entity.Index}:{entity.Version}) inside Storage ({owner.Index}:{owner.Version}) has enabled BeltMovementState.",
-                    entity
-                );
-            }
-
-            if (inputDecisionLookup.HasComponent(entity) && inputDecisionLookup.IsComponentEnabled(entity))
-            {
-                ReportViolation(
-                    "StorageInvariant",
-                    $"Stored Item ({entity.Index}:{entity.Version}) inside Storage ({owner.Index}:{owner.Version}) has enabled BuildingItemInputDecision.",
-                    entity
-                );
+                var slot = slots[index];
+                if (!IsValidStack(slot.ItemType, slot.Quantity, hasRegistry, items) ||
+                    (slot.Quantity > 0 && hasInput && ((uint)index >= (uint)layout.Length || layout[index].ItemType != slot.ItemType)))
+                    ReportViolation("StorageInvariant", $"Invalid inventory at slot {index}.", owner);
             }
         }
 
-        // 2. [역방향 검증] Storage Buffer -> Stored Item & 슬롯/스택/필터 세부 검증
-        DynamicBuffer<ItemConfigElement> itemConfigs = default;
-        bool hasItemRegistry = SystemAPI.TryGetSingletonEntity<ItemRegistry>(out var itemRegistryEntity);
-        var itemConfigLookup = SystemAPI.GetBufferLookup<ItemConfigElement>(true);
-        bool hasItemConfig = hasItemRegistry && itemConfigLookup.TryGetBuffer(itemRegistryEntity, out itemConfigs);
-
-        var storageFilterLookup = SystemAPI.GetComponentLookup<StorageFilter>(true);
-        var inputSlotLookup = SystemAPI.GetBufferLookup<BuildingInputSlotElement>(true);
-        var buildingTypeLookup = SystemAPI.GetComponentLookup<BuildingType>(true);
-
-        foreach (var (storage, buffer, storageEntity) in
-                 SystemAPI.Query<RefRO<Storage>, DynamicBuffer<StoredItemElement>>()
-                          .WithEntityAccess())
+        foreach (var (slots, owner) in SystemAPI.Query<DynamicBuffer<ProductSlotElement>>().WithEntityAccess())
         {
-            int slotCount = storage.ValueRO.SlotCount;
-            bool hasInputSlots = inputSlotLookup.TryGetBuffer(storageEntity, out var inputSlots);
-            if (hasInputSlots)
+            int previous = -1;
+            foreach (var slot in slots)
             {
-                if (inputSlots.Length != slotCount)
-                {
-                    ReportViolation("StorageInvariant",
-                        $"Input slot layout length {inputSlots.Length} differs from Storage capacity {slotCount}.", storageEntity);
-                }
+                if (slot.SlotIndex <= previous || slot.Quantity <= 0 ||
+                    !IsValidStack(slot.ItemType, slot.Quantity, hasRegistry, items))
+                    ReportViolation("ProductInvariant", $"Invalid output at slot {slot.SlotIndex}.", owner);
+                previous = slot.SlotIndex;
             }
-
-            bool hasFilter = storageFilterLookup.TryGetComponent(storageEntity, out var filter);
-            // 일반 창고의 현재 필터는 새 입고에만 적용하며, 변경 전에 보관한 실물은 출고할 수 있다.
-            bool validateStoredItemFilter = hasFilter &&
-                (!buildingTypeLookup.TryGetComponent(storageEntity, out var buildingType) ||
-                 buildingType.Type != BuildingTypeEnum.Storage);
-            bool allowsZeroSlots = hasInputSlots && inputSlots.Length == 0 && buffer.Length == 0 &&
-                                   hasFilter && filter.Mode == StorageFilterMode.Whitelist &&
-                                   filter.Mask.Part0 == 0 && filter.Mask.Part1 == 0 &&
-                                   (IsCrafterWithoutInputRequirements(storageEntity, ref registryContext) ||
-                                    IsResearchWithoutInputSlots(storageEntity, ref registryContext));
-            if (slotCount < 0 || slotCount > GameConstants.MaxStorageSlots ||
-                (slotCount == 0 && !allowsZeroSlots))
-            {
-                ReportViolation(
-                    "StorageInvariant",
-                    $"Storage ({storageEntity.Index}:{storageEntity.Version}) has invalid SlotCount {slotCount} (allowed range: 1 ~ {GameConstants.MaxStorageSlots}).",
-                    storageEntity
-                );
-            }
-
-            var slotTracker = new NativeParallelHashMap<int, int2>(math.max(16, slotCount), Allocator.Temp);
-
-            for (int i = 0; i < buffer.Length; i++)
-            {
-                StoredItemElement element = buffer[i];
-                Entity itemEntity = element.ItemEntity;
-
-                // 참조 오류는 공통 검사에서 보고했다. 죽은 엔티티의 추가 조회는 생략한다.
-                if (!SystemAPI.Exists(itemEntity))
-                {
-                    continue;
-                }
-
-                // C. 보관된 아이템이 ItemSpatialIndex에 잘못 등록되어 있는지 확인
-                if (itemSpatialIndex.Map.IsCreated &&
-                    SystemAPI.TryGetComponent<GridPosition>(itemEntity, out var position))
-                {
-                    int2 gridPos = position.Value;
-                    if (itemSpatialIndex.ContainsItemAt(gridPos, itemEntity))
-                    {
-                        ReportViolation(
-                            "StorageInvariant",
-                            $"Stored item ({itemEntity.Index}:{itemEntity.Version}) in Storage ({storageEntity.Index}:{storageEntity.Version}) is erroneously registered in ItemSpatialIndex at ({gridPos.x}, {gridPos.y}).",
-                            storageEntity
-                        );
-                    }
-                }
-
-                // D. 슬롯 범위 검증 (0 <= SlotIndex < SlotCount)
-                if (element.SlotIndex < 0 || element.SlotIndex >= slotCount)
-                {
-                    ReportViolation(
-                        "StorageInvariant",
-                        $"Storage ({storageEntity.Index}:{storageEntity.Version}) element has invalid SlotIndex {element.SlotIndex} (Capacity: {slotCount}).",
-                        storageEntity
-                    );
-                    continue;
-                }
-
-                // E. 필터 준수 검증
-                if (hasInputSlots && (element.SlotIndex >= inputSlots.Length ||
-                                      inputSlots[element.SlotIndex].ItemType != element.ItemType))
-                {
-                    ReportViolation("StorageInvariant",
-                        $"Item {element.ItemType} does not match the assigned input type of slot {element.SlotIndex}.", storageEntity);
-                }
-
-                if (validateStoredItemFilter && !filter.IsItemAllowed(element.ItemType))
-                {
-                    ReportViolation(
-                        "StorageInvariant",
-                        $"Storage ({storageEntity.Index}:{storageEntity.Version}) with filter {filter.Mode} contains disallowed item type {element.ItemType}.",
-                        storageEntity
-                    );
-                }
-
-                // F. 슬롯 단일 품목 규칙 및 누적 수량 추적
-                if (slotTracker.TryGetValue(element.SlotIndex, out int2 trackedData))
-                {
-                    ItemTypeEnum firstType = (ItemTypeEnum)trackedData.x;
-                    int count = trackedData.y + 1;
-
-                    if (firstType != element.ItemType)
-                    {
-                        ReportViolation(
-                            "StorageInvariant",
-                            $"Slot pollution in Storage ({storageEntity.Index}:{storageEntity.Version}) Slot {element.SlotIndex}: mixed item types ({firstType} and {element.ItemType}).",
-                            storageEntity
-                        );
-                    }
-
-                    slotTracker[element.SlotIndex] = new int2(trackedData.x, count);
-                }
-                else
-                {
-                    slotTracker.Add(element.SlotIndex, new int2((int)element.ItemType, 1));
-                }
-            }
-
-            // G. 슬롯 스택 상한 초과 검증
-            var slotKvpArray = slotTracker.GetKeyValueArrays(Allocator.Temp);
-            for (int s = 0; s < slotKvpArray.Length; s++)
-            {
-                int slotIdx = slotKvpArray.Keys[s];
-                int2 data = slotKvpArray.Values[s];
-                ItemTypeEnum slotItemType = (ItemTypeEnum)data.x;
-                int count = data.y;
-
-                int maxStack = hasItemConfig
-                    ? ItemRegistry.GetMaxStack(itemConfigs, slotItemType)
-                    : 0;
-
-                if (count > maxStack)
-                {
-                    ReportViolation(
-                        "StorageInvariant",
-                        $"Slot stack limit exceeded in Storage ({storageEntity.Index}:{storageEntity.Version}) Slot {slotIdx}: {count} items of {slotItemType} (MaxStack: {maxStack}).",
-                        storageEntity
-                    );
-                }
-            }
-            slotKvpArray.Dispose();
-            slotTracker.Dispose();
         }
 
-        // 3. [역방향 검증] Product Buffer -> Product Item & 슬롯/스택 세부 검증
-        foreach (var (prodBuffer, producerEntity) in
-                 SystemAPI.Query<DynamicBuffer<ProductItemElement>>()
-                          .WithEntityAccess())
+        var capacityLookup = SystemAPI.TryGetSingleton<DroneCapacityState>(out var capacityState)
+            ? capacityState.CarryingCapacity : int.MaxValue;
+        foreach (var (cargo, owner) in SystemAPI.Query<RefRO<DroneCargoState>>().WithEntityAccess())
         {
-            var slotTracker = new NativeParallelHashMap<int, int2>(16, Allocator.Temp);
+            var value = cargo.ValueRO;
+            bool valid = value.Quantity == 0
+                ? value.ItemType == ItemTypeEnum.None && value.Origin == DroneCargoOriginEnum.None && !value.BlockAutomaticRecoveryOnDrop
+                : value.Quantity > 0 && value.Quantity <= capacityLookup && value.ItemType != ItemTypeEnum.None &&
+                  (value.Origin == DroneCargoOriginEnum.Supply || value.Origin == DroneCargoOriginEnum.Recovery);
+            if (!valid) ReportViolation("DroneCargoInvariant", "Cargo quantity, type or origin is invalid.", owner);
+        }
 
-            for (int i = 0; i < prodBuffer.Length; i++)
+        foreach (var (requirements, owner) in SystemAPI.Query<DynamicBuffer<ConstructionMaterialRequirementElement>>()
+                     .WithAll<ConstructionSite>().WithEntityAccess())
+        {
+            foreach (var row in requirements)
             {
-                ProductItemElement element = prodBuffer[i];
-                Entity itemEntity = element.ItemEntity;
-
-                // 참조 오류는 공통 검사에서 보고했다. 죽은 엔티티의 추가 조회는 생략한다.
-                if (!SystemAPI.Exists(itemEntity))
-                {
-                    continue;
-                }
-
-                // C. 생산품이 ItemSpatialIndex에 잘못 등록되어 있는지 확인
-                if (itemSpatialIndex.Map.IsCreated &&
-                    SystemAPI.TryGetComponent<GridPosition>(itemEntity, out var position))
-                {
-                    int2 gridPos = position.Value;
-                    if (itemSpatialIndex.ContainsItemAt(gridPos, itemEntity))
-                    {
-                        ReportViolation(
-                            "StorageInvariant",
-                            $"Stored product item ({itemEntity.Index}:{itemEntity.Version}) in Producer ({producerEntity.Index}:{producerEntity.Version}) is erroneously registered in ItemSpatialIndex at ({gridPos.x}, {gridPos.y}).",
-                            producerEntity
-                        );
-                    }
-                }
-
-                // D. 슬롯 인덱스 음수 검증
-                if (element.SlotIndex < 0)
-                {
-                    ReportViolation(
-                        "StorageInvariant",
-                        $"Producer ({producerEntity.Index}:{producerEntity.Version}) product element has negative SlotIndex {element.SlotIndex}.",
-                        producerEntity
-                    );
-                    continue;
-                }
-
-                // E. 슬롯 단일 품목 규칙 및 누적 수량 추적
-                if (slotTracker.TryGetValue(element.SlotIndex, out int2 trackedData))
-                {
-                    ItemTypeEnum firstType = (ItemTypeEnum)trackedData.x;
-                    int count = trackedData.y + 1;
-
-                    if (firstType != element.ItemType)
-                    {
-                        ReportViolation(
-                            "StorageInvariant",
-                            $"Slot pollution in Producer ({producerEntity.Index}:{producerEntity.Version}) Product Slot {element.SlotIndex}: mixed item types ({firstType} and {element.ItemType}).",
-                            producerEntity
-                        );
-                    }
-
-                    slotTracker[element.SlotIndex] = new int2(trackedData.x, count);
-                }
-                else
-                {
-                    slotTracker.Add(element.SlotIndex, new int2((int)element.ItemType, 1));
-                }
+                if (row.DeliveredQuantity < 0 || row.ReservedQuantity < 0 ||
+                    (long)row.DeliveredQuantity + row.ReservedQuantity > row.RequiredQuantity)
+                    ReportViolation("ConstructionInvariant", "Delivered or reserved materials exceed the requirement.", owner);
             }
+        }
 
-            // F. 슬롯 스택 상한 초과 검증 (1스택 한도)
-            var slotKvpArray = slotTracker.GetKeyValueArrays(Allocator.Temp);
-            for (int s = 0; s < slotKvpArray.Length; s++)
+        foreach (var (recoveries, owner) in SystemAPI.Query<DynamicBuffer<ResearchRecoveryElement>>().WithEntityAccess())
+        {
+            if (!storageBuffers.TryGetBuffer(owner, out var slots)) continue;
+            foreach (var recovery in recoveries)
             {
-                int slotIdx = slotKvpArray.Keys[s];
-                int2 data = slotKvpArray.Values[s];
-                ItemTypeEnum slotItemType = (ItemTypeEnum)data.x;
-                int count = data.y;
-
-                int maxStack = hasItemConfig
-                    ? ItemRegistry.GetMaxStack(itemConfigs, slotItemType)
-                    : 0;
-
-                if (count > maxStack)
-                {
-                    ReportViolation(
-                        "StorageInvariant",
-                        $"Product slot stack limit exceeded in Producer ({producerEntity.Index}:{producerEntity.Version}) Slot {slotIdx}: {count} items of {slotItemType} (MaxStack: {maxStack}).",
-                        producerEntity
-                    );
-                }
+                if ((uint)recovery.SlotIndex >= (uint)slots.Length || recovery.Quantity <= 0 ||
+                    slots[recovery.SlotIndex].ItemType != recovery.ItemType ||
+                    recovery.Quantity > slots[recovery.SlotIndex].Quantity)
+                    ReportViolation("ResearchInvariant", "Recoverable quantity exceeds its inventory slot.", owner);
             }
-            slotKvpArray.Dispose();
-            slotTracker.Dispose();
         }
     }
 
-    private struct StorageValidationRegistryContext
+    private static bool IsValidStack(ItemTypeEnum type, int quantity, bool hasRegistry, DynamicBuffer<ItemConfigElement> items)
     {
-        public bool HasReadRecipes;
-        public bool HasRecipes;
-        public DynamicBuffer<RecipeConfigElement> Recipes;
-        public bool HasReadResearchIngredients;
-        public bool ResearchIngredientsEmpty;
-    }
-
-    private bool IsResearchWithoutInputSlots(Entity building, ref StorageValidationRegistryContext context)
-    {
-        if (!EntityManager.HasComponent<ResearchCycleState>(building) ||
-            !EntityManager.HasComponent<ResearchInputConfigured>(building))
-        {
-            return false;
-        }
-        if (!EntityManager.IsComponentEnabled<ResearchInputConfigured>(building))
-        {
-            return true;
-        }
-        if (!context.HasReadResearchIngredients)
-        {
-            using var query = EntityManager.CreateEntityQuery(typeof(ResearchRegistry));
-            context.ResearchIngredientsEmpty = query.CalculateEntityCount() == 1 &&
-                EntityManager.GetBuffer<ResearchIngredientElement>(query.GetSingletonEntity(), true).IsEmpty;
-            context.HasReadResearchIngredients = true;
-        }
-        return context.ResearchIngredientsEmpty;
-    }
-
-    /// <summary>
-    /// 레시피 미선택 또는 무재료 레시피의 유효한 0슬롯 구성을 확인.
-    /// </summary>
-    private bool IsCrafterWithoutInputRequirements(Entity building, ref StorageValidationRegistryContext context)
-    {
-        if (!SystemAPI.TryGetComponent<CrafterState>(building, out var crafterState))
-        {
-            return false;
-        }
-
-        int recipeId = crafterState.SelectedRecipeId;
-        if (recipeId <= 0)
-        {
-            return true;
-        }
-
-        // 유효한 무재료 레시피도 계산 결과가 0슬롯이다.
-        if (!context.HasReadRecipes)
-        {
-            if (SystemAPI.TryGetSingletonEntity<RecipeRegistry>(out var recipeRegistryEntity))
-            {
-                var recipeConfigLookup = SystemAPI.GetBufferLookup<RecipeConfigElement>(true);
-                context.HasRecipes = recipeConfigLookup.TryGetBuffer(recipeRegistryEntity, out context.Recipes);
-            }
-            context.HasReadRecipes = true;
-        }
-        if (!context.HasRecipes)
-        {
-            return false;
-        }
-
-        if (!RecipeConfigLookupUtility.TryGetRecipe(context.Recipes, recipeId, out var recipe))
-        {
-            return false;
-        }
-
-        return recipe.IngredientCount == 0;
+        if (quantity == 0) return type == ItemTypeEnum.None;
+        if (quantity < 0 || type == ItemTypeEnum.None) return false;
+        return !hasRegistry || quantity <= ItemRegistry.GetMaxStack(items, type);
     }
 
     /// <summary>
@@ -967,7 +488,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 continue;
             }
             if (!EntityManager.HasComponent<DroneStationStorage>(station) || !EntityManager.HasComponent<Storage>(station) ||
-                !EntityManager.HasBuffer<StoredItemElement>(station) || !EntityManager.HasBuffer<DockedDroneElement>(station))
+                !EntityManager.HasBuffer<StorageSlotElement>(station) || !EntityManager.HasBuffer<DockedDroneElement>(station))
             {
                 ReportViolation("DroneStationInvariant", "Station is missing required storage/dock configuration.", station);
             }
@@ -975,7 +496,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
         var registered = new HashSet<Entity>();
         foreach (var (stationStorage, storage, docked, items, station) in
                  SystemAPI.Query<RefRO<DroneStationStorage>, RefRO<Storage>, DynamicBuffer<DockedDroneElement>,
-                     DynamicBuffer<StoredItemElement>>().WithOptions(EntityQueryOptions.IncludeDisabledEntities).WithEntityAccess())
+                     DynamicBuffer<StorageSlotElement>>().WithOptions(EntityQueryOptions.IncludeDisabledEntities).WithEntityAccess())
         {
             int total = storage.ValueRO.SlotCount;
             int dedicated = stationStorage.ValueRO.DedicatedSlotCount;
@@ -983,11 +504,34 @@ public partial class WorldInvariantValidationSystem : SystemBase
             {
                 ReportViolation("DroneStationInvariant", "Invalid dedicated/general capacity.", station);
             }
-            foreach (var item in items)
+            for (int index = 0; index < items.Length; index++)
             {
-                if (!StationStorageUtility.IsItemSlotAllowed(item.SlotIndex, total, dedicated, item.ItemType))
+                if (items[index].Quantity > 0 && !StationStorageUtility.IsItemSlotAllowed(index, total, dedicated, items[index].ItemType))
+                    ReportViolation("DroneStationInvariant", "Item occupies an incompatible station slot.", station);
+            }
+            if (EntityManager.HasBuffer<DroneStationReservedSlotElement>(station))
+            {
+                using var reservedSlots = new NativeHashSet<int>(math.max(1, total), Allocator.Temp);
+                foreach (var entry in EntityManager.GetBuffer<DroneStationReservedSlotElement>(station, true))
                 {
-                    ReportViolation("DroneStationInvariant", "Item occupies an incompatible station slot.", item.ItemEntity);
+                    bool validReservation = (uint)entry.SlotIndex < (uint)items.Length && reservedSlots.Add(entry.SlotIndex) &&
+                        EntityManager.HasBuffer<DroneStationRelocationMemberElement>(entry.Task);
+                    if (validReservation)
+                    {
+                        var roster = EntityManager.GetBuffer<DroneStationRelocationMemberElement>(entry.Task, true);
+                        validReservation = (uint)entry.MemberIndex < (uint)roster.Length &&
+                            !roster[entry.MemberIndex].Finished && roster[entry.MemberIndex].Destination == station &&
+                            roster[entry.MemberIndex].SlotIndex == entry.SlotIndex;
+                        if (validReservation && items[entry.SlotIndex].Quantity > 0)
+                        {
+                            var member = roster[entry.MemberIndex];
+                            validReservation = member.Request != Entity.Null &&
+                                EntityManager.HasComponent<DroneStationResult>(member.Request) &&
+                                EntityManager.GetComponentData<DroneStationResult>(member.Request).Operation == DroneStationOperation.Store;
+                        }
+                    }
+                    if (!validReservation)
+                        ReportViolation("DroneStationInvariant", "Relocation reservation is inconsistent.", station);
                 }
             }
             var slots = new HashSet<int>();
@@ -1002,10 +546,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
                     var relation = EntityManager.GetComponentData<DroneDocked>(entry.Drone);
                     valid = relation.Station == station && relation.SlotIndex == entry.SlotIndex;
                 }
-                foreach (var item in items)
-                {
-                    valid &= item.SlotIndex != entry.SlotIndex;
-                }
+                valid &= (uint)entry.SlotIndex < (uint)items.Length && items[entry.SlotIndex].Quantity == 0;
                 if (!valid)
                 {
                     ReportViolation("DroneStationInvariant", "Docked actor/slot ownership is inconsistent.", station);
@@ -1049,7 +590,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
             {
                 ReportViolation(
                     "DecisionLifecycle",
-                    $"BuildingItemOutputDecision remained confirmed (CanOutput=true, ItemToOutput={decision.ValueRO.ItemToOutput.Index}:{decision.ValueRO.ItemToOutput.Version}) at the end of the frame on Building ({entity.Index}:{entity.Version}). Decision was not consumed in BuildingStateApplyGroup.",
+                    $"BuildingItemOutputDecision remained confirmed (CanOutput=true, SourceSlot={decision.ValueRO.SourceSlotIndex}) at the end of the frame on Building ({entity.Index}:{entity.Version}). Decision was not consumed in BuildingStateApplyGroup.",
                     entity
                 );
             }

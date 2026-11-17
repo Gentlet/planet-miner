@@ -8,6 +8,8 @@ internal struct DroneStationAutomationIntent
     public Entity Drone, Station, DemandTask;
     public DroneStationOperation Operation;
     public int Quantity;
+    public int StockSlot;
+    public int StockOrdinal;
 }
 
 internal struct DroneStationActivationPlan
@@ -16,6 +18,8 @@ internal struct DroneStationActivationPlan
     public float2 Origin, Source, Destination;
     public float Charge;
     public int Quantity;
+    public int StockSlot;
+    public int StockOrdinal;
     public bool ViaSource;
 }
 
@@ -28,7 +32,7 @@ internal static class DroneStationAutomationUtility
         {
             if (!DroneTargetPointUtility.TryGetTargetPoint(manager, station, out float2 point, out int2 anchor)) continue;
             var network = manager.GetComponentData<DroneStationNetworkDecision>(station);
-            var items = manager.GetBuffer<StoredItemElement>(station, true);
+            var items = manager.GetBuffer<StorageSlotElement>(station, true);
             var docks = manager.GetBuffer<DockedDroneElement>(station, true);
             int slotCount = manager.GetComponentData<Storage>(station).SlotCount;
             bool hasReservations = slotCount > 0 && manager.HasBuffer<DroneStationReservedSlotElement>(station);
@@ -39,7 +43,7 @@ internal static class DroneStationAutomationUtility
             for (int slot = 0; slot < slotCount; slot++)
             {
                 bool occupied = hasReservations && DroneStationRelocationUtility.IsReserved(reservations, slot);
-                foreach (var item in items) occupied |= item.SlotIndex == slot;
+                occupied |= items[slot].Quantity > 0;
                 foreach (var dock in docks) occupied |= dock.SlotIndex == slot;
                 if (occupied)
                 {
@@ -126,7 +130,7 @@ internal static class DroneStationAutomationUtility
     public static void PrepareDemand(EntityManager manager, Entity candidates, Entity drone, Entity station,
         NativeArray<Entity> tasks, NativeArray<Entity> sites, NativeArray<Entity> storages, NativeArray<Entity> assignments,
         NativeArray<DroneStationNetworkDecision> networks, Entity registry, int capacity, float maximum,
-        NativeList<DroneStationActivationPlan> plans)
+        NativeList<DroneStationActivationPlan> plans, int stockSlot = -1, int stockOrdinal = 0)
     {
         if (manager.HasComponent<PreparingStationDemolition>(station) || manager.HasComponent<DroneStationRelocation>(drone)) return;
         float charge = manager.HasComponent<DroneBatteryState>(drone) ? manager.GetComponentData<DroneBatteryState>(drone).CurrentCharge : maximum;
@@ -154,6 +158,7 @@ internal static class DroneStationAutomationUtility
             {
                 if (DroneTargetPointUtility.TryGetTargetPoint(manager, task.Target, out float2 point))
                     plans.Add(new DroneStationActivationPlan { Drone = drone, Station = station, Task = taskEntity,
+                        StockSlot = stockSlot, StockOrdinal = stockOrdinal,
                         Origin = origin, Destination = point, Charge = charge, Quantity = 1, ViaSource = false });
                 continue;
             }
@@ -180,12 +185,13 @@ internal static class DroneStationAutomationUtility
                 if (quantity <= 0 || !DroneTargetPointUtility.TryGetTargetPoint(manager, source, out float2 from) ||
                     !DroneTargetPointUtility.TryGetTargetPoint(manager, destination, out float2 to)) continue;
                 plans.Add(new DroneStationActivationPlan { Drone = drone, Station = station, Task = taskEntity,
+                        StockSlot = stockSlot, StockOrdinal = stockOrdinal,
                     Origin = origin, Source = from, Destination = to, Charge = charge, Quantity = quantity, ViaSource = true });
             }
         }
     }
 
-    private static int ReadDemand(EntityManager manager, Entity entity, in DroneLogisticsTask task,
+    internal static int ReadDemand(EntityManager manager, Entity entity, in DroneLogisticsTask task,
         NativeArray<Entity> assignments, Entity candidates)
     {
         if (task.State != DroneLogisticsTaskStateEnum.Open) return 0;
@@ -219,7 +225,7 @@ internal static class DroneStationAutomationUtility
     {
         var assignment = manager.GetComponentData<DroneTaskAssignment>(assignmentEntity);
         if (DroneSchedulingUtility.IsTerminal(assignment.State)) return;
-        var plan = new DroneStationActivationPlan { Drone = worker, Station = station,
+        var plan = new DroneStationActivationPlan { Drone = worker, Station = station, StockSlot = -1,
             Origin = manager.GetComponentData<LocalTransform>(worker).Position.xy,
             Charge = manager.GetComponentData<DroneBatteryState>(worker).CurrentCharge };
         if (assignment.State == DroneTaskAssignmentStateEnum.Retargeting)

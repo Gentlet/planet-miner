@@ -48,6 +48,7 @@ public partial struct BeltMovementExecutionSystem : ISystem
 /// 벨트 위 활성화된 각 아이템의 위치 및 진행 상태를 병렬로 갱신하고 의사결정 값을 소비하는 Safe Burst Job.
 /// </summary>
 [BurstCompile]
+[WithNone(typeof(DestroyItemRequest))]
 public partial struct BeltMovementExecutionJob : IJobEntity
 {
     [ReadOnly]
@@ -58,16 +59,8 @@ public partial struct BeltMovementExecutionJob : IJobEntity
         ref BeltMovementState state,
         ref GridPosition gridPos,
         ref LocalTransform transform,
-        ref BeltMovementDecision decision,
-        in ItemOwnership ownership)
+        ref BeltMovementDecision decision)
     {
-        // 1. 월드 아이템이 아니면 벨트 실행 대상이 아님
-        if (!ownership.IsWorldItem)
-        {
-            decision.PlannedProgress = 0.0f;
-            return;
-        }
-
         // 2. 현재 타일에 벨트가 존재하는지 확인
         if (!BeltMap.TryGetValue(gridPos.Value, out BeltInfo currentBelt))
         {

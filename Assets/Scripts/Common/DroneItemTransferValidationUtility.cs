@@ -28,15 +28,14 @@ public static class DroneItemTransferValidationUtility
         if (!manager.HasComponent<DroneWorkerAssignment>(action.Worker)) return false;
         if (!manager.HasComponent<DroneWorkerObservation>(action.Worker)) return false;
         if (!manager.HasComponent<DroneCargoState>(action.Worker)) return false;
-        if (!manager.HasBuffer<StoredItemElement>(action.Worker)) return false;
         if (manager.GetComponentData<DroneWorkerAssignment>(action.Worker).Assignment != action.Assignment) return false;
         var observation = manager.GetComponentData<DroneWorkerObservation>(action.Worker);
         if (request.WorkerObservationRevision == 0 || observation.Revision != request.WorkerObservationRevision ||
             !math.all(math.isfinite(observation.Position))) return false;
         if (!DroneItemTransferUtility.CargoHasSingleType(manager, action.Worker, assignment.ItemType)) return false;
-        var cargo = manager.GetBuffer<StoredItemElement>(action.Worker, true);
+        var cargo = manager.GetComponentData<DroneCargoState>(action.Worker);
         var cargoOrigin = manager.GetComponentData<DroneCargoState>(action.Worker).Origin;
-        if (!cargo.IsEmpty && cargoOrigin != DroneCargoOriginEnum.Supply && cargoOrigin != DroneCargoOriginEnum.Recovery) return false;
+        if (cargo.Quantity != 0 && cargoOrigin != DroneCargoOriginEnum.Supply && cargoOrigin != DroneCargoOriginEnum.Recovery) return false;
         if (manager.HasComponent<ConstructionSupplyReservation>(action.Assignment))
         {
             var reservation = manager.GetComponentData<ConstructionSupplyReservation>(action.Assignment);
@@ -49,7 +48,7 @@ public static class DroneItemTransferValidationUtility
         {
             if (action.Target != assignment.Source) return false;
             if (!IsAtCollectionPoint(manager, assignment)) return false;
-            if (!manager.GetBuffer<StoredItemElement>(action.Worker, true).IsEmpty) return false;
+            if (cargo.Quantity != 0) return false;
             if (manager.GetComponentData<DroneCargoState>(action.Worker).Origin != DroneCargoOriginEnum.None) return false;
             if (!manager.HasComponent<DroneLogisticsTask>(assignment.Task)) return false;
             var task = manager.GetComponentData<DroneLogisticsTask>(assignment.Task);

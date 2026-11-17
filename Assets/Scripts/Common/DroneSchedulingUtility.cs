@@ -63,6 +63,8 @@ public static class DroneSchedulingUtility
             {
                 manager.AddBuffer<DroneReturnReservationElement>(existing);
             }
+            if (!manager.HasBuffer<DroneInventoryWithdrawalElement>(existing))
+                manager.AddBuffer<DroneInventoryWithdrawalElement>(existing);
             return existing;
         }
 
@@ -70,7 +72,7 @@ public static class DroneSchedulingUtility
             typeof(DroneTaskCreationDecisionElement), typeof(DroneTaskInvalidationDecisionElement),
             typeof(DroneTaskGenerationBlockElement), typeof(DroneTaskGenerationDecisionElement), typeof(DroneTransportPlanDecisionElement),
             typeof(DroneTransportPendingReservationElement), typeof(DroneReturnReservationElement), typeof(DroneDemolitionDecisionElement),
-            typeof(DroneStationRelocationCandidateElement), typeof(DroneStationRelocationIntentElement));
+            typeof(DroneStationRelocationCandidateElement), typeof(DroneStationRelocationIntentElement), typeof(DroneInventoryWithdrawalElement));
     }
 
     /// <summary>초기 능력/연구 Writer가 게시한 공통 값을 읽는다. 미게시 상태에 임의 기본값을 만들지 않는다.</summary>
@@ -108,7 +110,7 @@ public static class DroneSchedulingUtility
 
         if (manager.HasComponent<PendingBuildingDemolition>(entity) ||
             !manager.HasComponent<BuildingType>(entity) || !manager.HasComponent<GridPosition>(entity) ||
-            !manager.HasComponent<Storage>(entity) || !manager.HasBuffer<StoredItemElement>(entity))
+            !manager.HasComponent<Storage>(entity) || !manager.HasBuffer<StorageSlotElement>(entity))
         {
             return false;
         }
@@ -141,14 +143,13 @@ public static class DroneSchedulingUtility
             return false;
         }
 
-        if (!manager.HasComponent<ItemIdentity>(item) || !manager.HasComponent<ItemOwnership>(item) ||
+        if (!manager.HasComponent<ItemIdentity>(item) ||
             !manager.HasComponent<GridPosition>(item) || HasDestroy(manager, item))
         {
             return false;
         }
 
-        return type != ItemTypeEnum.None && manager.GetComponentData<ItemIdentity>(item).Type == type &&
-               manager.GetComponentData<ItemOwnership>(item).IsWorldItem;
+        return type != ItemTypeEnum.None && manager.GetComponentData<ItemIdentity>(item).Type == type;
     }
 
     public static bool HasDestroy(EntityManager manager, Entity item)
@@ -164,8 +165,7 @@ public static class DroneSchedulingUtility
         }
 
         if (!manager.HasComponent<DroneWorker>(worker) || !manager.HasComponent<DroneWorkerObservation>(worker) ||
-            !manager.HasComponent<DroneWorkerAssignment>(worker) || !manager.HasComponent<DroneCargoState>(worker) ||
-            !manager.HasBuffer<StoredItemElement>(worker))
+            !manager.HasComponent<DroneWorkerAssignment>(worker) || !manager.HasComponent<DroneCargoState>(worker))
         {
             return false;
         }
@@ -180,42 +180,15 @@ public static class DroneSchedulingUtility
                observation.CanAcceptTask && math.all(math.isfinite(observation.Position)) &&
                manager.GetComponentData<DroneWorkerAssignment>(worker).Assignment == Entity.Null &&
                manager.GetComponentData<DroneCargoState>(worker).Origin == DroneCargoOriginEnum.None &&
-               manager.GetBuffer<StoredItemElement>(worker, true).IsEmpty;
+               manager.GetComponentData<DroneCargoState>(worker).Quantity == 0;
     }
 
     public static int CountInventory(EntityManager manager, Entity storage, ItemTypeEnum type)
     {
         if (type == ItemTypeEnum.Drone && manager.HasComponent<PreparingStationDemolition>(storage)) return 0;
-        if (!IsStorage(manager, storage))
-        {
-            return 0;
-        }
-
-        int count = 0;
-        var items = manager.GetBuffer<StoredItemElement>(storage, true);
-        for (int i = 0; i < items.Length; i++)
-        {
-            var entry = items[i];
-            if (manager.HasComponent<DroneStationRelocation>(entry.ItemEntity)) continue;
-            if (entry.ItemType != type || !IsActiveEntity(manager, entry.ItemEntity))
-            {
-                continue;
-            }
-
-            if (!manager.HasComponent<ItemIdentity>(entry.ItemEntity) ||
-                !manager.HasComponent<ItemOwnership>(entry.ItemEntity) || HasDestroy(manager, entry.ItemEntity))
-            {
-                continue;
-            }
-
-            if (manager.GetComponentData<ItemIdentity>(entry.ItemEntity).Type == type &&
-                manager.GetComponentData<ItemOwnership>(entry.ItemEntity).Owner == storage)
-            {
-                count++;
-            }
-        }
-
-        return count;
+        return IsStorage(manager, storage)
+            ? InventorySlotUtility.Count(manager.GetBuffer<StorageSlotElement>(storage, true), type)
+            : 0;
     }
 
     public static bool HasStorageSpace(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry)
@@ -390,14 +363,7 @@ public static class DroneSchedulingUtility
             var inputs = storageRead.InputSlots;
             if (slot >= inputs.Length || inputs[slot].ItemType != type) return 0;
         }
-        int count = 0;
-        for (int i = 0; i < items.Length; i++)
-        {
-            if (items[i].SlotIndex != slot) continue;
-            if (items[i].ItemType != type) return 0;
-            count++;
-        }
-        return math.max(0, maxStack - count);
+        return (uint)slot < (uint)items.Length ? InventorySlotUtility.FreeQuantity(items[slot], type, maxStack) : 0;
     }
 
     public static bool IsUnderSite(EntityManager manager, Entity item, NativeArray<Entity> sites)
@@ -589,23 +555,9 @@ public static class DroneSchedulingUtility
     {
         if (!IsActiveEntity(manager, assignment.Worker)) return 0;
         if (!manager.HasComponent<DroneCargoState>(assignment.Worker)) return 0;
-        if (!manager.HasBuffer<StoredItemElement>(assignment.Worker)) return 0;
-        var origin = manager.GetComponentData<DroneCargoState>(assignment.Worker).Origin;
-        if (origin != DroneCargoOriginEnum.Supply && origin != DroneCargoOriginEnum.Recovery) return 0;
-        if (assignment.ItemType == ItemTypeEnum.None) return 0;
-        var cargo = manager.GetBuffer<StoredItemElement>(assignment.Worker, true);
-        for (int i = 0; i < cargo.Length; i++)
-        {
-            Entity item = cargo[i].ItemEntity;
-            if (!IsActiveEntity(manager, item)) return 0;
-            if (HasDestroy(manager, item)) return 0;
-            if (cargo[i].ItemType != assignment.ItemType) return 0;
-            if (!manager.HasComponent<ItemIdentity>(item)) return 0;
-            if (manager.GetComponentData<ItemIdentity>(item).Type != assignment.ItemType) return 0;
-            if (!manager.HasComponent<ItemOwnership>(item)) return 0;
-            if (manager.GetComponentData<ItemOwnership>(item).Owner != assignment.Worker) return 0;
-        }
-        return cargo.Length;
+        var cargo = manager.GetComponentData<DroneCargoState>(assignment.Worker);
+        if (cargo.Origin == DroneCargoOriginEnum.None || cargo.ItemType != assignment.ItemType) return 0;
+        return cargo.Quantity;
     }
 
     /// <summary>

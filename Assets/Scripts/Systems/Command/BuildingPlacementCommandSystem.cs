@@ -208,9 +208,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                     ecb.AddComponent(siteEntity, LocalTransform.FromPosition(candidate.OriginPosition.x, candidate.OriginPosition.y, 0f));
 
                     // 요구 수량과 실물 참조를 분리한다. 현장은 요구량만으로 자재를 소유하지 않으며
-                    // 드론 공급의 실제 성공분이 StoredItemElement/Owner와 DeliveredQuantity를 함께 채운다.
                     var reqBuffer = ecb.AddBuffer<ConstructionMaterialRequirementElement>(siteEntity);
-                    ecb.AddBuffer<StoredItemElement>(siteEntity);
 
                     BuildingConfigLookupUtility.PopulateRequirements(materials, candidate.BuildingId, ref reqBuffer);
 

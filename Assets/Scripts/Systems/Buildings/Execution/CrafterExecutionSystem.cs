@@ -7,17 +7,17 @@ using Unity.Mathematics;
 /// <summary>
 /// 역할·목적: Execution에서 선택 레시피의 재료를 선소비하고 제작 진행과 생산 결과를 반영한다.
 /// 입력·생성자: Command의 레시피 선택/중단 상태, CrafterDecisionSystem의 착수·진행·출력 결정과 RecipeRegistry.
-/// 출력·소유권: StoredItemElement를 먼저 제거하고 실물 DestroyItemRequest를 활성화한다. CrafterState의 진행/작업 여부와 ProductResult를 쓴다.
-/// 착수 실패: 모든 재료의 유일한 요구량과 소비 가능한 실물을 먼저 검사하며 부족하면 아무 재료도 소비하지 않는다.
-/// 이용·정리: ItemLifecycleApplySystem이 소비 실물을 삭제하고 생산 결과를 실물/출력 버퍼로 변환 후 비운다. Status 반영은 CrafterStateApplySystem의 책임이다.
-/// 가시화: 값 변경은 Execution Job에서 반영하며 실물 생성/삭제는 EndBuilding에서 확정한다. 레시피 변경·잔여 재료 반환은 여기서 처리하지 않는다.
+/// 출력: 재료 수량을 차감하고 진행도와 이번 틱 생산 결과를 작성한다.
+/// 착수 실패: 모든 요구 재료의 슬롯 수량을 먼저 검사하며 부족하면 아무 재료도 소비하지 않는다.
+/// 이용·정리: ItemLifecycleApplySystem이 ProductResult를 출력 슬롯에 더하고 비운다. Status 반영은 CrafterStateApplySystem의 책임이다.
+/// 가시화: 재료 수량과 진행은 Execution Job에서 반영한다. 레시피 변경과 잔여 재료 반환은 Command가 소유한다.
 /// </summary>
 [UpdateInGroup(typeof(BuildingExecutionGroup))]
 [BurstCompile]
 public partial struct CrafterExecutionSystem : ISystem
 {
     private EntityQuery _crafterQuery;
-    private ComponentLookup<DestroyItemRequest> _destroyItemRequestLookup;
+
     private BufferLookup<RecipeConfigElement> _recipeConfigLookup;
     private BufferLookup<RecipeIngredientElement> _recipeIngredientLookup;
     private BufferLookup<RecipeOutputElement> _recipeOutputLookup;
@@ -26,15 +26,15 @@ public partial struct CrafterExecutionSystem : ISystem
     public void OnCreate(ref SystemState state)
     {
         state.RequireForUpdate<ResearchStatBonuses>();
-        _destroyItemRequestLookup = state.GetComponentLookup<DestroyItemRequest>(false);
+
         _recipeConfigLookup = state.GetBufferLookup<RecipeConfigElement>(true);
         _recipeIngredientLookup = state.GetBufferLookup<RecipeIngredientElement>(true);
         _recipeOutputLookup = state.GetBufferLookup<RecipeOutputElement>(true);
 
         _crafterQuery = SystemAPI.QueryBuilder()
             .WithAllRW<CrafterState>()
-            .WithAllRW<StoredItemElement, ProductResult>()
-            .WithAll<ProductItemElement, CrafterDecision>()
+            .WithAllRW<StorageSlotElement, ProductResult>()
+            .WithAll<ProductSlotElement, CrafterDecision>()
             .Build();
     }
 
@@ -63,12 +63,10 @@ public partial struct CrafterExecutionSystem : ISystem
             return;
         }
 
-        _destroyItemRequestLookup.Update(ref state);
-
         var job = new CrafterExecutionJob
         {
             CrafterStateHandle = SystemAPI.GetComponentTypeHandle<CrafterState>(false),
-            StoredItemElementHandle = SystemAPI.GetBufferTypeHandle<StoredItemElement>(false),
+            StorageSlotElementHandle = SystemAPI.GetBufferTypeHandle<StorageSlotElement>(false),
             ProductResultHandle = SystemAPI.GetBufferTypeHandle<ProductResult>(false),
             CrafterDecisionHandle = SystemAPI.GetComponentTypeHandle<CrafterDecision>(true),
             DeltaTime = dt,
@@ -77,7 +75,7 @@ public partial struct CrafterExecutionSystem : ISystem
             RecipeConfigLookup = _recipeConfigLookup,
             RecipeIngredientLookup = _recipeIngredientLookup,
             RecipeOutputLookup = _recipeOutputLookup,
-            DestroyItemRequestLookup = _destroyItemRequestLookup
+
         };
 
         state.Dependency = job.Schedule(_crafterQuery, state.Dependency);
@@ -91,7 +89,7 @@ public partial struct CrafterExecutionSystem : ISystem
 public partial struct CrafterExecutionJob : IJobChunk
 {
     public ComponentTypeHandle<CrafterState> CrafterStateHandle;
-    public BufferTypeHandle<StoredItemElement> StoredItemElementHandle;
+    public BufferTypeHandle<StorageSlotElement> StorageSlotElementHandle;
     public BufferTypeHandle<ProductResult> ProductResultHandle;
     [ReadOnly] public ComponentTypeHandle<CrafterDecision> CrafterDecisionHandle;
 
@@ -105,7 +103,7 @@ public partial struct CrafterExecutionJob : IJobChunk
     public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
     {
         var crafterStateValues = chunk.GetNativeArray(ref CrafterStateHandle);
-        var storedItemElementValues = chunk.GetBufferAccessorRW(ref StoredItemElementHandle);
+        var storedItemElementValues = chunk.GetBufferAccessorRW(ref StorageSlotElementHandle);
         var productResultValues = chunk.GetBufferAccessorRW(ref ProductResultHandle);
         var crafterDecisionValues = chunk.GetNativeArray(ref CrafterDecisionHandle);
         var registryRead = new RegistryReadContext();
@@ -138,11 +136,9 @@ public partial struct CrafterExecutionJob : IJobChunk
     [ReadOnly]
     public BufferLookup<RecipeOutputElement> RecipeOutputLookup;
 
-    public ComponentLookup<DestroyItemRequest> DestroyItemRequestLookup;
-
     private void ExecuteEntity(
         ref CrafterState state,
-        ref DynamicBuffer<StoredItemElement> storedItems,
+        ref DynamicBuffer<StorageSlotElement> storedItems,
         ref DynamicBuffer<ProductResult> productResults,
         in CrafterDecision decision, ref RegistryReadContext registryRead)
     {
@@ -168,19 +164,17 @@ public partial struct CrafterExecutionJob : IJobChunk
             {
                 return;
             }
-            // 모든 재료를 먼저 확인한다. 실패하면 부분 소비·삭제 요청·진행도를 기록하지 않는다.
-            if (!RecipeConfigLookupUtility.HasRequiredIngredients(recipe, ingredients, storedItems, DestroyItemRequestLookup))
+            // 재료 묶음이 부족하면 입력 수량과 진행도를 보존한다.
+            if (!RecipeConfigLookupUtility.HasRequiredIngredients(recipe, ingredients, storedItems))
             {
                 return;
             }
 
-            // 소유 버퍼 참조를 먼저 제거하여 소비 실물이 재선택되지 않게 하고, 실제 삭제는 ItemLifecycle과 EndBuilding에 맡긴다.
-            // 레시피 필요 재료를 StoredItemElement에서 차감하고 DestroyItemRequest 발행
             for (int i = 0; i < recipe.IngredientCount; i++)
             {
                 var ingredient = ingredients[recipe.IngredientStart + i];
-                StoredItemBufferUtility.ConsumeRequiredItems(
-                    storedItems, ingredient.ItemType, ingredient.Amount, ref DestroyItemRequestLookup);
+                InventorySlotUtility.Consume(
+                    storedItems, ingredient.ItemType, ingredient.Amount);
             }
 
             state.IsCraftingActive = true;

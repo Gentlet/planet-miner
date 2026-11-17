@@ -125,7 +125,7 @@ public partial struct DroneActionRequestDecisionSystem : ISystem
 
         private void Execute(Entity entity, in DroneWorker worker, in DroneWorkerAssignment link,
             in DroneWorkerObservation observation, in LocalTransform transform, in DroneBatteryState battery,
-            in DroneCargoState cargo, in DynamicBuffer<StoredItemElement> items)
+            in DroneCargoState cargo)
         {
             if (link.Assignment == Entity.Null)
             {
@@ -149,12 +149,12 @@ public partial struct DroneActionRequestDecisionSystem : ISystem
             {
                 return;
             }
-            if (collection && (battery.CurrentCharge <= 0f || cargo.Origin != DroneCargoOriginEnum.None || !items.IsEmpty))
+            if (collection && (battery.CurrentCharge <= 0f || cargo.Origin != DroneCargoOriginEnum.None || cargo.Quantity != 0))
             {
                 return;
             }
             // 공개 도착 뒤 납품/방출에는 추가 이동 에너지가 없다. 0 배터리의 새 목표 선택은 재배정/비행 판단에서 차단한다.
-            if ((delivery || dropping) && items.IsEmpty)
+            if ((delivery || dropping) && cargo.Quantity == 0)
             {
                 return;
             }

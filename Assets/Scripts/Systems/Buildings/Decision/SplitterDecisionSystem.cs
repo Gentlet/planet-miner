@@ -16,7 +16,7 @@ using Unity.Mathematics;
 public partial struct SplitterDecisionSystem : ISystem
 {
     private ComponentLookup<BeltMovementState> _beltMovementStateLookup;
-    private ComponentLookup<ItemOwnership> _itemOwnershipLookup;
+    private ComponentLookup<DestroyItemRequest> _destroyRequestLookup;
     private ComponentLookup<GridPosition> _gridPositionLookup;
     private ComponentLookup<Direction> _directionLookup;
     private ComponentLookup<PlacementStamp> _placementStampLookup;
@@ -28,7 +28,7 @@ public partial struct SplitterDecisionSystem : ISystem
     public void OnCreate(ref SystemState state)
     {
         _beltMovementStateLookup = state.GetComponentLookup<BeltMovementState>(true);
-        _itemOwnershipLookup = state.GetComponentLookup<ItemOwnership>(true);
+        _destroyRequestLookup = state.GetComponentLookup<DestroyItemRequest>(true);
         _gridPositionLookup = state.GetComponentLookup<GridPosition>(true);
         _directionLookup = state.GetComponentLookup<Direction>(true);
         _placementStampLookup = state.GetComponentLookup<PlacementStamp>(true);
@@ -59,7 +59,7 @@ public partial struct SplitterDecisionSystem : ISystem
         ref var itemFence = ref SystemAPI.GetSingletonRW<ItemSpatialIndexFence>().ValueRW;
 
         _beltMovementStateLookup.Update(ref state);
-        _itemOwnershipLookup.Update(ref state);
+        _destroyRequestLookup.Update(ref state);
         _gridPositionLookup.Update(ref state);
         _directionLookup.Update(ref state);
         _placementStampLookup.Update(ref state);
@@ -70,7 +70,7 @@ public partial struct SplitterDecisionSystem : ISystem
             BeltMap = beltIndex.Map,
             ItemMap = itemIndex.Map,
             BeltMovementStateLookup = _beltMovementStateLookup,
-            ItemOwnershipLookup = _itemOwnershipLookup,
+            DestroyItemRequestLookup = _destroyRequestLookup,
             GridPositionLookup = _gridPositionLookup,
             DirectionLookup = _directionLookup,
             PlacementStampLookup = _placementStampLookup,
@@ -99,7 +99,7 @@ public partial struct SplitterDecisionJob : IJobEntity
     [ReadOnly] public NativeParallelMultiHashMap<int2, Entity> ItemMap;
 
     [ReadOnly] public ComponentLookup<BeltMovementState> BeltMovementStateLookup;
-    [ReadOnly] public ComponentLookup<ItemOwnership> ItemOwnershipLookup;
+    [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyItemRequestLookup;
     [ReadOnly] public ComponentLookup<GridPosition> GridPositionLookup;
     [ReadOnly] public ComponentLookup<Direction> DirectionLookup;
     [ReadOnly] public ComponentLookup<PlacementStamp> PlacementStampLookup;
@@ -174,7 +174,7 @@ public partial struct SplitterDecisionJob : IJobEntity
             inputBeltPos = GridPositionLookup[inputBelt].Value;
         }
         Entity candidateItem = BeltEntryUtility.FindItemAtBeltEnd(
-            inputBeltPos, ItemMap, ItemOwnershipLookup, BeltMovementStateLookup);
+            inputBeltPos, ItemMap, DestroyItemRequestLookup, BeltMovementStateLookup);
 
         if (candidateItem == Entity.Null)
         {
@@ -202,7 +202,7 @@ public partial struct SplitterDecisionJob : IJobEntity
 
                 if (RoutingDirectionUtility.IsOutgoingBelt(splitterPos, targetPos, beltInfo.Direction))
                 {
-                    if (BeltEntryUtility.HasEntrySpace(targetPos, ItemMap, ItemOwnershipLookup, BeltMovementStateLookup))
+                    if (BeltEntryUtility.HasEntrySpace(targetPos, ItemMap, DestroyItemRequestLookup, BeltMovementStateLookup))
                     {
                         targetBelt = beltInfo.Entity;
                         break;

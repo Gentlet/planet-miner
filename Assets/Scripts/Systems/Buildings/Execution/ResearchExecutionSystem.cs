@@ -9,7 +9,7 @@ public partial struct ResearchExecutionSystem : ISystem
     private EntityQuery _workQuery;
     public void OnCreate(ref SystemState state)
     {
-        _workQuery = SystemAPI.QueryBuilder().WithAllRW<ResearchCycleState>().WithAll<ResearchWorkPreparation>().WithAll<ResearchDecision>().WithAllRW<StoredItemElement>().WithAllRW<ResearchContributionElement>().Build();
+        _workQuery = SystemAPI.QueryBuilder().WithAllRW<ResearchCycleState>().WithAll<ResearchWorkPreparation>().WithAll<ResearchDecision>().WithAllRW<StorageSlotElement>().WithAllRW<ResearchContributionElement>().Build();
 
         state.RequireForUpdate<ResearchRegistry>();
     }
@@ -21,12 +21,12 @@ public partial struct ResearchExecutionSystem : ISystem
             ResearchCycleStateHandle = SystemAPI.GetComponentTypeHandle<ResearchCycleState>(false),
             ResearchWorkPreparationHandle = SystemAPI.GetComponentTypeHandle<ResearchWorkPreparation>(true),
             ResearchDecisionHandle = SystemAPI.GetComponentTypeHandle<ResearchDecision>(true),
-            StoredItemElementHandle = SystemAPI.GetBufferTypeHandle<StoredItemElement>(false),
+            StorageSlotElementHandle = SystemAPI.GetBufferTypeHandle<StorageSlotElement>(false),
             ResearchContributionElementHandle = SystemAPI.GetBufferTypeHandle<ResearchContributionElement>(false),
             Registry = SystemAPI.GetSingletonEntity<ResearchRegistry>(),
             Definitions = SystemAPI.GetBufferLookup<ResearchDefinitionElement>(true),
             Ingredients = SystemAPI.GetBufferLookup<ResearchIngredientElement>(true),
-            DestroyRequests = SystemAPI.GetComponentLookup<DestroyItemRequest>(false)
+
         }.Schedule(_workQuery, state.Dependency);
     }
 }
@@ -38,7 +38,7 @@ internal partial struct ExecuteResearchJob : IJobChunk
     public ComponentTypeHandle<ResearchCycleState> ResearchCycleStateHandle;
     [ReadOnly] public ComponentTypeHandle<ResearchWorkPreparation> ResearchWorkPreparationHandle;
     [ReadOnly] public ComponentTypeHandle<ResearchDecision> ResearchDecisionHandle;
-    public BufferTypeHandle<StoredItemElement> StoredItemElementHandle;
+    public BufferTypeHandle<StorageSlotElement> StorageSlotElementHandle;
     public BufferTypeHandle<ResearchContributionElement> ResearchContributionElementHandle;
 
     private struct RegistryReadContext
@@ -52,7 +52,7 @@ internal partial struct ExecuteResearchJob : IJobChunk
         var researchCycleStateValues = chunk.GetNativeArray(ref ResearchCycleStateHandle);
         var researchWorkPreparationValues = chunk.GetNativeArray(ref ResearchWorkPreparationHandle);
         var researchDecisionValues = chunk.GetNativeArray(ref ResearchDecisionHandle);
-        var storedItemElementValues = chunk.GetBufferAccessorRW(ref StoredItemElementHandle);
+        var storedItemElementValues = chunk.GetBufferAccessorRW(ref StorageSlotElementHandle);
         var researchContributionElementValues = chunk.GetBufferAccessorRW(ref ResearchContributionElementHandle);
         var registryRead = new RegistryReadContext();
         var enumerator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -74,10 +74,9 @@ internal partial struct ExecuteResearchJob : IJobChunk
     public Entity Registry;
     [ReadOnly] public BufferLookup<ResearchDefinitionElement> Definitions;
     [ReadOnly] public BufferLookup<ResearchIngredientElement> Ingredients;
-    public ComponentLookup<DestroyItemRequest> DestroyRequests;
 
     private void ExecuteEntity(ref ResearchCycleState cycle, in ResearchWorkPreparation preparation, in ResearchDecision decision,
-        ref DynamicBuffer<StoredItemElement> stored, ref DynamicBuffer<ResearchContributionElement> results, ref RegistryReadContext registryRead)
+        ref DynamicBuffer<StorageSlotElement> stored, ref DynamicBuffer<ResearchContributionElement> results, ref RegistryReadContext registryRead)
     {
         if (preparation.DefinitionIndex < 0 || results.Length > 0)
         {
@@ -91,7 +90,7 @@ internal partial struct ExecuteResearchJob : IJobChunk
             {
                 return;
             }
-            if (!ResearchMaterialUtility.HasMaterials(definition, ingredients, stored, DestroyRequests))
+            if (!ResearchMaterialUtility.HasMaterials(definition, ingredients, stored))
             {
                 return;
             }
@@ -99,8 +98,8 @@ internal partial struct ExecuteResearchJob : IJobChunk
             for (int i = 0; i < definition.IngredientCount; i++)
             {
                 var ingredient = ingredients[definition.IngredientStart + i];
-                StoredItemBufferUtility.ConsumeRequiredItems(
-                    stored, ingredient.ItemType, ingredient.Amount, ref DestroyRequests);
+                InventorySlotUtility.Consume(
+                    stored, ingredient.ItemType, ingredient.Amount);
             }
             cycle = new ResearchCycleState { ResearchId = definition.StableId };
         }

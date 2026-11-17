@@ -107,7 +107,7 @@ public struct DroneLogisticsTask : IComponentData
 /// 이동 Decision/Execution은 배정 목표로 비행하고 Movement Apply가 도착 상태만 기록한다. 후속 행동 수행부는 신호를 제출하며 실물 인계 성공 상태를 직접 쓰지 않는다.
 /// 제거: Lifecycle이 적재품 없음·예약 정산·수행자 연결 해제·미소비 요청/결과 참조 없음 이후 EndSimulation에 삭제를 기록한다.
 /// 적재품이 남으면 Retargeting으로 유지한다. 재배정은 같은 엔티티의 revision을 늘리고 최초 작업 생성 순서를 보존한다.
-/// LastAppliedActionSequence는 내부 인계가 소비한 행동 번호이며 0은 미처리다. 실제 적재 품목·수량은 Worker의 StoredItemElement가 원본이다.
+/// LastAppliedActionSequence는 내부 인계가 소비한 행동 번호이며 0은 미처리다. 실제 적재 품목·수량은 Worker의 DroneCargoState가 원본이다.
 /// </summary>
 public struct DroneTaskAssignment : IComponentData
 {

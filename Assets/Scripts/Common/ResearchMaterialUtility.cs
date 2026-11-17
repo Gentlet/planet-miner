@@ -10,13 +10,12 @@ public static class ResearchMaterialUtility
     }
 
     public static bool HasMaterials(in ResearchDefinitionElement definition,
-        DynamicBuffer<ResearchIngredientElement> ingredients, DynamicBuffer<StoredItemElement> stored,
-        ComponentLookup<DestroyItemRequest> destroyRequests)
+        DynamicBuffer<ResearchIngredientElement> ingredients, DynamicBuffer<StorageSlotElement> stored)
     {
         for (int i = 0; i < definition.IngredientCount; i++)
         {
             var ingredient = ingredients[definition.IngredientStart + i];
-            int count = StoredItemBufferUtility.CountConsumable(stored, ingredient.ItemType, destroyRequests);
+            int count = InventorySlotUtility.Count(stored, ingredient.ItemType);
             if (count < ingredient.Amount)
             {
                 return false;

@@ -19,7 +19,7 @@ public struct PowerGridConnection : IComponentData
     public Entity Grid;
 }
 
-/// <summary>연료 종류·소비처에 독립적인 영속 에너지 잔량. 연료 처리 소유자가 관리하고 보관 연료 실물은 StoredItemElement가 소유한다.</summary>
+/// <summary>연료 종류·소비처에 독립적인 영속 에너지 잔량. 연료 처리 소유자가 관리하고 석탄 수량은 StorageSlotElement가 소유한다.</summary>
 public struct FuelEnergyState : IComponentData
 {
     public float RemainingEnergy;

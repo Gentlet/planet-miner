@@ -31,11 +31,11 @@ public partial struct DroneWorkerObservationPreparationSystem : ISystem
 
         private void Execute(Entity entity, in DroneWorker worker, in LocalTransform transform,
             in DroneBatteryState battery, in DroneWorkerAssignment link, in DroneMovementState movement,
-            in DroneCargoState cargo, in DynamicBuffer<StoredItemElement> items, ref DroneWorkerObservation observation)
+            in DroneCargoState cargo, ref DroneWorkerObservation observation)
         {
             bool canAccept = battery.CurrentCharge > 0f && link.Assignment == Entity.Null &&
                 (movement.IsNormalReturn || (movement.ChargingStation == Entity.Null && movement.ReturnStation == Entity.Null)) &&
-                cargo.Origin == DroneCargoOriginEnum.None && items.IsEmpty && !Docks.HasComponent(entity) && !Relocations.HasComponent(entity);
+                cargo.Origin == DroneCargoOriginEnum.None && cargo.Quantity == 0 && !Docks.HasComponent(entity) && !Relocations.HasComponent(entity);
             if (math.any(observation.Position != transform.Position) || observation.CanAcceptTask != canAccept)
             {
                 // 정지 중 매 틱 revision을 바꾸면 아직 평가 중인 같은 경로가 계속 무효화된다.

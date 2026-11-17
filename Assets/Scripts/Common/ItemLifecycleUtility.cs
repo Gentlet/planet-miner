@@ -1,70 +1,94 @@
+using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
-using Unity.Rendering;
 using Unity.Transforms;
 
-/// <summary>
-/// 역할·목적: 일반 생성·생산 결과·철거 환급이 같은 프리팹 런타임 초기화 경계를 사용하게 한다.
-/// 입력·출력: 검증된 프리팹과 품목·Owner·위치를 받아 호출자의 ECB에 인스턴스와 비활성 요청/이동/입고 결정 컴포넌트를 기록한다.
-/// 이용: ItemLifecycleApplySystem과 BuildingLifecycleApplySystem이 호출한다. DB 조회·실패 처리·소유 버퍼 등록은 호출자가 소유한다.
-/// 수명·가시화: 반환 Entity는 ECB의 지연 생성 참조다. 생성과 수납 렌더 태그는 호출자가 선택한 Playback에서 확정된다.
-/// </summary>
+internal readonly struct InventoryReturn
+{
+    public readonly ItemTypeEnum ItemType;
+    public readonly int Quantity;
+
+    public InventoryReturn(ItemTypeEnum itemType, int quantity)
+    {
+        ItemType = itemType;
+        Quantity = quantity;
+    }
+}
+
+/// <summary>월드 아이템을 공통 위치와 초기 상태로 생성한다. 공개 경계는 호출자의 ECB가 결정한다.</summary>
 public static class ItemLifecycleUtility
 {
-    /// <summary>월드 반환의 표시/위치 명령을 순서대로 기록한다. 호출자는 Owner를 앞서 기록하고 철거에서는 필요한 회수 표식도 먼저 기록한다.</summary>
-    internal static void RecordWorldReturnPresentationAndPosition(ref EntityCommandBuffer ecb, Entity item, int2 position)
-    {
-        ecb.RemoveComponent<DisableRendering>(item);
-        ecb.SetComponent(item, new GridPosition(position));
-        ecb.SetComponent(item, LocalTransform.FromPosition(new float3(position.x, position.y, 0f)));
-    }
 
-    /// <summary>실물 삭제 기록의 공통 진입점. 호출자는 소유 버퍼를 먼저 정리하고 Playback 경계를 선택한다.</summary>
+
+    /// <summary>호출자가 전달한 종료 ECB에 월드 아이템 삭제를 기록한다.</summary>
     public static void RecordDestroy(ref EntityCommandBuffer ecb, Entity item)
     {
         ecb.DestroyEntity(item);
     }
 
-    /// <summary>월드 실물의 표시 위치는 격자 위치를 사용하고, 수납 실물은 원점에 둔다. 반환 엔티티는 ECB 재생에서 생성된다.</summary>
+    /// <summary>격자 위치에 월드 실물 하나를 기록한다. 반환 참조는 ECB 재생 뒤 유효하다.</summary>
     public static Entity SpawnPrefabItem(
         ref EntityCommandBuffer ecb,
         Entity prefab,
         ItemTypeEnum itemType,
-        int2 gridPosition,
-        ItemOwnership ownership)
+        int2 gridPosition)
     {
-        float3 worldPosition = ownership.IsWorldItem
-            ? new float3(gridPosition.x, gridPosition.y, 0f)
-            : float3.zero;
+        var worldPosition = new float3(gridPosition.x, gridPosition.y, 0f);
         Entity item = RuntimePrefabLifecycleUtility.Instantiate(ref ecb, prefab);
-        InitializeItemRole(ref ecb, item, itemType, gridPosition, worldPosition, ownership);
+        InitializeItemRole(ref ecb, item, itemType, gridPosition, worldPosition);
         return item;
     }
 
-    /// <summary>같은 Entity에 아이템 역할을 구성한다. 호출자가 이전 역할/소유 버퍼와 표시 원형 전환을 소유한다.</summary>
-    public static void InitializeItemRole(ref EntityCommandBuffer ecb, Entity item, ItemTypeEnum itemType,
-        int2 gridPosition, float3 worldPosition, ItemOwnership ownership)
+    /// <summary>생성된 실물의 품목, 위치, 이동과 요청 초기값을 기록한다.</summary>
+    private static void InitializeItemRole(ref EntityCommandBuffer ecb, Entity item, ItemTypeEnum itemType,
+        int2 gridPosition, float3 worldPosition)
     {
         ecb.AddComponent(item, new ItemIdentity(itemType));
         ecb.AddComponent(item, new GridPosition(gridPosition));
         ecb.AddComponent(item, LocalTransform.FromPosition(worldPosition));
-        ecb.AddComponent(item, ownership);
 
-        // 요청/이동 컴포넌트는 미리 부착하되 비활성으로 시작해 생성 직후 자동 삭제/이전/이동하지 않게 한다.
+        // 요청/이동 컴포넌트는 미리 부착하되 비활성으로 시작해 생성 직후에는 삭제나 벨트 이동을 시작하지 않는다.
         ecb.AddComponent<DestroyItemRequest>(item);
         ecb.SetComponentEnabled<DestroyItemRequest>(item, false);
-        ecb.AddComponent<TransferOwnershipRequest>(item);
-        ecb.SetComponentEnabled<TransferOwnershipRequest>(item, false);
         ecb.AddComponent<BeltMovementState>(item);
         ecb.SetComponentEnabled<BeltMovementState>(item, false);
         ecb.AddComponent<BeltMovementDecision>(item);
         ecb.AddComponent<BuildingItemInputDecision>(item);
         ecb.SetComponentEnabled<BuildingItemInputDecision>(item, false);
 
-        if (ownership.Owner != Entity.Null)
+    }
+
+    internal static bool TryReturnInventory(ref EntityCommandBuffer ecb, in BufferLookup<ItemPrefabElement> prefabs,
+        Entity database, in NativeList<InventoryReturn> inventory, int2 position, bool demolition)
+    {
+        if (inventory.IsEmpty) return true;
+        if (!prefabs.TryGetBuffer(database, out var entries))
         {
-            ecb.AddComponent<DisableRendering>(item);
+            SimulationFailureUtility.Record(ref ecb, "[ItemLifecycleUtility] Missing prefab database for inventory return.");
+            return false;
         }
 
+        using var resolved = new NativeList<Entity>(inventory.Length, Allocator.Temp);
+        for (int index = 0; index < inventory.Length; index++)
+        {
+            if (!PrefabLookupUtility.TryGetItemPrefab(entries, inventory[index].ItemType, out var prefab))
+            {
+                SimulationFailureUtility.Record(ref ecb, "[ItemLifecycleUtility] Missing item prefab for inventory return.");
+                return false;
+            }
+            resolved.Add(prefab);
+        }
+
+        for (int index = 0; index < inventory.Length; index++)
+        {
+            var entry = inventory[index];
+            for (int count = 0; count < entry.Quantity; count++)
+            {
+                Entity item = SpawnPrefabItem(ref ecb, resolved[index], entry.ItemType, position);
+                if (demolition)
+                    ecb.AddComponent(item, new DroneRecoveryPending { Reason = DroneRecoveryReasonEnum.BuildingDemolition });
+            }
+        }
+        return true;
     }
 }

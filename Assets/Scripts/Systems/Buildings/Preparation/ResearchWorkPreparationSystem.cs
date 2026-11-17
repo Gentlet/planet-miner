@@ -1,3 +1,4 @@
+using Unity.Mathematics;
 using Unity.Burst;
 using Unity.Burst.Intrinsics;
 using Unity.Collections;
@@ -10,7 +11,7 @@ public partial struct ResearchWorkPreparationSystem : ISystem
     private EntityQuery _workQuery;
     public void OnCreate(ref SystemState state)
     {
-        _workQuery = SystemAPI.QueryBuilder().WithAll<BuildingType>().WithAll<ResearchCycleState>().WithAllRW<ResearchWorkPreparation>().WithAllRW<ResearchInputConfigured>().WithAllRW<Storage>().WithAllRW<StorageFilter>().WithAllRW<BuildingInputSlotElement>().WithAllRW<ResearchInputLimitElement>().WithAllRW<ResearchRecoveryElement>().WithAll<StoredItemElement>().WithAll<ResearchContributionElement>().WithOptions(EntityQueryOptions.IgnoreComponentEnabledState).Build();
+        _workQuery = SystemAPI.QueryBuilder().WithAll<BuildingType>().WithAll<ResearchCycleState>().WithAllRW<ResearchWorkPreparation>().WithAllRW<ResearchInputConfigured>().WithAllRW<Storage>().WithAllRW<StorageFilter>().WithAllRW<BuildingInputSlotElement>().WithAllRW<ResearchInputLimitElement>().WithAllRW<ResearchRecoveryElement>().WithAllRW<StorageSlotElement>().WithAll<ResearchContributionElement>().WithOptions(EntityQueryOptions.IgnoreComponentEnabledState).Build();
 
         state.RequireForUpdate<ResearchRegistry>();
         state.RequireForUpdate<ItemRegistry>();
@@ -32,7 +33,7 @@ public partial struct ResearchWorkPreparationSystem : ISystem
             BuildingInputSlotElementHandle = SystemAPI.GetBufferTypeHandle<BuildingInputSlotElement>(false),
             ResearchInputLimitElementHandle = SystemAPI.GetBufferTypeHandle<ResearchInputLimitElement>(false),
             ResearchRecoveryElementHandle = SystemAPI.GetBufferTypeHandle<ResearchRecoveryElement>(false),
-            StoredItemElementHandle = SystemAPI.GetBufferTypeHandle<StoredItemElement>(true),
+            StorageSlotElementHandle = SystemAPI.GetBufferTypeHandle<StorageSlotElement>(false),
             ResearchContributionElementHandle = SystemAPI.GetBufferTypeHandle<ResearchContributionElement>(true),
             Registry = SystemAPI.GetSingletonEntity<ResearchRegistry>(),
             Items = SystemAPI.GetSingletonEntity<ItemRegistry>(),
@@ -44,7 +45,6 @@ public partial struct ResearchWorkPreparationSystem : ISystem
             Progress = SystemAPI.GetBufferLookup<ResearchProgressElement>(true),
             ItemConfigs = SystemAPI.GetBufferLookup<ItemConfigElement>(true),
             BuildingConfigs = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
-            DestroyRequests = SystemAPI.GetComponentLookup<DestroyItemRequest>(true),
             Demolition = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true)
         }.ScheduleParallel(_workQuery, state.Dependency);
     }
@@ -64,7 +64,7 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
     public BufferTypeHandle<BuildingInputSlotElement> BuildingInputSlotElementHandle;
     public BufferTypeHandle<ResearchInputLimitElement> ResearchInputLimitElementHandle;
     public BufferTypeHandle<ResearchRecoveryElement> ResearchRecoveryElementHandle;
-    [ReadOnly] public BufferTypeHandle<StoredItemElement> StoredItemElementHandle;
+    public BufferTypeHandle<StorageSlotElement> StorageSlotElementHandle;
     [ReadOnly] public BufferTypeHandle<ResearchContributionElement> ResearchContributionElementHandle;
 
     private struct RegistryReadContext
@@ -89,7 +89,7 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
         var buildingInputSlotElementValues = chunk.GetBufferAccessorRW(ref BuildingInputSlotElementHandle);
         var researchInputLimitElementValues = chunk.GetBufferAccessorRW(ref ResearchInputLimitElementHandle);
         var researchRecoveryElementValues = chunk.GetBufferAccessorRW(ref ResearchRecoveryElementHandle);
-        var storedItemElementValues = chunk.GetBufferAccessorRO(ref StoredItemElementHandle);
+        var storedItemElementValues = chunk.GetBufferAccessorRW(ref StorageSlotElementHandle);
         var researchContributionElementValues = chunk.GetBufferAccessorRO(ref ResearchContributionElementHandle);
         var registryRead = new RegistryReadContext();
         var enumerator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
@@ -116,7 +116,7 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
                 ref slotsValue,
                 ref limitsValue,
                 ref recoveryValue,
-                in storedValue,
+                storedValue,
                 in resultsValue, ref registryRead);
         }
     }
@@ -131,14 +131,13 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
     [ReadOnly] public BufferLookup<ResearchProgressElement> Progress;
     [ReadOnly] public BufferLookup<ItemConfigElement> ItemConfigs;
     [ReadOnly] public BufferLookup<BuildingConfigElement> BuildingConfigs;
-    [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyRequests;
     [ReadOnly] public ComponentLookup<PendingBuildingDemolition> Demolition;
 
     private void ExecuteEntity(Entity entity, in BuildingType type, in ResearchCycleState cycle,
         ref ResearchWorkPreparation preparation, EnabledRefRW<ResearchWorkPreparation> prepared,
         EnabledRefRW<ResearchInputConfigured> configured, ref Storage storage, ref StorageFilter filter,
         ref DynamicBuffer<BuildingInputSlotElement> slots, ref DynamicBuffer<ResearchInputLimitElement> limits,
-        ref DynamicBuffer<ResearchRecoveryElement> recovery, in DynamicBuffer<StoredItemElement> stored,
+        ref DynamicBuffer<ResearchRecoveryElement> recovery, DynamicBuffer<StorageSlotElement> stored,
         in DynamicBuffer<ResearchContributionElement> results, ref RegistryReadContext registryRead)
     {
         preparation = new ResearchWorkPreparation { DefinitionIndex = -1 };
@@ -149,6 +148,7 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
         {
             ConfigureSlots(ingredients, registryRead.ItemConfigs.Read(ItemConfigs, Items), slots);
             storage = new Storage(slots.Length);
+            stored.Resize(slots.Length, NativeArrayOptions.ClearMemory);
             filter = new StorageFilter(StorageFilterMode.Whitelist);
             foreach (var slot in slots)
             {
@@ -170,12 +170,17 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
         }
         if (index < 0)
         {
-            // 완료 자체는 새 반환을 만들지 않는다. 기존 회수 대기만 실제 보관 관계에 맞춰 정리한다.
-            for (int i = recovery.Length - 1; i >= 0; i--)
+            // 완료 자체는 새 회수를 만들지 않는다. 남은 회수량은 현재 슬롯 수량으로 제한한다.
+            for (int indexToCheck = recovery.Length - 1; indexToCheck >= 0; indexToCheck--)
             {
-                if (!StoredItemBufferUtility.ContainsEntity(stored, recovery[i].Item))
+                var entry = recovery[indexToCheck];
+                var slot = stored[entry.SlotIndex];
+                int remaining = slot.ItemType == entry.ItemType ? math.min(entry.Quantity, slot.Quantity) : 0;
+                if (remaining == 0) recovery.RemoveAt(indexToCheck);
+                else
                 {
-                    recovery.RemoveAt(i);
+                    entry.Quantity = remaining;
+                    recovery[indexToCheck] = entry;
                 }
             }
             return;
@@ -183,38 +188,31 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
 
         var definition = definitions[index];
         recovery.Clear();
-        var kept = new NativeHashMap<int, ResearchItemLimit>(definition.IngredientCount, Allocator.Temp);
-        bool hasReadMaximums = false;
-        foreach (var item in stored)
+        var remainingToKeep = new NativeHashMap<int, int>(definition.IngredientCount, Allocator.Temp);
+        for (int ingredientIndex = 0; ingredientIndex < definition.IngredientCount; ingredientIndex++)
         {
-            if (!RecipeConfigLookupUtility.CanConsumeStoredItem(item.ItemEntity, DestroyRequests))
+            var ingredient = ingredients[definition.IngredientStart + ingredientIndex];
+            remainingToKeep.TryAdd((int)ingredient.ItemType, ResearchMaterialUtility.MaximumBufferedQuantity(ingredient.Amount));
+        }
+
+        for (int slotIndex = 0; slotIndex < stored.Length; slotIndex++)
+        {
+            var item = stored[slotIndex];
+            if (item.Quantity == 0) continue;
+            remainingToKeep.TryGetValue((int)item.ItemType, out int limit);
+            int kept = math.min(limit, item.Quantity);
+            if (kept > 0) remainingToKeep[(int)item.ItemType] = limit - kept;
+            if (item.Quantity > kept)
             {
-                continue;
-            }
-            if (!hasReadMaximums)
-            {
-                for (int i = 0; i < definition.IngredientCount; i++)
+                recovery.Add(new ResearchRecoveryElement
                 {
-                    var ingredient = ingredients[definition.IngredientStart + i];
-                    kept.TryAdd((int)ingredient.ItemType, new ResearchItemLimit
-                    {
-                        Maximum = ResearchMaterialUtility.MaximumBufferedQuantity(ingredient.Amount)
-                    });
-                }
-                hasReadMaximums = true;
-            }
-            kept.TryGetValue((int)item.ItemType, out var limit);
-            if (limit.KeptCount >= limit.Maximum)
-            {
-                recovery.Add(new ResearchRecoveryElement { Item = item.ItemEntity });
-            }
-            else
-            {
-                limit.KeptCount++;
-                kept[(int)item.ItemType] = limit;
+                    SlotIndex = slotIndex,
+                    ItemType = item.ItemType,
+                    Quantity = item.Quantity - kept
+                });
             }
         }
-        kept.Dispose();
+        remainingToKeep.Dispose();
         if (Demolition.HasComponent(entity) || results.Length > 0)
         {
             return;
@@ -245,13 +243,13 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
             limits.Add(new ResearchInputLimitElement { ItemType = ingredient.ItemType, MaximumQuantity = ResearchMaterialUtility.MaximumBufferedQuantity(ingredient.Amount) });
         }
         preparation.CanStartCycle = cycle.ResearchId == 0 && ResearchMaterialUtility.HasMaterials(
-            definition, ingredients, stored, DestroyRequests);
+            definition, ingredients, stored);
     }
 
     private static void ConfigureSlots(DynamicBuffer<ResearchIngredientElement> ingredients,
         DynamicBuffer<ItemConfigElement> items, DynamicBuffer<BuildingInputSlotElement> slots)
     {
-        // 모든 정의의 품목별 최대치를 고정 슬롯으로 구성하여 선택 변경이 StoredItemElement의 슬롯을 재배치하지 않게 한다.
+        // 모든 정의의 품목별 최대치를 고정 슬롯으로 구성하여 선택 변경이 StorageSlotElement의 슬롯을 재배치하지 않게 한다.
         slots.Clear();
         foreach (var item in items)
         {
@@ -279,9 +277,4 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
         }
     }
 
-    private struct ResearchItemLimit
-    {
-        public int Maximum;
-        public int KeptCount;
-    }
 }

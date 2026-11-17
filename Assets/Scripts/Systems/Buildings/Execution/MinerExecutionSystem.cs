@@ -7,7 +7,7 @@ using Unity.Mathematics;
 /// 역할·목적: Execution에서 승인된 채굴을 진행하고 한 틱에 최대 하나의 생산 결과를 기록한다.
 /// 입력·생성자: MinerDecisionSystem의 대상/허용 결정, 채굴 속도와 ResourceConfig의 무한 자원 설정.
 /// 출력·소유권: MinerState.Progress, 유한 ResourceNode.Amount와 채굴기의 ProductResult를 쓴다. 초과 진행량은 다음 틱으로 보존한다.
-/// 이용·정리: ItemLifecycleApplySystem이 결과를 실물/ProductItemElement로 바꾸고 결과 버퍼를 비운다. 미소비 결과가 있으면 추가 채굴하지 않는다.
+/// 이용·정리: ItemLifecycleApplySystem이 생산품 수량을 반영하고 결과 버퍼를 비운다. 미소비 결과가 있으면 추가 채굴하지 않는다.
 /// 가시화: 고갈 자원 삭제만 EndBuilding ECB에 기록하며 공간 인덱스는 이후 Synchronization에서 갱신한다.
 /// </summary>
 [UpdateInGroup(typeof(BuildingExecutionGroup))]

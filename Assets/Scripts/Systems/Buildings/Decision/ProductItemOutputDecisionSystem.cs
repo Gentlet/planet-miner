@@ -5,7 +5,7 @@ using Unity.Mathematics;
 
 /// <summary>
 /// 역할·목적: Decision에서 생산품을 외향 벨트로 내보낼 후보를 찾는다.
-/// 입력·생성자: ItemLifecycleApplySystem의 ProductItemElement, 회전 footprint와 Synchronization의 벨트/월드 실물 인덱스.
+/// 입력·생성자: ItemLifecycleApplySystem의 ProductSlotElement, 회전 footprint와 Synchronization의 벨트/월드 실물 인덱스.
 /// 출력·소유권: 건물의 BuildingItemOutputDecision만 갱신하며 슬롯 0 주생산품을 우선, 없으면 첫 생산품을 고른다.
 /// 이용·정리: BeltDestinationReservationSystem이 목적지 경합을 중재하고 BuildingItemStorageApplySystem이 인계/결정 소비를 수행한다.
 /// 철거 승인 건물/벨트는 제외한다. 생산 버퍼·소유권 원본 및 ECB는 변경하지 않는다.
@@ -15,7 +15,7 @@ using Unity.Mathematics;
 public partial struct ProductItemOutputDecisionSystem : ISystem
 {
     private ComponentLookup<BeltMovementState> _beltMovementStateLookup;
-    private ComponentLookup<ItemOwnership> _itemOwnershipLookup;
+    private ComponentLookup<DestroyItemRequest> _destroyRequestLookup;
     private ComponentLookup<PendingBuildingDemolition> _pendingDemolitionLookup;
     private EntityQuery _buildingQuery;
 
@@ -23,12 +23,12 @@ public partial struct ProductItemOutputDecisionSystem : ISystem
     public void OnCreate(ref SystemState state)
     {
         _beltMovementStateLookup = state.GetComponentLookup<BeltMovementState>(true);
-        _itemOwnershipLookup = state.GetComponentLookup<ItemOwnership>(true);
+        _destroyRequestLookup = state.GetComponentLookup<DestroyItemRequest>(true);
         _pendingDemolitionLookup = state.GetComponentLookup<PendingBuildingDemolition>(true);
 
         _buildingQuery = SystemAPI.QueryBuilder()
             .WithAllRW<BuildingItemOutputDecision>()
-            .WithAll<ProductItemElement, BuildingFootprint, GridPosition, Direction>()
+            .WithAll<ProductSlotElement, BuildingFootprint, GridPosition, Direction>()
             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
             .Build();
     }
@@ -51,7 +51,7 @@ public partial struct ProductItemOutputDecisionSystem : ISystem
         ref var itemFence = ref SystemAPI.GetSingletonRW<ItemSpatialIndexFence>().ValueRW;
 
         _beltMovementStateLookup.Update(ref state);
-        _itemOwnershipLookup.Update(ref state);
+        _destroyRequestLookup.Update(ref state);
         _pendingDemolitionLookup.Update(ref state);
 
         var job = new ProductItemOutputDecisionJob
@@ -59,7 +59,7 @@ public partial struct ProductItemOutputDecisionSystem : ISystem
             BeltMap = beltIndex.Map,
             ItemMap = itemIndex.Map,
             BeltMovementStateLookup = _beltMovementStateLookup,
-            ItemOwnershipLookup = _itemOwnershipLookup,
+            DestroyItemRequestLookup = _destroyRequestLookup,
             PendingDemolitionLookup = _pendingDemolitionLookup
         };
 
@@ -91,7 +91,7 @@ public partial struct ProductItemOutputDecisionJob : IJobEntity
     public ComponentLookup<BeltMovementState> BeltMovementStateLookup;
 
     [ReadOnly]
-    public ComponentLookup<ItemOwnership> ItemOwnershipLookup;
+    public ComponentLookup<DestroyItemRequest> DestroyItemRequestLookup;
 
     [ReadOnly]
     public ComponentLookup<PendingBuildingDemolition> PendingDemolitionLookup;
@@ -100,7 +100,7 @@ public partial struct ProductItemOutputDecisionJob : IJobEntity
         Entity building,
         ref BuildingItemOutputDecision outputDecision,
         EnabledRefRW<BuildingItemOutputDecision> outputDecisionEnabled,
-        in DynamicBuffer<ProductItemElement> productItems,
+        in DynamicBuffer<ProductSlotElement> productItems,
         in BuildingFootprint footprint,
         in GridPosition gridPos,
         in Direction dir)
@@ -108,7 +108,7 @@ public partial struct ProductItemOutputDecisionJob : IJobEntity
         if (PendingDemolitionLookup.HasComponent(building))
         {
             outputDecision.CanOutput = false;
-            outputDecision.ItemToOutput = Entity.Null;
+            outputDecision.ItemType = ItemTypeEnum.None;
             outputDecision.TargetBeltPosition = int2.zero;
             outputDecisionEnabled.ValueRW = false;
             return;
@@ -118,29 +118,21 @@ public partial struct ProductItemOutputDecisionJob : IJobEntity
         if (productItems.Length == 0)
         {
             outputDecision.CanOutput = false;
-            outputDecision.ItemToOutput = Entity.Null;
+            outputDecision.ItemType = ItemTypeEnum.None;
             outputDecision.TargetBeltPosition = int2.zero;
             outputDecisionEnabled.ValueRW = false;
             return;
         }
 
         if (BeltEntryUtility.TryFindBuildingOutputBelt(gridPos.Value, footprint.GetEffectiveSize(dir.dir),
-                BeltMap, ItemMap, PendingDemolitionLookup, ItemOwnershipLookup, BeltMovementStateLookup,
+                BeltMap, ItemMap, PendingDemolitionLookup, DestroyItemRequestLookup, BeltMovementStateLookup,
                 out int2 foundBeltPos))
         {
-            // 방출 대상 선정: 주 완성품(Slot 0) 우선 탐색 후 없으면 FIFO 0번 선택
-            int selectedIndex = 0;
-            for (int i = 0; i < productItems.Length; i++)
-            {
-                if (productItems[i].SlotIndex == 0)
-                {
-                    selectedIndex = i;
-                    break;
-                }
-            }
-
+            var selected = productItems[0];
             outputDecision.CanOutput = true;
-            outputDecision.ItemToOutput = productItems[selectedIndex].ItemEntity;
+            outputDecision.ItemType = selected.ItemType;
+            outputDecision.SourceSlotIndex = selected.SlotIndex;
+            outputDecision.FromProduct = true;
             outputDecision.TargetBeltPosition = foundBeltPos;
             outputDecisionEnabled.ValueRW = true;
         }
@@ -148,7 +140,7 @@ public partial struct ProductItemOutputDecisionJob : IJobEntity
         {
             // 외향 벨트가 없거나 여유 공간 미확보: 방출 대기
             outputDecision.CanOutput = false;
-            outputDecision.ItemToOutput = Entity.Null;
+            outputDecision.ItemType = ItemTypeEnum.None;
             outputDecision.TargetBeltPosition = int2.zero;
             outputDecisionEnabled.ValueRW = false;
         }

@@ -4,7 +4,8 @@ public enum DroneStationOperation : byte
 {
     Activate,
     Dock,
-    Store
+    Store,
+    ActivateStored
 }
 
 /// <summary>외부 접수 API가 순번과 Decision을 함께 부착한다. 결과는 같은 요청 Entity에 EndSimulation 공개한다.</summary>
@@ -14,6 +15,9 @@ public struct DroneStationRequest : IRequestComponent
     public Entity Station;
     public DroneStationOperation Operation;
     public ulong Sequence;
+    public int SourceSlotIndex;
+    public Entity RelocationTask;
+    public int RelocationMemberIndex;
 }
 
 public enum DroneStationRequestStatus : byte
@@ -39,6 +43,8 @@ public struct DroneStationDecision : IComponentData
 public struct DroneStationResult : IComponentData
 {
     public Entity Drone;
+    public Entity Station;
+    public int SlotIndex;
     public DroneStationOperation Operation;
     public DroneStationRequestStatus Status;
 }

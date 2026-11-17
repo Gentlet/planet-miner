@@ -5,32 +5,31 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 역할·목적: 생산 결과/직접 생성 요청을 실물 아이템으로 바꾸고 활성 삭제 요청의 실물을 제거한다.
-/// 처리 단계: StateApply. 입력은 ProductResult, SpawnItemRequest, 활성 DestroyItemRequest 및 등록된 아이템 프리팹 DB다.
-/// 출력·소유권: 아이템 초기화와 목적 보관/생산 버퍼 등록, 렌더 태그, 실물 삭제를 EndBuilding에 기록한다. 기존 실물의 드론 인계는 Ownership API가 담당한다.
-/// World Spawn은 현재 현장 footprint로 다시 검사해 완공 검사 뒤 현장 내부에 새 실물이 생성되는 경우를 막는다.
-/// 정리·가시화: 생산 결과는 Clear, 처리한 Spawn 요청/Destroy 실물은 EndBuilding에 삭제한다. DB 누락은 대체 생성 없이 중단 오류를 기록한다.
+/// 생산 결과를 출력 슬롯에 더한 뒤 직접 생성 요청과 월드 아이템 삭제를 처리한다.
+/// Storage/Product 요청은 지정 슬롯의 수량을 변경하고 World 요청의 실물은 EndBuilding에 공개한다.
 /// </summary>
 [UpdateInGroup(typeof(BuildingStateApplyGroup))]
+[UpdateBefore(typeof(BuildingLifecycleApplySystem))]
 public partial struct ItemLifecycleApplySystem : ISystem
 {
     private EntityQuery _productResultQuery;
     private EntityQuery _spawnQuery;
     private EntityQuery _destroyQuery;
-    private BufferLookup<StoredItemElement> _storedBufferLookup;
-    private BufferLookup<ProductItemElement> _productBufferLookup;
+    private BufferLookup<StorageSlotElement> _storedBufferLookup;
+    private BufferLookup<ProductSlotElement> _productBufferLookup;
     private BufferLookup<ItemPrefabElement> _itemPrefabBufferLookup;
     private EntityQuery _prefabDbQuery;
 
     public void OnCreate(ref SystemState state)
     {
-        _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
-        _productBufferLookup = state.GetBufferLookup<ProductItemElement>(true);
+        state.RequireForUpdate<ItemRegistry>();
+        _storedBufferLookup = state.GetBufferLookup<StorageSlotElement>(false);
+        _productBufferLookup = state.GetBufferLookup<ProductSlotElement>(false);
         _itemPrefabBufferLookup = state.GetBufferLookup<ItemPrefabElement>(true);
 
         _productResultQuery = SystemAPI.QueryBuilder()
             .WithAllRW<ProductResult>()
-            .WithAll<ProductItemElement>()
+            .WithAll<ProductSlotElement>()
             .Build();
 
         _spawnQuery = SystemAPI.QueryBuilder()
@@ -61,12 +60,12 @@ public partial struct ItemLifecycleApplySystem : ISystem
 
         Entity prefabDbEntity = _prefabDbQuery.IsEmptyIgnoreFilter ? Entity.Null : _prefabDbQuery.GetSingletonEntity();
 
-        // 1. [생산 결과 적용 Job] ProductResult -> 실제 Item + ProductItemElement
+        // 생산 결과를 먼저 반영해 직접 요청이 남은 슬롯 공간을 사용하게 한다.
+        var items = SystemAPI.GetSingletonBuffer<ItemConfigElement>(true);
         var productResultJob = new ProductResultApplyJob
         {
             ECB = ecb,
-            PrefabDbEntity = prefabDbEntity,
-            ItemPrefabBufferLookup = _itemPrefabBufferLookup
+            Items = items
         };
         var productResultHandle = productResultJob.Schedule(_productResultQuery, state.Dependency);
 
@@ -78,6 +77,13 @@ public partial struct ItemLifecycleApplySystem : ISystem
             ECB = ecb,
             PrefabDbEntity = prefabDbEntity,
             ItemPrefabBufferLookup = _itemPrefabBufferLookup,
+            Items = items,
+            DedicatedSlots = SystemAPI.GetComponentLookup<DroneStationStorage>(true),
+            InputSlots = SystemAPI.GetBufferLookup<BuildingInputSlotElement>(true),
+            Docks = SystemAPI.GetBufferLookup<DockedDroneElement>(true),
+            Reserved = SystemAPI.GetBufferLookup<DroneStationReservedSlotElement>(true),
+            Demolition = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true),
+            Preparing = SystemAPI.GetComponentLookup<PreparingStationDemolition>(true),
             StoredBufferLookup = _storedBufferLookup,
             ProductBufferLookup = _productBufferLookup,
             ConstructionFootprints = constructionFootprints
@@ -97,80 +103,28 @@ public partial struct ItemLifecycleApplySystem : ISystem
 }
 
 /// <summary>
-/// 생산 건물의 ProductResult를 소비하여 실제 아이템 엔티티를 생성하고 ProductItemElement에 반영하는 단일 워커 Burst Job.
+/// 생산 건물의 ProductResult를 출력 슬롯 수량에 더하고 소비하는 단일 워커 Burst Job.
 /// </summary>
 [BurstCompile]
 public partial struct ProductResultApplyJob : IJobEntity
 {
     public EntityCommandBuffer ECB;
-    public Entity PrefabDbEntity;
+    [ReadOnly] public DynamicBuffer<ItemConfigElement> Items;
 
-    [ReadOnly]
-    public BufferLookup<ItemPrefabElement> ItemPrefabBufferLookup;
-
-    public void Execute(
-        Entity producerEntity,
-        ref DynamicBuffer<ProductResult> productResults)
+    public void Execute(ref DynamicBuffer<ProductResult> results, ref DynamicBuffer<ProductSlotElement> slots)
     {
-        if (productResults.Length == 0)
+        foreach (var result in results)
         {
-            return;
+            int maximum = ItemRegistry.GetMaxStack(Items, result.ItemType);
+            if (!InventorySlotUtility.TryAddProduct(slots, result.SlotIndex, result.ItemType, result.Count, maximum))
+            {
+                SimulationFailureUtility.Record(ref ECB, "[ItemLifecycleApplySystem] Production result exceeds the configured output slot.");
+            }
         }
-
-        bool prefabBufferChecked = false;
-        bool hasPrefabBuffer = false;
-        DynamicBuffer<ItemPrefabElement> prefabBuffer = default;
-        for (int resultIndex = 0; resultIndex < productResults.Length; resultIndex++)
-        {
-            ProductResult result = productResults[resultIndex];
-            if (result.ItemType == ItemTypeEnum.None || result.Count <= 0)
-            {
-                continue;
-            }
-
-            if (!prefabBufferChecked)
-            {
-                hasPrefabBuffer = PrefabDbEntity != Entity.Null &&
-                    ItemPrefabBufferLookup.TryGetBuffer(PrefabDbEntity, out prefabBuffer);
-                prefabBufferChecked = true;
-            }
-            Entity prefabEntity = Entity.Null;
-            if (hasPrefabBuffer)
-            {
-                PrefabLookupUtility.TryGetItemPrefab(prefabBuffer, result.ItemType, out prefabEntity);
-            }
-
-            if (prefabEntity == Entity.Null)
-            {
-                // 프리팹 DB 환경에서 프리팹 미등록 시 Strict Fail: 스폰 중단하고 로깅 (Burst 호환 FixedString 사용)
-                FixedString128Bytes msg = default;
-                msg.Append((FixedString64Bytes)"[ItemLifecycleApplySystem] Missing prefab for item type '");
-                msg.Append(result.ItemType.ToFixedString());
-                msg.Append((FixedString64Bytes)"'. Product spawning skipped.");
-                SimulationFailureUtility.Record(ref ECB, msg);
-                continue;
-            }
-
-            for (int countIndex = 0; countIndex < result.Count; countIndex++)
-            {
-                Entity newItem = ItemLifecycleUtility.SpawnPrefabItem(
-                    ref ECB, prefabEntity, result.ItemType, int2.zero, ItemOwnership.Stored(producerEntity));
-
-                ECB.AppendToBuffer(
-                    producerEntity,
-                    new ProductItemElement(newItem, result.ItemType, result.SlotIndex));
-            }
-
-        }
-
-        // Consume-on-Apply: 논리적 생산 결과는 같은 StateApply 프레임에서 모두 소비.
-        productResults.Clear();
+        results.Clear();
     }
 }
 
-/// <summary>
-/// SpawnItemRequest를 소비하여 새 아이템 엔티티를 생성 및 초기화하는 단일 워커 Burst Job.
-/// </summary>
 [BurstCompile]
 public partial struct SpawnItemApplyJob : IJobChunk
 {
@@ -194,83 +148,62 @@ public partial struct SpawnItemApplyJob : IJobChunk
     public EntityCommandBuffer ECB;
     public Entity PrefabDbEntity;
     [ReadOnly] public NativeArray<ConstructionSiteWorldItemUtility.Footprint> ConstructionFootprints;
+    [ReadOnly] public DynamicBuffer<ItemConfigElement> Items;
+    [ReadOnly] public ComponentLookup<DroneStationStorage> DedicatedSlots;
+    [ReadOnly] public BufferLookup<BuildingInputSlotElement> InputSlots;
+    [ReadOnly] public BufferLookup<DockedDroneElement> Docks;
+    [ReadOnly] public BufferLookup<DroneStationReservedSlotElement> Reserved;
+    [ReadOnly] public ComponentLookup<PendingBuildingDemolition> Demolition;
+    [ReadOnly] public ComponentLookup<PreparingStationDemolition> Preparing;
 
     [ReadOnly]
     public BufferLookup<ItemPrefabElement> ItemPrefabBufferLookup;
 
-    [ReadOnly]
-    public BufferLookup<StoredItemElement> StoredBufferLookup;
+    public BufferLookup<StorageSlotElement> StoredBufferLookup;
 
-    [ReadOnly]
-    public BufferLookup<ProductItemElement> ProductBufferLookup;
+    public BufferLookup<ProductSlotElement> ProductBufferLookup;
 
     private void ExecuteEntity(Entity requestEntity, in SpawnItemRequest request,
         ref RegistryBufferReadCache<ItemPrefabElement> prefabBufferRead)
     {
-        bool canSpawn = false;
-        ItemOwnership ownership = default;
-
-        switch (request.Destination)
+        ECB.DestroyEntity(requestEntity);
+        if (request.Destination == ItemSpawnDestination.World)
         {
-            case ItemSpawnDestination.World:
-                canSpawn = ConstructionSiteWorldItemUtility.IsWorldPositionAllowed(ConstructionFootprints, request.Position);
-                ownership = ItemOwnership.WorldItem;
-                break;
-
-            case ItemSpawnDestination.Storage:
-                if (request.TargetOwner != Entity.Null && StoredBufferLookup.HasBuffer(request.TargetOwner))
-                {
-                    canSpawn = true;
-                    ownership = ItemOwnership.Stored(request.TargetOwner);
-                }
-                break;
-
-            case ItemSpawnDestination.Product:
-                if (request.TargetOwner != Entity.Null && ProductBufferLookup.HasBuffer(request.TargetOwner))
-                {
-                    canSpawn = true;
-                    ownership = ItemOwnership.Stored(request.TargetOwner);
-                }
-                break;
-        }
-
-        if (canSpawn)
-        {
-            Entity prefabEntity = Entity.Null;
-            if (PrefabDbEntity != Entity.Null &&
-                prefabBufferRead.TryRead(ItemPrefabBufferLookup, PrefabDbEntity, out var buffer))
+            if (!ConstructionSiteWorldItemUtility.IsWorldPositionAllowed(ConstructionFootprints, request.Position)) return;
+            if (PrefabDbEntity != Entity.Null && prefabBufferRead.TryRead(ItemPrefabBufferLookup, PrefabDbEntity, out var prefabs) &&
+                PrefabLookupUtility.TryGetItemPrefab(prefabs, request.ItemType, out var prefab))
             {
-                PrefabLookupUtility.TryGetItemPrefab(buffer, request.ItemType, out prefabEntity);
-            }
-
-            if (prefabEntity == Entity.Null)
-            {
-                // 프리팹 DB 환경에서 프리팹 미등록 시 Strict Fail: 스폰 중단하고 로깅 (Burst 호환 FixedString 사용)
-                FixedString128Bytes msg = default;
-                msg.Append((FixedString64Bytes)"[ItemLifecycleApplySystem] Missing prefab for item type '");
-                msg.Append(request.ItemType.ToFixedString());
-                msg.Append((FixedString64Bytes)"'. SpawnItemRequest rejected.");
-                SimulationFailureUtility.Record(ref ECB, msg);
+                ItemLifecycleUtility.SpawnPrefabItem(ref ECB, prefab, request.ItemType, request.Position);
             }
             else
             {
-                Entity newItem = ItemLifecycleUtility.SpawnPrefabItem(
-                    ref ECB, prefabEntity, request.ItemType, request.Position, ownership);
-
-                if (request.Destination == ItemSpawnDestination.Product)
-                {
-                    ECB.AppendToBuffer(request.TargetOwner, new ProductItemElement(newItem, request.ItemType, request.TargetSlotIndex));
-                }
-                else if (request.Destination == ItemSpawnDestination.Storage)
-                {
-                    ECB.AppendToBuffer(request.TargetOwner, new StoredItemElement(newItem, request.ItemType, request.TargetSlotIndex));
-                }
+                SimulationFailureUtility.Record(ref ECB, "[ItemLifecycleApplySystem] Missing prefab for world item.");
             }
-
+            return;
         }
 
-        // Consume-on-Apply: 요청 엔티티 파괴
-        ECB.DestroyEntity(requestEntity);
+        Entity owner = request.TargetOwner;
+        if (Demolition.HasComponent(owner)) return;
+        int slot = request.TargetSlotIndex;
+        var type = request.ItemType;
+        int maximum = ItemRegistry.GetMaxStack(Items, type);
+        if (maximum <= 0) return;
+        if (request.Destination == ItemSpawnDestination.Product && ProductBufferLookup.TryGetBuffer(owner, out var output))
+        {
+            InventorySlotUtility.TryAddProduct(output, slot, type, 1, maximum);
+            return;
+        }
+
+        if (request.Destination != ItemSpawnDestination.Storage ||
+            !StoredBufferLookup.TryGetBuffer(owner, out var storage)) return;
+        int dedicated = DedicatedSlots.TryGetComponent(owner, out var station) ? station.DedicatedSlotCount : 0;
+        if (!StationStorageUtility.IsItemSlotAllowed(slot, storage.Length, dedicated, type)) return;
+        if (type == ItemTypeEnum.Drone && Preparing.HasComponent(owner)) return;
+        if (InputSlots.TryGetBuffer(owner, out var inputs) &&
+            ((uint)slot >= (uint)inputs.Length || inputs[slot].ItemType != type)) return;
+        if (Docks.TryGetBuffer(owner, out var docks) && StationStorageUtility.IsDockOccupied(docks, slot)) return;
+        if (DroneStationRelocationUtility.IsReserved(Reserved, owner, slot)) return;
+        InventorySlotUtility.TryAdd(storage, slot, type, 1, maximum);
     }
 }
 

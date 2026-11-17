@@ -16,18 +16,13 @@ public struct DroneItemTransferDecision : IComponentData
     public int InputQuantityLimit;
 }
 
-/// <summary>
-/// 역할·목적: 물류 반영 전에 해당 행동 요청이 사용할 수 있었던 전체 실물 ID를 보존하는 파생 후보 목록이다.
-/// 부착 엔티티: DroneActionReadyRequest와 DroneItemTransferDecision이 있는 행동 요청 엔티티의 버퍼다.
-/// 생성: DroneActionRequestUtility.Submit이 빈 버퍼를 붙이고 Execution의 DroneItemTransferExecutionSystem이 기존 실물 후보를 채운다.
-/// 이용: StateApply의 DroneTaskLifecycleApplySystem이 이 목록 안의 실물만 생존·현재 Owner·Destroy 여부를 재검사하여 인계한다.
-/// 제거: Lifecycle이 요청 처리 후 EndSimulation에 버퍼 제거를 기록한다.
-/// 같은 틱 신규 입고를 후보에 추가하지 않으며 재고 원본이나 공급원 예약으로 사용하지 않는다.
-/// </summary>
+/// <summary>수집 후보의 출발 슬롯과 수량. 월드 회수 요청에는 선택한 실물 Entity를 담는다.</summary>
 [InternalBufferCapacity(0)]
 public struct DroneItemTransferItemDecisionElement : IBufferElementData
 {
     public Entity ItemEntity;
+    public int SlotIndex;
+    public int Quantity;
 }
 
 /// <summary>
@@ -44,4 +39,15 @@ public struct DroneItemTransferSlotDecisionElement : IBufferElementData
     public int SlotIndex;
     public ItemTypeEnum ItemType;
     public int ItemCount;
+}
+
+/// <summary>드론 단계 시작의 출고 가능량. 이번 단계 납품량은 여기에 더하지 않는다.</summary>
+[InternalBufferCapacity(0)]
+public struct DroneInventoryWithdrawalElement : IBufferElementData
+{
+    public Entity Owner;
+    public bool Product;
+    public int SlotIndex;
+    public ItemTypeEnum ItemType;
+    public int Remaining;
 }

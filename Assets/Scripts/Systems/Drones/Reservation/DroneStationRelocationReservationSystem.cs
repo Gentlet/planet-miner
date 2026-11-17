@@ -18,7 +18,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
     {
         _candidates = DroneSchedulingUtility.GetOrCreateCandidates(state.EntityManager);
         _stations = state.GetEntityQuery(typeof(DroneStation), typeof(DroneStationStorage), typeof(Storage),
-            typeof(GridPosition), typeof(DroneStationNetworkDecision), typeof(StoredItemElement), typeof(DockedDroneElement),
+            typeof(GridPosition), typeof(DroneStationNetworkDecision), typeof(StorageSlotElement), typeof(DockedDroneElement),
             typeof(DroneStationReservedSlotElement), typeof(BuildingFootprint), typeof(Direction));
         state.RequireForUpdate<DroneBatteryConfig>();
         state.RequireForUpdate<DroneMovementConfig>();
@@ -34,14 +34,14 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             CandidateOwner = _candidates, Stations = stations,
             Candidates = SystemAPI.GetBufferLookup<DroneStationRelocationCandidateElement>(true),
             Preparations = SystemAPI.GetComponentLookup<PreparingStationDemolition>(),
-            Relocations = SystemAPI.GetComponentLookup<DroneStationRelocation>(),
+            Members = SystemAPI.GetBufferLookup<DroneStationRelocationMemberElement>(),
             Reserved = SystemAPI.GetBufferLookup<DroneStationReservedSlotElement>(),
             Positions = SystemAPI.GetComponentLookup<GridPosition>(true),
             Footprints = SystemAPI.GetComponentLookup<BuildingFootprint>(true), Directions = SystemAPI.GetComponentLookup<Direction>(true),
             Networks = SystemAPI.GetComponentLookup<DroneStationNetworkDecision>(true), Storages = SystemAPI.GetComponentLookup<Storage>(true),
             Dedicated = SystemAPI.GetComponentLookup<DroneStationStorage>(true), Stamps = SystemAPI.GetComponentLookup<PlacementStamp>(true),
             Pending = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true),
-            Items = SystemAPI.GetBufferLookup<StoredItemElement>(true), Docks = SystemAPI.GetBufferLookup<DockedDroneElement>(true),
+            Items = SystemAPI.GetBufferLookup<StorageSlotElement>(true), Docks = SystemAPI.GetBufferLookup<DockedDroneElement>(true),
             Workers = SystemAPI.GetComponentLookup<DroneWorker>(true), Transforms = SystemAPI.GetComponentLookup<LocalTransform>(true),
             Maximum = SystemAPI.GetSingleton<DroneBatteryConfig>().MaximumCharge,
             Rate = SystemAPI.GetSingleton<DroneMovementConfig>().EnergyPerDistance, ECB = end.CreateCommandBuffer()
@@ -55,7 +55,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
     {
         private struct SlotReservationPlan
         {
-            public Entity Drone;
+            public DroneStationRelocationCandidateElement Member;
             public Entity Destination;
             public int Slot;
         }
@@ -75,7 +75,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
         [ReadOnly] public NativeArray<Entity> Stations;
         [ReadOnly] public BufferLookup<DroneStationRelocationCandidateElement> Candidates;
         public ComponentLookup<PreparingStationDemolition> Preparations;
-        public ComponentLookup<DroneStationRelocation> Relocations;
+        public BufferLookup<DroneStationRelocationMemberElement> Members;
         public BufferLookup<DroneStationReservedSlotElement> Reserved;
         [ReadOnly] public ComponentLookup<GridPosition> Positions;
         [ReadOnly] public ComponentLookup<BuildingFootprint> Footprints;
@@ -85,7 +85,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
         [ReadOnly] public ComponentLookup<DroneStationStorage> Dedicated;
         [ReadOnly] public ComponentLookup<PlacementStamp> Stamps;
         [ReadOnly] public ComponentLookup<PendingBuildingDemolition> Pending;
-        [ReadOnly] public BufferLookup<StoredItemElement> Items;
+        [ReadOnly] public BufferLookup<StorageSlotElement> Items;
         [ReadOnly] public BufferLookup<DockedDroneElement> Docks;
         [ReadOnly] public ComponentLookup<DroneWorker> Workers;
         [ReadOnly] public ComponentLookup<LocalTransform> Transforms;
@@ -114,37 +114,54 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                 {
                     continue;
                 }
-                foreach (var member in members)
+                if (!Members.TryGetBuffer(seed.Task, out var roster)) continue;
+                using var previousReservations = new NativeList<SlotReservationPlan>(Allocator.Temp);
+                if (replan)
                 {
-                    if (!member.Replan || !Relocations.TryGetComponent(member.Drone, out var old))
+                    foreach (var candidate in members)
                     {
-                        continue;
-                    }
-                    if (Reserved.TryGetBuffer(old.Destination, out var reservations))
-                    {
-                        DroneStationRelocationUtility.ReleaseSlots(reservations, member.Drone);
+                        var old = roster[candidate.MemberIndex];
+                        if (Reserved.TryGetBuffer(old.Destination, out var reservations) &&
+                            DroneStationRelocationUtility.ReservedSlot(reservations, seed.Task, candidate.MemberIndex) == old.SlotIndex)
+                        {
+                            previousReservations.Add(new SlotReservationPlan
+                                { Member = candidate, Destination = old.Destination, Slot = old.SlotIndex });
+                            DroneStationRelocationUtility.ReleaseSlots(reservations, seed.Task, candidate.MemberIndex);
+                        }
                     }
                 }
                 using var plans = new NativeList<SlotReservationPlan>(Allocator.Temp);
                 using var flights = new NativeList<DroneFlightStation>(Allocator.Temp);
-                bool complete = TryBuildCompleteActorSlotPlan(members, flights, plans);
-                if (!complete) continue;
+                if (!TryBuildCompleteActorSlotPlan(members, flights, plans))
+                {
+                    foreach (var previous in previousReservations)
+                        Reserved[previous.Destination].Add(new DroneStationReservedSlotElement
+                            { Task = seed.Task, MemberIndex = previous.Member.MemberIndex, SlotIndex = previous.Slot });
+                    continue;
+                }
+                if (!replan) roster.Resize(plans.Length, NativeArrayOptions.ClearMemory);
                 foreach (var plan in plans)
                 {
-                    Reserved[plan.Destination].Add(new DroneStationReservedSlotElement { Drone = plan.Drone, SlotIndex = plan.Slot });
-                    if (Relocations.TryGetComponent(plan.Drone, out var relocation))
+                    int index = plan.Member.MemberIndex;
+                    Reserved[plan.Destination].Add(new DroneStationReservedSlotElement
                     {
-                        relocation.Destination = plan.Destination; relocation.SlotIndex = plan.Slot;
-                        Relocations[plan.Drone] = relocation;
-                    }
-                    else
+                        Task = seed.Task, MemberIndex = index, SlotIndex = plan.Slot
+                    });
+                    var member = roster[index];
+                    if (!replan)
                     {
-                        ECB.AddComponent(plan.Drone, new DroneStationRelocation
+                        member = new DroneStationRelocationMemberElement
                         {
-                            Source = seed.Source, Task = seed.Task, Destination = plan.Destination, SlotIndex = plan.Slot,
+                            Source = seed.Source, Task = seed.Task, Drone = plan.Member.Drone,
+                            SourceSlotIndex = plan.Member.SourceSlotIndex,
                             Stage = DroneStationRelocationStageEnum.WaitingForActivation
-                        });
+                        };
+                        if (member.Drone != Entity.Null)
+                            ECB.AddComponent(member.Drone, new DroneStationRelocation { Task = seed.Task, MemberIndex = index });
                     }
+                    member.Destination = plan.Destination;
+                    member.SlotIndex = plan.Slot;
+                    roster[index] = member;
                 }
                 if (!replan)
                 {
@@ -158,7 +175,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             NativeList<DroneFlightStation> flights, NativeList<SlotReservationPlan> plans)
         {
             using var actors = new NativeList<DroneStationRelocationCandidateElement>(Allocator.Temp);
-            foreach (var member in members) if (member.Drone != Entity.Null) actors.Add(member);
+            foreach (var member in members) if (member.MemberIndex >= 0) actors.Add(member);
             if (actors.IsEmpty) return true;
             using var sourceChargingSlotsAfterDeparture = new NativeHashSet<int>(16, Allocator.Temp);
             CollectSourceChargingSlotsAfterDeparture(actors, sourceChargingSlotsAfterDeparture);
@@ -183,7 +200,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                 {
                     int slot = StationStorageUtility.SearchSlot(index, slotCount, dedicatedSlotCount, ItemTypeEnum.Drone);
                     bool occupied = reservations.IsCreated && DroneStationRelocationUtility.IsReserved(reservations, slot);
-                    foreach (var item in storedItems) occupied |= item.SlotIndex == slot;
+                    occupied |= storedItems[slot].Quantity > 0;
                     foreach (var dock in dockedDrones) occupied |= dock.SlotIndex == slot;
                     if (occupied) continue;
                     slots.Add(new AvailableSlot
@@ -274,7 +291,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             for (int i = 0; i < actors.Length; i++)
             {
                 var slot = slots[actorSlots[i]];
-                plans.Add(new SlotReservationPlan { Drone = actors[i].Drone, Destination = slot.Station, Slot = slot.Slot });
+                plans.Add(new SlotReservationPlan { Member = actors[i], Destination = slot.Station, Slot = slot.Slot });
             }
             if (AreAssignedRoutesReachable(actors, plans, flights, sourceChargingSlotsAfterDeparture, origins, geometry))
             {
@@ -383,7 +400,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                 var slot = slots[availableSlotIndex];
                 plans.Add(new SlotReservationPlan
                 {
-                    Drone = actors[currentActor].Drone, Destination = slot.Station, Slot = slot.Slot
+                    Member = actors[currentActor], Destination = slot.Station, Slot = slot.Slot
                 });
                 // 추가 예약은 경유 공간을 줄이기만 하므로 부분 계획에서 막힌 가지는 확장하지 않는다.
                 if (!AreAssignedRoutesReachable(actors, plans, flights, sourceChargingSlotsAfterDeparture, origins, geometry))
@@ -476,10 +493,11 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             for (int slot = 0; slot < storage.SlotCount; slot++)
             {
                 bool occupied = hasReservations && DroneStationRelocationUtility.IsReserved(reservations, slot);
-                foreach (var item in items)
-                {
-                    occupied |= item.SlotIndex == slot && !departingActors.Contains(item.ItemEntity);
-                }
+                int departingStock = 0;
+                if (!actors[0].Replan)
+                    foreach (var actor in actors)
+                        if (actor.Drone == Entity.Null && actor.SourceSlotIndex == slot) departingStock++;
+                occupied |= items[slot].Quantity > departingStock;
                 foreach (var dock in docks)
                 {
                     occupied |= dock.SlotIndex == slot && !departingActors.Contains(dock.Drone);
@@ -503,7 +521,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             bool isSource = station == source;
             bool hasReservations = false;
             DynamicBuffer<DroneStationReservedSlotElement> reservations = default;
-            DynamicBuffer<StoredItemElement> items = default;
+            DynamicBuffer<StorageSlotElement> items = default;
             DynamicBuffer<DockedDroneElement> docks = default;
             if (!isSource)
             {
@@ -522,10 +540,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                 else
                 {
                     occupied = hasReservations && DroneStationRelocationUtility.IsReserved(reservations, slot);
-                    foreach (var item in items)
-                    {
-                        occupied |= item.SlotIndex == slot;
-                    }
+                    occupied |= items[slot].Quantity > 0;
                     foreach (var dock in docks)
                     {
                         occupied |= dock.SlotIndex == slot;

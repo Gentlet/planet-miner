@@ -27,7 +27,7 @@ public static class DroneTaskCreationUtility
                     DroneRecoveryReasonEnum.None, ref sequence, area: creation.Area, purpose: creation.Purpose);
                 ecb.AddComponent(task, new DroneTransportRequirement { Quantity = creation.Quantity });
                 ecb.AddComponent(task, new DroneTransportProgress());
-                return task;
+        return task;
         }
     }
 
@@ -83,6 +83,8 @@ public static class DroneTaskCreationUtility
             RecoveryReason = recoveryReason,
             HasExplicitRecoveryIntent = hasExplicitRecoveryIntent
         });
+        if (kind == DroneLogisticsTaskKindEnum.BuildingDemolition)
+            ecb.AddBuffer<DroneStationRelocationMemberElement>(task);
         return task;
     }
 }

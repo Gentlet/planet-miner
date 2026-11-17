@@ -13,7 +13,7 @@ public static class DroneWorldItemRecoveryUtility
         {
             return false;
         }
-        if (!ItemOwnershipApplySystem.CanTransferItem(manager, assignment.Source, assignment.ItemType, Entity.Null))
+        if (!DroneSchedulingUtility.IsWorldItem(manager, assignment.Source, assignment.ItemType))
         {
             return false;
         }

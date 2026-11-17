@@ -5,11 +5,11 @@ using Unity.Entities;
 public static class DroneStationRelocationUtility
 {
     /// <summary>재계획 또는 종료 소유자가 지정한 드론의 예약 행을 모두 제거한다.</summary>
-    internal static void ReleaseSlots(DynamicBuffer<DroneStationReservedSlotElement> reservations, Entity drone)
+    internal static void ReleaseSlots(DynamicBuffer<DroneStationReservedSlotElement> reservations, Entity task, int memberIndex)
     {
         for (int i = reservations.Length - 1; i >= 0; i--)
         {
-            if (reservations[i].Drone == drone)
+            if (reservations[i].Task == task && reservations[i].MemberIndex == memberIndex)
             {
                 reservations.RemoveAt(i);
             }
@@ -37,50 +37,50 @@ public static class DroneStationRelocationUtility
         return task.CreationSequence < manager.GetComponentData<DroneLogisticsTask>(preparation.Task).CreationSequence;
     }
 
-    public static bool IsReserved(EntityManager manager, Entity station, int slot, Entity except = default)
+    public static bool IsReserved(EntityManager manager, Entity station, int slot, Entity exceptTask = default, int exceptMember = -1)
     {
         if (!manager.HasBuffer<DroneStationReservedSlotElement>(station)) return false;
-        return IsReserved(manager.GetBuffer<DroneStationReservedSlotElement>(station, true), slot, except);
+        return IsReserved(manager.GetBuffer<DroneStationReservedSlotElement>(station, true), slot, exceptTask, exceptMember);
     }
 
-    public static int ReservedSlot(EntityManager manager, Entity station, Entity drone)
+    public static int ReservedSlot(EntityManager manager, Entity station, Entity task, int memberIndex)
     {
         if (!manager.HasBuffer<DroneStationReservedSlotElement>(station)) return -1;
-        return ReservedSlot(manager.GetBuffer<DroneStationReservedSlotElement>(station, true), drone);
+        return ReservedSlot(manager.GetBuffer<DroneStationReservedSlotElement>(station, true), task, memberIndex);
     }
 
-    public static bool IsReserved(BufferLookup<DroneStationReservedSlotElement> reservations, Entity station, int slot, Entity except = default)
+    public static bool IsReserved(BufferLookup<DroneStationReservedSlotElement> reservations, Entity station, int slot, Entity exceptTask = default, int exceptMember = -1)
     {
         if (!reservations.TryGetBuffer(station, out var buffer))
         {
             return false;
         }
-        return IsReserved(buffer, slot, except);
+        return IsReserved(buffer, slot, exceptTask, exceptMember);
     }
 
-    public static int ReservedSlot(BufferLookup<DroneStationReservedSlotElement> reservations, Entity station, Entity drone)
+    public static int ReservedSlot(BufferLookup<DroneStationReservedSlotElement> reservations, Entity station, Entity task, int memberIndex)
     {
         if (!reservations.TryGetBuffer(station, out var buffer))
         {
             return -1;
         }
-        return ReservedSlot(buffer, drone);
+        return ReservedSlot(buffer, task, memberIndex);
     }
 
-    internal static bool IsReserved(DynamicBuffer<DroneStationReservedSlotElement> reservations, int slot, Entity except = default)
+    internal static bool IsReserved(DynamicBuffer<DroneStationReservedSlotElement> reservations, int slot, Entity exceptTask = default, int exceptMember = -1)
     {
         foreach (var row in reservations)
         {
-            if (row.SlotIndex == slot && row.Drone != except) return true;
+            if (row.SlotIndex == slot && (exceptTask == Entity.Null || row.Task != exceptTask || row.MemberIndex != exceptMember)) return true;
         }
         return false;
     }
 
-    internal static int ReservedSlot(DynamicBuffer<DroneStationReservedSlotElement> reservations, Entity drone)
+    internal static int ReservedSlot(DynamicBuffer<DroneStationReservedSlotElement> reservations, Entity task, int memberIndex)
     {
         foreach (var row in reservations)
         {
-            if (row.Drone == drone) return row.SlotIndex;
+            if (task != Entity.Null && row.Task == task && row.MemberIndex == memberIndex) return row.SlotIndex;
         }
         return -1;
     }
@@ -92,19 +92,14 @@ public static class DroneStationRelocationUtility
         if (!preparation.Started || preparation.CompletedCount != preparation.TotalCount) return false;
         if (manager.HasBuffer<DockedDroneElement>(station) && !manager.GetBuffer<DockedDroneElement>(station, true).IsEmpty) return false;
         if (manager.HasBuffer<DroneStationReservedSlotElement>(station) && !manager.GetBuffer<DroneStationReservedSlotElement>(station, true).IsEmpty) return false;
-        foreach (var item in manager.GetBuffer<StoredItemElement>(station, true))
+        foreach (var item in manager.GetBuffer<StorageSlotElement>(station, true))
         {
             if (item.ItemType == ItemTypeEnum.Drone) return false;
         }
-        using var query = manager.CreateEntityQuery(new EntityQueryDesc
+        if (manager.HasBuffer<DroneStationRelocationMemberElement>(preparation.Task))
         {
-            All = new[] { ComponentType.ReadOnly<DroneStationRelocation>() },
-            Options = EntityQueryOptions.IncludeDisabledEntities
-        });
-        using var actors = query.ToComponentDataArray<DroneStationRelocation>(Allocator.Temp);
-        foreach (var actor in actors)
-        {
-            if (actor.Source == station) return false;
+            foreach (var member in manager.GetBuffer<DroneStationRelocationMemberElement>(preparation.Task, true))
+                if (!member.Finished) return false;
         }
         return true;
     }
@@ -113,7 +108,7 @@ public static class DroneStationRelocationUtility
         task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition &&
         manager.HasComponent<PreparingStationDemolition>(task.Target);
 
-    public static bool ShouldStopUnstartedRelocation(EntityManager manager, in DroneStationRelocation relocation, Entity candidates)
+    public static bool ShouldStopUnstartedRelocation(EntityManager manager, in DroneStationRelocationMemberElement relocation, Entity candidates)
     {
         if (!manager.HasComponent<DroneLogisticsTask>(relocation.Task)) return true;
         var task = manager.GetComponentData<DroneLogisticsTask>(relocation.Task);

@@ -29,7 +29,7 @@ public partial struct MinerWorkPreparationSystem : ISystem
 
         _minerQuery = SystemAPI.QueryBuilder()
             .WithAllRW<MinerWorkPreparation>()
-            .WithAll<MinerState, BuildingFootprint, GridPosition, Direction, ProductItemElement, ProductResult>()
+            .WithAll<MinerState, BuildingFootprint, GridPosition, Direction, ProductSlotElement, ProductResult>()
             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
             .Build();
     }
@@ -61,7 +61,7 @@ public partial struct MinerWorkPreparationSystem : ISystem
         {
             EntityHandle = SystemAPI.GetEntityTypeHandle(),
             MinerWorkPreparationHandle = SystemAPI.GetComponentTypeHandle<MinerWorkPreparation>(false),
-            ProductItemElementHandle = SystemAPI.GetBufferTypeHandle<ProductItemElement>(true),
+            ProductSlotElementHandle = SystemAPI.GetBufferTypeHandle<ProductSlotElement>(true),
             ProductResultHandle = SystemAPI.GetBufferTypeHandle<ProductResult>(true),
             BuildingFootprintHandle = SystemAPI.GetComponentTypeHandle<BuildingFootprint>(true),
             GridPositionHandle = SystemAPI.GetComponentTypeHandle<GridPosition>(true),
@@ -90,7 +90,7 @@ public partial struct MinerWorkPreparationJob : IJobChunk
 {
     [ReadOnly] public EntityTypeHandle EntityHandle;
     public ComponentTypeHandle<MinerWorkPreparation> MinerWorkPreparationHandle;
-    [ReadOnly] public BufferTypeHandle<ProductItemElement> ProductItemElementHandle;
+    [ReadOnly] public BufferTypeHandle<ProductSlotElement> ProductSlotElementHandle;
     [ReadOnly] public BufferTypeHandle<ProductResult> ProductResultHandle;
     [ReadOnly] public ComponentTypeHandle<BuildingFootprint> BuildingFootprintHandle;
     [ReadOnly] public ComponentTypeHandle<GridPosition> GridPositionHandle;
@@ -106,7 +106,7 @@ public partial struct MinerWorkPreparationJob : IJobChunk
         var entities = chunk.GetNativeArray(EntityHandle);
         var minerWorkPreparationValues = chunk.GetNativeArray(ref MinerWorkPreparationHandle);
         var minerWorkPreparationEnabled = chunk.GetEnabledMask(ref MinerWorkPreparationHandle);
-        var productItemElementValues = chunk.GetBufferAccessorRO(ref ProductItemElementHandle);
+        var productItemElementValues = chunk.GetBufferAccessorRO(ref ProductSlotElementHandle);
         var productResultValues = chunk.GetBufferAccessorRO(ref ProductResultHandle);
         var buildingFootprintValues = chunk.GetNativeArray(ref BuildingFootprintHandle);
         var gridPositionValues = chunk.GetNativeArray(ref GridPositionHandle);
@@ -150,7 +150,7 @@ public partial struct MinerWorkPreparationJob : IJobChunk
         Entity building,
         ref MinerWorkPreparation decision,
         EnabledRefRW<MinerWorkPreparation> decisionEnabled,
-        in DynamicBuffer<ProductItemElement> productItems,
+        in DynamicBuffer<ProductSlotElement> productItems,
         in DynamicBuffer<ProductResult> productResults,
         in BuildingFootprint footprint,
         in GridPosition gridPos,
@@ -189,7 +189,7 @@ public partial struct MinerWorkPreparationJob : IJobChunk
             }
         }
 
-        // 2. 내부 출력 버퍼(ProductItemElement) 여유 공간 확인 (1스택 한도)
+        // 2. 내부 출력 버퍼(ProductSlotElement) 여유 공간 확인 (1스택 한도)
         int maxStack = 0;
         if (resourceType != ItemTypeEnum.None && registryRead.ItemConfigLookup.TryRead(ItemConfigLookup, ItemRegistryEntity, out var itemConfigs))
         {
@@ -208,7 +208,8 @@ public partial struct MinerWorkPreparationJob : IJobChunk
 
         // 결과가 실물로 바뀌기 전에는 출력 버퍼에 아직 보이지 않는다. 미소비 결과를 별도로 막아 중복 생산을 방지한다.
         bool hasPendingProduction = productResults.Length > 0;
-        bool hasSpace = !hasPendingProduction && sameItemType && productItems.Length < maxStack;
+        bool hasSpace = !hasPendingProduction && sameItemType &&
+            InventorySlotUtility.ProductFreeQuantity(productItems, 0, resourceType, maxStack) > 0;
 
         // 3. 의사결정 기록 (자원이 있고, 동일 타입 1스택에 여유가 있으며, 미소비 생산 결과가 없을 때만 채굴 가능)
         if (foundResource && hasSpace)

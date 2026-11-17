@@ -10,7 +10,6 @@ using Unity.Mathematics;
 /// </summary>
 [UpdateInGroup(typeof(BuildingStateApplyGroup))]
 [UpdateAfter(typeof(BuildingLifecycleApplySystem))]
-[UpdateAfter(typeof(ItemOwnershipApplySystem))]
 public partial struct GameBootstrapApplySystem : ISystem
 {
     private EntityQuery _requests;
@@ -28,7 +27,7 @@ public partial struct GameBootstrapApplySystem : ISystem
             .WithOptions(EntityQueryOptions.IncludeDisabledEntities).Build();
         _spawns = state.GetEntityQuery(typeof(SpawnBuildingRequest));
         _itemsWithPositions = state.GetEntityQuery(ComponentType.ReadOnly<ItemIdentity>(),
-            ComponentType.ReadOnly<ItemOwnership>(), ComponentType.ReadOnly<GridPosition>());
+            ComponentType.ReadOnly<GridPosition>());
         state.RequireForUpdate<GameBootstrapRequest>();
         state.RequireForUpdate<PrefabDatabaseReady>();
         state.RequireForUpdate<StartingItemConfig>();
@@ -63,7 +62,6 @@ public partial struct GameBootstrapApplySystem : ISystem
             SpawnData = SystemAPI.GetComponentLookup<SpawnBuildingRequest>(true),
             Sites = SystemAPI.GetComponentLookup<ConstructionSite>(true),
             DisabledEntities = SystemAPI.GetComponentLookup<Disabled>(true),
-            ItemOwners = SystemAPI.GetComponentLookup<ItemOwnership>(true),
             DestroyRequests = SystemAPI.GetComponentLookup<DestroyItemRequest>(true),
             Requirements = SystemAPI.GetBufferLookup<ConstructionMaterialRequirementElement>(true),
             BuildingConfigs = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
@@ -103,7 +101,6 @@ public struct ApplyGameBootstrapJob : IJob
     [ReadOnly] public ComponentLookup<SpawnBuildingRequest> SpawnData;
     [ReadOnly] public ComponentLookup<ConstructionSite> Sites;
     [ReadOnly] public ComponentLookup<Disabled> DisabledEntities;
-    [ReadOnly] public ComponentLookup<ItemOwnership> ItemOwners;
     [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyRequests;
     [ReadOnly] public BufferLookup<ConstructionMaterialRequirementElement> Requirements;
     [ReadOnly] public BufferLookup<BuildingConfigElement> BuildingConfigs;
@@ -121,7 +118,6 @@ public struct ApplyGameBootstrapJob : IJob
     private struct ItemSlot
     {
         public ItemTypeEnum Type;
-        public Entity Prefab;
         public int Slot;
         public int Quantity;
     }
@@ -156,7 +152,7 @@ public struct ApplyGameBootstrapJob : IJob
 
         using var worldItemPositions = new NativeList<int2>(Allocator.Temp);
         ConstructionCompletionUtility.CollectWorldItemPositions(
-            ItemEntities, DestroyRequests, ItemOwners, Positions, worldItemPositions);
+            ItemEntities, DestroyRequests, Positions, worldItemPositions);
         if (!ValidateBootstrapConflictsAndRecordFailure(config.Footprint, configs, worldItemPositions.AsArray()))
         {
             ECB.DestroyEntity(request);
@@ -179,15 +175,11 @@ public struct ApplyGameBootstrapJob : IJob
             return;
         }
 
-        for (int i = 0; i < slots.Length; i++)
+        var inventory = ECB.SetBuffer<StorageSlotElement>(main);
+        inventory.Resize(config.StorageCapacity + config.DroneStationStorageCapacity, NativeArrayOptions.ClearMemory);
+        foreach (var slot in slots)
         {
-            var slot = slots[i];
-            for (int count = 0; count < slot.Quantity; count++)
-            {
-                Entity item = ItemLifecycleUtility.SpawnPrefabItem(ref ECB, slot.Prefab, slot.Type,
-                    int2.zero, ItemOwnership.Stored(main));
-                ECB.AppendToBuffer(main, new StoredItemElement(item, slot.Type, slot.Slot));
-            }
+            inventory[slot.Slot] = new StorageSlotElement(slot.Type, slot.Quantity);
         }
 
         // 생성된 deferred Entity 참조와 지급 완료 기록은 같은 ECB에서 함께 remap/공개한다.
@@ -332,7 +324,7 @@ public struct ApplyGameBootstrapJob : IJob
                         continue;
                     }
                     int maximum = ItemRegistry.GetMaxStack(items, definition.ItemType);
-                    if (maximum <= 0 || !PrefabLookupUtility.TryGetItemPrefab(prefabs, definition.ItemType, out Entity prefab))
+                    if (maximum <= 0 || !PrefabLookupUtility.TryGetItemPrefab(prefabs, definition.ItemType, out _))
                     {
                         Fail("[GameBootstrapApplySystem] Starting item configuration or prefab is missing.");
                         return false;
@@ -346,7 +338,7 @@ public struct ApplyGameBootstrapJob : IJob
                             continue;
                         }
                         int amount = math.min(maximum, remaining);
-                        slots.Add(new ItemSlot { Type = definition.ItemType, Prefab = prefab, Slot = slot, Quantity = amount });
+                        slots.Add(new ItemSlot { Type = definition.ItemType, Slot = slot, Quantity = amount });
                         used[slot] = 1;
                         remaining -= amount;
                     }

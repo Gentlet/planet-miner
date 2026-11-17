@@ -38,26 +38,21 @@ public partial struct PowerSupplyExecutionSystem : ISystem
             Types = types,
             ConfigLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true), ConfigEntity = configEntity,
             Fuel = SystemAPI.GetComponentLookup<FuelEnergyState>(true),
-            Stored = SystemAPI.GetBufferLookup<StoredItemElement>(true),
-            ItemIdentityLookup = SystemAPI.GetComponentLookup<ItemIdentity>(true),
-            ItemOwnershipLookup = SystemAPI.GetComponentLookup<ItemOwnership>(true),
-            DestroyItemRequestLookup = SystemAPI.GetComponentLookup<DestroyItemRequest>(true),
+            Stored = SystemAPI.GetBufferLookup<StorageSlotElement>(true),
             Validation = validationOwner.Validation, Ready = ready
         }.Schedule(JobHandle.CombineDependencies(generatorsReady, consumersReady, state.Dependency));
-        var ecbSystem = state.World.GetOrCreateSystemManaged<EndPowerEntityCommandBufferSystem>();
         var commit = new CommitPowerSupplyJob
         {
             Generators = generators.AsDeferredJobArray(), Consumers = consumers.AsDeferredJobArray(),
             Validation = validationOwner.Validation, Ready = ready,
             Plans = plans,
             Types = types,
-            Fuel = SystemAPI.GetComponentLookup<FuelEnergyState>(), Stored = SystemAPI.GetBufferLookup<StoredItemElement>(),
+            Fuel = SystemAPI.GetComponentLookup<FuelEnergyState>(), Stored = SystemAPI.GetBufferLookup<StorageSlotElement>(),
             Reservations = reservations,
-            Results = SystemAPI.GetComponentLookup<PowerSupplyResult>(), ECB = ecbSystem.CreateCommandBuffer()
+            Results = SystemAPI.GetComponentLookup<PowerSupplyResult>()
         }.Schedule(JobHandle.CombineDependencies(validate, state.Dependency));
         state.Dependency = JobHandle.CombineDependencies(generators.Dispose(commit), consumers.Dispose(commit), ready.Dispose(commit));
         validationOwner.Register(state.Dependency);
-        ecbSystem.AddJobHandleForProducer(commit);
     }
 }
 
@@ -72,10 +67,7 @@ internal struct ValidatePowerConsumptionJob : IJob
     [ReadOnly] public BufferLookup<BuildingConfigElement> ConfigLookup;
     public Entity ConfigEntity;
     [ReadOnly] public ComponentLookup<FuelEnergyState> Fuel;
-    [ReadOnly] public BufferLookup<StoredItemElement> Stored;
-    [ReadOnly] public ComponentLookup<ItemIdentity> ItemIdentityLookup;
-    [ReadOnly] public ComponentLookup<ItemOwnership> ItemOwnershipLookup;
-    [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyItemRequestLookup;
+    [ReadOnly] public BufferLookup<StorageSlotElement> Stored;
     public NativeReference<PowerValidationResult> Validation;
     public NativeReference<bool> Ready;
 
@@ -117,13 +109,7 @@ internal struct ValidatePowerConsumptionJob : IJob
             var items = Stored[generator];
             if (!math.isfinite(plan.AllocatedEnergy) || plan.AllocatedEnergy < 0f ||
                 plan.AllocatedEnergy > plan.AvailableEnergy ||
-                !PowerFuelUtility.IsConsumptionValid(Fuel[generator].RemainingEnergy, items.Length, config, plan))
-            {
-                PowerValidationUtility.Fail(Validation, "[PowerSupplyExecutionSystem] Invalid fuel consumption plan or item.");
-                return;
-            }
-            if (!PowerFuelUtility.AreConsumedItemsValid(
-                DestroyItemRequestLookup, ItemIdentityLookup, ItemOwnershipLookup, items, generator, plan.FuelItemCount))
+                !PowerFuelUtility.IsConsumptionValid(Fuel[generator].RemainingEnergy, InventorySlotUtility.Count(items, ItemTypeEnum.Coal), config, plan))
             {
                 PowerValidationUtility.Fail(Validation, "[PowerSupplyExecutionSystem] Invalid fuel consumption plan or item.");
                 return;
@@ -144,9 +130,8 @@ internal struct CommitPowerSupplyJob : IJob
     [ReadOnly] public ComponentLookup<BuildingType> Types;
     [ReadOnly] public ComponentLookup<PowerSupplyReservation> Reservations;
     public ComponentLookup<FuelEnergyState> Fuel;
-    public BufferLookup<StoredItemElement> Stored;
+    public BufferLookup<StorageSlotElement> Stored;
     public ComponentLookup<PowerSupplyResult> Results;
-    public EntityCommandBuffer ECB;
 
     public void Execute()
     {
@@ -161,14 +146,7 @@ internal struct CommitPowerSupplyJob : IJob
                 continue;
             }
             var plan = Plans[generator];
-            var items = Stored[generator];
-            for (int i = 0; i < plan.FuelItemCount; i++)
-            {
-                int index = items.Length - 1;
-                Entity item = items[index].ItemEntity;
-                items.RemoveAt(index);
-                ItemLifecycleUtility.RecordDestroy(ref ECB, item);
-            }
+            InventorySlotUtility.Consume(Stored[generator], ItemTypeEnum.Coal, plan.FuelItemCount);
             Fuel[generator] = new FuelEnergyState { RemainingEnergy = plan.RemainingEnergyAfterConsumption };
         }
         foreach (Entity consumer in Consumers)

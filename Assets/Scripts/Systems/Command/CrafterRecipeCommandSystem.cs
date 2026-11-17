@@ -17,8 +17,8 @@ public partial struct CrafterRecipeCommandSystem : ISystem
     private ComponentLookup<Storage> _storageLookup;
     private ComponentLookup<StorageFilter> _filterLookup;
     private BufferLookup<BuildingInputSlotElement> _inputSlotLookup;
-    private BufferLookup<StoredItemElement> _storedBufferLookup;
-    private BufferLookup<ProductItemElement> _productBufferLookup;
+    private BufferLookup<StorageSlotElement> _storedBufferLookup;
+    private BufferLookup<ProductSlotElement> _productBufferLookup;
     private BufferLookup<RecipeConfigElement> _recipeConfigLookup;
     private BufferLookup<RecipeIngredientElement> _recipeIngredientLookup;
     private BufferLookup<ItemConfigElement> _itemConfigLookup;
@@ -33,8 +33,8 @@ public partial struct CrafterRecipeCommandSystem : ISystem
         _storageLookup = state.GetComponentLookup<Storage>(false);
         _filterLookup = state.GetComponentLookup<StorageFilter>(false);
         _inputSlotLookup = state.GetBufferLookup<BuildingInputSlotElement>(false);
-        _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(false);
-        _productBufferLookup = state.GetBufferLookup<ProductItemElement>(false);
+        _storedBufferLookup = state.GetBufferLookup<StorageSlotElement>(false);
+        _productBufferLookup = state.GetBufferLookup<ProductSlotElement>(false);
         _recipeConfigLookup = state.GetBufferLookup<RecipeConfigElement>(true);
         _recipeIngredientLookup = state.GetBufferLookup<RecipeIngredientElement>(true);
         _itemConfigLookup = state.GetBufferLookup<ItemConfigElement>(true);
@@ -147,32 +147,18 @@ public partial struct CrafterRecipeCommandSystem : ISystem
                 crafterState.Progress = 0.0f;
                 crafterState.IsCraftingActive = false;
 
-                // 2. StoredItemElement -> ProductItemElement 잔여 재료 Byproduct 배출 (Slot 1+)
-                if (storedItems.Length > 0)
+                int nextOutputSlot = productItems.IsEmpty ? 1 : productItems[productItems.Length - 1].SlotIndex + 1;
+                foreach (var item in storedItems)
                 {
-                    int maxExistingSlot = 0;
-                    for (int p = 0; p < productItems.Length; p++)
+                    if (item.Quantity > 0)
                     {
-                        if (productItems[p].SlotIndex > maxExistingSlot)
-                        {
-                            maxExistingSlot = productItems[p].SlotIndex;
-                        }
+                        productItems.Add(new ProductSlotElement(nextOutputSlot++, item.ItemType, item.Quantity));
                     }
-                    int baseSlot = math.max(1, maxExistingSlot + 1);
-
-                    for (int s = 0; s < storedItems.Length; s++)
-                    {
-                        var item = storedItems[s];
-                        // 같은 품목도 여러 입력 스택을 가질 수 있다. 기존 슬롯 구분을
-                        // 유지하여 잔여물 배출 슬롯의 MaxStack 초과를 방지한다.
-                        int byproductSlot = baseSlot + item.SlotIndex;
-                        productItems.Add(new ProductItemElement(item.ItemEntity, item.ItemType, byproductSlot));
-                    }
-
-                    storedItems.Clear();
                 }
+                storedItems.Clear();
+                storedItems.Resize(slots.Length, NativeArrayOptions.ClearMemory);
 
-                // 5. 상태 전환: ProductItemElement에 아이템이 남아있으면 WaitingForByproductOutput
+                // 5. 상태 전환: ProductSlotElement에 아이템이 남아있으면 WaitingForByproductOutput
                 if (productItems.Length > 0)
                 {
                     crafterState.Status = CrafterStatusEnum.WaitingForByproductOutput;
@@ -215,8 +201,8 @@ public partial struct CrafterRecipeCommandSystem : ISystem
 
     private bool TryGetInputConfiguration(Entity crafter,
         out DynamicBuffer<BuildingInputSlotElement> inputSlots,
-        out DynamicBuffer<StoredItemElement> storedItems,
-        out DynamicBuffer<ProductItemElement> productItems)
+        out DynamicBuffer<StorageSlotElement> storedItems,
+        out DynamicBuffer<ProductSlotElement> productItems)
     {
         inputSlots = default;
         storedItems = default;

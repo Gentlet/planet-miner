@@ -31,7 +31,7 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
         // 지난 틱 비활성 결정을 포함해 다시 판단한다. 이동 활성 여부는 Job에서 별도로 검사한다.
         _itemQuery = SystemAPI.QueryBuilder()
             .WithAllRW<BuildingItemInputDecision>()
-            .WithAll<BeltMovementState, GridPosition, ItemIdentity, ItemOwnership>()
+            .WithAll<BeltMovementState, GridPosition, ItemIdentity>()
             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
             .Build();
     }
@@ -62,6 +62,7 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
             BuildingMap = buildingIndex.Map,
             BeltMap = beltIndex.Map,
             StorageLookup = _storageLookup,
+            Destroy = SystemAPI.GetComponentLookup<DestroyItemRequest>(true),
             StorageFilterLookup = _storageFilterLookup,
             CrafterStateLookup = _crafterStateLookup,
             PendingDemolitionLookup = _pendingDemolitionLookup
@@ -93,6 +94,7 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
 
     [ReadOnly]
     public ComponentLookup<Storage> StorageLookup;
+    [ReadOnly] public ComponentLookup<DestroyItemRequest> Destroy;
 
     [ReadOnly]
     public ComponentLookup<StorageFilter> StorageFilterLookup;
@@ -104,13 +106,13 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
     public ComponentLookup<PendingBuildingDemolition> PendingDemolitionLookup;
 
     public void Execute(
+        Entity entity,
         ref BuildingItemInputDecision inputDecision,
         EnabledRefRW<BuildingItemInputDecision> inputDecisionEnabled,
         in BeltMovementState beltState,
         EnabledRefRO<BeltMovementState> beltMovementEnabled,
         in GridPosition gridPos,
-        in ItemIdentity itemIdentity,
-        in ItemOwnership ownership)
+        in ItemIdentity itemIdentity)
     {
         // 비활성 결정도 매 틱 재판단하되 이전 대상과 예약 슬롯은 남기지 않는다.
         inputDecision = new BuildingItemInputDecision(Entity.Null);
@@ -122,11 +124,7 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
             return;
         }
 
-        // 1. 월드 아이템이 아니면 판정 제외 및 비활성화
-        if (!ownership.IsWorldItem)
-        {
-            return;
-        }
+        if (Destroy.HasComponent(entity) && Destroy.IsComponentEnabled(entity)) return;
 
         // 2. 현재 타일에 벨트가 없으면 판정 제외 및 비활성화
         if (!BeltMap.TryGetValue(gridPos.Value, out BeltInfo currentBelt))

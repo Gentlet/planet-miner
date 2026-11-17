@@ -127,8 +127,7 @@ public sealed class WorldSelectionController : MonoBehaviour
         {
             return false;
         }
-        bool item = manager.HasComponent<ItemIdentity>(entity) && manager.HasComponent<ItemOwnership>(entity) &&
-            manager.GetComponentData<ItemOwnership>(entity).IsWorldItem;
+        bool item = manager.HasComponent<ItemIdentity>(entity) && !DroneSchedulingUtility.HasDestroy(manager, entity);
         if (!manager.HasComponent<BuildingType>(entity) && !manager.HasComponent<DroneWorker>(entity) && !item)
         {
             return false;
@@ -194,8 +193,8 @@ public sealed class WorldSelectionController : MonoBehaviour
             {
                 Clear();
             }
-            else if (_wasWorldItem && (!manager.HasComponent<ItemOwnership>(Selected) ||
-                !manager.GetComponentData<ItemOwnership>(Selected).IsWorldItem))
+            else if (_wasWorldItem && (!manager.HasComponent<ItemIdentity>(Selected) ||
+                DroneSchedulingUtility.HasDestroy(manager, Selected)))
             {
                 Clear();
             }

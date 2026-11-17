@@ -25,7 +25,7 @@ public struct BeltComponent : IComponentData
 /// 부착 엔티티: 벨트 건물이 아니라 아이템 실물 엔티티다. 활성은 벨트 이동 중, 비활성은 바닥/수납 상태를 뜻한다.
 /// 생성: ItemLifecycleUtility가 아이템 생성 ECB에 비활성으로 준비하고 벨트 입출고·라우팅 인계가 활성화/진행도를 설정한다.
 /// 이용: BeltMovementDecisionSystem(Decision)이 읽고 BeltMovementExecutionSystem(Execution)이 진행·다음 셀 이동을 반영한다.
-/// BuildingItemStorageApplySystem/ RoutingApplySystem/ItemOwnershipApplySystem(StateApply)은 수납·인계 시 진행도와 enable 상태를 갱신한다.
+/// BuildingItemStorageApplySystem/ RoutingApplySystem(StateApply)은 수납·인계 시 진행도와 enable 상태를 갱신한다.
 /// 제거: 이동 종료는 비활성화하며 컴포넌트는 유지한다. 실물 엔티티 삭제 시 함께 제거한다.
 /// </summary>
 public struct BeltMovementState : IComponentData, IEnableableComponent

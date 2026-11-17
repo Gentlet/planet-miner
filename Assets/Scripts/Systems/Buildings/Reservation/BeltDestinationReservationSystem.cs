@@ -17,7 +17,7 @@ public partial struct BeltDestinationReservationSystem : ISystem
     private ComponentLookup<BeltMovementState> _beltMovementStateLookup;
     private ComponentLookup<BuildingItemOutputDecision> _buildingOutputDecisionLookup;
     private ComponentLookup<RoutingTransferDecision> _routingTransferDecisionLookup;
-    private ComponentLookup<ItemOwnership> _itemOwnershipLookup;
+    private ComponentLookup<DestroyItemRequest> _destroyRequestLookup;
     private ComponentLookup<GridPosition> _gridPositionLookup;
     private ComponentLookup<PlacementStamp> _placementStampLookup;
 
@@ -30,7 +30,7 @@ public partial struct BeltDestinationReservationSystem : ISystem
         _beltMovementStateLookup = state.GetComponentLookup<BeltMovementState>(true);
         _buildingOutputDecisionLookup = state.GetComponentLookup<BuildingItemOutputDecision>(false);
         _routingTransferDecisionLookup = state.GetComponentLookup<RoutingTransferDecision>(false);
-        _itemOwnershipLookup = state.GetComponentLookup<ItemOwnership>(true);
+        _destroyRequestLookup = state.GetComponentLookup<DestroyItemRequest>(true);
         _gridPositionLookup = state.GetComponentLookup<GridPosition>(true);
         _placementStampLookup = state.GetComponentLookup<PlacementStamp>(true);
 
@@ -72,7 +72,7 @@ public partial struct BeltDestinationReservationSystem : ISystem
         _beltMovementStateLookup.Update(ref state);
         _buildingOutputDecisionLookup.Update(ref state);
         _routingTransferDecisionLookup.Update(ref state);
-        _itemOwnershipLookup.Update(ref state);
+        _destroyRequestLookup.Update(ref state);
         _gridPositionLookup.Update(ref state);
         _placementStampLookup.Update(ref state);
 
@@ -88,7 +88,7 @@ public partial struct BeltDestinationReservationSystem : ISystem
             BeltMovementStateLookup = _beltMovementStateLookup,
             BuildingOutputDecisionLookup = _buildingOutputDecisionLookup,
             RoutingTransferDecisionLookup = _routingTransferDecisionLookup,
-            ItemOwnershipLookup = _itemOwnershipLookup,
+            DestroyItemRequestLookup = _destroyRequestLookup,
             GridPositionLookup = _gridPositionLookup,
             PlacementStampLookup = _placementStampLookup
         };
@@ -120,7 +120,6 @@ public struct DestinationCandidate
 {
     public DestinationCandidateType Type;
     public Entity SourceEntity;      // 건물 엔티티 또는 라우팅 엔티티
-    public Entity ItemEntity;        // 전송 대상 아이템
     public PlacementStamp Stamp;
     public bool HasStamp;
     public int2 SourcePosition;
@@ -139,7 +138,7 @@ public struct BeltDestinationReservationJob : Unity.Jobs.IJob
     [ReadOnly] public ComponentLookup<BeltMovementState> BeltMovementStateLookup;
     public ComponentLookup<BuildingItemOutputDecision> BuildingOutputDecisionLookup;
     public ComponentLookup<RoutingTransferDecision> RoutingTransferDecisionLookup;
-    [ReadOnly] public ComponentLookup<ItemOwnership> ItemOwnershipLookup;
+    [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyItemRequestLookup;
     [ReadOnly] public ComponentLookup<GridPosition> GridPositionLookup;
     [ReadOnly] public ComponentLookup<PlacementStamp> PlacementStampLookup;
 
@@ -162,7 +161,7 @@ public struct BeltDestinationReservationJob : Unity.Jobs.IJob
                 continue;
             }
 
-            if (!decision.CanOutput || decision.ItemToOutput == Entity.Null)
+            if (!decision.CanOutput || decision.ItemType == ItemTypeEnum.None)
             {
                 continue;
             }
@@ -185,7 +184,6 @@ public struct BeltDestinationReservationJob : Unity.Jobs.IJob
             {
                 Type = DestinationCandidateType.BuildingOutput,
                 SourceEntity = buildingEntity,
-                ItemEntity = decision.ItemToOutput,
                 Stamp = stamp,
                 HasStamp = hasStamp,
                 SourcePosition = sourcePosition.Value
@@ -232,7 +230,6 @@ public struct BeltDestinationReservationJob : Unity.Jobs.IJob
             {
                 Type = DestinationCandidateType.RoutingTransfer,
                 SourceEntity = routingEntity,
-                ItemEntity = decision.Item,
                 Stamp = stamp,
                 HasStamp = hasStamp,
                 SourcePosition = sourcePosition.Value
@@ -260,7 +257,7 @@ public struct BeltDestinationReservationJob : Unity.Jobs.IJob
             int2 targetPos = targetArray[t];
 
             // 1. 대상 벨트 타일의 여유 공간 확인 (수용량 및 입구 최소 간격)
-            bool spaceAvailable = BeltEntryUtility.HasEntrySpace(targetPos, ItemMap, ItemOwnershipLookup, BeltMovementStateLookup);
+            bool spaceAvailable = BeltEntryUtility.HasEntrySpace(targetPos, ItemMap, DestroyItemRequestLookup, BeltMovementStateLookup);
 
             // 2. 해당 대상 타일로 진입하려는 외부 후보 목록 수집
             var candidates = new NativeList<DestinationCandidate>(4, Allocator.Temp);

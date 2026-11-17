@@ -9,9 +9,9 @@ using Unity.Transforms;
 /// <summary>
 /// 역할/목적: 직접 생성 요청과 Command 승인/드론 확인이 공개된 완공 건물 철거를 최종 반영한다.
 /// 처리 단계: Building StateApply. 입력은 SpawnBuildingRequest, Pending 상태/연결 root의 실행 요청과 설정/프리팹 DB다.
-/// 출력·소유권: 보관/생산 실물의 월드 반환, 건축 비용 환급 Spawn, 철거 벨트 위 실물 정지, 건물 생성/삭제를 담당한다.
-/// 철거 정책은 Command 승인/드론 확인을 유지하며 대상 소실/환급 실패를 root 결과로 반환한다. 현장 취소/완공은 공사 소유자가 처리한다.
-/// 정리·가시화: 요청 소비와 건물/승인 상태 삭제 및 구조 변경은 EndBuilding에 확정한다. Job은 철거→벨트 정리→직접 생성 순서로 기록하며 전체 rollback은 보장하지 않는다.
+/// 출력·소유권: 재고 수량의 월드 반환, 건축 비용 환급, 철거 벨트 위 실물 정지, 건물 생성/삭제를 담당한다.
+/// 철거 결과: 대상 소실, 재고 반환 실패와 건축비 환급 실패를 root에 기록한다. 반환 실패 시 건물과 재고를 보존한다.
+/// 가시화: 실행 요청 소비, 철거 결과와 구조 변경은 EndBuilding에 확정한다. Job은 철거→벨트 정리→직접 생성 순서로 기록한다.
 /// </summary>
 [UpdateInGroup(typeof(BuildingStateApplyGroup))]
 [UpdateAfter(typeof(RoutingApplySystem))]
@@ -30,8 +30,8 @@ public partial struct BuildingLifecycleApplySystem : ISystem
     private ComponentLookup<BuildingType> _buildingTypeLookup;
     private ComponentLookup<GridPosition> _gridPosLookup;
     private ComponentLookup<DestroyItemRequest> _destroyRequestLookup;
-    private BufferLookup<StoredItemElement> _storedBufferLookup;
-    private BufferLookup<ProductItemElement> _productBufferLookup;
+    private BufferLookup<StorageSlotElement> _storedBufferLookup;
+    private BufferLookup<ProductSlotElement> _productBufferLookup;
     private BufferLookup<BuildingConstructionMaterialElement> _materialBufferLookup;
     private BufferLookup<BuildingPrefabElement> _buildingPrefabBufferLookup;
     private BufferLookup<ItemPrefabElement> _itemPrefabBufferLookup;
@@ -68,8 +68,8 @@ public partial struct BuildingLifecycleApplySystem : ISystem
         _buildingTypeLookup = state.GetComponentLookup<BuildingType>(true);
         _gridPosLookup = state.GetComponentLookup<GridPosition>(true);
         _destroyRequestLookup = state.GetComponentLookup<DestroyItemRequest>(true);
-        _storedBufferLookup = state.GetBufferLookup<StoredItemElement>(true);
-        _productBufferLookup = state.GetBufferLookup<ProductItemElement>(true);
+        _storedBufferLookup = state.GetBufferLookup<StorageSlotElement>(true);
+        _productBufferLookup = state.GetBufferLookup<ProductSlotElement>(true);
         _materialBufferLookup = state.GetBufferLookup<BuildingConstructionMaterialElement>(true);
         _buildingPrefabBufferLookup = state.GetBufferLookup<BuildingPrefabElement>(true);
         _itemPrefabBufferLookup = state.GetBufferLookup<ItemPrefabElement>(true);
@@ -231,10 +231,10 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
     public ComponentLookup<GridPosition> GridPosLookup;
 
     [ReadOnly]
-    public BufferLookup<StoredItemElement> StoredBufferLookup;
+    public BufferLookup<StorageSlotElement> StoredBufferLookup;
 
     [ReadOnly]
-    public BufferLookup<ProductItemElement> ProductBufferLookup;
+    public BufferLookup<ProductSlotElement> ProductBufferLookup;
 
     [ReadOnly]
     public BufferLookup<BuildingConstructionMaterialElement> MaterialBufferLookup;
@@ -264,55 +264,26 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
             sitePos = gridPosition.Value;
         }
 
-        // 기존 보관품은 새 환급품으로 대체하지 않는다. 같은 실물을 건물 위치에 반환하고
-        // 활성 Destroy 실물은 반환에서 제외해 소비 예정 아이템을 되살리지 않는다.
-        if (StoredBufferLookup.TryGetBuffer(buildingEntity, out var storedItems))
+        using var returns = new NativeList<InventoryReturn>(Allocator.Temp);
+        if (StoredBufferLookup.TryGetBuffer(buildingEntity, out var storage))
         {
-            for (int i = 0; i < storedItems.Length; i++)
+            foreach (var slot in storage)
             {
-                Entity item = storedItems[i].ItemEntity;
-                if (item == Entity.Null)
-                {
-                    continue;
-                }
-
-                if (DestroyRequestLookup.HasComponent(item) && DestroyRequestLookup.IsComponentEnabled(item))
-                {
-                    continue;
-                }
-
-                ECB.SetComponent(item, ItemOwnership.WorldItem);
-                if (!RecoveryMarks.HasComponent(item))
-                {
-                    ECB.AddComponent(item, new DroneRecoveryPending { Reason = DroneRecoveryReasonEnum.BuildingDemolition });
-                }
-                ItemLifecycleUtility.RecordWorldReturnPresentationAndPosition(ref ECB, item, sitePos);
+                if (slot.Quantity > 0) returns.Add(new InventoryReturn(slot.ItemType, slot.Quantity));
             }
         }
-
-        // 5. 건물 내부 생산품(ProductItemElement) 전수 반환 (WorldItem 전환, DisableRendering 제거, 바닥 방출)
-        if (ProductBufferLookup.TryGetBuffer(buildingEntity, out var productItems))
+        if (ProductBufferLookup.TryGetBuffer(buildingEntity, out var products))
         {
-            for (int i = 0; i < productItems.Length; i++)
+            foreach (var slot in products)
             {
-                Entity item = productItems[i].ItemEntity;
-                if (item == Entity.Null)
-                {
-                    continue;
-                }
-
-                if (DestroyRequestLookup.HasComponent(item) && DestroyRequestLookup.IsComponentEnabled(item))
-                {
-                    continue;
-                }
-
-                ECB.SetComponent(item, ItemOwnership.WorldItem);
-                if (!RecoveryMarks.HasComponent(item))
-                {
-                    ECB.AddComponent(item, new DroneRecoveryPending { Reason = DroneRecoveryReasonEnum.BuildingDemolition });
-                }
-                ItemLifecycleUtility.RecordWorldReturnPresentationAndPosition(ref ECB, item, sitePos);
+                returns.Add(new InventoryReturn(slot.ItemType, slot.Quantity));
             }
+        }
+        if (!ItemLifecycleUtility.TryReturnInventory(ref ECB, ItemPrefabBufferLookup, ItemPrefabDbEntity,
+                returns, sitePos, true))
+        {
+            RecordDemolitionResult(pending.Task, BuildingDemolitionResultStatus.Failed);
+            return;
         }
 
         // 6. 벨트 철거 좌표를 모아 같은 BuildingStateApply의 DemolishBeltItemCleanupJob이 최신 GridPosition으로 정리하도록 한다.
@@ -362,7 +333,7 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
                     for (int q = 0; q < quantity; q++)
                     {
                         Entity refund = ItemLifecycleUtility.SpawnPrefabItem(
-                            ref ECB, prefabEntity, itemType, sitePos, ItemOwnership.WorldItem);
+                            ref ECB, prefabEntity, itemType, sitePos);
                         ECB.AddComponent(refund, new DroneRecoveryPending { Reason = DroneRecoveryReasonEnum.BuildingDemolition });
                     }
 
@@ -371,12 +342,17 @@ public partial struct DemolishBuildingApplyJob : IJobEntity
         }
 
         // 8. EndBuilding에 건물 삭제를 확정하고 최종 Commit 뒤 Synchronization에서 건물 공간 점유를 재구축한다.
-        ECB.AddComponent(pending.Task, new BuildingDemolitionResult
-        { Status = refundFailed ? BuildingDemolitionResultStatus.Failed : BuildingDemolitionResultStatus.Completed });
-        ECB.RemoveComponent<BuildingDemolitionExecutionRequest>(pending.Task);
+        RecordDemolitionResult(pending.Task,
+            refundFailed ? BuildingDemolitionResultStatus.Failed : BuildingDemolitionResultStatus.Completed);
         ECB.DestroyEntity(buildingEntity);
 
 
+    }
+
+    private void RecordDemolitionResult(Entity task, BuildingDemolitionResultStatus status)
+    {
+        ECB.AddComponent(task, new BuildingDemolitionResult { Status = status });
+        ECB.RemoveComponent<BuildingDemolitionExecutionRequest>(task);
     }
 
 

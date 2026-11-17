@@ -31,7 +31,7 @@ public partial struct BuildingDemolitionCommandSystem : ISystem
         _stationTargets = state.GetEntityQuery(new EntityQueryDesc
         {
             All = new[] { ComponentType.ReadOnly<DroneStation>(), ComponentType.ReadOnly<DroneStationStorage>(),
-                ComponentType.ReadOnly<Storage>(), ComponentType.ReadOnly<StoredItemElement>(),
+                ComponentType.ReadOnly<Storage>(), ComponentType.ReadOnly<StorageSlotElement>(),
                 ComponentType.ReadOnly<DockedDroneElement>(), ComponentType.ReadOnly<DroneStationNetworkDecision>(),
                 ComponentType.ReadOnly<DroneStationReservedSlotElement>() },
             Options = EntityQueryOptions.IncludeDisabledEntities
@@ -80,9 +80,6 @@ public partial struct BuildingDemolitionCommandSystem : ISystem
             Prefabs = SystemAPI.GetComponentLookup<Prefab>(true),
             Pending = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true),
             Preparing = SystemAPI.GetComponentLookup<PreparingStationDemolition>(true),
-            Transfers = SystemAPI.GetComponentLookup<TransferOwnershipRequest>(),
-            Stored = SystemAPI.GetBufferLookup<StoredItemElement>(true),
-            Products = SystemAPI.GetBufferLookup<ProductItemElement>(true),
             Results = SystemAPI.GetBufferLookup<ProductResult>(),
             TargetShape = _targetsWithGeometry.GetEntityQueryMask(),
             StationShape = _stationTargets.GetEntityQueryMask(),
@@ -133,9 +130,6 @@ public partial struct ValidateBuildingDemolitionJob : IJobEntity
     [ReadOnly] public ComponentLookup<Prefab> Prefabs;
     [ReadOnly] public ComponentLookup<PendingBuildingDemolition> Pending;
     [ReadOnly] public ComponentLookup<PreparingStationDemolition> Preparing;
-    public ComponentLookup<TransferOwnershipRequest> Transfers;
-    [ReadOnly] public BufferLookup<StoredItemElement> Stored;
-    [ReadOnly] public BufferLookup<ProductItemElement> Products;
     public BufferLookup<ProductResult> Results;
     [ReadOnly] public NativeParallelHashSet<Entity> Released;
     public NativeParallelHashSet<Entity> Accepted;
@@ -185,20 +179,6 @@ public partial struct ValidateBuildingDemolitionJob : IJobEntity
             if (legacy) LegacyTargets.Enqueue(target);
             return;
         }
-        if (Stored.TryGetBuffer(target, out var storedItems))
-        {
-            foreach (var item in storedItems)
-            {
-                CancelTransfer(item.ItemEntity);
-            }
-        }
-        if (Products.TryGetBuffer(target, out var productItems))
-        {
-            foreach (var item in productItems)
-            {
-                CancelTransfer(item.ItemEntity);
-            }
-        }
         if (Results.TryGetBuffer(target, out var results))
         {
             results.Clear();
@@ -207,11 +187,7 @@ public partial struct ValidateBuildingDemolitionJob : IJobEntity
         if (legacy) LegacyTargets.Enqueue(target);
     }
 
-    private void CancelTransfer(Entity item)
-    {
-        if (Transfers.HasComponent(item) && Transfers.IsComponentEnabled(item))
-            Transfers.SetComponentEnabled(item, false);
-    }
+
 }
 
 [BurstCompile]
