@@ -33,12 +33,7 @@ internal struct DroneFlightPlan
 internal static class DroneFlightPlanningUtility
 {
     public static DroneFlightPlan Plan(float2 origin, float2 goal, float charge, float maximum,
-        float rate, NativeList<DroneFlightStation> stations) =>
-        PlanWithinDistance(origin, goal, charge, maximum, rate, stations, float.PositiveInfinity);
-
-    // 거리 제한으로 제외된 결과도 미선택 상태를 사용한다. 제한이 있는 호출자는 Reachable만 읽는다.
-    private static DroneFlightPlan PlanWithinDistance(float2 origin, float2 goal, float charge, float maximum,
-        float rate, NativeList<DroneFlightStation> stations, float exclusiveDistanceLimit)
+        float rate, NativeList<DroneFlightStation> stations)
     {
         var result = new DroneFlightPlan
         {
@@ -49,10 +44,6 @@ internal static class DroneFlightPlanningUtility
         float direct = math.distance(origin, goal);
         if (direct * rate <= charge)
         {
-            if (direct >= exclusiveDistanceLimit)
-            {
-                return result;
-            }
             result.Status = DroneRouteEvaluationStatusEnum.Reachable;
             result.Distance = direct;
             result.RemainingCharge = math.max(0f, charge - direct * rate);
@@ -60,91 +51,76 @@ internal static class DroneFlightPlanningUtility
         }
 
         int count = stations.Length + 2;
-        var distances = new NativeArray<float>(count, Allocator.Temp);
-        var previous = new NativeArray<int>(count, Allocator.Temp);
-        var visited = new NativeArray<byte>(count, Allocator.Temp);
-        try
+        using var distances = new NativeArray<float>(count, Allocator.Temp);
+        using var previous = new NativeArray<int>(count, Allocator.Temp);
+        using var visited = new NativeArray<byte>(count, Allocator.Temp);
+        SearchRoutes(origin, goal, true, charge, maximum, rate, stations, float.PositiveInfinity, distances, previous, visited);
+        if (previous[1] < 0) return result;
+        int first = FindFirstHop(1, previous);
+        int last = previous[1];
+        float lastCharge = last == 0 ? charge : maximum;
+        float lastDistance = math.distance(Position(last, origin, goal, stations), goal);
+        result.Status = DroneRouteEvaluationStatusEnum.Reachable;
+        result.Distance = distances[1];
+        result.RemainingCharge = math.max(0f, lastCharge - lastDistance * rate);
+        result.NextPosition = Position(first, origin, goal, stations);
+        result.ChargingStation = first >= 2 ? stations[first - 2].Entity : Entity.Null;
+        return result;
+    }
+
+    // 목표 노드를 생략하면 한도보다 짧은 정거장별 최단 구간을 구한다.
+    private static void SearchRoutes(float2 origin, float2 goal, bool includeGoal, float charge, float maximum,
+        float rate, NativeList<DroneFlightStation> stations, float exclusiveDistanceLimit,
+        NativeArray<float> distances, NativeArray<int> previous, NativeArray<byte> visited)
+    {
+        int count = distances.Length;
+        for (int i = 0; i < count; i++)
         {
+            distances[i] = float.MaxValue;
+            previous[i] = -1;
+        }
+        distances[0] = 0f;
+        int firstDestination = includeGoal ? 1 : 2;
+        for (int step = 0; step < count; step++)
+        {
+            int node = -1;
             for (int i = 0; i < count; i++)
             {
-                distances[i] = float.MaxValue;
-                previous[i] = -1;
+                if (visited[i] != 0 || distances[i] == float.MaxValue) continue;
+                if (node < 0 || distances[i] < distances[node] ||
+                    (distances[i] == distances[node] && EarlierNode(i, node, stations)))
+                {
+                    node = i;
+                }
             }
-            distances[0] = 0f;
-            for (int step = 0; step < count; step++)
+            if (node < 0 || node == 1) return;
+            visited[node] = 1;
+            float2 position = Position(node, origin, goal, stations);
+            float available = node == 0 ? charge : maximum;
+            for (int next = firstDestination; next < count; next++)
             {
-                int node = -1;
-                for (int i = 0; i < count; i++)
+                if (visited[next] != 0 || next == node) continue;
+                if (next >= 2 && !stations[next - 2].CanDock) continue;
+                float distance = math.distance(position, Position(next, origin, goal, stations));
+                if (distance * rate > available) continue;
+                float total = distances[node] + distance;
+                if (total < exclusiveDistanceLimit && total < distances[next])
                 {
-                    if (visited[i] != 0 || distances[i] == float.MaxValue)
-                    {
-                        continue;
-                    }
-                    if (node < 0 || distances[i] < distances[node] ||
-                        (distances[i] == distances[node] && EarlierNode(i, node, stations)))
-                    {
-                        node = i;
-                    }
-                }
-                if (node < 0)
-                {
-                    return result;
-                }
-                if (node == 1)
-                {
-                    break;
-                }
-                visited[node] = 1;
-                float2 position = Position(node, origin, goal, stations);
-                float available = node == 0 ? charge : maximum;
-                for (int next = 1; next < count; next++)
-                {
-                    if (visited[next] != 0 || next == node)
-                    {
-                        continue;
-                    }
-                    if (next >= 2 && !stations[next - 2].CanDock)
-                    {
-                        continue;
-                    }
-                    float distance = math.distance(position, Position(next, origin, goal, stations));
-                    if (distance * rate > available)
-                    {
-                        continue;
-                    }
-                    float total = distances[node] + distance;
-                    if (total < exclusiveDistanceLimit && total < distances[next])
-                    {
-                        distances[next] = total;
-                        previous[next] = node;
-                    }
+                    distances[next] = total;
+                    previous[next] = node;
                 }
             }
-            if (previous[1] < 0)
-            {
-                return result;
-            }
-            int first = 1;
-            while (previous[first] > 0)
-            {
-                first = previous[first];
-            }
-            int last = previous[1];
-            float lastCharge = last == 0 ? charge : maximum;
-            float lastDistance = math.distance(Position(last, origin, goal, stations), goal);
-            result.Status = DroneRouteEvaluationStatusEnum.Reachable;
-            result.Distance = distances[1];
-            result.RemainingCharge = math.max(0f, lastCharge - lastDistance * rate);
-            result.NextPosition = Position(first, origin, goal, stations);
-            result.ChargingStation = first >= 2 ? stations[first - 2].Entity : Entity.Null;
-            return result;
         }
-        finally
+    }
+
+    private static int FindFirstHop(int destination, NativeArray<int> previous)
+    {
+        int first = destination;
+        while (previous[first] > 0)
         {
-            distances.Dispose();
-            previous.Dispose();
-            visited.Dispose();
+            first = previous[first];
         }
+        return first;
     }
 
     public static DroneFlightPlan PlanViaSource(float2 origin, float2 source, float2 destination,
@@ -168,49 +144,60 @@ internal static class DroneFlightPlanningUtility
                 }
             }
         }
-        // 수집점에 직접 도달할 수 있어도 이후 구간을 위해 그 전에 충전해야 할 수 있다.
-        for (int i = 0; i < stations.Length; i++)
+        NativeArray<float> prefixDistances = default;
+        NativeArray<int> prefixPrevious = default;
+        try
         {
-            if (!stations[i].CanDock)
+            // 수집점에 직접 도달할 수 있어도 납품에 필요한 첫 충전을 앞당기는 경유가 가능하다.
+            for (int i = 0; i < stations.Length; i++)
             {
-                continue;
-            }
-            // 거리 합은 줄어들지 않는다. 기존 최선과 동률인 경유는 선택하지 않으므로
-            // 첫 경유점까지의 탐색도 기존 전체 거리보다 짧은 경로만 필요하다.
-            float distanceLimit = best.Status == DroneRouteEvaluationStatusEnum.Reachable
-                ? best.Distance : float.PositiveInfinity;
-            var prefix = PlanWithinDistance(origin, stations[i].Position, charge, maximum, rate, stations, distanceLimit);
-            if (prefix.Status != DroneRouteEvaluationStatusEnum.Reachable)
-            {
-                continue;
-            }
-            var toSource = Plan(stations[i].Position, source, maximum, maximum, rate, stations);
-            if (toSource.Status != DroneRouteEvaluationStatusEnum.Reachable)
-            {
-                continue;
-            }
-            float throughSourceDistance = prefix.Distance + toSource.Distance;
-            if (throughSourceDistance >= distanceLimit)
-            {
-                continue;
-            }
-            var toDestination = Plan(source, destination, toSource.RemainingCharge, maximum, rate, stations);
-            if (toDestination.Status != DroneRouteEvaluationStatusEnum.Reachable)
-            {
-                continue;
-            }
-            float distance = throughSourceDistance + toDestination.Distance;
-            if (best.Status != DroneRouteEvaluationStatusEnum.Reachable || distance < best.Distance)
-            {
-                best = prefix;
-                best.Distance = distance;
-                best.RemainingCharge = toDestination.RemainingCharge;
-                if (best.ChargingStation == Entity.Null)
+                var station = stations[i];
+                if (!station.CanDock) continue;
+                float limit = best.Status == DroneRouteEvaluationStatusEnum.Reachable ? best.Distance : float.PositiveInfinity;
+                float prefixDistance = math.distance(origin, station.Position);
+                var firstStation = station;
+                if (!(prefixDistance * rate <= charge))
                 {
-                    best.ChargingStation = stations[i].Entity;
-                    best.NextPosition = stations[i].Position;
+                    if (!prefixDistances.IsCreated)
+                    {
+                        int count = stations.Length + 2;
+                        prefixDistances = new NativeArray<float>(count, Allocator.Temp);
+                        prefixPrevious = new NativeArray<int>(count, Allocator.Temp);
+                        using var visited = new NativeArray<byte>(count, Allocator.Temp);
+                        // 첫 탐색 뒤 최선의 거리는 줄어들기만 하므로 이후에도 같은 결과에서 후보를 읽을 수 있다.
+                        SearchRoutes(origin, default, false, charge, maximum, rate, stations, limit,
+                            prefixDistances, prefixPrevious, visited);
+                    }
+                    int node = i + 2;
+                    if (prefixPrevious[node] < 0) continue;
+                    prefixDistance = prefixDistances[node];
+                    firstStation = stations[FindFirstHop(node, prefixPrevious) - 2];
                 }
+                if (prefixDistance >= limit) continue;
+                var toSource = Plan(station.Position, source, maximum, maximum, rate, stations);
+                if (toSource.Status != DroneRouteEvaluationStatusEnum.Reachable) continue;
+                float throughSourceDistance = prefixDistance + toSource.Distance;
+                if (throughSourceDistance >= limit) continue;
+                var toDestination = Plan(source, destination, toSource.RemainingCharge, maximum, rate, stations);
+                if (toDestination.Status != DroneRouteEvaluationStatusEnum.Reachable) continue;
+                float distance = throughSourceDistance + toDestination.Distance;
+                if (best.Status == DroneRouteEvaluationStatusEnum.Reachable && !(distance < best.Distance)) continue;
+
+                if (firstStation.Entity == Entity.Null) firstStation = station;
+                best = new DroneFlightPlan
+                {
+                    Status = DroneRouteEvaluationStatusEnum.Reachable,
+                    Distance = distance,
+                    RemainingCharge = toDestination.RemainingCharge,
+                    ChargingStation = firstStation.Entity,
+                    NextPosition = firstStation.Position
+                };
             }
+        }
+        finally
+        {
+            if (prefixDistances.IsCreated) prefixDistances.Dispose();
+            if (prefixPrevious.IsCreated) prefixPrevious.Dispose();
         }
         return best;
     }
