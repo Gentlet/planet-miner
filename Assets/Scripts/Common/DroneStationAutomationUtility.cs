@@ -26,6 +26,111 @@ internal struct DroneStationActivationPlan
 /// <summary>자동 출고의 현재 수요/공간/경로 입력을 준비한다. 배정이나 실물 수량을 선점하지 않는다.</summary>
 internal static class DroneStationAutomationUtility
 {
+    // 정박/보관 드론의 출고 수요 탐색이 한 Decision 호출 안에서 같은 작업 순서를 읽는다.
+    internal readonly struct DemandTasksByNetwork : System.IDisposable
+    {
+        private readonly EntityManager _manager;
+        private readonly Entity _candidates;
+        private readonly NativeArray<Entity> _tasks;
+        private readonly NativeArray<Entity> _sites;
+        private readonly NativeArray<DroneStationNetworkDecision> _networks;
+        private readonly NativeParallelMultiHashMap<Entity, DroneStationActivityBounds> _bounds;
+        private readonly NativeList<NetworkTask> _eligibleTasks;
+        private readonly NativeList<DemandTask> _networkTasks;
+        private readonly NativeHashMap<Entity, int2> _ranges;
+
+        public DemandTasksByNetwork(EntityManager manager, Entity candidates, NativeArray<Entity> tasks,
+            NativeArray<Entity> sites, NativeArray<DroneStationNetworkDecision> networks)
+        {
+            _manager = manager;
+            _candidates = candidates;
+            _tasks = tasks;
+            _sites = sites;
+            _networks = networks;
+            _bounds = new NativeParallelMultiHashMap<Entity, DroneStationActivityBounds>(math.max(1, networks.Length), Allocator.Temp);
+            _eligibleTasks = new NativeList<NetworkTask>(Allocator.Temp);
+            _networkTasks = new NativeList<DemandTask>(Allocator.Temp);
+            _ranges = new NativeHashMap<Entity, int2>(1, Allocator.Temp);
+        }
+
+        // 다른 망의 후보가 추가되면 배열이 재할당될 수 있으므로 반환 범위는 즉시 순회한다.
+        public NativeArray<DemandTask> GetTasks(Entity network)
+        {
+            if (!_ranges.TryGetValue(network, out int2 range))
+            {
+                if (_ranges.IsEmpty)
+                {
+                    CollectInputs();
+                }
+                int start = _networkTasks.Length;
+                foreach (var candidate in _eligibleTasks)
+                {
+                    if (candidate.AllowsCrossNetworkAccess)
+                    {
+                        _networkTasks.Add(candidate.Demand);
+                        continue;
+                    }
+                    foreach (var bounds in _bounds.GetValuesForKey(network))
+                    {
+                        if (bounds.Overlaps(candidate.Bounds))
+                        {
+                            _networkTasks.Add(candidate.Demand);
+                            break;
+                        }
+                    }
+                }
+                range = new int2(start, _networkTasks.Length - start);
+                _ranges.Add(network, range);
+            }
+            return _networkTasks.AsArray().GetSubArray(range.x, range.y);
+        }
+
+        private void CollectInputs()
+        {
+            foreach (var station in _networks)
+            {
+                _bounds.Add(station.RepresentativeStation, station.ActivityBounds);
+            }
+            foreach (Entity taskEntity in _tasks)
+            {
+                var task = _manager.GetComponentData<DroneLogisticsTask>(taskEntity);
+                if (!DroneSchedulingUtility.IsTaskValid(_manager, task, _sites) ||
+                    DroneTaskRequestDecisionUtility.IsCancellationPlanned(_manager, _candidates, taskEntity))
+                {
+                    continue;
+                }
+                bool crossNetwork = DroneStationRelocationUtility.IsStationDemolition(_manager, task);
+                _eligibleTasks.Add(new NetworkTask
+                {
+                    Demand = new DemandTask { Entity = taskEntity, Task = task },
+                    AllowsCrossNetworkAccess = crossNetwork,
+                    Bounds = crossNetwork ? default : DroneTaskNetworkUtility.ReadTargetBounds(_manager, task.Target)
+                });
+            }
+        }
+
+        public void Dispose()
+        {
+            _ranges.Dispose();
+            _networkTasks.Dispose();
+            _eligibleTasks.Dispose();
+            _bounds.Dispose();
+        }
+
+        private struct NetworkTask
+        {
+            public DemandTask Demand;
+            public DroneStationActivityBounds Bounds;
+            public bool AllowsCrossNetworkAccess;
+        }
+    }
+
+    internal struct DemandTask
+    {
+        public Entity Entity;
+        public DroneLogisticsTask Task;
+    }
+
     public static void BuildStations(EntityManager manager, NativeArray<Entity> owners, NativeList<DroneFlightStation> flights)
     {
         foreach (Entity station in owners)
@@ -120,7 +225,7 @@ internal static class DroneStationAutomationUtility
     }
 
     public static void PrepareDemand(EntityManager manager, Entity candidates, Entity drone, Entity station,
-        NativeArray<Entity> tasks, NativeArray<Entity> sites, NativeArray<Entity> storages, NativeArray<Entity> assignments,
+        in DemandTasksByNetwork demandTasks, NativeArray<Entity> storages, NativeArray<Entity> assignments,
         NativeArray<DroneStationNetworkDecision> networks, Entity registry, int capacity, float maximum,
         NativeList<DroneStationActivationPlan> plans, int stockSlot = -1, int stockOrdinal = 0)
     {
@@ -131,13 +236,10 @@ internal static class DroneStationAutomationUtility
             ? manager.GetComponentData<LocalTransform>(drone).Position.xy : (float2)manager.GetComponentData<GridPosition>(station).Value;
         Entity network = DroneTaskNetworkUtility.FindWorkerNetwork(networks, new float3(origin, 0));
         if (network == Entity.Null) return;
-        foreach (Entity taskEntity in tasks)
+        foreach (var candidate in demandTasks.GetTasks(network))
         {
-            var task = manager.GetComponentData<DroneLogisticsTask>(taskEntity);
-            if (!DroneSchedulingUtility.IsTaskValid(manager, task, sites) ||
-                DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, candidates, taskEntity)) continue;
-            if (!DroneStationRelocationUtility.IsStationDemolition(manager, task) &&
-                !DroneTaskNetworkUtility.IsTargetInNetwork(manager, networks, network, task.Target)) continue;
+            Entity taskEntity = candidate.Entity;
+            var task = candidate.Task;
             // 기존 수행자의 평가가 끝나기 전에는 같은 수요로 보관 드론을 추가 출고하지 않는다.
             bool evaluating = false;
             foreach (var route in manager.GetBuffer<DroneRouteDecisionElement>(candidates, true))

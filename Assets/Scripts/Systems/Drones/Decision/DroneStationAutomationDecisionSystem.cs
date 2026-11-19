@@ -80,6 +80,7 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
         using var slotPreview = new NativeList<DroneStationSlot>(Allocator.Temp);
         bool hasReadInvalidations = false;
         DynamicBuffer<DroneTaskInvalidationDecisionElement> invalidations = default;
+        using var demandTasks = new DroneStationAutomationUtility.DemandTasksByNetwork(manager, _candidates, tasks, sites, networks);
 
         foreach (Entity worker in workers)
         {
@@ -119,7 +120,7 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
                 continue;
             }
             if (docked && !linked && manager.GetComponentData<DroneCargoState>(worker).Quantity == 0)
-                DroneStationAutomationUtility.PrepareDemand(manager, _candidates, worker, station, tasks, sites, storages,
+                DroneStationAutomationUtility.PrepareDemand(manager, _candidates, worker, station, demandTasks, storages,
                     assignments, networks, registry, capacity, maximum, plans);
             var request = new DroneStationRequest { Drone = worker, Station = station, Operation = DroneStationOperation.Store };
             if (eligibility.Validate(request, maximum, true) != DroneStationRequestStatus.Applied)
@@ -154,8 +155,8 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
                     }
                     int count = inventory[slot].Quantity - alreadyRequested;
                     if (count <= 0) continue;
-                    DroneStationAutomationUtility.PrepareDemand(manager, _candidates, Entity.Null, station, tasks,
-                        sites, storages, assignments, networks, registry, capacity, maximum, plans, slot, count);
+                    DroneStationAutomationUtility.PrepareDemand(manager, _candidates, Entity.Null, station, demandTasks,
+                        storages, assignments, networks, registry, capacity, maximum, plans, slot, count);
                 }
             }
         }
