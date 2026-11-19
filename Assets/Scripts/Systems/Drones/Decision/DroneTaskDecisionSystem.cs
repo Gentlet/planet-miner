@@ -171,7 +171,9 @@ public partial struct DroneTaskDecisionSystem : ISystem
         // 이미 적재한 자재의 목적지를 먼저 판단한다. 최종 선택·수량 확보 순서는 Reservation이 정한다.
         BuildRetargetCandidates(manager, networks, assignments, tasks, taskReads, sites, storages, registry, routesByKey,
             routeDecisions, usedRoutes, candidates, pendingPublications, carryingCapacity, ref cancellations);
+        using var tasksByNetwork = new TaskCandidatesByNetwork(networks);
         using var storagesByNetwork = new StorageCandidatesByNetwork(manager, storages, networks);
+        bool collectedNewTasks = false;
         for (int w = 0; w < workers.Length; w++)
         {
             Entity worker = workers[w];
@@ -182,20 +184,14 @@ public partial struct DroneTaskDecisionSystem : ISystem
             {
                 continue;
             }
-            for (int t = 0; t < tasks.Length; t++)
+            if (!collectedNewTasks)
             {
-                var task = ReadTask(manager, tasks, taskReads, t);
-                if (cancellations.IsPlanned(tasks[t]))
-                {
-                    continue;
-                }
-                if (!DroneSchedulingUtility.IsTaskValid(manager, task, sites)) continue;
-                // 정거장 재배치는 다른 망으로 이관할 수 있으므로 그 정거장의 마무리 철거만 망 간 접근을 허용한다.
-                if (!DroneStationRelocationUtility.IsStationDemolition(manager, task) &&
-                    !DroneTaskNetworkUtility.IsTargetInNetwork(manager, networks, network, task.Target))
-                {
-                    continue;
-                }
+                tasksByNetwork.Collect(manager, tasks, taskReads, sites, ref cancellations);
+                collectedNewTasks = true;
+            }
+            foreach (int t in tasksByNetwork.GetTasks(network))
+            {
+                var task = taskReads[t].Task;
                 bool transport = DroneSchedulingUtility.IsTransportKind(task.Kind);
                 if (task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition)
                 {
@@ -360,6 +356,99 @@ public partial struct DroneTaskDecisionSystem : ISystem
         }
     }
 
+    private struct NewTaskNetworkCandidate
+    {
+        public int TaskIndex;
+        public DroneStationActivityBounds Bounds;
+        public bool AllowsCrossNetworkAccess;
+    }
+
+    private readonly struct TaskCandidatesByNetwork : IDisposable
+    {
+        private readonly NativeArray<DroneStationNetworkDecision> _stations;
+        private readonly NativeList<NewTaskNetworkCandidate> _eligibleTasks;
+        private readonly NativeList<DroneStationActivityBounds> _networkBounds;
+        private readonly NativeList<int> _taskIndexes;
+        private readonly NativeHashMap<Entity, int2> _ranges;
+
+        public TaskCandidatesByNetwork(NativeArray<DroneStationNetworkDecision> stations)
+        {
+            _stations = stations;
+            _eligibleTasks = new NativeList<NewTaskNetworkCandidate>(Allocator.Temp);
+            _networkBounds = new NativeList<DroneStationActivityBounds>(Allocator.Temp);
+            _taskIndexes = new NativeList<int>(Allocator.Temp);
+            _ranges = new NativeHashMap<Entity, int2>(1, Allocator.Temp);
+        }
+
+        public void Collect(EntityManager manager, NativeArray<Entity> tasks, NativeArray<TaskReadSnapshot> taskReads,
+            NativeArray<Entity> sites, ref DroneTaskRequestDecisionUtility.CancellationReadContext cancellations)
+        {
+            for (int t = 0; t < tasks.Length; t++)
+            {
+                if (cancellations.IsPlanned(tasks[t])) continue;
+                var task = ReadTask(manager, tasks, taskReads, t);
+                if (!DroneSchedulingUtility.IsTaskValid(manager, task, sites)) continue;
+
+                // 재배치 정거장의 마무리 철거는 현재 활동망 외부에서도 접근할 수 있다.
+                bool crossNetwork = DroneStationRelocationUtility.IsStationDemolition(manager, task);
+                _eligibleTasks.Add(new NewTaskNetworkCandidate
+                {
+                    TaskIndex = t,
+                    AllowsCrossNetworkAccess = crossNetwork,
+                    Bounds = crossNetwork ? default : DroneTaskNetworkUtility.ReadTargetBounds(manager, task.Target)
+                });
+            }
+        }
+
+        // 반환한 범위는 다른 망의 후보를 추가하기 전에 순회한다.
+        public NativeArray<int> GetTasks(Entity network)
+        {
+            if (!_ranges.TryGetValue(network, out int2 range))
+            {
+                int start = _taskIndexes.Length;
+                CollectNetworkBounds(_stations, network, _networkBounds);
+                // 망을 넘는 정거장 철거도 원래 작업 쿼리 순서에서 같은 위치를 유지한다.
+                foreach (var task in _eligibleTasks)
+                {
+                    if (task.AllowsCrossNetworkAccess)
+                    {
+                        _taskIndexes.Add(task.TaskIndex);
+                        continue;
+                    }
+                    foreach (var bounds in _networkBounds)
+                    {
+                        if (bounds.Overlaps(task.Bounds))
+                        {
+                            _taskIndexes.Add(task.TaskIndex);
+                            break;
+                        }
+                    }
+                }
+                range = new int2(start, _taskIndexes.Length - start);
+                _ranges.Add(network, range);
+            }
+            return _taskIndexes.AsArray().GetSubArray(range.x, range.y);
+        }
+
+        public void Dispose()
+        {
+            _ranges.Dispose();
+            _taskIndexes.Dispose();
+            _networkBounds.Dispose();
+            _eligibleTasks.Dispose();
+        }
+    }
+
+    private static void CollectNetworkBounds(NativeArray<DroneStationNetworkDecision> stations, Entity network,
+        NativeList<DroneStationActivityBounds> bounds)
+    {
+        bounds.Clear();
+        foreach (var station in stations)
+        {
+            if (station.RepresentativeStation == network) bounds.Add(station.ActivityBounds);
+        }
+    }
+
     // 이번 호출에서 읽은 망과 창고의 회전 범위만 사용한다. 창고는 겹치는 각 망의 목록에 독립적으로 들어간다.
     private readonly struct StorageCandidatesByNetwork : IDisposable
     {
@@ -406,14 +495,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 }
             }
 
-            _networkBounds.Clear();
-            foreach (var station in _stations)
-            {
-                if (station.RepresentativeStation == network)
-                {
-                    _networkBounds.Add(station.ActivityBounds);
-                }
-            }
+            CollectNetworkBounds(_stations, network, _networkBounds);
 
             // 창고 쿼리 순서를 보존하고, 같은 망에 속한 정거장이 여러 개 겹쳐도 한 번만 추가한다.
             for (int i = 0; i < _storages.Length; i++)
