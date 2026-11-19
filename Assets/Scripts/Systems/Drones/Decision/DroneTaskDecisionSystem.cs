@@ -52,6 +52,8 @@ public partial struct DroneTaskDecisionSystem : ISystem
             ComponentType.ReadOnly<ConstructionMaterialRequirementElement>());
         _creationItems = state.GetEntityQuery(ComponentType.ReadOnly<ItemIdentity>(),
             ComponentType.ReadOnly<GridPosition>());
+        _creationPendingRecoveryItems = state.GetEntityQuery(ComponentType.ReadOnly<ItemIdentity>(),
+            ComponentType.ReadOnly<GridPosition>(), ComponentType.ReadOnly<DroneRecoveryPending>());
         _creationFootprints = state.GetEntityQuery(ComponentType.ReadOnly<ConstructionSite>(),
             ComponentType.ReadOnly<GridPosition>(), ComponentType.ReadOnly<BuildingFootprint>(),
             ComponentType.ReadOnly<Direction>());
@@ -870,6 +872,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
 
     private EntityQuery _creationSites;
     private EntityQuery _creationItems;
+    private EntityQuery _creationPendingRecoveryItems;
     private EntityQuery _creationFootprints;
     private EntityQuery _creationResearch;
 
@@ -1019,6 +1022,11 @@ public partial struct DroneTaskDecisionSystem : ISystem
                     manager.GetComponentData<BuildingFootprint>(site).Size,
                     manager.GetComponentData<Direction>(site).dir)
             });
+        }
+
+        if (footprints.IsEmpty && _creationPendingRecoveryItems.IsEmptyIgnoreFilter)
+        {
+            return;
         }
 
         using var claimedItems = new NativeHashSet<Entity>(16, Allocator.Temp);
