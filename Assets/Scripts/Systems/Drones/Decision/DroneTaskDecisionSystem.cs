@@ -171,8 +171,9 @@ public partial struct DroneTaskDecisionSystem : ISystem
         // 이미 적재한 자재의 목적지를 먼저 판단한다. 최종 선택·수량 확보 순서는 Reservation이 정한다.
         BuildRetargetCandidates(manager, networks, assignments, tasks, taskReads, sites, storages, registry, routesByKey,
             routeDecisions, usedRoutes, candidates, pendingPublications, carryingCapacity, ref cancellations);
-        using var tasksByNetwork = new TaskCandidatesByNetwork(networks);
-        using var storagesByNetwork = new StorageCandidatesByNetwork(manager, storages, networks);
+        using var networkBounds = new NativeParallelMultiHashMap<Entity, DroneStationActivityBounds>(math.max(1, networks.Length), Allocator.Temp);
+        using var tasksByNetwork = new TaskCandidatesByNetwork(Allocator.Temp);
+        using var storagesByNetwork = new StorageCandidatesByNetwork(manager, storages);
         bool collectedNewTasks = false;
         for (int w = 0; w < workers.Length; w++)
         {
@@ -186,10 +187,14 @@ public partial struct DroneTaskDecisionSystem : ISystem
             }
             if (!collectedNewTasks)
             {
+                foreach (var station in networks)
+                {
+                    networkBounds.Add(station.RepresentativeStation, station.ActivityBounds);
+                }
                 tasksByNetwork.Collect(manager, tasks, taskReads, sites, ref cancellations);
                 collectedNewTasks = true;
             }
-            foreach (int t in tasksByNetwork.GetTasks(network))
+            foreach (int t in tasksByNetwork.GetTasks(network, networkBounds))
             {
                 var task = taskReads[t].Task;
                 bool transport = DroneSchedulingUtility.IsTransportKind(task.Kind);
@@ -244,7 +249,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 float bestDistance = float.MaxValue;
                 // 공급은 재고가 있는 공급원을, 회수는 보관 가능한 목적지를 비교한다.
                 // 빈 드론의 ViaSource 결과는 드론→공급원/월드 실물→목적지의 전체 실제 이동거리다.
-                var networkStorages = storagesByNetwork.GetStorages(network);
+                var networkStorages = storagesByNetwork.GetStorages(network, networkBounds);
                 for (int s = 0; s < networkStorages.Length; s++)
                 {
                     Entity storage = networkStorages[s];
@@ -365,19 +370,15 @@ public partial struct DroneTaskDecisionSystem : ISystem
 
     private readonly struct TaskCandidatesByNetwork : IDisposable
     {
-        private readonly NativeArray<DroneStationNetworkDecision> _stations;
         private readonly NativeList<NewTaskNetworkCandidate> _eligibleTasks;
-        private readonly NativeList<DroneStationActivityBounds> _networkBounds;
         private readonly NativeList<int> _taskIndexes;
         private readonly NativeHashMap<Entity, int2> _ranges;
 
-        public TaskCandidatesByNetwork(NativeArray<DroneStationNetworkDecision> stations)
+        public TaskCandidatesByNetwork(Allocator allocator)
         {
-            _stations = stations;
-            _eligibleTasks = new NativeList<NewTaskNetworkCandidate>(Allocator.Temp);
-            _networkBounds = new NativeList<DroneStationActivityBounds>(Allocator.Temp);
-            _taskIndexes = new NativeList<int>(Allocator.Temp);
-            _ranges = new NativeHashMap<Entity, int2>(1, Allocator.Temp);
+            _eligibleTasks = new NativeList<NewTaskNetworkCandidate>(allocator);
+            _taskIndexes = new NativeList<int>(allocator);
+            _ranges = new NativeHashMap<Entity, int2>(1, allocator);
         }
 
         public void Collect(EntityManager manager, NativeArray<Entity> tasks, NativeArray<TaskReadSnapshot> taskReads,
@@ -401,12 +402,12 @@ public partial struct DroneTaskDecisionSystem : ISystem
         }
 
         // 반환한 범위는 다른 망의 후보를 추가하기 전에 순회한다.
-        public NativeArray<int> GetTasks(Entity network)
+        public NativeArray<int> GetTasks(Entity network,
+            NativeParallelMultiHashMap<Entity, DroneStationActivityBounds> networkBounds)
         {
             if (!_ranges.TryGetValue(network, out int2 range))
             {
                 int start = _taskIndexes.Length;
-                CollectNetworkBounds(_stations, network, _networkBounds);
                 // 망을 넘는 정거장 철거도 원래 작업 쿼리 순서에서 같은 위치를 유지한다.
                 foreach (var task in _eligibleTasks)
                 {
@@ -415,7 +416,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
                         _taskIndexes.Add(task.TaskIndex);
                         continue;
                     }
-                    foreach (var bounds in _networkBounds)
+                    foreach (var bounds in networkBounds.GetValuesForKey(network))
                     {
                         if (bounds.Overlaps(task.Bounds))
                         {
@@ -434,19 +435,17 @@ public partial struct DroneTaskDecisionSystem : ISystem
         {
             _ranges.Dispose();
             _taskIndexes.Dispose();
-            _networkBounds.Dispose();
             _eligibleTasks.Dispose();
         }
     }
 
-    private static void CollectNetworkBounds(NativeArray<DroneStationNetworkDecision> stations, Entity network,
-        NativeList<DroneStationActivityBounds> bounds)
+    private struct StorageFootprint : IComparable<StorageFootprint>
     {
-        bounds.Clear();
-        foreach (var station in stations)
-        {
-            if (station.RepresentativeStation == network) bounds.Add(station.ActivityBounds);
-        }
+        public int QueryIndex;
+        public DroneStationActivityBounds Bounds;
+        public long MaxXThroughIndex;
+
+        public int CompareTo(StorageFootprint other) => Bounds.MinX.CompareTo(other.Bounds.MinX);
     }
 
     // 이번 호출에서 읽은 망과 창고의 회전 범위만 사용한다. 창고는 겹치는 각 망의 목록에 독립적으로 들어간다.
@@ -454,70 +453,120 @@ public partial struct DroneTaskDecisionSystem : ISystem
     {
         private readonly EntityManager _manager;
         private readonly NativeArray<Entity> _storages;
-        private readonly NativeArray<DroneStationNetworkDecision> _stations;
-        private readonly NativeList<DroneStationActivityBounds> _storageBounds;
-        private readonly NativeList<DroneStationActivityBounds> _networkBounds;
+        private readonly NativeList<StorageFootprint> _storageFootprints;
+        private readonly NativeList<int> _matchingIndexes;
         private readonly NativeList<Entity> _candidates;
         private readonly NativeHashMap<Entity, int2> _ranges;
 
-        public StorageCandidatesByNetwork(EntityManager manager, NativeArray<Entity> storages,
-            NativeArray<DroneStationNetworkDecision> stations)
+        public StorageCandidatesByNetwork(EntityManager manager, NativeArray<Entity> storages)
         {
             _manager = manager;
             _storages = storages;
-            _stations = stations;
-            _storageBounds = new NativeList<DroneStationActivityBounds>(Allocator.Temp);
-            _networkBounds = new NativeList<DroneStationActivityBounds>(Allocator.Temp);
+            _storageFootprints = new NativeList<StorageFootprint>(Allocator.Temp);
+            _matchingIndexes = new NativeList<int>(Allocator.Temp);
             _candidates = new NativeList<Entity>(Allocator.Temp);
             _ranges = new NativeHashMap<Entity, int2>(1, Allocator.Temp);
         }
 
         // 반환한 목록은 다른 망의 후보를 추가하기 전에 순회한다.
-        public NativeArray<Entity> GetStorages(Entity network)
+        public NativeArray<Entity> GetStorages(Entity network,
+            NativeParallelMultiHashMap<Entity, DroneStationActivityBounds> networkBounds)
         {
             if (!_ranges.TryGetValue(network, out int2 range))
             {
                 int start = _candidates.Length;
-                AppendCandidates(network);
+                AppendCandidates(network, networkBounds);
                 range = new int2(start, _candidates.Length - start);
                 _ranges.Add(network, range);
             }
             return _candidates.AsArray().GetSubArray(range.x, range.y);
         }
 
-        private void AppendCandidates(Entity network)
+        private void AppendCandidates(Entity network,
+            NativeParallelMultiHashMap<Entity, DroneStationActivityBounds> networkBounds)
         {
-            if (_storageBounds.IsEmpty)
+            if (_storageFootprints.IsEmpty)
             {
-                foreach (Entity storage in _storages)
+                for (int i = 0; i < _storages.Length; i++)
                 {
-                    _storageBounds.Add(DroneTaskNetworkUtility.ReadTargetBounds(_manager, storage));
+                    _storageFootprints.Add(new StorageFootprint
+                    {
+                        QueryIndex = i,
+                        Bounds = DroneTaskNetworkUtility.ReadTargetBounds(_manager, _storages[i])
+                    });
+                }
+                var footprints = _storageFootprints.AsArray();
+                footprints.Sort();
+                long maxX = long.MinValue;
+                for (int i = 0; i < footprints.Length; i++)
+                {
+                    var footprint = footprints[i];
+                    maxX = math.max(maxX, footprint.Bounds.MaxX);
+                    footprint.MaxXThroughIndex = maxX;
+                    footprints[i] = footprint;
                 }
             }
 
-            CollectNetworkBounds(_stations, network, _networkBounds);
-
-            // 창고 쿼리 순서를 보존하고, 같은 망에 속한 정거장이 여러 개 겹쳐도 한 번만 추가한다.
-            for (int i = 0; i < _storages.Length; i++)
+            long minNetworkX = long.MaxValue;
+            long maxNetworkX = long.MinValue;
+            foreach (var bounds in networkBounds.GetValuesForKey(network))
             {
-                var bounds = _storageBounds[i];
-                foreach (var stationBounds in _networkBounds)
+                minNetworkX = math.min(minNetworkX, bounds.MinX);
+                maxNetworkX = math.max(maxNetworkX, bounds.MaxX);
+            }
+
+            _matchingIndexes.Clear();
+            for (int i = FindFirstStorageReaching(minNetworkX); i < _storageFootprints.Length; i++)
+            {
+                var footprint = _storageFootprints[i];
+                if (footprint.Bounds.MinX > maxNetworkX)
                 {
-                    if (stationBounds.Overlaps(bounds))
+                    break;
+                }
+                foreach (var stationBounds in networkBounds.GetValuesForKey(network))
+                {
+                    if (stationBounds.Overlaps(footprint.Bounds))
                     {
-                        _candidates.Add(_storages[i]);
+                        _matchingIndexes.Add(footprint.QueryIndex);
                         break;
                     }
                 }
             }
+
+            // 위치 기준으로 줄인 뒤 기존 창고 쿼리 순서로 후보를 반환한다.
+            _matchingIndexes.AsArray().Sort();
+            foreach (int index in _matchingIndexes)
+            {
+                _candidates.Add(_storages[index]);
+            }
+        }
+
+        private int FindFirstStorageReaching(long minX)
+        {
+            // X 시작점 순서만 보면 앞쪽의 폭이 넓은 창고를 놓칠 수 있다.
+            int first = 0;
+            int end = _storageFootprints.Length;
+            while (first < end)
+            {
+                int middle = first + (end - first) / 2;
+                if (_storageFootprints[middle].MaxXThroughIndex < minX)
+                {
+                    first = middle + 1;
+                }
+                else
+                {
+                    end = middle;
+                }
+            }
+            return first;
         }
 
         public void Dispose()
         {
             _ranges.Dispose();
             _candidates.Dispose();
-            _networkBounds.Dispose();
-            _storageBounds.Dispose();
+            _matchingIndexes.Dispose();
+            _storageFootprints.Dispose();
         }
     }
 
