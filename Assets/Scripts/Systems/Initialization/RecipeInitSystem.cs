@@ -23,7 +23,14 @@ public partial class RecipeInitSystem : SystemBase
         }
 
         using var query = EntityManager.CreateEntityQuery(ComponentType.ReadOnly<RecipeRegistry>());
-        if (!query.IsEmptyIgnoreFilter)
+        int registered = query.CalculateEntityCount();
+        if (registered > 1)
+        {
+            ReportFailure(EntityManager, "Duplicate RecipeRegistry.");
+            Enabled = false;
+            return;
+        }
+        if (registered == 1)
         {
             Entity registryEntity = query.GetSingletonEntity();
             if (!EntityManager.HasBuffer<RecipeConfigElement>(registryEntity) ||

@@ -48,8 +48,16 @@ public partial class BuildingConfigInitSystem : SystemBase
 
         try
         {
-            if (SystemAPI.TryGetSingletonEntity<BuildingConfig>(out var entity))
+            using var query = EntityManager.CreateEntityQuery(ComponentType.ReadOnly<BuildingConfig>());
+            int registered = query.CalculateEntityCount();
+            if (registered > 1)
             {
+                ReportFailure("Duplicate BuildingConfig.");
+                return;
+            }
+            if (registered == 1)
+            {
+                Entity entity = query.GetSingletonEntity();
                 if (!BuildingConfigLoader.ValidatePublishedConfig(EntityManager, entity))
                 {
                     ReportFailure("Pre-registered BuildingConfig is incomplete.");

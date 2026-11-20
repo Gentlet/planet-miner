@@ -42,7 +42,14 @@ public partial class ItemConfigInitSystem : SystemBase
         }
 
         using var query = EntityManager.CreateEntityQuery(ComponentType.ReadOnly<ItemRegistry>());
-        if (!query.IsEmptyIgnoreFilter)
+        int registered = query.CalculateEntityCount();
+        if (registered > 1)
+        {
+            ReportFailure(EntityManager, "Duplicate ItemRegistry.");
+            Enabled = false;
+            return;
+        }
+        if (registered == 1)
         {
             Entity registryEntity = query.GetSingletonEntity();
             if (!EntityManager.HasBuffer<ItemConfigElement>(registryEntity))

@@ -23,8 +23,17 @@ public partial struct WorldGenerationConfigLoadSystem : ISystem
 
         try
         {
-            if (SystemAPI.TryGetSingletonEntity<ResourceGenerationSettings>(out var existing))
+            using var query = state.EntityManager.CreateEntityQuery(ComponentType.ReadOnly<ResourceGenerationSettings>());
+            int registered = query.CalculateEntityCount();
+            if (registered > 1)
             {
+                ReportFailure(state.EntityManager, "Duplicate ResourceGenerationSettings.");
+                state.Enabled = false;
+                return;
+            }
+            if (registered == 1)
+            {
+                Entity existing = query.GetSingletonEntity();
                 if (!WorldGenerationConfigLoader.TryValidatePreRegisteredConfig(state.EntityManager, existing, out string error))
                 {
                     ReportFailure(state.EntityManager, error);
