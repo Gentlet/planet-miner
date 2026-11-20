@@ -70,6 +70,7 @@ public sealed class BuildingInfoController : PeriodicWorldView
     public BuildingTypeEnum Type { get; private set; }
     public bool HasSelection { get; private set; }
     public int SelectedRecipe { get; private set; }
+    public bool CanEditRecipe { get; private set; }
     public StorageFilter Filter { get; private set; }
 
     public event Action Changed;
@@ -121,6 +122,7 @@ public sealed class BuildingInfoController : PeriodicWorldView
         ItemTypes.Clear();
         RecipeIds.Clear();
         Type = BuildingTypeEnum.None;
+        CanEditRecipe = false;
         HasSelection = CanSubmit();
         if (!HasSelection)
         {
@@ -162,6 +164,7 @@ public sealed class BuildingInfoController : PeriodicWorldView
         {
             var state = manager.GetComponentData<CrafterState>(entity);
             SelectedRecipe = state.SelectedRecipeId;
+            CanEditRecipe = BuildingSettingsUtility.IsEditableCrafter(manager, entity);
             _text.AppendLine(state.Status + " / " + (state.Progress * 100f).ToString("F0") + "%");
         }
 

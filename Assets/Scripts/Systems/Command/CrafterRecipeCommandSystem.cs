@@ -91,8 +91,9 @@ public partial struct CrafterRecipeCommandSystem : ISystem
             Entity crafter = req.TargetCrafter;
             int newRecipeId = math.max(0, req.NewRecipeId);
 
-            if (_crafterStateLookup.TryGetComponent(crafter, out var crafterState))
+            if (BuildingSettingsUtility.IsEditableCrafter(state.EntityManager, crafter))
             {
+                var crafterState = _crafterStateLookup[crafter];
                 if (!TryGetInputConfiguration(crafter, out var inputSlots, out var storedItems, out var productItems))
                 {
                     UnityEngine.Debug.LogError("[CrafterRecipeCommandSystem] Missing Crafter input configuration. Recipe change rejected.");

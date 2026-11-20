@@ -111,6 +111,10 @@ public static class BuildingSettingsUtility
         }
     }
 
+    public static bool IsEditableCrafter(EntityManager manager, Entity target) =>
+        manager.HasComponent<CrafterState>(target) && !manager.HasComponent<PendingBuildingDemolition>(target) &&
+        !manager.HasComponent<Disabled>(target) && !manager.HasComponent<Prefab>(target);
+
     public static Entity Submit(EntityManager manager, Entity target, in PlannedBuildingSettings settings)
     {
         if (!manager.HasComponent<BuildingType>(target))
@@ -125,6 +129,10 @@ public static class BuildingSettingsUtility
         }
         if (settings.HasRecipe)
         {
+            if (!IsEditableCrafter(manager, target))
+            {
+                return Entity.Null;
+            }
             Entity request = manager.CreateEntity(typeof(ChangeCrafterRecipeRequest));
             manager.SetComponentData(request, new ChangeCrafterRecipeRequest(target, settings.RecipeId));
             return request;

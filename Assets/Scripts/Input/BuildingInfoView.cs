@@ -251,7 +251,10 @@ public sealed class BuildingInfoView : MonoBehaviour
         bool storage = _controller.Type == BuildingTypeEnum.Storage;
         _settings.style.display = crafter || storage ? DisplayStyle.Flex : DisplayStyle.None;
         _recipe.style.display = crafter ? DisplayStyle.Flex : DisplayStyle.None;
-        _settings.Q<Button>("apply-recipe").style.display = crafter ? DisplayStyle.Flex : DisplayStyle.None;
+        var applyRecipe = _settings.Q<Button>("apply-recipe");
+        applyRecipe.style.display = crafter ? DisplayStyle.Flex : DisplayStyle.None;
+        applyRecipe.SetEnabled(_controller.CanEditRecipe);
+        _recipe.SetEnabled(_controller.CanEditRecipe);
         _filterMode.style.display = storage ? DisplayStyle.Flex : DisplayStyle.None;
         _filterList.style.display = storage ? DisplayStyle.Flex : DisplayStyle.None;
         _settings.Q<Button>("apply-filter").style.display = storage ? DisplayStyle.Flex : DisplayStyle.None;
