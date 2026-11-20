@@ -153,8 +153,13 @@ public partial struct DroneTaskReservationSystem : ISystem
                                 DroneTransportReservationUtility.ReadReleasingQuantity(manager, candidate.Task, owners, decisions));
                             remainingTransport.Add(candidate.Task, remaining);
                         }
-                        // Decision 이후 재고/공간/경로는 변하지 않는다. 선택한 목표량 예산만 차감한다.
                         quantity = math.min(candidate.Quantity, remaining);
+                        // 앞선 이관 Reservation이 일반 슬롯까지 확보할 수 있다. 차순위를 버리기 전에 현재 공간을 확인한다.
+                        if (quantity > 0 && manager.HasBuffer<DroneStationReservedSlotElement>(candidate.Destination) &&
+                            !manager.GetBuffer<DroneStationReservedSlotElement>(candidate.Destination, true).IsEmpty)
+                        {
+                            quantity = DroneTransportEndpointUtility.DestinationSpace(manager, task, candidate.Destination, registry, quantity);
+                        }
                     }
                     else
                     {
