@@ -42,6 +42,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             Dedicated = SystemAPI.GetComponentLookup<DroneStationStorage>(true), Stamps = SystemAPI.GetComponentLookup<PlacementStamp>(true),
             Pending = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true),
             Items = SystemAPI.GetBufferLookup<StorageSlotElement>(true), Docks = SystemAPI.GetBufferLookup<DockedDroneElement>(true),
+            Batteries = SystemAPI.GetComponentLookup<DroneBatteryState>(true),
             Workers = SystemAPI.GetComponentLookup<DroneWorker>(true), Transforms = SystemAPI.GetComponentLookup<LocalTransform>(true),
             Maximum = SystemAPI.GetSingleton<DroneBatteryConfig>().MaximumCharge,
             Rate = SystemAPI.GetSingleton<DroneMovementConfig>().EnergyPerDistance, ECB = end.CreateCommandBuffer()
@@ -88,6 +89,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
         [ReadOnly] public BufferLookup<StorageSlotElement> Items;
         [ReadOnly] public BufferLookup<DockedDroneElement> Docks;
         [ReadOnly] public ComponentLookup<DroneWorker> Workers;
+        [ReadOnly] public ComponentLookup<DroneBatteryState> Batteries;
         [ReadOnly] public ComponentLookup<LocalTransform> Transforms;
         public float Maximum, Rate;
         public EntityCommandBuffer ECB;
@@ -211,7 +213,14 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                 }
             }
             if (slots.Length < actors.Length) return false;
-            using var origins = new NativeArray<ActorOriginRead>(actors.Length, Allocator.Temp);
+            // 출고 재고는 앵커에서 완충으로 생성된다. 이미 출고된 멤버는 실제 위치·배터리로 첫 구간을 판단한다.
+            using var origins = new NativeList<ActorRouteOrigin>(actors.Length, Allocator.Temp);
+            foreach (var actor in actors)
+            {
+                origins.Add(Workers.HasComponent(actor.Drone)
+                    ? new ActorRouteOrigin { Position = Transforms[actor.Drone].Position.xy, Charge = Batteries[actor.Drone].CurrentCharge }
+                    : new ActorRouteOrigin { Position = Positions[actor.Source].Value, Charge = Maximum });
+            }
             using var geometry = new NativeHashMap<Entity, StationGeometryRead>(Stations.Length, Allocator.Temp);
             using var ownerStorage = new NativeArray<int>(slots.Length, Allocator.Temp);
             using var actorSlotStorage = new NativeArray<int>(actors.Length, Allocator.Temp);
@@ -254,8 +263,8 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                                     BuildChargingStationsForCohort(flights, actors[actor].Source, plans, sourceChargingSlotsAfterDeparture, geometry);
                                     chargingStationsReady = true;
                                 }
-                                var path = DroneFlightPlanningUtility.Plan(GetActorRouteOriginPosition(actors[actor], actor, origins), geometry[slots[slot].Station].Center,
-                                    Maximum, Maximum, Rate, flights);
+                                var path = DroneFlightPlanningUtility.Plan(origins[actor].Position, geometry[slots[slot].Station].Center,
+                                    origins[actor].Charge, Maximum, Rate, flights);
                                 distance = path.Status == DroneRouteEvaluationStatusEnum.Reachable ? path.Distance : float.MaxValue;
                                 distances.Add(key, distance);
                             }
@@ -310,7 +319,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
 
         private bool AreAssignedRoutesReachable(NativeList<DroneStationRelocationCandidateElement> actors,
             NativeList<SlotReservationPlan> plans, NativeList<DroneFlightStation> flights,
-            NativeHashSet<int> sourceChargingSlotsAfterDeparture, NativeArray<ActorOriginRead> origins,
+            NativeHashSet<int> sourceChargingSlotsAfterDeparture, NativeList<ActorRouteOrigin> origins,
             NativeHashMap<Entity, StationGeometryRead> geometry)
         {
             if (plans.IsEmpty)
@@ -320,8 +329,8 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             BuildChargingStationsForCohort(flights, actors[0].Source, plans, sourceChargingSlotsAfterDeparture, geometry);
             for (int i = 0; i < plans.Length; i++)
             {
-                if (DroneFlightPlanningUtility.Plan(GetActorRouteOriginPosition(actors[i], i, origins), geometry[plans[i].Destination].Center,
-                    Maximum, Maximum, Rate, flights).Status != DroneRouteEvaluationStatusEnum.Reachable)
+                if (DroneFlightPlanningUtility.Plan(origins[i].Position, geometry[plans[i].Destination].Center,
+                    origins[i].Charge, Maximum, Rate, flights).Status != DroneRouteEvaluationStatusEnum.Reachable)
                 {
                     return false;
                 }
@@ -332,7 +341,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
         private bool TryBuildRoutePreservingAlternative(NativeList<DroneStationRelocationCandidateElement> actors,
             NativeList<AvailableSlot> slots, NativeHashMap<int2, float> distances,
             NativeList<DroneFlightStation> flights, NativeList<SlotReservationPlan> plans,
-            NativeHashSet<int> sourceChargingSlotsAfterDeparture, NativeArray<ActorOriginRead> origins,
+            NativeHashSet<int> sourceChargingSlotsAfterDeparture, NativeList<ActorRouteOrigin> origins,
             NativeHashMap<Entity, StationGeometryRead> geometry)
         {
             plans.Clear();
@@ -354,8 +363,8 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
                     var key = new int2(actor, slots[firstSlotIndex].StationIndex);
                     if (!distances.TryGetValue(key, out float distance))
                     {
-                        var path = DroneFlightPlanningUtility.Plan(GetActorRouteOriginPosition(actors[actor], actor, origins),
-                            geometry[slots[firstSlotIndex].Station].Center, Maximum, Maximum, Rate, flights);
+                        var path = DroneFlightPlanningUtility.Plan(origins[actor].Position,
+                            geometry[slots[firstSlotIndex].Station].Center, origins[actor].Charge, Maximum, Rate, flights);
                         distance = path.Status == DroneRouteEvaluationStatusEnum.Reachable ? path.Distance : float.MaxValue;
                         distances.Add(key, distance);
                     }
@@ -428,9 +437,9 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             return -1;
         }
 
-        private struct ActorOriginRead
+        private struct ActorRouteOrigin
         {
-            public bool HasRead;
+            public float Charge;
             public float2 Position;
         }
 
@@ -441,20 +450,6 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             public Entity Network;
             public bool HasStamp;
             public PlacementStamp Stamp;
-        }
-
-        private float2 GetActorRouteOriginPosition(in DroneStationRelocationCandidateElement actor, int index,
-            NativeArray<ActorOriginRead> origins)
-        {
-            var origin = origins[index];
-            if (!origin.HasRead)
-            {
-                origin.Position = Workers.HasComponent(actor.Drone)
-                    ? Transforms[actor.Drone].Position.xy : (float2)Positions[actor.Source].Value;
-                origin.HasRead = true;
-                origins[index] = origin;
-            }
-            return origin.Position;
         }
 
         private static bool IsStationEarlierForTieBreak(Entity left, Entity right,

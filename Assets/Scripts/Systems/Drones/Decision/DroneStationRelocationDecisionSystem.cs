@@ -211,9 +211,12 @@ public partial struct DroneStationRelocationDecisionSystem : ISystem
             intents.Add(intent);
             return;
         }
+        if (relocation.Stage == DroneStationRelocationStageEnum.WaitingForActivation && !destinationValid)
+        {
+            return;
+        }
         if (relocation.Stage == DroneStationRelocationStageEnum.WaitingForActivation && drone == Entity.Null)
         {
-            if (!destinationValid) return;
             Entity request = DroneStationRequestUtility.Submit(manager, Entity.Null, relocation.Source,
                 DroneStationOperation.ActivateStored, relocation.SourceSlotIndex, relocation.Task, memberIndex);
             manager.AddComponent<DroneStationRelocationRequest>(request);
@@ -239,11 +242,10 @@ public partial struct DroneStationRelocationDecisionSystem : ISystem
                 return;
             }
             if (charge < maximum) return;
-            Submit(manager, drone, dockedStation, dockedStation == relocation.Destination ? DroneStationOperation.Store : DroneStationOperation.Activate,
+            Submit(manager, drone, dockedStation, destinationValid && dockedStation == relocation.Destination ? DroneStationOperation.Store : DroneStationOperation.Activate,
                 ref intent, intents);
             return;
         }
-        if (!destinationValid) return;
         float2 position = manager.GetComponentData<LocalTransform>(drone).Position.xy;
         Entity arrived = manager.GetComponentData<DroneMovementState>(drone).ChargingStation;
         if (arrived != Entity.Null && DroneTargetPointUtility.TryGetTargetPoint(manager, arrived, out var arrivedPoint) &&
@@ -253,13 +255,13 @@ public partial struct DroneStationRelocationDecisionSystem : ISystem
             Submit(manager, drone, arrived, DroneStationOperation.Dock, ref intent, intents);
             return;
         }
-        if (!DroneTargetPointUtility.TryGetTargetPoint(manager, relocation.Destination, out var goal)) return;
+
         using var flights = new NativeList<DroneFlightStation>(Allocator.Temp);
         foreach (var row in allFlights)
         {
             if (charge >= maximum && math.all(row.Position == position)) continue;
             var station = row;
-            if (station.Entity == relocation.Destination) station.CanDock = true;
+            if (destinationValid && station.Entity == relocation.Destination) station.CanDock = true;
             if (station.Entity == relocation.Source)
             {
                 var sourceStorage = StationStorageUtility.StorageReadContext.Create(manager, station.Entity);
@@ -277,17 +279,26 @@ public partial struct DroneStationRelocationDecisionSystem : ISystem
             }
             flights.Add(station);
         }
-        var plan = DroneFlightPlanningUtility.Plan(position, goal, charge, maximum, config.EnergyPerDistance, flights);
-        if (plan.Status == DroneRouteEvaluationStatusEnum.Reachable)
+        if (destinationValid && DroneTargetPointUtility.TryGetTargetPoint(manager, relocation.Destination, out var goal))
         {
-            manager.SetComponentData(drone, new DroneMovementDecision
+            var plan = DroneFlightPlanningUtility.Plan(position, goal, charge, maximum, config.EnergyPerDistance, flights);
+            if (plan.Status == DroneRouteEvaluationStatusEnum.Reachable)
             {
-                Ready = true, ClearFailure = true, Purpose = DroneFlightPurposeEnum.StationRelocation,
-                Target = plan.NextPosition, Station = plan.ChargingStation == Entity.Null ? relocation.Destination : plan.ChargingStation
-            });
+                manager.SetComponentData(drone, new DroneMovementDecision
+                {
+                    Ready = true, ClearFailure = true, Purpose = DroneFlightPurposeEnum.StationRelocation,
+                    Target = plan.NextPosition, Station = plan.ChargingStation == Entity.Null ? relocation.Destination : plan.ChargingStation
+                });
+                return;
+            }
         }
-        else if (charge > 0f)
+        // 목적지 예약이 없는 재계획 중에도 방전된 수행자는 비상 귀환해 충전할 수 있다.
+        if (charge > 0f)
         {
+            if (!destinationValid)
+            {
+                return;
+            }
             int fallback = DroneFlightPlanningUtility.PlanReturn(position, flights, charge, maximum,
                 config.EnergyPerDistance, out var returnPlan);
             if (fallback >= 0)
