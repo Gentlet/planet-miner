@@ -2,6 +2,7 @@ using Unity.Burst;
 using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Entities;
+using Unity.Jobs;
 using Unity.Mathematics;
 
 /// <summary>
@@ -55,11 +56,6 @@ public partial struct ItemLifecycleApplySystem : ISystem
         _productBufferLookup.Update(ref state);
         _itemPrefabBufferLookup.Update(ref state);
 
-        // Admission 이후 생성된 현장과 Admission을 거치지 않은 요청도 현재 현장 기준으로 재검사한다.
-        var constructionFootprints = ConstructionSiteWorldItemUtility.CaptureFootprints(state.EntityManager, Allocator.TempJob);
-
-        Entity prefabDbEntity = _prefabDbQuery.IsEmptyIgnoreFilter ? Entity.Null : _prefabDbQuery.GetSingletonEntity();
-
         // 생산 결과를 먼저 반영해 직접 요청이 남은 슬롯 공간을 사용하게 한다.
         var items = SystemAPI.GetSingletonBuffer<ItemConfigElement>(true);
         var productResultJob = new ProductResultApplyJob
@@ -69,26 +65,34 @@ public partial struct ItemLifecycleApplySystem : ISystem
         };
         var productResultHandle = productResultJob.Schedule(_productResultQuery, state.Dependency);
 
-        // 2. [생성 Job] SpawnItemRequest 처리
-        var spawnJob = new SpawnItemApplyJob
+        var spawnHandle = productResultHandle;
+        var footprintsReleased = default(JobHandle);
+        if (!_spawnQuery.IsEmptyIgnoreFilter)
         {
-            EntityHandle = SystemAPI.GetEntityTypeHandle(),
-            SpawnItemRequestHandle = SystemAPI.GetComponentTypeHandle<SpawnItemRequest>(true),
-            ECB = ecb,
-            PrefabDbEntity = prefabDbEntity,
-            ItemPrefabBufferLookup = _itemPrefabBufferLookup,
-            Items = items,
-            DedicatedSlots = SystemAPI.GetComponentLookup<DroneStationStorage>(true),
-            InputSlots = SystemAPI.GetBufferLookup<BuildingInputSlotElement>(true),
-            Docks = SystemAPI.GetBufferLookup<DockedDroneElement>(true),
-            Reserved = SystemAPI.GetBufferLookup<DroneStationReservedSlotElement>(true),
-            Demolition = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true),
-            Preparing = SystemAPI.GetComponentLookup<PreparingStationDemolition>(true),
-            StoredBufferLookup = _storedBufferLookup,
-            ProductBufferLookup = _productBufferLookup,
-            ConstructionFootprints = constructionFootprints
-        };
-        var spawnHandle = spawnJob.Schedule(_spawnQuery, productResultHandle);
+            // EndCommand 이후 현장 원본은 실제 스폰 요청이 있는 틱에만 복사한다.
+            var constructionFootprints = ConstructionSiteWorldItemUtility.CaptureFootprints(state.EntityManager, Allocator.TempJob);
+            Entity prefabDbEntity = _prefabDbQuery.IsEmptyIgnoreFilter ? Entity.Null : _prefabDbQuery.GetSingletonEntity();
+            var spawnJob = new SpawnItemApplyJob
+            {
+                EntityHandle = SystemAPI.GetEntityTypeHandle(),
+                SpawnItemRequestHandle = SystemAPI.GetComponentTypeHandle<SpawnItemRequest>(true),
+                ECB = ecb,
+                PrefabDbEntity = prefabDbEntity,
+                ItemPrefabBufferLookup = _itemPrefabBufferLookup,
+                Items = items,
+                DedicatedSlots = SystemAPI.GetComponentLookup<DroneStationStorage>(true),
+                InputSlots = SystemAPI.GetBufferLookup<BuildingInputSlotElement>(true),
+                Docks = SystemAPI.GetBufferLookup<DockedDroneElement>(true),
+                Reserved = SystemAPI.GetBufferLookup<DroneStationReservedSlotElement>(true),
+                Demolition = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true),
+                Preparing = SystemAPI.GetComponentLookup<PreparingStationDemolition>(true),
+                StoredBufferLookup = _storedBufferLookup,
+                ProductBufferLookup = _productBufferLookup,
+                ConstructionFootprints = constructionFootprints
+            };
+            spawnHandle = spawnJob.Schedule(_spawnQuery, productResultHandle);
+            footprintsReleased = constructionFootprints.Dispose(spawnHandle);
+        }
 
         // 3. [파괴 Job] DestroyItemRequest 처리
         var destroyJob = new DestroyItemApplyJob
@@ -97,8 +101,8 @@ public partial struct ItemLifecycleApplySystem : ISystem
         };
         var destroyHandle = destroyJob.Schedule(_destroyQuery, spawnHandle);
 
-        state.Dependency = constructionFootprints.Dispose(destroyHandle);
-        ecbSystem.AddJobHandleForProducer(state.Dependency);
+        state.Dependency = JobHandle.CombineDependencies(destroyHandle, footprintsReleased);
+        ecbSystem.AddJobHandleForProducer(destroyHandle);
     }
 }
 

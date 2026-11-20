@@ -17,6 +17,8 @@ using UnityEngine;
 [UpdateInGroup(typeof(CommandGroup))]
 public partial struct BuildingPlacementCommandSystem : ISystem
 {
+    private EntityQuery _requests;
+
     private struct PendingPlacement
     {
         public Entity Entity;
@@ -33,6 +35,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
 
     public void OnCreate(ref SystemState state)
     {
+        _requests = state.GetEntityQuery(ComponentType.ReadOnly<BuildingPlacementRequest>());
         WorldSequenceUtility.GetOrCreate(state.EntityManager, new BuildingPlacementReceiptSequence { NextValue = 1, CurrentTick = 1 });
         state.RequireForUpdate<BuildingSpatialIndexFence>();
         state.RequireForUpdate<ResourceSpatialIndexFence>();
@@ -48,13 +51,6 @@ public partial struct BuildingPlacementCommandSystem : ISystem
             return;
         }
 
-        // 직접 읽기가 끝날 때까지 새 Job을 발행하지 않는다. 선행 Writer만 기다리고
-        // 다른 Reader의 완료나 Validator의 부수 효과에는 의존하지 않는다.
-        JobHandle.CombineDependencies(
-            SystemAPI.GetSingleton<BuildingSpatialIndexFence>().State.GetReaderDependency(),
-            SystemAPI.GetSingleton<ResourceSpatialIndexFence>().State.GetReaderDependency(),
-            SystemAPI.GetSingleton<ItemSpatialIndexFence>().State.GetReaderDependency()).Complete();
-
         var buildingMap = SystemAPI.GetSingleton<BuildingSpatialIndex>().Map;
         var resourceMap = SystemAPI.GetSingleton<ResourceSpatialIndex>().Map;
         var itemMap = SystemAPI.GetSingleton<ItemSpatialIndex>().Map;
@@ -65,22 +61,35 @@ public partial struct BuildingPlacementCommandSystem : ISystem
         }
 
         var ecbSystem = state.World.GetOrCreateSystemManaged<EndCommandEntityCommandBufferSystem>();
-        var ecb = ecbSystem.CreateCommandBuffer();
 
-        // 설정 버퍼를 임시 배열로 복사해 검증과 ECB 기록 동안 같은 입력을 사용한다.
-        // 여기서 고정 크기/해금/자재 요구량을 읽으며 설정이나 드론 관리 상태를 변경하지 않는다.
         bool hasConfig = SystemAPI.TryGetSingletonEntity<BuildingConfig>(out var configEntity);
         if (!hasConfig || !state.EntityManager.HasBuffer<BuildingConfigElement>(configEntity) ||
             !state.EntityManager.HasBuffer<BuildingConstructionMaterialElement>(configEntity))
         {
-            SimulationFailureUtility.Record(ref ecb, "[BuildingPlacementCommandSystem] Missing building configuration. Placement rejected.");
+            var rejection = ecbSystem.CreateCommandBuffer();
+            SimulationFailureUtility.Record(ref rejection, "[BuildingPlacementCommandSystem] Missing building configuration. Placement rejected.");
             foreach (var (_, entity) in SystemAPI.Query<RefRO<BuildingPlacementRequest>>().WithEntityAccess())
             {
-                ecb.DestroyEntity(entity);
+                rejection.DestroyEntity(entity);
             }
             return;
         }
 
+        if (_requests.IsEmptyIgnoreFilter)
+        {
+            BuildingPlacementRequestUtility.AdvanceTick(state.EntityManager);
+            return;
+        }
+
+        // 직접 읽기가 끝날 때까지 새 Job을 발행하지 않는다. 선행 Writer만 기다리고
+        // 다른 Reader의 완료나 Validator의 부수 효과에는 의존하지 않는다.
+        JobHandle.CombineDependencies(
+            SystemAPI.GetSingleton<BuildingSpatialIndexFence>().State.GetReaderDependency(),
+            SystemAPI.GetSingleton<ResourceSpatialIndexFence>().State.GetReaderDependency(),
+            SystemAPI.GetSingleton<ItemSpatialIndexFence>().State.GetReaderDependency()).Complete();
+
+        // 요청 묶음의 검증과 기록 동안 같은 크기·해금·자재 정의를 사용한다.
+        var ecb = ecbSystem.CreateCommandBuffer();
         NativeArray<BuildingConfigElement> configs = default;
         NativeArray<BuildingConstructionMaterialElement> materials = default;
 
