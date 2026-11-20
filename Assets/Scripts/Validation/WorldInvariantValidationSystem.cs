@@ -410,7 +410,17 @@ public partial class WorldInvariantValidationSystem : SystemBase
             }
             bool hasInput = inputs.TryGetBuffer(owner, out var layout);
             if (hasInput && layout.Length != count)
+            {
                 ReportViolation("StorageInvariant", "Input slot layout differs from storage capacity.", owner);
+            }
+            if (count == 0)
+            {
+                if (!hasInput || !AllowsZeroInputSlots(owner))
+                {
+                    ReportViolation("StorageInvariant", "Storage has zero slots without a valid empty input configuration.", owner);
+                }
+                continue;
+            }
             for (int index = 0; index < count; index++)
             {
                 var slot = slots[index];
@@ -466,6 +476,72 @@ public partial class WorldInvariantValidationSystem : SystemBase
                     ReportViolation("ResearchInvariant", "Recoverable quantity exceeds its inventory slot.", owner);
             }
         }
+    }
+
+    // 제작기와 연구소는 현재 정의에 필요한 입력 슬롯이 없거나 슬롯을 처음 구성하기 전에 빈 레이아웃을 유지할 수 있다.
+    private bool AllowsZeroInputSlots(Entity owner)
+    {
+        if (!SystemAPI.TryGetComponent<BuildingType>(owner, out var building))
+        {
+            return false;
+        }
+        if (!SystemAPI.TryGetComponent<StorageFilter>(owner, out var filter))
+        {
+            return false;
+        }
+        if (filter.Mode != StorageFilterMode.Whitelist || filter.Mask.Part0 != 0 || filter.Mask.Part1 != 0)
+        {
+            return false;
+        }
+
+        if (building.Type == BuildingTypeEnum.Crafter)
+        {
+            if (!SystemAPI.TryGetComponent<CrafterState>(owner, out var crafter))
+            {
+                return false;
+            }
+            if (crafter.SelectedRecipeId == 0)
+            {
+                return true;
+            }
+            if (!SystemAPI.TryGetSingletonEntity<RecipeRegistry>(out var registry))
+            {
+                return false;
+            }
+            var definitions = SystemAPI.GetBufferLookup<RecipeConfigElement>(true);
+            if (!definitions.TryGetBuffer(registry, out var recipes))
+            {
+                return false;
+            }
+            if (!RecipeConfigLookupUtility.TryGetRecipe(recipes, crafter.SelectedRecipeId, out var recipe))
+            {
+                return false;
+            }
+            return recipe.IngredientCount == 0;
+        }
+
+        if (building.Type != BuildingTypeEnum.ResearchBuilding)
+        {
+            return false;
+        }
+        if (!SystemAPI.HasComponent<ResearchInputConfigured>(owner))
+        {
+            return false;
+        }
+        if (!SystemAPI.IsComponentEnabled<ResearchInputConfigured>(owner))
+        {
+            return true;
+        }
+        if (!SystemAPI.TryGetSingletonEntity<ResearchRegistry>(out var research))
+        {
+            return false;
+        }
+        var ingredients = SystemAPI.GetBufferLookup<ResearchIngredientElement>(true);
+        if (!ingredients.TryGetBuffer(research, out var rows))
+        {
+            return false;
+        }
+        return rows.IsEmpty;
     }
 
     private static bool IsValidStack(ItemTypeEnum type, int quantity, bool hasRegistry, DynamicBuffer<ItemConfigElement> items)
