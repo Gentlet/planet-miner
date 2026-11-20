@@ -57,11 +57,8 @@ public partial struct CrafterExecutionSystem : ISystem
             return;
         }
 
-        float dt = math.min(SystemAPI.Time.DeltaTime, GameConstants.MaxSimulationDeltaTime);
-        if (dt <= 0.0f)
-        {
-            return;
-        }
+        // 완료 묶음의 출력은 시간이 흐르지 않은 틱에도 처리한다.
+        float dt = math.clamp(SystemAPI.Time.DeltaTime, 0f, GameConstants.MaxSimulationDeltaTime);
 
         var job = new CrafterExecutionJob
         {
@@ -184,7 +181,7 @@ public partial struct CrafterExecutionJob : IJobChunk
         // =========================================================================
         // 3. [진행도 누적 (Crafting Progress)]
         // =========================================================================
-        if (state.IsCraftingActive && decision.CanAdvance)
+        if (state.IsCraftingActive && decision.CanAdvance && poweredDeltaTime > 0f)
         {
             float craftTime = math.max(0.01f, recipe.CraftTime);
             float deltaProgress = (poweredDeltaTime * ResearchRewardUtility.EffectiveSpeed(state.Speed, SpeedBonus)) / craftTime;
