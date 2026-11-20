@@ -57,7 +57,7 @@ public static class ConstructionSiteWorldItemUtility
         for (int i = 0; i < footprints.Length; i++)
         {
             var footprint = footprints[i];
-            if (math.all(position >= footprint.Origin) && math.all(position < footprint.Origin + footprint.Size))
+            if (BuildingFootprintUtility.Contains(footprint.Origin, footprint.Size, position))
             {
                 return false;
             }

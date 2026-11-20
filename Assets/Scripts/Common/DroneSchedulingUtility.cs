@@ -381,7 +381,7 @@ public static class DroneSchedulingUtility
             var origin = manager.GetComponentData<GridPosition>(site).Value;
             var size = manager.GetComponentData<BuildingFootprint>(site)
                 .GetEffectiveSize(manager.GetComponentData<Direction>(site).dir);
-            if (math.all(position >= origin) && math.all(position < origin + size))
+            if (BuildingFootprintUtility.Contains(origin, size, position))
             {
                 return true;
             }

@@ -20,6 +20,10 @@ public static class BuildingFootprintUtility
             : normalized;
     }
 
+    public static bool Contains(int2 origin, int2 effectiveSize, int2 cell) =>
+        cell.x >= origin.x && cell.y >= origin.y &&
+        (long)cell.x < (long)origin.x + effectiveSize.x && (long)cell.y < (long)origin.y + effectiveSize.y;
+
     public static int2 GetEffectiveSize(this BuildingFootprint footprint, DirectionEnum direction)
     {
         return GetEffectiveSize(footprint.Size, direction);

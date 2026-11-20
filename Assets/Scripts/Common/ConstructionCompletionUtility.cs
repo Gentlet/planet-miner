@@ -38,7 +38,7 @@ public static class ConstructionCompletionUtility
         for (int i = 0; i < worldPositions.Length; i++)
         {
             int2 position = worldPositions[i];
-            if (math.all(position >= origin) && math.all(position < origin + effectiveSize))
+            if (BuildingFootprintUtility.Contains(origin, effectiveSize, position))
             {
                 return true;
             }

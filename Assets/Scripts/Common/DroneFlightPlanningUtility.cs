@@ -355,8 +355,7 @@ internal static class DroneFlightPlanningUtility
         for (int i = 0; i < sites.Length; i++)
         {
             var site = sites[i];
-            if (cell.x >= site.Anchor.x && cell.y >= site.Anchor.y &&
-                (long)cell.x < (long)site.Anchor.x + site.Size.x && (long)cell.y < (long)site.Anchor.y + site.Size.y)
+            if (BuildingFootprintUtility.Contains(site.Anchor, site.Size, cell))
             {
                 return true;
             }
