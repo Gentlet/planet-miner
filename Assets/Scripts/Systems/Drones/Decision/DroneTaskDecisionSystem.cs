@@ -86,7 +86,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         DroneTaskRequestDecisionUtility.Prepare(manager, _candidates, _taskRequests, tasks, sites, assignments);
         // Prepare가 취소 결정을 모두 기록한 뒤, 같은 Decision 호출 안에서만 읽는다.
         var cancellations = new DroneTaskRequestDecisionUtility.CancellationReadContext(manager, _candidates);
-        BuildCreationDecisions(manager, tasks, taskReads, ref cancellations);
+        BuildCreationDecisions(ref state, tasks, taskReads, ref cancellations);
         using var busyWorkers = new NativeHashSet<Entity>(16, Allocator.Temp);
         using var claimedRecoveryItems = new NativeHashSet<Entity>(16, Allocator.Temp);
         using var usedRoutes = new NativeHashSet<Entity>(16, Allocator.Temp);
@@ -876,9 +876,10 @@ public partial struct DroneTaskDecisionSystem : ISystem
     private EntityQuery _creationFootprints;
     private EntityQuery _creationResearch;
 
-    private void BuildCreationDecisions(EntityManager manager, NativeArray<Entity> taskEntities,
+    private void BuildCreationDecisions(ref SystemState state, NativeArray<Entity> taskEntities,
         NativeArray<TaskReadSnapshot> taskReads, ref DroneTaskRequestDecisionUtility.CancellationReadContext cancellations)
     {
+        var manager = state.EntityManager;
         var decisions = manager.GetBuffer<DroneTaskCreationDecisionElement>(_candidates);
         decisions.Clear();
         using var tasks = new NativeList<DroneLogisticsTask>(Allocator.Temp);
@@ -890,7 +891,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
             }
         }
         BuildSupplyCreationDecisions(manager, tasks.AsArray(), decisions);
-        BuildRecoveryCreationDecisions(manager, tasks.AsArray(), decisions);
+        BuildRecoveryCreationDecisions(ref state, tasks.AsArray(), decisions);
         BuildResearchRecoveryCreationDecisions(manager, tasks.AsArray(), decisions);
     }
 
@@ -1000,9 +1001,10 @@ public partial struct DroneTaskDecisionSystem : ISystem
         }
     }
 
-    private void BuildRecoveryCreationDecisions(EntityManager manager,
+    private void BuildRecoveryCreationDecisions(ref SystemState state,
         NativeArray<DroneLogisticsTask> tasks, DynamicBuffer<DroneTaskCreationDecisionElement> decisions)
     {
+        var manager = state.EntityManager;
         // 이전에 방출된 실물과 현재 현장 footprint 안의 월드 실물만 회수 작업으로 만든다.
         // 취소 현장은 제외하고 방향을 한 번 적용하여 회수 필요 영역과 완공 차단 영역을 맞춘다.
         using var footprints = new NativeList<ConstructionSiteWorldItemUtility.Footprint>(Allocator.Temp);
@@ -1040,52 +1042,73 @@ public partial struct DroneTaskDecisionSystem : ISystem
             }
         }
 
-        using var items = _creationItems.ToEntityArray(Allocator.Temp);
-        for (int i = 0; i < items.Length; i++)
+        // 같은 쿼리의 청크와 청크 내 실물 순서를 따라 회수 작업 생성 순서를 유지한다.
+        var activeFootprints = footprints.AsArray();
+        var entitiesHandle = state.GetEntityTypeHandle();
+        var positionsHandle = state.GetComponentTypeHandle<GridPosition>(true);
+        var recoveryHandle = state.GetComponentTypeHandle<DroneRecoveryPending>(true);
+        using var chunks = _creationItems.ToArchetypeChunkArray(Allocator.Temp);
+        foreach (var chunk in chunks)
         {
-            Entity item = items[i];
-            var itemType = manager.GetComponentData<ItemIdentity>(item).Type;
-            if (!DroneSchedulingUtility.IsWorldItem(manager, item, itemType))
+            bool hasRecoveryMark = chunk.Has(ref recoveryHandle);
+            if (!hasRecoveryMark && activeFootprints.Length == 0)
             {
                 continue;
             }
 
-            if (claimedItems.Contains(item))
+            var entities = chunk.GetNativeArray(entitiesHandle);
+            var marks = hasRecoveryMark ? chunk.GetNativeArray(ref recoveryHandle) : default;
+            var positions = hasRecoveryMark ? default : chunk.GetNativeArray(ref positionsHandle);
+            for (int i = 0; i < entities.Length; i++)
             {
-                continue;
+                DroneRecoveryReasonEnum reason;
+                if (hasRecoveryMark)
+                {
+                    reason = marks[i].Reason;
+                    if (reason == DroneRecoveryReasonEnum.None)
+                    {
+                        reason = DroneRecoveryReasonEnum.DroneDrop;
+                    }
+                }
+                else
+                {
+                    if (ConstructionSiteWorldItemUtility.IsWorldPositionAllowed(activeFootprints, positions[i].Value))
+                    {
+                        continue;
+                    }
+                    reason = DroneRecoveryReasonEnum.SiteClearance;
+                }
+                AppendRecoveryCreationDecision(manager, entities[i], reason, claimedItems, decisions);
             }
-
-            bool hasRecovery = manager.HasComponent<DroneRecoveryPending>(item);
-            var reason = hasRecovery
-                ? manager.GetComponentData<DroneRecoveryPending>(item).Reason
-                : DroneRecoveryReasonEnum.None;
-            if (reason == DroneRecoveryReasonEnum.None && hasRecovery)
-                reason = DroneRecoveryReasonEnum.DroneDrop;
-            if (reason == DroneRecoveryReasonEnum.None &&
-                !ConstructionSiteWorldItemUtility.IsWorldPositionAllowed(footprints.AsArray(), manager.GetComponentData<GridPosition>(item).Value))
-            {
-                reason = DroneRecoveryReasonEnum.SiteClearance;
-            }
-
-            if (reason == DroneRecoveryReasonEnum.None)
-            {
-                continue;
-            }
-            if (DroneTaskRequestDecisionUtility.IsBlocked(manager, _candidates,
-                DroneTaskGenerationKey.From(DroneLogisticsTaskKindEnum.WorldItemRecovery, item, itemType)))
-            {
-                continue;
-            }
-
-            decisions.Add(new DroneTaskCreationDecisionElement
-            {
-                Kind = DroneLogisticsTaskKindEnum.WorldItemRecovery,
-                Target = item,
-                ItemType = itemType,
-                RecoveryReason = reason
-            });
-            claimedItems.Add(item);
         }
+    }
+
+    private void AppendRecoveryCreationDecision(EntityManager manager, Entity item, DroneRecoveryReasonEnum reason,
+        NativeHashSet<Entity> claimedItems, DynamicBuffer<DroneTaskCreationDecisionElement> decisions)
+    {
+        var itemType = manager.GetComponentData<ItemIdentity>(item).Type;
+        if (!DroneSchedulingUtility.IsWorldItem(manager, item, itemType))
+        {
+            return;
+        }
+        if (claimedItems.Contains(item))
+        {
+            return;
+        }
+        if (DroneTaskRequestDecisionUtility.IsBlocked(manager, _candidates,
+            DroneTaskGenerationKey.From(DroneLogisticsTaskKindEnum.WorldItemRecovery, item, itemType)))
+        {
+            return;
+        }
+
+        decisions.Add(new DroneTaskCreationDecisionElement
+        {
+            Kind = DroneLogisticsTaskKindEnum.WorldItemRecovery,
+            Target = item,
+            ItemType = itemType,
+            RecoveryReason = reason
+        });
+        claimedItems.Add(item);
     }
 
     private static void SortCreationSitesByPlacement(EntityManager manager, NativeArray<Entity> sites)
