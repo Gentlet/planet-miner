@@ -182,23 +182,33 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
             {
                 continue;
             }
+            int demandUsed = 0;
+            int remaining = 0;
+            if (plan.Task != Entity.Null)
+            {
+                plannedDemand.TryGetValue(plan.Task, out demandUsed);
+                remaining = DroneStationAutomationUtility.ReadDemand(manager, plan.Task,
+                    manager.GetComponentData<DroneLogisticsTask>(plan.Task), assignments, _candidates) - demandUsed;
+                if (remaining <= 0)
+                {
+                    continue;
+                }
+            }
             if (plan.StockSlot < 0)
             {
+                // 기존 배정의 재개는 수요를 새로 점유하지 않는다. 신규 정박 출고는 보관 재고와 같은 수요를 쓴다.
+                int quantity = plan.Task == Entity.Null ? plan.Quantity : math.min(plan.Quantity, remaining);
                 activated.Add(plan.Drone);
                 intents.Add(new DroneStationAutomationIntent { Drone = plan.Drone, Station = plan.Station,
-                    Operation = DroneStationOperation.Activate, DemandTask = plan.Task, Quantity = plan.Quantity });
+                    Operation = DroneStationOperation.Activate, DemandTask = plan.Task, Quantity = quantity });
                 if (plan.Task != Entity.Null)
                 {
-                    plannedDemand.TryGetValue(plan.Task, out int used);
-                    plannedDemand[plan.Task] = used + plan.Quantity;
+                    plannedDemand[plan.Task] = demandUsed + quantity;
                 }
                 continue;
             }
             var stockKey = new int3(plan.Station.Index, plan.Station.Version, plan.StockSlot);
             plannedStock.TryGetValue(stockKey, out int departing);
-            plannedDemand.TryGetValue(plan.Task, out int demandUsed);
-            int remaining = DroneStationAutomationUtility.ReadDemand(manager, plan.Task,
-                manager.GetComponentData<DroneLogisticsTask>(plan.Task), assignments, _candidates) - demandUsed;
             while (departing < plan.StockOrdinal && remaining > 0)
             {
                 int quantity = math.min(plan.Quantity, remaining);
