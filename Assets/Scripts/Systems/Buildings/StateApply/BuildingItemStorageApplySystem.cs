@@ -36,6 +36,7 @@ public partial struct BuildingItemStorageApplySystem : ISystem
 
         state.Dependency = new BuildingItemOutputApplyJob
         {
+            Directions = SystemAPI.GetComponentLookup<Direction>(true),
             BeltMap = beltIndex.Map,
             Storage = storage,
             Products = SystemAPI.GetBufferLookup<ProductSlotElement>(),
@@ -81,6 +82,7 @@ public partial struct BuildingItemInputApplyJob : IJobEntity
 public partial struct BuildingItemOutputApplyJob : IJobEntity
 {
     [ReadOnly] public NativeParallelHashMap<int2, BeltInfo> BeltMap;
+    [ReadOnly] public ComponentLookup<Direction> Directions;
     public BufferLookup<StorageSlotElement> Storage;
     public BufferLookup<ProductSlotElement> Products;
     [ReadOnly] public BufferLookup<ItemPrefabElement> Prefabs;
@@ -94,7 +96,7 @@ public partial struct BuildingItemOutputApplyJob : IJobEntity
         decision = default;
         enabled.ValueRW = false;
         if (!approved.CanOutput) return;
-        if (!BeltMap.TryGetValue(approved.TargetBeltPosition, out var belt)) return;
+        if (!BeltEntryUtility.TryGetDirectedBelt(approved.TargetBeltPosition, BeltMap, Directions, out var belt)) return;
         if (!TryReadOutputPrefab(approved.ItemType, out var prefab))
         {
             SimulationFailureUtility.Record(ref ECB, "[BuildingItemStorageApplySystem] Missing output item prefab.");

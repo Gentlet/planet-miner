@@ -3,16 +3,31 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 역할·목적: 건물 출고와 분배/합류가 벨트 입구 여유와 출구 이동품을 같은 기준으로 판단하게 한다.
-/// 입력·출력: 벨트/아이템 인덱스와 Lookup을 읽어 진입 여유나 출구 후보를 반환하며 ECS 상태는 쓰지 않는다.
-/// 이용: StorageItemOutputDecisionSystem, ProductItemOutputDecisionSystem, SplitterDecisionSystem, MergerDecisionSystem이 후보 판단에서 호출한다.
-/// 수명·경계: 호출자가 인덱스의 Job 의존성과 Fence를 등록하며, 출고 후보 간 경합은 Reservation이 중재한다.
+/// 셀 인덱스에서 벨트를 찾고 EndCommand 이후의 방향을 읽는다. 벨트 이동과 건물 입출고·라우팅의 Decision, Execution, StateApply에서 사용한다.
+/// 입구 여유와 출구 실물 후보는 아이템 인덱스에서 찾는다. 호출자가 인덱스의 Fence를 등록하고 Reservation이 경합을 중재한다.
 /// </summary>
 public static class BeltEntryUtility
 {
+    /// <summary>인덱스에서 셀의 벨트를 찾고, EndCommand에서 회전했을 수 있는 방향은 현재 원본에서 읽는다.</summary>
+    internal static bool TryGetDirectedBelt(int2 position, in NativeParallelHashMap<int2, BeltInfo> belts,
+        in ComponentLookup<Direction> directions, out BeltInfo belt)
+    {
+        if (!belts.TryGetValue(position, out belt))
+        {
+            return false;
+        }
+        if (!directions.TryGetComponent(belt.Entity, out var direction))
+        {
+            return false;
+        }
+        belt.Direction = direction.dir;
+        return true;
+    }
+
     internal static Entity FindRoutingBelt(
         int2 routerPosition,
         in NativeParallelHashMap<int2, BeltInfo> beltMap,
+        in ComponentLookup<Direction> directions,
         in ComponentLookup<PendingBuildingDemolition> pendingDemolitionLookup,
         in ComponentLookup<PlacementStamp> placementStampLookup,
         bool incoming,
@@ -28,7 +43,7 @@ public static class BeltEntryUtility
         for (int i = 0; i < (int)DirectionEnum.Count; i++)
         {
             int2 neighborPosition = routerPosition + ((DirectionEnum)i).ToInt2();
-            if (!beltMap.TryGetValue(neighborPosition, out var belt))
+            if (!TryGetDirectedBelt(neighborPosition, beltMap, directions, out var belt))
             {
                 continue;
             }
@@ -67,6 +82,7 @@ public static class BeltEntryUtility
         int2 size,
         in NativeParallelHashMap<int2, BeltInfo> beltMap,
         in NativeParallelMultiHashMap<int2, Entity> itemMap,
+        in ComponentLookup<Direction> directions,
         in ComponentLookup<PendingBuildingDemolition> pendingDemolitionLookup,
         in ComponentLookup<DestroyItemRequest> destroyLookup,
         in ComponentLookup<BeltMovementState> movementLookup,
@@ -76,7 +92,7 @@ public static class BeltEntryUtility
         for (int x = 0; x < size.x; x++)
         {
             beltPosition = new int2(anchor.x + x, anchor.y - 1);
-            if (CanOutputToBelt(beltPosition, anchor, size, beltMap, itemMap, pendingDemolitionLookup,
+            if (CanOutputToBelt(beltPosition, anchor, size, beltMap, itemMap, directions, pendingDemolitionLookup,
                     destroyLookup, movementLookup))
             {
                 return true;
@@ -86,7 +102,7 @@ public static class BeltEntryUtility
         for (int y = 0; y < size.y; y++)
         {
             beltPosition = new int2(anchor.x + size.x, anchor.y + y);
-            if (CanOutputToBelt(beltPosition, anchor, size, beltMap, itemMap, pendingDemolitionLookup,
+            if (CanOutputToBelt(beltPosition, anchor, size, beltMap, itemMap, directions, pendingDemolitionLookup,
                     destroyLookup, movementLookup))
             {
                 return true;
@@ -96,7 +112,7 @@ public static class BeltEntryUtility
         for (int x = 0; x < size.x; x++)
         {
             beltPosition = new int2(anchor.x + x, anchor.y + size.y);
-            if (CanOutputToBelt(beltPosition, anchor, size, beltMap, itemMap, pendingDemolitionLookup,
+            if (CanOutputToBelt(beltPosition, anchor, size, beltMap, itemMap, directions, pendingDemolitionLookup,
                     destroyLookup, movementLookup))
             {
                 return true;
@@ -106,7 +122,7 @@ public static class BeltEntryUtility
         for (int y = 0; y < size.y; y++)
         {
             beltPosition = new int2(anchor.x - 1, anchor.y + y);
-            if (CanOutputToBelt(beltPosition, anchor, size, beltMap, itemMap, pendingDemolitionLookup,
+            if (CanOutputToBelt(beltPosition, anchor, size, beltMap, itemMap, directions, pendingDemolitionLookup,
                     destroyLookup, movementLookup))
             {
                 return true;
@@ -123,11 +139,12 @@ public static class BeltEntryUtility
         int2 size,
         in NativeParallelHashMap<int2, BeltInfo> beltMap,
         in NativeParallelMultiHashMap<int2, Entity> itemMap,
+        in ComponentLookup<Direction> directions,
         in ComponentLookup<PendingBuildingDemolition> pendingDemolitionLookup,
         in ComponentLookup<DestroyItemRequest> destroyLookup,
         in ComponentLookup<BeltMovementState> movementLookup)
     {
-        if (!beltMap.TryGetValue(beltPosition, out BeltInfo belt))
+        if (!TryGetDirectedBelt(beltPosition, beltMap, directions, out BeltInfo belt))
         {
             return false;
         }

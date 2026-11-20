@@ -144,20 +144,20 @@ public partial struct MergerDecisionJob : IJobEntity
 
         if (outputBelt == Entity.Null)
         {
-            outputBelt = BeltEntryUtility.FindRoutingBelt(mergerPos, BeltMap, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: false, out forwardDir);
+            outputBelt = BeltEntryUtility.FindRoutingBelt(mergerPos, BeltMap, DirectionLookup, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: false, out forwardDir);
         }
         else if (!GridPositionLookup.TryGetComponent(outputBelt, out var currentOutputPosition))
         {
-            outputBelt = BeltEntryUtility.FindRoutingBelt(mergerPos, BeltMap, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: false, out forwardDir);
+            outputBelt = BeltEntryUtility.FindRoutingBelt(mergerPos, BeltMap, DirectionLookup, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: false, out forwardDir);
         }
         else
         {
             outputBeltPos = currentOutputPosition.Value;
             hasOutputPosition = true;
-            if (!BeltMap.TryGetValue(outputBeltPos, out BeltInfo currentOutputInfo) ||
+            if (!BeltEntryUtility.TryGetDirectedBelt(outputBeltPos, BeltMap, DirectionLookup, out BeltInfo currentOutputInfo) ||
                 !RoutingDirectionUtility.IsOutgoingBelt(mergerPos, outputBeltPos, currentOutputInfo.Direction))
             {
-                outputBelt = BeltEntryUtility.FindRoutingBelt(mergerPos, BeltMap, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: false, out forwardDir);
+                outputBelt = BeltEntryUtility.FindRoutingBelt(mergerPos, BeltMap, DirectionLookup, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: false, out forwardDir);
                 hasOutputPosition = false;
             }
         }
@@ -191,7 +191,7 @@ public partial struct MergerDecisionJob : IJobEntity
             DirectionEnum inRelativeDir = RoutingDirectionUtility.GetMergerInput(forwardDir, portIndex);
             int2 inputPos = mergerPos + inRelativeDir.ToInt2();
 
-            if (BeltMap.TryGetValue(inputPos, out BeltInfo beltInfo))
+            if (BeltEntryUtility.TryGetDirectedBelt(inputPos, BeltMap, DirectionLookup, out BeltInfo beltInfo))
             {
                 if (PendingBuildingDemolitionLookup.HasComponent(beltInfo.Entity))
                 {

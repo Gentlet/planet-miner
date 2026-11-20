@@ -30,6 +30,7 @@ public partial struct BeltMovementExecutionSystem : ISystem
 
         var job = new BeltMovementExecutionJob
         {
+            Directions = SystemAPI.GetComponentLookup<Direction>(true),
             BeltMap = beltIndex.Map
         };
 
@@ -53,6 +54,7 @@ public partial struct BeltMovementExecutionJob : IJobEntity
 {
     [ReadOnly]
     public NativeParallelHashMap<int2, BeltInfo> BeltMap;
+    [ReadOnly] public ComponentLookup<Direction> Directions;
 
     public void Execute(
         Entity entity,
@@ -62,7 +64,7 @@ public partial struct BeltMovementExecutionJob : IJobEntity
         ref BeltMovementDecision decision)
     {
         // 2. 현재 타일에 벨트가 존재하는지 확인
-        if (!BeltMap.TryGetValue(gridPos.Value, out BeltInfo currentBelt))
+        if (!BeltEntryUtility.TryGetDirectedBelt(gridPos.Value, BeltMap, Directions, out BeltInfo currentBelt))
         {
             decision.PlannedProgress = 0.0f;
             return;
@@ -83,7 +85,7 @@ public partial struct BeltMovementExecutionJob : IJobEntity
             while (newProgress >= 1.0f && hopCount < GameConstants.MaxTileHopsPerFrame)
             {
                 int2 nextPos = gridPos.Value + currentDir;
-                if (BeltMap.TryGetValue(nextPos, out BeltInfo nextBelt))
+                if (BeltEntryUtility.TryGetDirectedBelt(nextPos, BeltMap, Directions, out BeltInfo nextBelt))
                 {
                     // 다음 타일에 벨트가 있으므로 다음 타일로 인계 및 잔여 진행도 이월
                     gridPos.Value = nextPos;

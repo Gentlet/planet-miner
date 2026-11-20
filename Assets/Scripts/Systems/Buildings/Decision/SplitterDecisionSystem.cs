@@ -144,20 +144,20 @@ public partial struct SplitterDecisionJob : IJobEntity
 
         if (inputBelt == Entity.Null)
         {
-            inputBelt = BeltEntryUtility.FindRoutingBelt(splitterPos, BeltMap, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: true, out forwardDir);
+            inputBelt = BeltEntryUtility.FindRoutingBelt(splitterPos, BeltMap, DirectionLookup, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: true, out forwardDir);
         }
         else if (!GridPositionLookup.TryGetComponent(inputBelt, out var currentInputPosition))
         {
-            inputBelt = BeltEntryUtility.FindRoutingBelt(splitterPos, BeltMap, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: true, out forwardDir);
+            inputBelt = BeltEntryUtility.FindRoutingBelt(splitterPos, BeltMap, DirectionLookup, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: true, out forwardDir);
         }
         else
         {
             inputBeltPos = currentInputPosition.Value;
             hasInputPosition = true;
-            if (!BeltMap.TryGetValue(inputBeltPos, out BeltInfo currentInputInfo) ||
+            if (!BeltEntryUtility.TryGetDirectedBelt(inputBeltPos, BeltMap, DirectionLookup, out BeltInfo currentInputInfo) ||
                 !RoutingDirectionUtility.IsIncomingBelt(splitterPos, inputBeltPos, currentInputInfo.Direction))
             {
-                inputBelt = BeltEntryUtility.FindRoutingBelt(splitterPos, BeltMap, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: true, out forwardDir);
+                inputBelt = BeltEntryUtility.FindRoutingBelt(splitterPos, BeltMap, DirectionLookup, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: true, out forwardDir);
                 hasInputPosition = false;
             }
         }
@@ -193,7 +193,7 @@ public partial struct SplitterDecisionJob : IJobEntity
             DirectionEnum outDir = RoutingDirectionUtility.GetSplitterOutput(forwardDir, portIndex);
             int2 targetPos = splitterPos + outDir.ToInt2();
 
-            if (BeltMap.TryGetValue(targetPos, out BeltInfo beltInfo))
+            if (BeltEntryUtility.TryGetDirectedBelt(targetPos, BeltMap, DirectionLookup, out BeltInfo beltInfo))
             {
                 if (PendingBuildingDemolitionLookup.HasComponent(beltInfo.Entity))
                 {

@@ -60,6 +60,7 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
         var job = new BuildingItemInputDecisionJob
         {
             BuildingMap = buildingIndex.Map,
+            Directions = SystemAPI.GetComponentLookup<Direction>(true),
             BeltMap = beltIndex.Map,
             StorageLookup = _storageLookup,
             Destroy = SystemAPI.GetComponentLookup<DestroyItemRequest>(true),
@@ -91,6 +92,7 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
 
     [ReadOnly]
     public NativeParallelHashMap<int2, BeltInfo> BeltMap;
+    [ReadOnly] public ComponentLookup<Direction> Directions;
 
     [ReadOnly]
     public ComponentLookup<Storage> StorageLookup;
@@ -127,7 +129,7 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
         if (Destroy.HasComponent(entity) && Destroy.IsComponentEnabled(entity)) return;
 
         // 2. 현재 타일에 벨트가 없으면 판정 제외 및 비활성화
-        if (!BeltMap.TryGetValue(gridPos.Value, out BeltInfo currentBelt))
+        if (!BeltEntryUtility.TryGetDirectedBelt(gridPos.Value, BeltMap, Directions, out BeltInfo currentBelt))
         {
             return;
         }

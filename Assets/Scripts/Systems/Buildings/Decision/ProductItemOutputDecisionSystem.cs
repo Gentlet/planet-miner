@@ -56,6 +56,7 @@ public partial struct ProductItemOutputDecisionSystem : ISystem
 
         var job = new ProductItemOutputDecisionJob
         {
+            Directions = SystemAPI.GetComponentLookup<Direction>(true),
             BeltMap = beltIndex.Map,
             ItemMap = itemIndex.Map,
             BeltMovementStateLookup = _beltMovementStateLookup,
@@ -83,6 +84,7 @@ public partial struct ProductItemOutputDecisionJob : IJobEntity
 {
     [ReadOnly]
     public NativeParallelHashMap<int2, BeltInfo> BeltMap;
+    [ReadOnly] public ComponentLookup<Direction> Directions;
 
     [ReadOnly]
     public NativeParallelMultiHashMap<int2, Entity> ItemMap;
@@ -125,7 +127,7 @@ public partial struct ProductItemOutputDecisionJob : IJobEntity
         }
 
         if (BeltEntryUtility.TryFindBuildingOutputBelt(gridPos.Value, footprint.GetEffectiveSize(dir.dir),
-                BeltMap, ItemMap, PendingDemolitionLookup, DestroyItemRequestLookup, BeltMovementStateLookup,
+                BeltMap, ItemMap, Directions, PendingDemolitionLookup, DestroyItemRequestLookup, BeltMovementStateLookup,
                 out int2 foundBeltPos))
         {
             var selected = productItems[0];

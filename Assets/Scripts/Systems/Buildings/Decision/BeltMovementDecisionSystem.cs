@@ -58,6 +58,7 @@ public partial struct BeltMovementDecisionSystem : ISystem
         {
             DeltaTime = dt,
             SpeedBonus = SystemAPI.GetSingleton<ResearchStatBonuses>().BeltSpeed,
+            Directions = SystemAPI.GetComponentLookup<Direction>(true),
             BeltMap = beltIndex.Map,
             ItemMap = itemIndex.Map,
             BeltMovementStateLookup = _beltMovementStateLookup,
@@ -90,6 +91,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
 
     [ReadOnly]
     public NativeParallelHashMap<int2, BeltInfo> BeltMap;
+    [ReadOnly] public ComponentLookup<Direction> Directions;
 
     [ReadOnly]
     public NativeParallelMultiHashMap<int2, Entity> ItemMap;
@@ -110,7 +112,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
         in GridPosition gridPos)
     {
         // 2. 현재 타일에 벨트가 존재하지 않으면 이동 불가 (바닥에 멈춤)
-        if (!BeltMap.TryGetValue(gridPos.Value, out BeltInfo currentBelt))
+        if (!BeltEntryUtility.TryGetDirectedBelt(gridPos.Value, BeltMap, Directions, out BeltInfo currentBelt))
         {
             decision.PlannedProgress = 0.0f;
             decision.IsBlocked = true;

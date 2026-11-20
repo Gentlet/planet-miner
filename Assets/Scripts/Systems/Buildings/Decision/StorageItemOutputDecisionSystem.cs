@@ -60,6 +60,7 @@ public partial struct StorageItemOutputDecisionSystem : ISystem
 
         var job = new StorageItemOutputDecisionJob
         {
+            Directions = SystemAPI.GetComponentLookup<Direction>(true),
             BeltMap = beltIndex.Map,
             ItemMap = itemIndex.Map,
             BeltMovementStateLookup = _beltMovementStateLookup,
@@ -88,6 +89,7 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
 {
     [ReadOnly]
     public NativeParallelHashMap<int2, BeltInfo> BeltMap;
+    [ReadOnly] public ComponentLookup<Direction> Directions;
 
     [ReadOnly]
     public NativeParallelMultiHashMap<int2, Entity> ItemMap;
@@ -138,7 +140,7 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
         }
 
         if (BeltEntryUtility.TryFindBuildingOutputBelt(gridPos.Value, footprint.GetEffectiveSize(dir.dir),
-                BeltMap, ItemMap, PendingDemolitionLookup, DestroyItemRequestLookup, BeltMovementStateLookup,
+                BeltMap, ItemMap, Directions, PendingDemolitionLookup, DestroyItemRequestLookup, BeltMovementStateLookup,
                 out int2 foundBeltPos))
         {
             // 첫 보관 실물을 출고 후보로 지정한다. 실제 제거/이동은 Reservation 승인 뒤 Apply가 수행한다.
