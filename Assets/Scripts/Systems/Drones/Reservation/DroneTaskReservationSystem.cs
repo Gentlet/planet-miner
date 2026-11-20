@@ -17,7 +17,6 @@ public partial struct DroneTaskReservationSystem : ISystem
     private Entity _candidates;
     private EntityQuery _assignments;
     private EntityQuery _registry;
-    private EntityQuery _sites;
     private EntityQuery _capacity;
     private EntityQuery _transportOwners;
     private ComponentLookup<DroneTransportRequirement> _requirements;
@@ -32,7 +31,6 @@ public partial struct DroneTaskReservationSystem : ISystem
         _candidates = DroneSchedulingUtility.GetOrCreateCandidates(state.EntityManager);
         _assignments = state.GetEntityQuery(ComponentType.ReadOnly<DroneTaskAssignment>());
         _registry = state.GetEntityQuery(ComponentType.ReadOnly<ItemRegistry>(), ComponentType.ReadOnly<ItemConfigElement>());
-        _sites = state.GetEntityQuery(ComponentType.ReadOnly<ConstructionSite>(), ComponentType.ReadOnly<GridPosition>());
         _capacity = state.GetEntityQuery(ComponentType.ReadOnly<DroneCapacityState>());
         _transportOwners = state.GetEntityQuery(ComponentType.ReadWrite<DroneTransportReservation>());
         _requirements = state.GetComponentLookup<DroneTransportRequirement>(true);
@@ -54,15 +52,23 @@ public partial struct DroneTaskReservationSystem : ISystem
         using var usedWorkers = new NativeHashSet<Entity>(16, Allocator.Temp);
         using var claimedTargets = new NativeHashSet<Entity>(16, Allocator.Temp);
         using var assignments = _assignments.ToEntityArray(Allocator.Temp);
-        using var sites = _sites.ToEntityArray(Allocator.Temp);
+        var invalidations = manager.GetBuffer<DroneTaskInvalidationDecisionElement>(_candidates, true);
+        using var endingAssignments = new NativeHashMap<Entity, uint>(invalidations.Length, Allocator.Temp);
+        foreach (var intent in invalidations)
+        {
+            if (intent.Kind == DroneTaskInvalidationDecisionKindEnum.CancelAssignment ||
+                intent.Kind == DroneTaskInvalidationDecisionKindEnum.InvalidateAssignment)
+            {
+                endingAssignments.TryAdd(intent.Target, intent.AssignmentRevision);
+            }
+        }
         // 배정 상태를 닫기 전에 수량 예약만 해제한다. 연결/종료 상태 변경은 Lifecycle Apply의 책임이다.
         // 정상 배정의 드론/회수 실물/철거 건물은 새 작업에 중복 선택하지 않는다.
         for (int i = 0; i < assignments.Length; i++)
         {
             Entity entity = assignments[i];
             var assignment = manager.GetComponentData<DroneTaskAssignment>(entity);
-            if (DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, assignment.Task) ||
-                DroneSchedulingUtility.AssignmentNeedsCleanup(manager, entity, assignment, sites))
+            if (endingAssignments.TryGetValue(entity, out uint revision) && revision == assignment.Revision)
             {
                 if (manager.HasComponent<ConstructionSupplyReservation>(entity))
                 {
