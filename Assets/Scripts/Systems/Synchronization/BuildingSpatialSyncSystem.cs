@@ -15,12 +15,14 @@ using Unity.Mathematics;
 [BurstCompile]
 public partial struct BuildingSpatialSyncSystem : ISystem
 {
+    private int _mapCapacity;
     private EntityQuery _buildingQuery;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        var map = new NativeParallelHashMap<int2, BuildingInfo>(1024, Allocator.Persistent);
+        _mapCapacity = 1024;
+        var map = new NativeParallelHashMap<int2, BuildingInfo>(_mapCapacity, Allocator.Persistent);
 
         var singletonEntity = state.EntityManager.CreateEntity();
         state.EntityManager.AddComponentData(singletonEntity, new BuildingSpatialIndex
@@ -85,10 +87,12 @@ public partial struct BuildingSpatialSyncSystem : ISystem
             requiredCapacity += size.x * size.y;
         }
 
-        if (index.Map.Capacity < requiredCapacity)
+        if (_mapCapacity < requiredCapacity)
         {
             fence.State.Complete();
-            index.Map.Capacity = math.max(1024, requiredCapacity * 2);
+            int newCapacity = math.max(1024, requiredCapacity * 2);
+            index.Map.Capacity = newCapacity;
+            _mapCapacity = newCapacity;
         }
 
         // 회전은 footprint 면적을 바꾸지 않는다. 등록은 회전된 셀을 사용하며 맵 Clear는 기존 Reader/Writer를 Fence로 기다린다.

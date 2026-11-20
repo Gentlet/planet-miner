@@ -9,15 +9,17 @@ using Unity.Mathematics;
 [BurstCompile]
 public partial struct PowerGridConnectionSyncSystem : ISystem
 {
+    private int _mapCapacity;
     private EntityQuery _connectionQuery;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
+        _mapCapacity = 1024;
         var entity = state.EntityManager.CreateEntity();
         state.EntityManager.AddComponentData(entity, new PowerGridConnectionIndex
         {
-            Map = new NativeParallelHashMap<Entity, PowerGridConnection>(1024, Allocator.Persistent)
+            Map = new NativeParallelHashMap<Entity, PowerGridConnection>(_mapCapacity, Allocator.Persistent)
         });
         state.EntityManager.AddComponentData(entity, new PowerGridConnectionIndexFence());
         _connectionQuery = SystemAPI.QueryBuilder().WithAll<PowerGridConnection>().Build();
@@ -42,10 +44,12 @@ public partial struct PowerGridConnectionSyncSystem : ISystem
         ref var fence = ref SystemAPI.GetSingletonRW<PowerGridConnectionIndexFence>().ValueRW;
         var index = SystemAPI.GetSingleton<PowerGridConnectionIndex>();
         int count = _connectionQuery.CalculateEntityCount();
-        if (index.Map.Capacity < count)
+        if (_mapCapacity < count)
         {
             fence.State.Complete();
-            index.Map.Capacity = math.max(1024, count * 2);
+            int newCapacity = math.max(1024, count * 2);
+            index.Map.Capacity = newCapacity;
+            _mapCapacity = newCapacity;
         }
 
         var dependency = JobHandle.CombineDependencies(state.Dependency, fence.State.GetWriterDependency());

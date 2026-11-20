@@ -17,12 +17,14 @@ public partial struct ItemSpatialSyncSystem : ISystem
 {
     // 월드 아이템 및 보관(Stored) 아이템을 모두 포함하는 아이템 쿼리
     // 쿼리에서 월드 실물과 삭제 예정 여부를 확인한다.
+    private int _mapCapacity;
     private EntityQuery _itemQuery;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        var map = new NativeParallelMultiHashMap<int2, Entity>(1024, Allocator.Persistent);
+        _mapCapacity = 1024;
+        var map = new NativeParallelMultiHashMap<int2, Entity>(_mapCapacity, Allocator.Persistent);
 
         var singletonEntity = state.EntityManager.CreateEntity();
         state.EntityManager.AddComponentData(singletonEntity, new ItemSpatialIndex
@@ -79,10 +81,12 @@ public partial struct ItemSpatialSyncSystem : ISystem
         }
 
         // Capacity 변경처럼 Main Thread 직접 접근이 필요한 경우에만 제한적으로 Complete
-        if (index.Map.Capacity < count)
+        if (_mapCapacity < count)
         {
             fence.State.Complete();
-            index.Map.Capacity = math.max(1024, count * 2);
+            int newCapacity = math.max(1024, count * 2);
+            index.Map.Capacity = newCapacity;
+            _mapCapacity = newCapacity;
         }
 
         // Native 맵 Clear는 ECS 값 의존성만으로 보호되지 않는다. 기존 Reader/Writer를 Fence로 함께 기다린다.

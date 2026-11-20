@@ -15,12 +15,14 @@ using Unity.Mathematics;
 [BurstCompile]
 public partial struct BeltSpatialSyncSystem : ISystem
 {
+    private int _mapCapacity;
     private EntityQuery _beltQuery;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
-        var map = new NativeParallelHashMap<int2, BeltInfo>(1024, Allocator.Persistent);
+        _mapCapacity = 1024;
+        var map = new NativeParallelHashMap<int2, BeltInfo>(_mapCapacity, Allocator.Persistent);
 
         var singletonEntity = state.EntityManager.CreateEntity();
         state.EntityManager.AddComponentData(singletonEntity, new BeltSpatialIndex
@@ -78,10 +80,12 @@ public partial struct BeltSpatialSyncSystem : ISystem
         }
 
         // Capacity 변경처럼 Main Thread 직접 접근이 필요한 경우에만 제한적으로 Complete
-        if (index.Map.Capacity < count)
+        if (_mapCapacity < count)
         {
             fence.State.Complete();
-            index.Map.Capacity = math.max(1024, count * 2);
+            int newCapacity = math.max(1024, count * 2);
+            index.Map.Capacity = newCapacity;
+            _mapCapacity = newCapacity;
         }
 
         // Native 맵 Clear는 ECS 값 의존성만으로 보호되지 않는다. 기존 Reader/Writer를 Fence로 함께 기다린다.

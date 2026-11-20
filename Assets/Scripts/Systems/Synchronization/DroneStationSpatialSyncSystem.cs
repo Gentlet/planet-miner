@@ -10,15 +10,17 @@ using Unity.Mathematics;
 [BurstCompile]
 public partial struct DroneStationSpatialSyncSystem : ISystem
 {
+    private int _mapCapacity;
     private EntityQuery _stations;
 
     [BurstCompile]
     public void OnCreate(ref SystemState state)
     {
+        _mapCapacity = 16;
         var entity = state.EntityManager.CreateEntity();
         state.EntityManager.AddComponentData(entity, new DroneStationSpatialIndex
         {
-            Map = new NativeParallelHashMap<Entity, DroneStationCoverage>(16, Allocator.Persistent)
+            Map = new NativeParallelHashMap<Entity, DroneStationCoverage>(_mapCapacity, Allocator.Persistent)
         });
         state.EntityManager.AddComponent<DroneStationSpatialIndexFence>(entity);
         _stations = SystemAPI.QueryBuilder().WithAll<DroneStation, DroneStationNetwork, BuildingType, GridPosition, Direction>()
@@ -39,10 +41,12 @@ public partial struct DroneStationSpatialSyncSystem : ISystem
         ref var fence = ref SystemAPI.GetSingletonRW<DroneStationSpatialIndexFence>().ValueRW;
         var index = SystemAPI.GetSingleton<DroneStationSpatialIndex>();
         int count = _stations.CalculateEntityCount();
-        if (index.Map.Capacity < count)
+        if (_mapCapacity < count)
         {
             fence.State.Complete();
-            index.Map.Capacity = math.max(16, count * 2);
+            int newCapacity = math.max(16, count * 2);
+            index.Map.Capacity = newCapacity;
+            _mapCapacity = newCapacity;
         }
         var dependency = JobHandle.CombineDependencies(state.Dependency, fence.State.GetWriterDependency());
         var clear = new ClearSpatialMapJob<Entity, DroneStationCoverage> { Map = index.Map }.Schedule(dependency);
