@@ -295,6 +295,7 @@ namespace PlanetMiner.Config
 
             // 전체 입력을 검증한 뒤에만 World 수명 레지스트리를 만든다. 후반 부산물 오류도 부분 게시하지 않는다.
             ValidateConfig(config);
+            ValidateOutputStacks(entityManager, config);
             Entity registryEntity = entityManager.CreateEntity(
                 typeof(RecipeRegistry), typeof(RecipeConfigElement),
                 typeof(RecipeIngredientElement), typeof(RecipeOutputElement));
@@ -328,6 +329,24 @@ namespace PlanetMiner.Config
                 // 이번 게시에서 만든 미완성 엔티티만 회수한다.
                 entityManager.DestroyEntity(registryEntity);
                 throw;
+            }
+        }
+
+        internal static void ValidateOutputStacks(EntityManager manager, RecipeConfigData config)
+        {
+            using var itemsQuery = manager.CreateEntityQuery(typeof(ItemRegistry), typeof(ItemConfigElement));
+            if (itemsQuery.CalculateEntityCount() != 1)
+            {
+                throw new ArgumentException("Recipe outputs require a single published item registry.");
+            }
+            var items = manager.GetBuffer<ItemConfigElement>(itemsQuery.GetSingletonEntity(), true);
+            foreach (var output in config.Outputs)
+            {
+                int maximum = ItemRegistry.GetMaxStack(items, output.ItemType);
+                if (output.Amount > maximum)
+                {
+                    throw new ArgumentException($"Recipe output {output.ItemType} quantity {output.Amount} exceeds its slot maximum {maximum}.");
+                }
             }
         }
 

@@ -63,6 +63,7 @@ public partial class RecipeInitSystem : SystemBase
                 }
                 RecipeConfigLoader.ValidateConfig(config);
                 RecipeConfigLoader.ValidateRequiredRecipes(config);
+                RecipeConfigLoader.ValidateOutputStacks(EntityManager, config);
             }
             catch (ArgumentException exception)
             {
