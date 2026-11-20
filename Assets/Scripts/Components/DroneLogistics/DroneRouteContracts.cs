@@ -17,7 +17,7 @@ public enum DroneRouteKindEnum : byte
 }
 
 /// <summary>
-/// 역할·목적: 미평가·도달 가능·도달 불가의 경로 평가 결과를 구분한다.
+/// 역할·목적: 미평가·도달 가능·도달 불가·에너지 대기의 경로 평가 결과를 구분한다.
 /// 부착 엔티티: 열거형 자체는 부착하지 않으며 DroneRouteEvaluationResult.Status에 포함한다.
 /// 생성·이용: DroneFlightDecisionSystem이 판단하고 Task Execution이 유지되는 요청에 결과를 게시한다. Decision/Reservation/Publish는 유효한 Reachable 결과만 선택한다. WaitingForEnergy는 충전/에너지 대기이며 안전 방출의 근거가 아니다.
 /// 제거: 값을 담은 컴포넌트·판단·결과의 갱신/삭제 수명을 따른다. 별도 엔티티 수명을 갖지 않는다.
@@ -65,6 +65,7 @@ public struct DroneRouteEvaluationRequest : IRequestComponent
 /// 생성: DroneFlightDecisionSystem의 판단을 Task Execution이 기존 EndSimulation에 게시한다.
 /// 이용: Decision의 DroneTaskDecisionSystem, Reservation의 DroneTaskReservationSystem, StateApply의 DroneTaskAssignmentPublishSystem이 읽는다.
 /// 양수 EvaluationRevision과 요청·관측·배정·대상 스냅샷이 유효해야 하며 Reachable일 때만 거리를 후보 비교에 사용한다.
+/// 정박 재배정의 Direct 목적지 경로가 현재 정거장의 충전으로 시작하면 WaitingForEnergy로 전달한다.
 /// 제거: Decision의 Remove 의도를 소비한 DroneTaskExecutionSystem이 EndSimulation에 경로 요청 엔티티와 함께 삭제한다.
 /// TotalDistance는 충전 경유를 포함한 유한한 0 이상 실제 이동거리다. 기본 None/거리 0만으로 도달 가능이라고 해석하지 않는다.
 /// </summary>

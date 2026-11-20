@@ -678,7 +678,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         for (int i = 0; i < assignments.Length; i++)
         {
             Entity entity = assignments[i];
-            if (!DroneSchedulingUtility.IsRetargetingWorker(manager, entity, out var assignment, out int cargo)) continue;
+            if (!DroneSchedulingUtility.IsRetargetingWorker(manager, entity, out var assignment, out int cargo, includeDocked: true)) continue;
             if (cancellations.IsPlanned(assignment.Task)) continue;
             var observation = manager.GetComponentData<DroneWorkerObservation>(assignment.Worker);
             Entity network = DroneTaskNetworkUtility.FindWorkerNetwork(networks, observation.Position);
@@ -777,6 +777,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         bestDestination = Entity.Null;
         bestRoute = Entity.Null;
         float bestDistance = float.MaxValue;
+        bool bestNeedsDockAtOrigin = false;
         bool waiting = false;
         bool waitingForEnergy = false;
         // 적재품은 공급원을 다시 거치지 않는 Direct 경로를 비교한다.
@@ -807,7 +808,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 waiting = true;
                 continue;
             }
-            if (!DroneSchedulingUtility.TryReadRoute(manager, route, capacity, out var routeResult))
+            if (!DroneSchedulingUtility.TryReadRoute(manager, route, capacity, out var routeResult, out bool needsDockAtOrigin))
             {
                 waiting = true;
                 continue;
@@ -818,9 +819,16 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 continue;
             }
             float distance = routeResult.TotalDistance;
-            if (bestDestination == Entity.Null || distance < bestDistance ||
-                (distance == bestDistance && DroneSchedulingUtility.ComparePlacement(manager, destination, bestDestination) < 0))
+            // 같은 종류 안에서 바로 이동할 경로를 먼저 고른다. 모두 정박이 필요하면 거리·설치 순서로 고른다.
+            bool preferred = bestDestination == Entity.Null || (bestNeedsDockAtOrigin && !needsDockAtOrigin);
+            if (!preferred && needsDockAtOrigin == bestNeedsDockAtOrigin)
             {
+                preferred = distance < bestDistance ||
+                    (distance == bestDistance && DroneSchedulingUtility.ComparePlacement(manager, destination, bestDestination) < 0);
+            }
+            if (preferred)
+            {
+                bestNeedsDockAtOrigin = needsDockAtOrigin;
                 bestDestination = destination;
                 bestRoute = route;
                 bestDistance = distance;

@@ -173,12 +173,26 @@ internal static class DroneStationAutomationUtility
         }
     }
 
+    /// <summary>실행 중인 수행자의 우선권과 정박 수행자의 재개 후보를 각각 수집한다.</summary>
     public static void AddWorkersWithTaskDecisionPriority(EntityManager manager, Entity candidates,
-        ComponentLookup<DroneWorkerObservation> observations, NativeHashSet<Entity> workers)
+        ComponentLookup<DroneWorkerObservation> observations, NativeHashSet<Entity> workers,
+        NativeHashMap<Entity, DroneTaskCandidateDecisionElement> dockedRetargets)
     {
         foreach (var candidate in manager.GetBuffer<DroneTaskCandidateDecisionElement>(candidates, true))
         {
-            if (candidate.Quantity > 0) workers.Add(candidate.Worker);
+            if (candidate.Quantity <= 0)
+            {
+                continue;
+            }
+            // 정박 중의 재배정 후보는 출고 자격에만 사용한다. 실제 배정은 정박 해제 공개 뒤 다시 판단한다.
+            if (candidate.Assignment != Entity.Null && manager.HasComponent<DroneDocked>(candidate.Worker))
+            {
+                dockedRetargets.TryAdd(candidate.Worker, candidate);
+            }
+            else
+            {
+                workers.Add(candidate.Worker);
+            }
         }
         foreach (var plan in manager.GetBuffer<DroneTransportPlanDecisionElement>(candidates, true))
         {
@@ -314,8 +328,7 @@ internal static class DroneStationAutomationUtility
     }
 
     public static void PrepareResume(EntityManager manager, Entity worker, Entity station, Entity assignmentEntity,
-        NativeArray<DroneStationNetworkDecision> networks, NativeArray<Entity> storages, NativeArray<Entity> sites,
-        Entity registry, NativeList<DroneStationActivationPlan> plans)
+        NativeHashMap<Entity, DroneTaskCandidateDecisionElement> dockedRetargets, NativeList<DroneStationActivationPlan> plans)
     {
         var assignment = manager.GetComponentData<DroneTaskAssignment>(assignmentEntity);
         if (DroneSchedulingUtility.IsTerminal(assignment.State)) return;
@@ -324,25 +337,19 @@ internal static class DroneStationAutomationUtility
             Charge = manager.GetComponentData<DroneBatteryState>(worker).CurrentCharge };
         if (assignment.State == DroneTaskAssignmentStateEnum.Retargeting)
         {
-            Entity network = DroneTaskNetworkUtility.FindWorkerNetwork(networks, new float3(plan.Origin, 0));
-            if (network == Entity.Null) return;
-            foreach (Entity target in storages)
+            if (!dockedRetargets.TryGetValue(worker, out var candidate))
             {
-                if (!DroneSchedulingUtility.IsStorage(manager, target) ||
-                    !DroneTaskNetworkUtility.IsTargetInNetwork(manager, networks, network, target) ||
-                    !DroneSchedulingUtility.HasStorageSpace(manager, target, assignment.ItemType, registry)) continue;
-                if (!DroneTargetPointUtility.TryGetTargetPoint(manager, target, out plan.Destination)) continue;
-                plans.Add(plan);
+                return;
             }
-            if (manager.GetComponentData<DroneCargoState>(worker).Origin != DroneCargoOriginEnum.Supply) return;
-            foreach (Entity site in sites)
+            if (candidate.NextAction == DroneActionKindEnum.DropCargo)
             {
-                if (!DroneSchedulingUtility.IsSite(manager, site) ||
-                    !DroneTaskNetworkUtility.IsTargetInNetwork(manager, networks, network, site) ||
-                    ConstructionSupplyReservationUtility.Remaining(manager, site, assignment.ItemType) <= 0) continue;
-                if (!DroneTargetPointUtility.TryGetTargetPoint(manager, site, out plan.Destination)) continue;
-                plans.Add(plan);
+                plan.Destination = candidate.DropPosition;
             }
+            else if (!DroneTargetPointUtility.TryGetTargetPoint(manager, candidate.Destination, out plan.Destination))
+            {
+                return;
+            }
+            plans.Add(plan);
             return;
         }
         plan.ViaSource = assignment.NextAction == DroneActionKindEnum.CollectFromStorage || assignment.NextAction == DroneActionKindEnum.RecoverWorldItem;

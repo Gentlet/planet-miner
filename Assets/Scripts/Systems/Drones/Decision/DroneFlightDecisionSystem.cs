@@ -55,7 +55,8 @@ public partial struct DroneFlightDecisionSystem : ISystem
             Positions = SystemAPI.GetComponentLookup<GridPosition>(true),
             Footprints = SystemAPI.GetComponentLookup<BuildingFootprint>(true),
             Directions = SystemAPI.GetComponentLookup<Direction>(true),
-            Batteries = SystemAPI.GetComponentLookup<DroneBatteryState>(true)
+            Batteries = SystemAPI.GetComponentLookup<DroneBatteryState>(true),
+            Docks = SystemAPI.GetComponentLookup<DroneDocked>(true)
         }.ScheduleParallel(build);
         var movements = new PrepareMovementJob
         {
@@ -169,6 +170,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
         [ReadOnly] public ComponentLookup<BuildingFootprint> Footprints;
         [ReadOnly] public ComponentLookup<Direction> Directions;
         [ReadOnly] public ComponentLookup<DroneBatteryState> Batteries;
+        [ReadOnly] public ComponentLookup<DroneDocked> Docks;
 
         private void Execute(in DroneRouteEvaluationRequest request, ref DroneRouteEvaluationDecision decision)
         {
@@ -217,8 +219,38 @@ public partial struct DroneFlightDecisionSystem : ISystem
                     charge, Maximum, Config.EnergyPerDistance, Stations);
             }
             result.Status = plan.Status;
-            result.TotalDistance = plan.Distance;
-            decision = new DroneRouteEvaluationDecision { Ready = true, Result = result };
+            bool needsDockAtOrigin = false;
+            if (request.Kind == DroneRouteKindEnum.Direct && !request.IsDropPositionSearch)
+            {
+                result.Status = GetRetargetDepartureStatus(request, plan, out needsDockAtOrigin);
+            }
+            if (result.Status == DroneRouteEvaluationStatusEnum.Reachable)
+            {
+                result.TotalDistance = plan.Distance;
+            }
+            decision = new DroneRouteEvaluationDecision
+            {
+                Ready = true, Result = result, NeedsDockAtOrigin = needsDockAtOrigin
+            };
+        }
+
+        private DroneRouteEvaluationStatusEnum GetRetargetDepartureStatus(in DroneRouteEvaluationRequest request,
+            in DroneFlightPlan plan, out bool needsDockAtOrigin)
+        {
+            needsDockAtOrigin = false;
+            Entity originCharger = plan.GetChargingStationAtOrigin(request.OriginPosition.xy);
+            if (originCharger == Entity.Null)
+            {
+                return plan.Status;
+            }
+            if (Docks.TryGetComponent(request.Worker, out var docked))
+            {
+                return docked.Station == originCharger ? DroneRouteEvaluationStatusEnum.WaitingForEnergy : plan.Status;
+            }
+
+            // 정박 해제 뒤 이 경로로 다시 정박할 수 있다. 곧바로 이동할 대안이 있으면 그쪽을 우선한다.
+            needsDockAtOrigin = true;
+            return plan.Status;
         }
     }
 

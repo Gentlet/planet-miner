@@ -64,9 +64,11 @@ public struct DroneMovementResult : IComponentData
     public DroneMovementFailureEnum Failure;
 }
 
-/// <summary>이번 틱의 경로 판단이다. Task Execution은 Retain 대상만 기존 EndSimulation에 공개한다.</summary>
+/// <summary>이번 틱의 경로 판단이다. Task Execution은 Retain 대상의 Result만 EndSimulation에 공개한다.</summary>
 public struct DroneRouteEvaluationDecision : IComponentData
 {
     public bool Ready;
     public DroneRouteEvaluationResult Result;
+    // 미정박 재배정 수행자가 이 목적지로 가려면 현재 위치에서 먼저 정박해야 한다. 같은 틱 후보 비교에만 쓴다.
+    public bool NeedsDockAtOrigin;
 }

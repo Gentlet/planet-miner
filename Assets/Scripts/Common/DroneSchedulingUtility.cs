@@ -511,8 +511,9 @@ public static class DroneSchedulingUtility
         return false;
     }
 
+    /// <summary>includeDocked는 정박 해제의 경로·재개 후보 평가에 사용한다. 일반 작업 Reservation과 배정 공개는 정박 해제 후의 기본 자격을 요구한다.</summary>
     public static bool IsRetargetingWorker(EntityManager manager, Entity assignmentEntity,
-        out DroneTaskAssignment assignment, out int cargoQuantity)
+        out DroneTaskAssignment assignment, out int cargoQuantity, bool includeDocked = false)
     {
         assignment = default;
         cargoQuantity = 0;
@@ -524,12 +525,16 @@ public static class DroneSchedulingUtility
         if (!manager.HasComponent<DroneWorker>(assignment.Worker)) return false;
         if (!manager.HasComponent<DroneWorkerObservation>(assignment.Worker)) return false;
         if (!manager.HasComponent<DroneWorkerAssignment>(assignment.Worker)) return false;
-        if (manager.HasComponent<DroneDocked>(assignment.Worker)) return false;
+        bool docked = manager.HasComponent<DroneDocked>(assignment.Worker);
+        if (docked && !includeDocked)
+        {
+            return false;
+        }
         if (manager.GetComponentData<DroneWorkerAssignment>(assignment.Worker).Assignment != assignmentEntity) return false;
         if (manager.HasComponent<DroneMovementState>(assignment.Worker))
         {
             var movement = manager.GetComponentData<DroneMovementState>(assignment.Worker);
-            if ((!movement.IsNormalReturn && (movement.ChargingStation != Entity.Null || movement.ReturnStation != Entity.Null)) ||
+            if ((!docked && !movement.IsNormalReturn && (movement.ChargingStation != Entity.Null || movement.ReturnStation != Entity.Null)) ||
                 manager.GetComponentData<DroneBatteryState>(assignment.Worker).CurrentCharge <= 0f)
             {
                 return false;
@@ -628,7 +633,7 @@ public static class DroneSchedulingUtility
         bool demolition = request.Kind == DroneRouteKindEnum.DirectToBuilding;
         if (direct)
         {
-            if (!IsRetargetingWorker(manager, request.Assignment, out var assignment, out _))
+            if (!IsRetargetingWorker(manager, request.Assignment, out var assignment, out _, includeDocked: true))
             {
                 return false;
             }
@@ -726,13 +731,18 @@ public static class DroneSchedulingUtility
     }
 
     /// <summary>도메인 내부는 이번 틱 판단을 읽는다. 외부 공개 Result는 기존 EndSimulation까지 보존한다.</summary>
-    public static DroneRouteEvaluationResult ReadCurrentRouteResult(EntityManager manager, Entity request)
+    public static DroneRouteEvaluationResult ReadCurrentRouteResult(EntityManager manager, Entity request) =>
+        ReadCurrentRouteResult(manager, request, out _);
+
+    private static DroneRouteEvaluationResult ReadCurrentRouteResult(EntityManager manager, Entity request, out bool needsDockAtOrigin)
     {
+        needsDockAtOrigin = false;
         if (manager.HasComponent<DroneRouteEvaluationDecision>(request))
         {
             var decision = manager.GetComponentData<DroneRouteEvaluationDecision>(request);
             if (decision.Ready)
             {
+                needsDockAtOrigin = decision.NeedsDockAtOrigin;
                 return decision.Result;
             }
         }
@@ -744,9 +754,14 @@ public static class DroneSchedulingUtility
     /// 현재 요청의 도달 불가와 에너지 대기도 유효한 결과다. 미평가 또는 무효 결과는 false를 반환한다.
     /// </summary>
     public static bool TryReadRoute(EntityManager manager, Entity requestEntity, int carryingCapacity,
-        out DroneRouteEvaluationResult result)
+        out DroneRouteEvaluationResult result) =>
+        TryReadRoute(manager, requestEntity, carryingCapacity, out result, out _);
+
+    internal static bool TryReadRoute(EntityManager manager, Entity requestEntity, int carryingCapacity,
+        out DroneRouteEvaluationResult result, out bool needsDockAtOrigin)
     {
         result = default;
+        needsDockAtOrigin = false;
         if (!manager.HasComponent<DroneRouteEvaluationRequest>(requestEntity) ||
             !manager.HasComponent<DroneRouteEvaluationResult>(requestEntity))
         {
@@ -754,7 +769,7 @@ public static class DroneSchedulingUtility
         }
 
         var request = manager.GetComponentData<DroneRouteEvaluationRequest>(requestEntity);
-        var current = ReadCurrentRouteResult(manager, requestEntity);
+        var current = ReadCurrentRouteResult(manager, requestEntity, out bool currentNeedsDock);
         if (!RouteIsCurrent(manager, request, carryingCapacity) || current.EvaluationRevision != request.EvaluationRevision ||
             !IsValidCompletedRouteResult(manager, request, current))
         {
@@ -762,6 +777,7 @@ public static class DroneSchedulingUtility
         }
 
         result = current;
+        needsDockAtOrigin = currentNeedsDock;
         return true;
     }
 

@@ -27,6 +27,12 @@ internal struct DroneFlightPlan
     public float RemainingCharge;
     public float2 NextPosition;
     public Entity ChargingStation;
+
+    // 첫 충전 경유가 실제 출발 위치이면 운반 전에 이 정거장에서 충전해야 한다.
+    public Entity GetChargingStationAtOrigin(float2 origin)
+    {
+        return math.all(NextPosition == origin) ? ChargingStation : Entity.Null;
+    }
 }
 
 /// <summary>직선 자유 비행/충전 경유 거리와 필요 에너지를 같은 규칙으로 계획한다. 계획의 최대 충전량을 실물 배터리에 쓰지 않는다.</summary>

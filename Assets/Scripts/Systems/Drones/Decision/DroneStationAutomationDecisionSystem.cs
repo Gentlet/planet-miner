@@ -55,8 +55,9 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
         using var requests = _requests.ToComponentDataArray<DroneStationRequest>(Allocator.Temp);
         using var excludedWorkers = new NativeHashSet<Entity>(math.max(1, workers.Length), Allocator.Temp);
         foreach (var request in requests) excludedWorkers.Add(request.Drone);
+        using var dockedRetargets = new NativeHashMap<Entity, DroneTaskCandidateDecisionElement>(16, Allocator.Temp);
         DroneStationAutomationUtility.AddWorkersWithTaskDecisionPriority(manager, _candidates,
-            SystemAPI.GetComponentLookup<DroneWorkerObservation>(true), excludedWorkers);
+            SystemAPI.GetComponentLookup<DroneWorkerObservation>(true), excludedWorkers, dockedRetargets);
         using var flights = new NativeList<DroneFlightStation>(Allocator.TempJob);
         DroneStationAutomationUtility.BuildStations(manager, stations, flights);
         using var plans = new NativeList<DroneStationActivationPlan>(Allocator.TempJob);
@@ -116,7 +117,7 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
             }
             if (docked && linked && manager.GetComponentData<DroneBatteryState>(worker).CurrentCharge > 0f)
             {
-                DroneStationAutomationUtility.PrepareResume(manager, worker, station, assignment, networks, storages, sites, registry, plans);
+                DroneStationAutomationUtility.PrepareResume(manager, worker, station, assignment, dockedRetargets, plans);
                 continue;
             }
             if (docked && !linked && manager.GetComponentData<DroneCargoState>(worker).Quantity == 0)
@@ -169,10 +170,18 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
         for (int i = 0; i < plans.Length; i++)
         {
             var plan = plans[i];
-            if ((plan.StockSlot < 0 && activated.Contains(plan.Drone)) ||
-                outcomes[i].Status != DroneRouteEvaluationStatusEnum.Reachable) continue;
-            // 현재 정거장에서 충전을 더 기다려야 하는 경로는 출고하지 않는다.
-            if (outcomes[i].ChargingStation == plan.Station && math.all(outcomes[i].NextPosition == plan.Origin)) continue;
+            if (plan.StockSlot < 0 && activated.Contains(plan.Drone))
+            {
+                continue;
+            }
+            if (outcomes[i].Status != DroneRouteEvaluationStatusEnum.Reachable)
+            {
+                continue;
+            }
+            if (outcomes[i].GetChargingStationAtOrigin(plan.Origin) == plan.Station)
+            {
+                continue;
+            }
             if (plan.StockSlot < 0)
             {
                 activated.Add(plan.Drone);
