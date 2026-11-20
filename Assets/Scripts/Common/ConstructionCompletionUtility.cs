@@ -33,6 +33,33 @@ public static class ConstructionCompletionUtility
         return true;
     }
 
+    internal static bool HasBlockingWorldItem(int2 origin, int2 effectiveSize, in NativeParallelHashSet<int2> occupiedCells, int itemCount)
+    {
+        // 넓은 현장에 실물이 드문 경우 셀 면적 전체를 순회하지 않는다.
+        if ((long)effectiveSize.x * effectiveSize.y > itemCount)
+        {
+            foreach (var cell in occupiedCells)
+            {
+                if (BuildingFootprintUtility.Contains(origin, effectiveSize, cell))
+                {
+                    return true;
+                }
+            }
+            return false;
+        }
+        for (int y = 0; y < effectiveSize.y; y++)
+        {
+            for (int x = 0; x < effectiveSize.x; x++)
+            {
+                if (occupiedCells.Contains(origin + new int2(x, y)))
+                {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
     public static bool HasBlockingWorldItem(int2 origin, int2 effectiveSize, in NativeArray<int2> worldPositions)
     {
         for (int i = 0; i < worldPositions.Length; i++)

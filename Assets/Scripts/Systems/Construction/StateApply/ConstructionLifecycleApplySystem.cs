@@ -63,14 +63,14 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
         _prefabBufferLookup.Update(ref state);
         _configBufferLookup.Update(ref state);
         _destroyRequestLookup.Update(ref state);
-        // 일반 Ownership과 지난 틱 드론 실물 인계가 반영된 원본을 모은다. 공간 인덱스로 완공을 판단하지 않는다.
-        // Job에는 이번 검사 동안만 쓰는 위치 복사본을 전달하고 완료 후 Dispose한다.
-        state.CompleteDependency();
-        using var items = _worldItemQuery.ToEntityArray(Allocator.Temp);
-        var worldItemPositions = new NativeList<int2>(Allocator.TempJob);
-        var positions = state.GetComponentLookup<GridPosition>(true);
-        ConstructionCompletionUtility.CollectWorldItemPositions(
-            items, _destroyRequestLookup, positions, worldItemPositions);
+        // 현재 월드 원본으로 이번 완공 검사 전용 점유 셀을 모은다. 직전 Synchronization 맵에는 이번 틱 이동이 없다.
+        int itemCount = _worldItemQuery.CalculateEntityCount();
+        var occupiedCells = new NativeParallelHashSet<int2>(math.max(1, itemCount), Allocator.TempJob);
+        var cellsReady = new CollectConstructionObstaclesJob
+        {
+            OccupiedCells = occupiedCells.AsParallelWriter(),
+            DestroyRequests = _destroyRequestLookup
+        }.ScheduleParallel(_worldItemQuery, state.Dependency);
 
         Entity prefabDbEntity = _prefabDbQuery.IsEmptyIgnoreFilter ? Entity.Null : _prefabDbQuery.GetSingletonEntity();
         Entity configEntity = _buildingConfigQuery.IsEmptyIgnoreFilter ? Entity.Null : _buildingConfigQuery.GetSingletonEntity();
@@ -90,11 +90,28 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
             PrefabBufferLookup = _prefabBufferLookup,
             ConfigBufferLookup = _configBufferLookup,
             PlannedSettings = SystemAPI.GetComponentLookup<PlannedBuildingSettings>(true),
-            WorldItemPositions = worldItemPositions.AsArray()
+            OccupiedCells = occupiedCells,
+            ItemCount = itemCount
         };
-        var completionHandle = completionJob.Schedule(_siteQuery, state.Dependency);
-        state.Dependency = worldItemPositions.Dispose(completionHandle);
-        ecbSystem.AddJobHandleForProducer(state.Dependency);
+        var completionHandle = completionJob.Schedule(_siteQuery, cellsReady);
+        state.Dependency = occupiedCells.Dispose(completionHandle);
+        ecbSystem.AddJobHandleForProducer(completionHandle);
+    }
+}
+
+[BurstCompile]
+internal partial struct CollectConstructionObstaclesJob : IJobEntity
+{
+    public NativeParallelHashSet<int2>.ParallelWriter OccupiedCells;
+    [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyRequests;
+
+    public void Execute(Entity entity, in ItemIdentity item, in GridPosition position)
+    {
+        if (DestroyRequests.HasComponent(entity) && DestroyRequests.IsComponentEnabled(entity))
+        {
+            return;
+        }
+        OccupiedCells.Add(position.Value);
     }
 }
 
@@ -148,9 +165,10 @@ public partial struct ConstructionCompletionApplyJob : IJobChunk
     public Entity ConfigEntity;
 
     [ReadOnly]
-    public NativeArray<int2> WorldItemPositions;
+    public NativeParallelHashSet<int2> OccupiedCells;
+    public int ItemCount;
 
-[ReadOnly]
+    [ReadOnly]
     public ComponentLookup<PlacementStamp> StampLookup;
 
     [ReadOnly]
@@ -174,7 +192,7 @@ public partial struct ConstructionCompletionApplyJob : IJobChunk
         }
 
         int2 size = BuildingFootprintUtility.GetEffectiveSize(footprint.Size, dir.dir);
-        bool hasWorldItem = ConstructionCompletionUtility.HasBlockingWorldItem(pos.Value, size, WorldItemPositions);
+        bool hasWorldItem = ConstructionCompletionUtility.HasBlockingWorldItem(pos.Value, size, OccupiedCells, ItemCount);
 
         if (hasWorldItem)
         {
