@@ -289,72 +289,83 @@ public partial struct DroneTaskReservationSystem : ISystem
         DynamicBuffer<DroneTaskPendingPublicationElement> pendingPublications, Entity registry, int capacity,
         NativeHashSet<Entity> usedWorkers)
     {
-        var ordered = new NativeList<int>(Allocator.Temp);
-        try
+        using var ordered = new NativeList<RetargetCandidateOrder>(Allocator.Temp);
+        // 목적 작업이 바뀌어도 최초 작업 생성 순번을 유지하여 오래 운반 중인 자재부터 목적지를 확보한다.
+        for (int i = 0; i < candidates.Length; i++)
         {
-            // 목적 작업이 바뀌어도 최초 작업 생성 순번을 유지하여 오래 운반 중인 자재부터 목적지를 확보한다.
-            for (int i = 0; i < candidates.Length; i++)
+            Entity assignment = candidates[i].Assignment;
+            if (assignment == Entity.Null)
             {
-                if (candidates[i].Assignment == Entity.Null) continue;
-                int insert = ordered.Length;
-                ordered.Add(i);
-                while (insert > 0 && EarlierRetarget(manager, candidates[i], candidates[ordered[insert - 1]]))
-                {
-                    ordered[insert] = ordered[insert - 1];
-                    insert--;
-                }
-                ordered[insert] = i;
+                continue;
             }
-            for (int i = 0; i < ordered.Length; i++)
+            ulong creationSequence = ulong.MaxValue;
+            if (manager.HasComponent<DroneTaskAssignment>(assignment))
             {
-                int index = ordered[i];
-                var candidate = candidates[index];
-                if (usedWorkers.Contains(candidate.Worker)) continue;
-                int quantity = DroneSchedulingUtility.CandidateQuantity(manager, candidate, registry, capacity);
-                if (quantity <= 0) continue;
-                int committedQuantity = 0;
-                if (candidate.NextAction == DroneActionKindEnum.SupplyConstructionSite)
-                {
-                    committedQuantity = ConstructionSupplyReservationUtility.Reserve(manager,
-                        candidate.Destination, candidate.ItemType, quantity);
-                    quantity = committedQuantity;
-                }
-                if (quantity <= 0) continue;
-                pendingPublications.Add(new DroneTaskPendingPublicationElement
-                {
-                    Candidate = candidate,
-                    Quantity = quantity,
-                    CommittedQuantity = committedQuantity
-                });
-                usedWorkers.Add(candidate.Worker);
+                creationSequence = DroneSchedulingUtility.AssignmentCreationSequence(manager,
+                    manager.GetComponentData<DroneTaskAssignment>(assignment));
             }
+            ordered.Add(new RetargetCandidateOrder
+            {
+                CreationSequence = creationSequence,
+                AssignmentIndex = assignment.Index,
+                CandidateIndex = i
+            });
         }
-        finally
+        ordered.AsArray().Sort();
+        for (int i = 0; i < ordered.Length; i++)
         {
-            ordered.Dispose();
+            var candidate = candidates[ordered[i].CandidateIndex];
+            if (usedWorkers.Contains(candidate.Worker))
+            {
+                continue;
+            }
+            int quantity = DroneSchedulingUtility.CandidateQuantity(manager, candidate, registry, capacity);
+            if (quantity <= 0)
+            {
+                continue;
+            }
+            int committedQuantity = 0;
+            if (candidate.NextAction == DroneActionKindEnum.SupplyConstructionSite)
+            {
+                committedQuantity = ConstructionSupplyReservationUtility.Reserve(manager,
+                    candidate.Destination, candidate.ItemType, quantity);
+                quantity = committedQuantity;
+            }
+            if (quantity <= 0)
+            {
+                continue;
+            }
+            pendingPublications.Add(new DroneTaskPendingPublicationElement
+            {
+                Candidate = candidate,
+                Quantity = quantity,
+                CommittedQuantity = committedQuantity
+            });
+            usedWorkers.Add(candidate.Worker);
         }
     }
 
-    private static bool EarlierRetarget(EntityManager manager, in DroneTaskCandidateDecisionElement left,
-        in DroneTaskCandidateDecisionElement right)
+    private struct RetargetCandidateOrder : System.IComparable<RetargetCandidateOrder>
     {
-        ulong leftOrder = ulong.MaxValue;
-        if (manager.HasComponent<DroneTaskAssignment>(left.Assignment))
+        public ulong CreationSequence;
+        public int AssignmentIndex;
+        public int CandidateIndex;
+
+        public int CompareTo(RetargetCandidateOrder other)
         {
-            leftOrder = DroneSchedulingUtility.AssignmentCreationSequence(manager,
-                manager.GetComponentData<DroneTaskAssignment>(left.Assignment));
+            int comparison = CreationSequence.CompareTo(other.CreationSequence);
+            if (comparison != 0)
+            {
+                return comparison;
+            }
+            comparison = AssignmentIndex.CompareTo(other.AssignmentIndex);
+            if (comparison != 0)
+            {
+                return comparison;
+            }
+            // 같은 배정의 대안은 Decision이 전달한 순서대로 시도한다.
+            return CandidateIndex.CompareTo(other.CandidateIndex);
         }
-        ulong rightOrder = ulong.MaxValue;
-        if (manager.HasComponent<DroneTaskAssignment>(right.Assignment))
-        {
-            rightOrder = DroneSchedulingUtility.AssignmentCreationSequence(manager,
-                manager.GetComponentData<DroneTaskAssignment>(right.Assignment));
-        }
-        if (leftOrder != rightOrder)
-        {
-            return leftOrder < rightOrder;
-        }
-        return left.Assignment.Index < right.Assignment.Index;
     }
 
     [BurstCompile]

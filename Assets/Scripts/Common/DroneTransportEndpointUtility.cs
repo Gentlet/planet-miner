@@ -78,10 +78,12 @@ public static class DroneTransportEndpointUtility
         return quantity;
     }
 
-    public static int SourceQuantity(EntityManager manager, in DroneLogisticsTask task, Entity source)
+    public static int SourceQuantity(EntityManager manager, in DroneLogisticsTask task, Entity source) =>
+        CountSource(manager, source, task.ItemType, SourceArea(task), task.Purpose);
+
+    internal static DroneTransportAreaEnum SourceArea(in DroneLogisticsTask task)
     {
-        var area = task.Kind == DroneLogisticsTaskKindEnum.StorageExport ? task.Area : DroneTransportAreaEnum.GeneralStorage;
-        return CountSource(manager, source, task.ItemType, area, task.Purpose);
+        return task.Kind == DroneLogisticsTaskKindEnum.StorageExport ? task.Area : DroneTransportAreaEnum.GeneralStorage;
     }
 
     public static DroneTransportAreaEnum DestinationArea(in DroneLogisticsTask task)

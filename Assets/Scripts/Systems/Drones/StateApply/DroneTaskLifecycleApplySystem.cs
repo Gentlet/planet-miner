@@ -297,27 +297,51 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
     private static void RetireEndedTasks(EntityManager manager, NativeArray<Entity> tasks, NativeArray<Entity> assignments, EntityCommandBuffer ecb)
     {
         // 일반 종료와 명시 취소 모두 새 작업 이용을 끝낸다. 화물 복구 등 살아 있는 배정의 참조는 보존한다.
-        for (int t = 0; t < tasks.Length; t++)
+        NativeHashSet<Entity> referencedTasks = default;
+        try
         {
-            var task = manager.GetComponentData<DroneLogisticsTask>(tasks[t]);
-            if (task.State != DroneLogisticsTaskStateEnum.Closed && task.State != DroneLogisticsTaskStateEnum.Cancelled)
+            for (int t = 0; t < tasks.Length; t++)
             {
-                continue;
+                Entity taskEntity = tasks[t];
+                var task = manager.GetComponentData<DroneLogisticsTask>(taskEntity);
+                if (task.State != DroneLogisticsTaskStateEnum.Closed && task.State != DroneLogisticsTaskStateEnum.Cancelled)
+                {
+                    continue;
+                }
+                if (DroneSchedulingUtility.IsTransportKind(task.Kind) &&
+                    manager.GetComponentData<DroneTransportProgress>(taskEntity).ReservedQuantity > 0)
+                {
+                    continue;
+                }
+                // 무효화와 요청 반영이 끝난 배정의 현재 참조를 첫 종료 후보에서 한 번 모은다.
+                if (!referencedTasks.IsCreated)
+                {
+                    referencedTasks = new NativeHashSet<Entity>(assignments.Length, Allocator.Temp);
+                    for (int a = 0; a < assignments.Length; a++)
+                    {
+                        referencedTasks.Add(manager.GetComponentData<DroneTaskAssignment>(assignments[a]).Task);
+                    }
+                }
+                bool referenced = referencedTasks.Contains(taskEntity);
+                if (!referenced && manager.HasBuffer<DroneStationRelocationMemberElement>(taskEntity))
+                {
+                    foreach (var member in manager.GetBuffer<DroneStationRelocationMemberElement>(taskEntity, true))
+                    {
+                        referenced |= !member.Finished;
+                    }
+                }
+                if (!referenced)
+                {
+                    ecb.DestroyEntity(taskEntity);
+                }
             }
-            if (DroneSchedulingUtility.IsTransportKind(task.Kind) &&
-                manager.GetComponentData<DroneTransportProgress>(tasks[t]).ReservedQuantity > 0)
+        }
+        finally
+        {
+            if (referencedTasks.IsCreated)
             {
-                continue;
+                referencedTasks.Dispose();
             }
-            bool referenced = false;
-            for (int a = 0; a < assignments.Length; a++)
-                referenced |= manager.GetComponentData<DroneTaskAssignment>(assignments[a]).Task == tasks[t];
-            if (!referenced && manager.HasBuffer<DroneStationRelocationMemberElement>(tasks[t]))
-            {
-                foreach (var member in manager.GetBuffer<DroneStationRelocationMemberElement>(tasks[t], true))
-                    referenced |= !member.Finished;
-            }
-            if (!referenced) ecb.DestroyEntity(tasks[t]);
         }
     }
 
