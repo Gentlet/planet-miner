@@ -157,30 +157,39 @@ public static class DroneSchedulingUtility
         return manager.HasComponent<DestroyItemRequest>(item) && manager.IsComponentEnabled<DestroyItemRequest>(item);
     }
 
-    public static bool IsIdleWorker(EntityManager manager, Entity worker, int carryingCapacity)
+    public static bool IsIdleWorker(EntityManager manager, Entity worker, int carryingCapacity) =>
+        ReadIdleWorkerObservation(manager, worker, carryingCapacity).Revision != 0;
+
+    private static DroneWorkerObservation ReadIdleWorkerObservation(EntityManager manager, Entity worker, int carryingCapacity)
     {
         if (!IsActiveEntity(manager, worker))
         {
-            return false;
+            return default;
         }
 
         if (!manager.HasComponent<DroneWorker>(worker) || !manager.HasComponent<DroneWorkerObservation>(worker) ||
             !manager.HasComponent<DroneWorkerAssignment>(worker) || !manager.HasComponent<DroneCargoState>(worker))
         {
-            return false;
+            return default;
         }
 
         if (manager.HasComponent<DroneDocked>(worker) || manager.HasComponent<DroneStationRelocation>(worker))
         {
-            return false;
+            return default;
         }
 
         var observation = manager.GetComponentData<DroneWorkerObservation>(worker);
-        return carryingCapacity > 0 && observation.Revision > 0 &&
-               observation.CanAcceptTask && math.all(math.isfinite(observation.Position)) &&
-               manager.GetComponentData<DroneWorkerAssignment>(worker).Assignment == Entity.Null &&
-               manager.GetComponentData<DroneCargoState>(worker).Origin == DroneCargoOriginEnum.None &&
-               manager.GetComponentData<DroneCargoState>(worker).Quantity == 0;
+        if (carryingCapacity <= 0 || observation.Revision == 0 || !math.all(math.isfinite(observation.Position)))
+        {
+            return default;
+        }
+        if (!observation.CanAcceptTask || manager.GetComponentData<DroneWorkerAssignment>(worker).Assignment != Entity.Null)
+        {
+            return default;
+        }
+
+        var cargo = manager.GetComponentData<DroneCargoState>(worker);
+        return cargo.Origin == DroneCargoOriginEnum.None && cargo.Quantity == 0 ? observation : default;
     }
 
     public static int CountInventory(EntityManager manager, Entity storage, ItemTypeEnum type)
@@ -623,7 +632,11 @@ public static class DroneSchedulingUtility
         return a.CreationSequence < b.CreationSequence;
     }
 
-    public static bool RouteIsCurrent(EntityManager manager, in DroneRouteEvaluationRequest request, int carryingCapacity)
+    public static bool RouteIsCurrent(EntityManager manager, in DroneRouteEvaluationRequest request, int carryingCapacity) =>
+        RouteIsCurrent(manager, request, carryingCapacity, default, default);
+
+    private static bool RouteIsCurrent(EntityManager manager, in DroneRouteEvaluationRequest request, int carryingCapacity,
+        NativeHashMap<Entity, DroneWorkerObservation> idleWorkerObservations, NativeHashMap<Entity, RouteEndpoint> endpoints)
     {
         if (request.IsDropPositionSearch && request.Kind != DroneRouteKindEnum.Direct)
         {
@@ -631,6 +644,7 @@ public static class DroneSchedulingUtility
         }
         bool direct = request.Kind == DroneRouteKindEnum.Direct;
         bool demolition = request.Kind == DroneRouteKindEnum.DirectToBuilding;
+        DroneWorkerObservation observation;
         if (direct)
         {
             if (!IsRetargetingWorker(manager, request.Assignment, out var assignment, out _, includeDocked: true))
@@ -649,10 +663,12 @@ public static class DroneSchedulingUtility
             {
                 return false;
             }
+            observation = manager.GetComponentData<DroneWorkerObservation>(request.Worker);
         }
         else
         {
-            if (!IsIdleWorker(manager, request.Worker, carryingCapacity))
+            observation = ReadIdleRouteWorkerObservation(manager, request.Worker, carryingCapacity, idleWorkerObservations);
+            if (observation.Revision == 0)
             {
                 return false;
             }
@@ -681,8 +697,6 @@ public static class DroneSchedulingUtility
             }
         }
 
-        // 종류별 수행자 자격이 보장된 뒤 같은 관측 revision/위치 스냅샷을 한 번 대조한다.
-        var observation = manager.GetComponentData<DroneWorkerObservation>(request.Worker);
         if (observation.Revision != request.WorkerObservationRevision ||
             !math.all(observation.Position == request.OriginPosition))
         {
@@ -696,38 +710,73 @@ public static class DroneSchedulingUtility
         {
             return math.all(manager.GetComponentData<GridPosition>(request.Destination).Value == request.DestinationPosition);
         }
-        if (!direct)
-        {
-            if (!IsActiveEntity(manager, request.Source))
-            {
-                return false;
-            }
-            if (!manager.HasComponent<GridPosition>(request.Source))
-            {
-                return false;
-            }
-            if (manager.HasComponent<PendingBuildingDemolition>(request.Source))
-            {
-                return false;
-            }
-            if (!math.all(manager.GetComponentData<GridPosition>(request.Source).Value == request.SourcePosition))
-            {
-                return false;
-            }
-        }
-        if (!IsActiveEntity(manager, request.Destination))
+        if (!direct && !MatchesRouteEndpoint(manager, request.Source, request.SourcePosition, endpoints))
         {
             return false;
         }
-        if (manager.HasComponent<PendingBuildingDemolition>(request.Destination))
+        return MatchesRouteEndpoint(manager, request.Destination, request.DestinationPosition, endpoints);
+    }
+
+    internal struct RouteEndpoint
+    {
+        public bool IsAvailable;
+        public int2 Position;
+    }
+
+    private static bool MatchesRouteEndpoint(EntityManager manager, Entity entity, int2 position,
+        NativeHashMap<Entity, RouteEndpoint> endpoints)
+    {
+        RouteEndpoint endpoint;
+        if (!endpoints.IsCreated)
         {
-            return false;
+            endpoint = ReadRouteEndpoint(manager, entity);
         }
-        if (!manager.HasComponent<GridPosition>(request.Destination))
+        else if (!endpoints.TryGetValue(entity, out endpoint))
         {
-            return false;
+            endpoint = ReadRouteEndpoint(manager, entity);
+            endpoints.Add(entity, endpoint);
         }
-        return math.all(manager.GetComponentData<GridPosition>(request.Destination).Value == request.DestinationPosition);
+
+        return endpoint.IsAvailable && math.all(endpoint.Position == position);
+    }
+
+    private static RouteEndpoint ReadRouteEndpoint(EntityManager manager, Entity entity)
+    {
+        if (!IsActiveEntity(manager, entity))
+        {
+            return default;
+        }
+        if (!manager.HasComponent<GridPosition>(entity))
+        {
+            return default;
+        }
+        if (manager.HasComponent<PendingBuildingDemolition>(entity))
+        {
+            return default;
+        }
+        return new RouteEndpoint
+        {
+            IsAvailable = true,
+            Position = manager.GetComponentData<GridPosition>(entity).Value
+        };
+    }
+
+    private static DroneWorkerObservation ReadIdleRouteWorkerObservation(EntityManager manager, Entity worker, int carryingCapacity,
+        NativeHashMap<Entity, DroneWorkerObservation> idleWorkerObservations)
+    {
+        if (!idleWorkerObservations.IsCreated)
+        {
+            return ReadIdleWorkerObservation(manager, worker, carryingCapacity);
+        }
+
+        if (!idleWorkerObservations.TryGetValue(worker, out var observation))
+        {
+            // Revision 0은 같은 판단에서 다시 읽을 필요가 없는 유휴 자격 탈락이다.
+            observation = ReadIdleWorkerObservation(manager, worker, carryingCapacity);
+            idleWorkerObservations.Add(worker, observation);
+        }
+
+        return observation;
     }
 
     /// <summary>도메인 내부는 이번 틱 판단을 읽는다. 외부 공개 Result는 기존 EndSimulation까지 보존한다.</summary>
@@ -783,9 +832,10 @@ public static class DroneSchedulingUtility
 
     // 현재 요청의 미평가 결과는 보존해 후속 평가를 기다린다.
     internal static bool IsRouteInvalid(EntityManager manager, Entity requestEntity,
-        in DroneRouteEvaluationRequest request, int carryingCapacity)
+        in DroneRouteEvaluationRequest request, int carryingCapacity, NativeHashMap<Entity, DroneWorkerObservation> idleWorkerObservations,
+        NativeHashMap<Entity, RouteEndpoint> endpoints)
     {
-        if (!RouteIsCurrent(manager, request, carryingCapacity))
+        if (!RouteIsCurrent(manager, request, carryingCapacity, idleWorkerObservations, endpoints))
         {
             return true;
         }

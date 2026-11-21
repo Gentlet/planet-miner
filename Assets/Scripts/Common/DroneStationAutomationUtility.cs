@@ -26,6 +26,57 @@ internal struct DroneStationActivationPlan
 /// <summary>자동 출고의 현재 수요/공간/경로 입력을 준비한다. 배정이나 실물 수량을 선점하지 않는다.</summary>
 internal static class DroneStationAutomationUtility
 {
+    // 수요 계획을 준비하는 동안 창고 슬롯과 목표점 원본은 바뀌지 않는다.
+    internal readonly struct DemandEndpointReads : System.IDisposable
+    {
+        private readonly EntityManager _manager;
+        private readonly Entity _registry;
+        private readonly NativeHashMap<int3, int> _recoverySpace;
+        private readonly NativeHashMap<Entity, TargetPoint> _points;
+
+        public DemandEndpointReads(EntityManager manager, Entity registry)
+        {
+            _manager = manager;
+            _registry = registry;
+            _recoverySpace = new NativeHashMap<int3, int>(16, Allocator.Temp);
+            _points = new NativeHashMap<Entity, TargetPoint>(16, Allocator.Temp);
+        }
+
+        public int GetRecoverySpace(Entity storage, ItemTypeEnum type)
+        {
+            var key = new int3(storage.Index, storage.Version, (int)type);
+            if (!_recoverySpace.TryGetValue(key, out int space))
+            {
+                space = DroneSchedulingUtility.CountStorageSpace(_manager, storage, type, _registry, 1);
+                _recoverySpace.Add(key, space);
+            }
+            return space;
+        }
+
+        public bool TryGetPoint(Entity entity, out float2 point)
+        {
+            if (!_points.TryGetValue(entity, out var target))
+            {
+                target.IsValid = DroneTargetPointUtility.TryGetTargetPoint(_manager, entity, out target.Position);
+                _points.Add(entity, target);
+            }
+            point = target.Position;
+            return target.IsValid;
+        }
+
+        public void Dispose()
+        {
+            _points.Dispose();
+            _recoverySpace.Dispose();
+        }
+
+        private struct TargetPoint
+        {
+            public bool IsValid;
+            public float2 Position;
+        }
+    }
+
     // 정박/보관 드론의 출고 수요 탐색이 한 Decision 호출 안에서 같은 작업 순서를 읽는다.
     internal readonly struct DemandTasksByNetwork : System.IDisposable
     {
@@ -33,25 +84,43 @@ internal static class DroneStationAutomationUtility
         private readonly Entity _candidates;
         private readonly NativeArray<Entity> _tasks;
         private readonly NativeArray<Entity> _sites;
+        private readonly NativeArray<Entity> _assignments;
         private readonly NativeArray<DroneStationNetworkDecision> _networks;
         private readonly NativeParallelMultiHashMap<Entity, DroneStationActivityBounds> _bounds;
         private readonly NativeList<NetworkTask> _eligibleTasks;
         private readonly NativeList<DemandTask> _networkTasks;
         private readonly NativeHashMap<Entity, int2> _ranges;
+        private readonly NativeHashMap<Entity, int> _demandByTask;
 
         public DemandTasksByNetwork(EntityManager manager, Entity candidates, NativeArray<Entity> tasks,
-            NativeArray<Entity> sites, NativeArray<DroneStationNetworkDecision> networks)
+            NativeArray<Entity> sites, NativeArray<Entity> assignments, NativeArray<DroneStationNetworkDecision> networks)
         {
             _manager = manager;
             _candidates = candidates;
             _tasks = tasks;
             _sites = sites;
+            _assignments = assignments;
             _networks = networks;
             _bounds = new NativeParallelMultiHashMap<Entity, DroneStationActivityBounds>(math.max(1, networks.Length), Allocator.Temp);
             _eligibleTasks = new NativeList<NetworkTask>(Allocator.Temp);
             _networkTasks = new NativeList<DemandTask>(Allocator.Temp);
             _ranges = new NativeHashMap<Entity, int2>(1, Allocator.Temp);
+            _demandByTask = new NativeHashMap<Entity, int>(1, Allocator.Temp);
         }
+
+        public NativeParallelMultiHashMap<Entity, DroneStationActivityBounds>.ReadOnly NetworkBounds => _bounds.AsReadOnly();
+
+        public int ReadTaskDemand(in DemandTask candidate)
+        {
+            if (!_demandByTask.TryGetValue(candidate.Entity, out int demand))
+            {
+                demand = ReadDemand(_manager, candidate.Entity, candidate.Task, _assignments, _candidates);
+                _demandByTask.Add(candidate.Entity, demand);
+            }
+            return demand;
+        }
+
+        public int GetPreparedDemand(Entity task) => _demandByTask[task];
 
         // 다른 망의 후보가 추가되면 배열이 재할당될 수 있으므로 반환 범위는 즉시 순회한다.
         public NativeArray<DemandTask> GetTasks(Entity network)
@@ -111,6 +180,7 @@ internal static class DroneStationAutomationUtility
 
         public void Dispose()
         {
+            _demandByTask.Dispose();
             _ranges.Dispose();
             _networkTasks.Dispose();
             _eligibleTasks.Dispose();
@@ -173,10 +243,10 @@ internal static class DroneStationAutomationUtility
         }
     }
 
-    /// <summary>실행 중인 수행자의 우선권과 정박 수행자의 재개 후보를 각각 수집한다.</summary>
-    public static void AddWorkersWithTaskDecisionPriority(EntityManager manager, Entity candidates,
+    /// <summary>수행자 우선권, 정박 재개 후보와 새 경로 평가 때문에 출고를 보류할 대상을 모은다.</summary>
+    public static void CollectTaskDecisionPriority(EntityManager manager, Entity candidates,
         ComponentLookup<DroneWorkerObservation> observations, NativeHashSet<Entity> workers,
-        NativeHashMap<Entity, DroneTaskCandidateDecisionElement> dockedRetargets)
+        NativeHashMap<Entity, DroneTaskCandidateDecisionElement> dockedRetargets, NativeHashSet<Entity> evaluatingTargets)
     {
         foreach (var candidate in manager.GetBuffer<DroneTaskCandidateDecisionElement>(candidates, true))
         {
@@ -203,6 +273,14 @@ internal static class DroneStationAutomationUtility
             if (route.Kind == DroneRouteDecisionKindEnum.Create)
             {
                 workers.Add(route.Request.Worker);
+                if (route.Request.Source != Entity.Null)
+                {
+                    evaluatingTargets.Add(route.Request.Source);
+                }
+                if (route.Request.Destination != Entity.Null)
+                {
+                    evaluatingTargets.Add(route.Request.Destination);
+                }
                 continue;
             }
             if (route.Kind != DroneRouteDecisionKindEnum.Retain)
@@ -238,8 +316,9 @@ internal static class DroneStationAutomationUtility
         return Entity.Null;
     }
 
-    public static void PrepareDemand(EntityManager manager, Entity candidates, Entity drone, Entity station,
-        in DemandTasksByNetwork demandTasks, NativeArray<Entity> storages, NativeArray<Entity> assignments,
+    public static void PrepareDemand(EntityManager manager, Entity drone, Entity station,
+        in DemandTasksByNetwork demandTasks, in StorageCandidatesByNetwork storagesByNetwork,
+        in DemandEndpointReads endpointReads, NativeHashSet<Entity>.ReadOnly evaluatingTargets,
         NativeArray<DroneStationNetworkDecision> networks, Entity registry, int capacity, float maximum,
         NativeList<DroneStationActivationPlan> plans, int stockSlot = -1, int stockOrdinal = 0)
     {
@@ -254,31 +333,35 @@ internal static class DroneStationAutomationUtility
         {
             Entity taskEntity = candidate.Entity;
             var task = candidate.Task;
-            // 기존 수행자의 평가가 끝나기 전에는 같은 수요로 보관 드론을 추가 출고하지 않는다.
-            bool evaluating = false;
-            foreach (var route in manager.GetBuffer<DroneRouteDecisionElement>(candidates, true))
-                evaluating |= route.Kind == DroneRouteDecisionKindEnum.Create &&
-                    (route.Request.Source == task.Target || route.Request.Destination == task.Target);
-            if (evaluating) continue;
-            int demand = ReadDemand(manager, taskEntity, task, assignments, candidates);
+            // 새 경로의 출발점 또는 도착점과 작업 대상이 같으면 자동 출고를 보류한다.
+            if (evaluatingTargets.Contains(task.Target))
+            {
+                continue;
+            }
+            int demand = demandTasks.ReadTaskDemand(candidate);
             if (demand <= 0) continue;
             if (task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition)
             {
-                if (DroneTargetPointUtility.TryGetTargetPoint(manager, task.Target, out float2 point))
+                if (endpointReads.TryGetPoint(task.Target, out float2 point))
+                {
                     plans.Add(new DroneStationActivationPlan { Drone = drone, Station = station, Task = taskEntity,
                         StockSlot = stockSlot, StockOrdinal = stockOrdinal,
                         Origin = origin, Destination = point, Charge = charge, Quantity = 1, ViaSource = false });
+                }
                 continue;
             }
             bool sourceStorage = task.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply || task.Kind == DroneLogisticsTaskKindEnum.StorageImport;
-            foreach (Entity storage in storages)
+            bool recovery = task.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery;
+            foreach (Entity storage in storagesByNetwork.GetStorages(network, demandTasks.NetworkBounds))
             {
-                if (storage == task.Target || !DroneSchedulingUtility.IsStorage(manager, storage)) continue;
-                if (!DroneTaskNetworkUtility.IsTargetInNetwork(manager, networks, network, storage)) continue;
+                if (storage == task.Target)
+                {
+                    continue;
+                }
                 Entity source = sourceStorage ? storage : task.Target;
                 Entity destination = sourceStorage ? task.Target : storage;
                 int quantity = math.min(capacity, demand);
-                quantity = math.min(quantity, task.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery
+                quantity = math.min(quantity, recovery
                     ? 1 : (DroneSchedulingUtility.IsTransportKind(task.Kind)
                         ? DroneTransportEndpointUtility.SourceQuantity(manager, task, source)
                         : DroneSchedulingUtility.CountInventory(manager, source, task.ItemType)));
@@ -286,12 +369,22 @@ internal static class DroneStationAutomationUtility
                 {
                     quantity = DroneTransportEndpointUtility.DestinationSpace(manager, task, destination, registry, quantity);
                 }
-                else if (task.Kind != DroneLogisticsTaskKindEnum.ConstructionSupply)
+                else if (recovery)
                 {
-                    quantity = DroneSchedulingUtility.CountStorageSpace(manager, destination, task.ItemType, registry, quantity);
+                    quantity = endpointReads.GetRecoverySpace(destination, task.ItemType);
                 }
-                if (quantity <= 0 || !DroneTargetPointUtility.TryGetTargetPoint(manager, source, out float2 from) ||
-                    !DroneTargetPointUtility.TryGetTargetPoint(manager, destination, out float2 to)) continue;
+                if (quantity <= 0)
+                {
+                    continue;
+                }
+                if (!endpointReads.TryGetPoint(source, out float2 from))
+                {
+                    continue;
+                }
+                if (!endpointReads.TryGetPoint(destination, out float2 to))
+                {
+                    continue;
+                }
                 plans.Add(new DroneStationActivationPlan { Drone = drone, Station = station, Task = taskEntity,
                         StockSlot = stockSlot, StockOrdinal = stockOrdinal,
                     Origin = origin, Source = from, Destination = to, Charge = charge, Quantity = quantity, ViaSource = true });
@@ -299,7 +392,7 @@ internal static class DroneStationAutomationUtility
         }
     }
 
-    internal static int ReadDemand(EntityManager manager, Entity entity, in DroneLogisticsTask task,
+    private static int ReadDemand(EntityManager manager, Entity entity, in DroneLogisticsTask task,
         NativeArray<Entity> assignments, Entity candidates)
     {
         if (task.State != DroneLogisticsTaskStateEnum.Open) return 0;
