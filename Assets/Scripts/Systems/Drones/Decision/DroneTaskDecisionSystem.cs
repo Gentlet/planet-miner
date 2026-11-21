@@ -241,6 +241,17 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 {
                     continue;
                 }
+                int transportQuantity = 0;
+                if (transport)
+                {
+                    // 이번 Reservation에서 반환할 양까지 반영해 새 배정에 쓸 잔량이 있을 때만 경로를 준비한다.
+                    transportQuantity = math.min(carryingCapacity, transportReads.GetProjectedRemaining(
+                        tasks[t], pendingTransport, transportReservations, invalidationDecisions));
+                    if (transportQuantity <= 0)
+                    {
+                        continue;
+                    }
+                }
                 if (supply && DroneSchedulingUtility.ProjectedRemaining(manager, task.Target, task.ItemType, assignments, sites, pendingPublications) <= 0) continue;
                 if (!supply && !transport && claimedRecoveryItems.Contains(task.Target)) continue;
 
@@ -318,9 +329,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 Entity selectedDestination = sourceIsStorage ? task.Target : bestStorage;
                 if (transport)
                 {
-                    quantity = math.min(carryingCapacity, transportReads.GetProjectedRemaining(
-                        tasks[t], pendingTransport, transportReservations, invalidationDecisions));
-                    quantity = math.min(quantity, transportReads.GetSourceQuantity(task, selectedSource));
+                    quantity = math.min(transportQuantity, transportReads.GetSourceQuantity(task, selectedSource));
                     quantity = transportReads.GetDestinationSpace(task, selectedDestination, quantity);
                 }
                 if (quantity <= 0) continue;
