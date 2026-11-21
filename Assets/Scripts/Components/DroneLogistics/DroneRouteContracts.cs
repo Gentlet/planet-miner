@@ -45,6 +45,7 @@ public enum DroneRouteEvaluationStatusEnum : byte
 /// </summary>
 public struct DroneRouteEvaluationRequest : IRequestComponent
 {
+    public Entity DemolitionRoot;
     public Entity Worker;
     public Entity Assignment;
     public uint AssignmentRevision;

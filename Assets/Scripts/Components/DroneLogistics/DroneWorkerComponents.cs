@@ -2,16 +2,16 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 역할·목적: 현재 적재품의 없음·공급원 수집·월드 회수 출처 제약을 구분한다.
-/// 부착 엔티티: 열거형 자체는 부착하지 않으며 DroneCargoState.Origin에 포함한다.
-/// 생성·이용: DroneTaskLifecycleApplySystem(StateApply)이 성공 인계로 갱신하고 Decision/인계 검증은 Recovery의 보관 전 직접 현장 공급을 차단한다.
-/// 제거: 값을 담은 컴포넌트·판단·결과의 갱신/삭제 수명을 따른다. 별도 엔티티 수명을 갖지 않는다.
+/// 화물의 출처와 다음 인계 자격을 나타낸다. Supply는 공사에 공급할 수 있고 Recovery는 창고를 거친다.
+/// DemolitionRecovery는 선회수 재고와 확정 환급품이며 창고를 찾는 동안 화물을 보존한다.
+/// 실제 수집과 인계에서 Drone Lifecycle이 갱신한다.
 /// </summary>
 public enum DroneCargoOriginEnum : byte
 {
     None,
     Supply,
     Recovery,
+    DemolitionRecovery,
     Count
 }
 
@@ -59,13 +59,13 @@ public struct DroneWorkerAssignment : IComponentData
 }
 
 /// <summary>
-/// 역할·목적: 현재 적재품의 Supply/Recovery 출처를 유지하여 회수품의 현장 직접 공급을 제한한다. 품목과 수량도 이 상태가 소유한다.
+/// 역할·목적: 적재품의 품목·수량과 출처를 보존하여 공급, 회수, 철거 화물의 인계 자격을 구분한다.
 /// 부착 엔티티: DroneWorker가 있는 드론 수행자 엔티티다.
 /// 생성: DroneSpawnUtility가 호출자의 EndSimulation ECB에 빈 화물 상태를 기록한다.
 /// 이용: StateApply의 DroneTaskLifecycleApplySystem이 성공한 수집에 출처를 설정하고 보관·공급·방출 후 빈 적재가 되면 None으로 되돌린다.
 /// Decision의 DroneTaskDecisionSystem은 출처별 재배정 목적지를 구분하며 DroneItemTransferDecisionSystem 및 후속 phase의 공통 검증도 출처 제약을 확인한다.
 /// 제거: 상위 작업 종료·재배정으로 지우지 않는다. 빈 적재에서 None으로 초기화하되 컴포넌트는 수행자 삭제까지 유지한다.
-/// Recovery는 보관 건물에 넣기 전에는 현장에 직접 공급할 수 없다는 뜻이다.
+/// Recovery는 창고로 운반한다. DemolitionRecovery는 철거 재고와 환급 화물이며 창고를 다시 찾을 때도 자동 방출을 막는다.
 /// </summary>
 public struct DroneCargoState : IComponentData
 {

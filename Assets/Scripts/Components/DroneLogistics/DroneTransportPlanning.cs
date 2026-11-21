@@ -8,11 +8,12 @@ public enum DroneTransportAreaEnum : byte
     Product
 }
 
-/// <summary>명시한 목표량과 연구의 불필요 재료 회수 수명을 분리한다.</summary>
+/// <summary>명시 운반, 연구 잔여 재료 회수, 철거 작업에 연결된 선회수를 구분한다.</summary>
 public enum DroneTransportPurposeEnum : byte
 {
     Explicit,
-    ResearchRecovery
+    ResearchRecovery,
+    DemolitionRecovery
 }
 
 /// <summary>

@@ -21,7 +21,8 @@ public static class DroneTransportEndpointUtility
             return false;
         }
 
-        if (manager.HasComponent<PendingBuildingDemolition>(owner))
+        if (manager.HasComponent<PendingBuildingDemolition>(owner) ||
+            manager.HasComponent<PreparingStationDemolition>(owner))
         {
             return false;
         }
@@ -42,7 +43,13 @@ public static class DroneTransportEndpointUtility
 
     public static bool IsTarget(EntityManager manager, in DroneLogisticsTask task)
     {
-        if (!IsArea(manager, task.Target, task.Area))
+        if (task.Purpose == DroneTransportPurposeEnum.DemolitionRecovery)
+            return task.Kind == DroneLogisticsTaskKindEnum.StorageExport &&
+                DroneDemolitionUtility.IsInventorySource(manager, task.DemolitionRoot, task.Target, task.Area);
+
+        if (!IsArea(manager, task.Target, task.Area) ||
+            (task.Kind == DroneLogisticsTaskKindEnum.StorageExport &&
+             manager.HasComponent<PreparingStationDemolition>(task.Target)))
         {
             return false;
         }
@@ -58,6 +65,19 @@ public static class DroneTransportEndpointUtility
     public static int CountSource(EntityManager manager, Entity owner, ItemTypeEnum type, DroneTransportAreaEnum area, DroneTransportPurposeEnum purpose = default)
     {
         if (!IsArea(manager, owner, area)) return 0;
+        return CountInventory(manager, owner, type, area, purpose);
+    }
+
+    internal static bool CanCollectFrom(EntityManager manager, in DroneLogisticsTask task, Entity source,
+        DroneTransportAreaEnum area) =>
+        task.Purpose == DroneTransportPurposeEnum.DemolitionRecovery
+            ? task.Target == source && task.Area == area &&
+              DroneDemolitionUtility.IsInventorySource(manager, task.DemolitionRoot, source, area)
+            : IsArea(manager, source, area) && !manager.HasComponent<PreparingStationDemolition>(source);
+
+    private static int CountInventory(EntityManager manager, Entity owner, ItemTypeEnum type,
+        DroneTransportAreaEnum area, DroneTransportPurposeEnum purpose)
+    {
         if (purpose == DroneTransportPurposeEnum.ResearchRecovery) return ResearchRecoveryUtility.Count(manager, owner, type);
         if (area == DroneTransportAreaEnum.Product)
         {
@@ -78,8 +98,13 @@ public static class DroneTransportEndpointUtility
         return quantity;
     }
 
-    public static int SourceQuantity(EntityManager manager, in DroneLogisticsTask task, Entity source) =>
-        CountSource(manager, source, task.ItemType, SourceArea(task), task.Purpose);
+    public static int SourceQuantity(EntityManager manager, in DroneLogisticsTask task, Entity source)
+    {
+        var area = SourceArea(task);
+        return CanCollectFrom(manager, task, source, area)
+            ? CountInventory(manager, source, task.ItemType, area, task.Purpose)
+            : 0;
+    }
 
     internal static DroneTransportAreaEnum SourceArea(in DroneLogisticsTask task)
     {

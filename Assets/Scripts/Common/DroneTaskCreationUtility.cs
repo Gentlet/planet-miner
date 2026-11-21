@@ -21,10 +21,12 @@ public static class DroneTaskCreationUtility
                     DroneRecoveryReasonEnum.None, ref sequence);
             case DroneLogisticsTaskKindEnum.WorldItemRecovery:
                 return CreateTask(ecb, creation.Target, creation.ItemType, creation.Kind,
-                    creation.RecoveryReason, ref sequence, hasExplicitRecoveryIntent);
+                    creation.RecoveryReason, ref sequence, hasExplicitRecoveryIntent,
+                    purpose: creation.Purpose, demolitionRoot: creation.DemolitionRoot);
             default:
                 Entity task = CreateTask(ecb, creation.Target, creation.ItemType, creation.Kind,
-                    DroneRecoveryReasonEnum.None, ref sequence, area: creation.Area, purpose: creation.Purpose);
+                    DroneRecoveryReasonEnum.None, ref sequence, area: creation.Area, purpose: creation.Purpose,
+                    demolitionRoot: creation.DemolitionRoot);
                 ecb.AddComponent(task, new DroneTransportRequirement { Quantity = creation.Quantity });
                 ecb.AddComponent(task, new DroneTransportProgress());
         return task;
@@ -36,6 +38,8 @@ public static class DroneTaskCreationUtility
     {
         Entity task = CreateTask(ecb, target, ItemTypeEnum.None, DroneLogisticsTaskKindEnum.BuildingDemolition,
             DroneRecoveryReasonEnum.None, ref sequence);
+        ecb.AddComponent(task, new DroneDemolitionProgress());
+        ecb.AddBuffer<DroneDemolitionRefundElement>(task);
         // deferred root는 생성과 같은 ECB에서만 건물 연결에 기록한다.
         // 정거장은 충전을 보존하는 준비 상태로 시작한다. 실제 중단은 전원 수납 뒤의 확인이 소유한다.
         if (stationDemolition)
@@ -57,7 +61,8 @@ public static class DroneTaskCreationUtility
         DroneRecoveryReasonEnum recoveryReason,
         ref DroneTaskSequence sequence,
         bool hasExplicitRecoveryIntent = false,
-        DroneTransportAreaEnum area = default, DroneTransportPurposeEnum purpose = default)
+        DroneTransportAreaEnum area = default, DroneTransportPurposeEnum purpose = default,
+        Entity demolitionRoot = default)
     {
         if (sequence.NextValue == 0)
         {
@@ -76,6 +81,7 @@ public static class DroneTaskCreationUtility
             Kind = kind,
             Area = area,
             Purpose = purpose,
+            DemolitionRoot = demolitionRoot,
             State = DroneLogisticsTaskStateEnum.Open,
             Target = target,
             ItemType = itemType,

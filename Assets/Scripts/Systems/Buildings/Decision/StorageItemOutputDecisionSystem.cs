@@ -66,6 +66,7 @@ public partial struct StorageItemOutputDecisionSystem : ISystem
             BeltMovementStateLookup = _beltMovementStateLookup,
             DestroyItemRequestLookup = _destroyRequestLookup,
             PendingDemolitionLookup = _pendingDemolitionLookup,
+            PreparingDemolitionLookup = SystemAPI.GetComponentLookup<PreparingStationDemolition>(true),
             StationStorageLookup = _stationStorageLookup
         };
 
@@ -102,6 +103,7 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
 
     [ReadOnly]
     public ComponentLookup<PendingBuildingDemolition> PendingDemolitionLookup;
+    [ReadOnly] public ComponentLookup<PreparingStationDemolition> PreparingDemolitionLookup;
     [ReadOnly] public ComponentLookup<DroneStationStorage> StationStorageLookup;
 
     public void Execute(
@@ -113,7 +115,7 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
         in GridPosition gridPos,
         in Direction dir)
     {
-        if (PendingDemolitionLookup.HasComponent(building))
+        if (PendingDemolitionLookup.HasComponent(building) || PreparingDemolitionLookup.HasComponent(building))
         {
             outputDecision.CanOutput = false;
             outputDecision.ItemType = ItemTypeEnum.None;

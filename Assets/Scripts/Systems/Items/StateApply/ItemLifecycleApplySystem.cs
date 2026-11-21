@@ -202,11 +202,14 @@ public partial struct SpawnItemApplyJob : IJobChunk
             !StoredBufferLookup.TryGetBuffer(owner, out var storage)) return;
         int dedicated = DedicatedSlots.TryGetComponent(owner, out var station) ? station.DedicatedSlotCount : 0;
         if (!StationStorageUtility.IsItemSlotAllowed(slot, storage.Length, dedicated, type)) return;
-        if (type == ItemTypeEnum.Drone && Preparing.HasComponent(owner)) return;
+        if (Preparing.HasComponent(owner)) return;
         if (InputSlots.TryGetBuffer(owner, out var inputs) &&
             ((uint)slot >= (uint)inputs.Length || inputs[slot].ItemType != type)) return;
         if (Docks.TryGetBuffer(owner, out var docks) && StationStorageUtility.IsDockOccupied(docks, slot)) return;
-        if (DroneStationRelocationUtility.IsReserved(Reserved, owner, slot)) return;
+        if ((uint)slot >= (uint)storage.Length) return;
+        if (Reserved.TryGetBuffer(owner, out var claims) &&
+            DroneDemolitionStorageUtility.FreeQuantity(claims, slot, type,
+                InventorySlotUtility.FreeQuantity(storage[slot], type, maximum), Entity.Null) <= 0) return;
         InventorySlotUtility.TryAdd(storage, slot, type, 1, maximum);
     }
 }

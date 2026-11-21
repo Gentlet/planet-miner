@@ -5,11 +5,9 @@ using Unity.Jobs;
 using Unity.Mathematics;
 
 /// <summary>
-/// 수행자별 적재 재배정/신규 후보를 선택하고 현장 공급량과 일반 운반 목표량을 중재한다.
-/// 공급 선두는 PlacementStamp→생성 순번, 회수/반입/반출 선두는 생성 순번이며 두 선두를 생성 순번으로 비교한다.
-/// 메인 스레드는 현장 예약/공개 대기를, 뒤따르는 단일 Burst Job은 일반 운반 확보량 반환/승인을 소유한다.
-/// 일반 운반의 로컬 잔량은 선택 예산이다. 선택분만 Job에 전달하므로 미선택 대안은 목표량을 점유하지 않는다.
-/// 공급/회수/재배정은 기존 Publish로, 일반 운반은 별도 미공개 확보 버퍼로 전달한다. 재고/공간은 예약하지 않는다.
+/// 적재 화물 재배정을 우선하고 신규 공급, 회수, 운반, 철거를 같은 수행자 예산으로 중재한다.
+/// 일반 운반은 작업 목표량을 확보한다. 철거 화물의 재배정은 목적지 슬롯도 먼저 확보하고, 신규 환급 집결은 전원분을 함께 확보한다.
+/// 환급 배정 전체가 Publish에서 유효하면 배정을 공개한다. 납품 성공 또는 중단에서 슬롯 확보량을 정산한다.
 /// </summary>
 [UpdateInGroup(typeof(DroneReservationGroup))]
 public partial struct DroneTaskReservationSystem : ISystem
@@ -18,6 +16,9 @@ public partial struct DroneTaskReservationSystem : ISystem
     private EntityQuery _assignments;
     private EntityQuery _registry;
     private EntityQuery _capacity;
+    private EntityQuery _refundConfig;
+    private EntityQuery _destinationClaims;
+    private EntityQuery _demolitions, _automaticRequests, _storages, _networks;
     private EntityQuery _transportOwners;
     private ComponentLookup<DroneTransportRequirement> _requirements;
     private ComponentLookup<DroneTransportProgress> _progress;
@@ -32,6 +33,13 @@ public partial struct DroneTaskReservationSystem : ISystem
         _assignments = state.GetEntityQuery(ComponentType.ReadOnly<DroneTaskAssignment>());
         _registry = state.GetEntityQuery(ComponentType.ReadOnly<ItemRegistry>(), ComponentType.ReadOnly<ItemConfigElement>());
         _capacity = state.GetEntityQuery(ComponentType.ReadOnly<DroneCapacityState>());
+        _refundConfig = state.GetEntityQuery(ComponentType.ReadOnly<BuildingConstructionMaterialElement>());
+        _destinationClaims = state.GetEntityQuery(ComponentType.ReadWrite<DroneStationReservedSlotElement>());
+        _demolitions = state.GetEntityQuery(ComponentType.ReadOnly<DroneDemolitionProgress>());
+        _automaticRequests = state.GetEntityQuery(ComponentType.ReadOnly<DroneStationRequest>(), ComponentType.ReadOnly<DroneAutomaticStationRequest>());
+        _storages = state.GetEntityQuery(ComponentType.ReadOnly<BuildingType>(), ComponentType.ReadOnly<Storage>(),
+            ComponentType.ReadOnly<StorageSlotElement>(), ComponentType.ReadOnly<GridPosition>());
+        _networks = state.GetEntityQuery(ComponentType.ReadOnly<DroneStation>(), ComponentType.ReadOnly<DroneStationNetworkDecision>());
         _transportOwners = state.GetEntityQuery(ComponentType.ReadWrite<DroneTransportReservation>());
         _requirements = state.GetComponentLookup<DroneTransportRequirement>(true);
         _progress = state.GetComponentLookup<DroneTransportProgress>(false);
@@ -46,6 +54,7 @@ public partial struct DroneTaskReservationSystem : ISystem
         state.CompleteDependency();
         var manager = state.EntityManager;
         int carryingCapacity = DroneSchedulingUtility.ReadCarryingCapacity(_capacity);
+        PrepareDemolitionStorage(manager);
         var candidates = manager.GetBuffer<DroneTaskCandidateDecisionElement>(_candidates);
         var pendingPublications = manager.GetBuffer<DroneTaskPendingPublicationElement>(_candidates);
         ReleasePendingReservations(manager, pendingPublications);
@@ -81,7 +90,9 @@ public partial struct DroneTaskReservationSystem : ISystem
             }
             usedWorkers.Add(assignment.Worker);
             if (assignment.NextAction == DroneActionKindEnum.RecoverWorldItem) claimedTargets.Add(assignment.Source);
-            if (assignment.NextAction == DroneActionKindEnum.DemolishBuilding) claimedTargets.Add(assignment.Destination);
+            if (assignment.NextAction == DroneActionKindEnum.DemolishBuilding &&
+                manager.HasComponent<DroneLogisticsTask>(assignment.Task))
+                claimedTargets.Add(manager.GetComponentData<DroneLogisticsTask>(assignment.Task).Target);
         }
 
         Entity registry = _registry.IsEmptyIgnoreFilter ? Entity.Null : _registry.GetSingletonEntity();
@@ -90,7 +101,50 @@ public partial struct DroneTaskReservationSystem : ISystem
         var owners = _transportOwners.ToEntityArray(Allocator.TempJob);
         var selectedTransport = new NativeList<DroneTaskCandidateDecisionElement>(Allocator.TempJob);
         SelectNewCandidates(manager, registry, carryingCapacity, usedWorkers, claimedTargets, owners, selectedTransport);
+        BlockActivationsWithoutRefundSpace(manager, registry, pendingPublications);
         ScheduleTransportReservations(ref state, owners, selectedTransport);
+    }
+
+    private void BlockActivationsWithoutRefundSpace(EntityManager manager, Entity registry,
+        DynamicBuffer<DroneTaskPendingPublicationElement> selected)
+    {
+        var blocks = manager.GetBuffer<DroneDemolitionActivationBlockElement>(_candidates);
+        blocks.Clear();
+        if (_demolitions.IsEmptyIgnoreFilter || _automaticRequests.IsEmptyIgnoreFilter) return;
+
+        using var requests = _automaticRequests.ToComponentDataArray<DroneAutomaticStationRequest>(Allocator.Temp);
+        using var roots = new NativeHashSet<Entity>(4, Allocator.Temp);
+        foreach (var request in requests)
+        {
+            Entity root = request.DemandTask;
+            if (!manager.HasComponent<DroneDemolitionProgress>(root)) continue;
+            var progress = manager.GetComponentData<DroneDemolitionProgress>(root);
+            if (!progress.AwaitingSpace && progress.AssignedWorkers == 0 && progress.RequiredWorkers > 0) roots.Add(root);
+        }
+        // 이 틱에 이미 배정된 작업은 기존 Activation Reservation이 배정 기록으로 직접 제외한다.
+        foreach (var publication in selected)
+        {
+            if (publication.Quantity > 0) roots.Remove(publication.Candidate.Task);
+        }
+        if (roots.IsEmpty) return;
+
+        using var stations = _networks.ToComponentDataArray<DroneStationNetworkDecision>(Allocator.Temp);
+        using var stores = _storages.ToEntityArray(Allocator.Temp);
+        using var storagesByNetwork = new StorageCandidatesByNetwork(manager, stores);
+        using var bounds = new NativeParallelMultiHashMap<Entity, DroneStationActivityBounds>(math.max(1, stations.Length), Allocator.Temp);
+        Entity config = _refundConfig.IsEmptyIgnoreFilter ? Entity.Null : _refundConfig.GetSingletonEntity();
+        foreach (Entity root in roots)
+        {
+            if (!DroneDemolitionUtility.TryGetDemolitionWork(manager, root, out var task)) continue;
+            using var costs = DroneDemolitionUtility.ReadRefunds(manager, root, task, config);
+            if (costs.IsEmpty) continue;
+            using var destinations = DroneTaskNetworkUtility.ReadDemolitionDestinations(manager, task, stations,
+                storagesByNetwork, bounds, DroneStationRelocationUtility.IsStationDemolition(manager, task));
+            if (!DroneDemolitionStorageUtility.CanFitRefund(manager, registry, destinations, costs, 0, costs[0].Quantity))
+            {
+                blocks.Add(new DroneDemolitionActivationBlockElement { Task = root });
+            }
+        }
     }
 
     private void SelectNewCandidates(EntityManager manager, Entity registry, int carryingCapacity,
@@ -119,6 +173,8 @@ public partial struct DroneTaskReservationSystem : ISystem
         try
         {
             using var visitedWorkers = new NativeHashSet<Entity>(16, Allocator.Temp);
+            using var rejectedCrews = new NativeHashSet<Entity>(4, Allocator.Temp);
+            Entity config = _refundConfig.IsEmptyIgnoreFilter ? Entity.Null : _refundConfig.GetSingletonEntity();
             for (int w = 0; w < candidates.Length; w++)
             {
                 Entity worker = candidates[w].Worker;
@@ -146,8 +202,8 @@ public partial struct DroneTaskReservationSystem : ISystem
                     {
                         continue;
                     }
-                    if (task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition && claimedTargets.Contains(candidate.Destination))
-                        continue;
+                    if (task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition &&
+                        (claimedTargets.Contains(task.Target) || rejectedCrews.Contains(candidate.Task))) continue;
                     int quantity;
                     if (DroneSchedulingUtility.IsTransportKind(task.Kind))
                     {
@@ -169,7 +225,9 @@ public partial struct DroneTaskReservationSystem : ISystem
                     }
                     else
                     {
-                        quantity = DroneSchedulingUtility.CandidateQuantity(manager, candidate, registry, carryingCapacity);
+                        quantity = task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition
+                            ? DroneDemolitionUtility.CandidateQuantity(manager, candidate, registry, carryingCapacity)
+                            : DroneSchedulingUtility.CandidateQuantity(manager, candidate, registry, carryingCapacity);
                     }
                     if (quantity <= 0)
                     {
@@ -183,8 +241,9 @@ public partial struct DroneTaskReservationSystem : ISystem
                             supplyQuantity = quantity;
                         }
                     }
-                    else if (otherHead < 0 || DroneSchedulingUtility.EarlierTask(manager, candidate.Task, candidates[otherHead].Task))
+                    else if (otherHead < 0 || PreferNonSupplyCandidate(manager, task, candidate, candidates[otherHead]))
                     {
+                        if (!CanReservePickupRoute(manager, registry, task, candidate, quantity)) continue;
                         otherHead = c;
                         otherQuantity = quantity;
                     }
@@ -205,6 +264,53 @@ public partial struct DroneTaskReservationSystem : ISystem
                 var chosen = candidates[selected];
                 var chosenTask = manager.GetComponentData<DroneLogisticsTask>(chosen.Task);
                 int quantitySelected = selectOther ? otherQuantity : supplyQuantity;
+                if (chosenTask.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition)
+                {
+                    using var costs = DroneDemolitionUtility.ReadRefunds(manager, chosen.Task, chosenTask, config);
+                    using var crew = new NativeList<DroneTaskCandidateDecisionElement>(Allocator.Temp);
+                    bool selectedCrew;
+                    if (costs.IsEmpty)
+                    {
+                        crew.Add(chosen);
+                        usedWorkers.Add(worker);
+                        selectedCrew = true;
+                    }
+                    else
+                    {
+                        using var available = new NativeList<DroneTaskCandidateDecisionElement>(Allocator.Temp);
+                        using var canJoin = new NativeHashMap<Entity, bool>(8, Allocator.Temp);
+                        foreach (var member in candidates)
+                        {
+                            if (member.Task != chosen.Task || usedWorkers.Contains(member.Worker)) continue;
+                            if (!canJoin.TryGetValue(member.Worker, out bool eligible))
+                            {
+                                eligible = !PrefersEarlierWork(manager, candidates, member, registry, carryingCapacity,
+                                    claimedTargets, rejectedCrews, remainingTransport);
+                                canJoin.Add(member.Worker, eligible);
+                            }
+                            if (eligible) available.Add(member);
+                        }
+                        using var bounds = new RefundSearchBounds(Allocator.Temp);
+                        selectedCrew = TryReserveRefundCrew(manager, registry, carryingCapacity, chosen.Task, available,
+                            costs, 0, costs[0].Quantity, 0, usedWorkers, crew, bounds);
+                    }
+                    if (!selectedCrew)
+                    {
+                        // 전량 배정이 어려운 철거는 남은 후보의 일반 배차를 막지 않는다.
+                        rejectedCrews.Add(chosen.Task);
+                        visitedWorkers.Remove(worker);
+                        w--;
+                        continue;
+                    }
+
+                    claimedTargets.Add(chosenTask.Target);
+                    foreach (var member in crew)
+                        pendingPublications.Add(new DroneTaskPendingPublicationElement
+                        {
+                            Candidate = member, Quantity = member.Quantity
+                        });
+                    continue;
+                }
                 if (DroneSchedulingUtility.IsTransportKind(chosenTask.Kind))
                 {
                     chosen.Quantity = quantitySelected;
@@ -222,7 +328,7 @@ public partial struct DroneTaskReservationSystem : ISystem
                     }
                     else
                     {
-                        claimedTargets.Add(chosenTask.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition ? chosen.Destination : chosen.Source);
+                        claimedTargets.Add(chosen.Source);
                     }
                     if (quantitySelected <= 0)
                     {
@@ -242,6 +348,248 @@ public partial struct DroneTaskReservationSystem : ISystem
         {
             remainingTransport.Dispose();
         }
+    }
+
+    private void PrepareDemolitionStorage(EntityManager manager)
+    {
+        using var existing = _destinationClaims.ToEntityArray(Allocator.Temp);
+        foreach (Entity storage in existing)
+        {
+            var slots = manager.GetBuffer<DroneStationReservedSlotElement>(storage);
+            for (int i = slots.Length - 1; i >= 0; i--)
+            {
+                var slot = slots[i];
+                if (slot.TransportWorker == Entity.Null) continue;
+                Entity assignment = manager.HasComponent<DroneWorkerAssignment>(slot.TransportWorker)
+                    ? manager.GetComponentData<DroneWorkerAssignment>(slot.TransportWorker).Assignment : Entity.Null;
+                if (manager.HasComponent<DroneTaskAssignment>(assignment))
+                {
+                    var current = manager.GetComponentData<DroneTaskAssignment>(assignment);
+                    if (current.Task == slot.Task && current.Destination == storage &&
+                        current.State != DroneTaskAssignmentStateEnum.Retargeting && !DroneSchedulingUtility.IsTerminal(current.State)) continue;
+                }
+                slots.RemoveAt(i);
+            }
+        }
+
+        using var destinations = new NativeHashSet<Entity>(4, Allocator.Temp);
+        foreach (var row in manager.GetBuffer<DroneTransportPlanDecisionElement>(_candidates, true))
+            if (manager.GetComponentData<DroneLogisticsTask>(row.Candidate.Task).DemolitionRoot != Entity.Null)
+                destinations.Add(row.Candidate.Destination);
+        foreach (var candidate in manager.GetBuffer<DroneTaskCandidateDecisionElement>(_candidates, true))
+        {
+            if (candidate.Assignment != Entity.Null && candidate.NextAction == DroneActionKindEnum.StoreCargo &&
+                manager.HasComponent<DroneCargoState>(candidate.Worker) &&
+                manager.GetComponentData<DroneCargoState>(candidate.Worker).Origin == DroneCargoOriginEnum.DemolitionRecovery)
+                destinations.Add(candidate.Destination);
+            if (!manager.HasComponent<DroneLogisticsTask>(candidate.Task)) continue;
+            var task = manager.GetComponentData<DroneLogisticsTask>(candidate.Task);
+            if (task.DemolitionRoot != Entity.Null ||
+                (task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition && candidate.ItemType != ItemTypeEnum.None))
+                destinations.Add(candidate.Destination);
+        }
+        foreach (Entity storage in destinations)
+            if (DroneSchedulingUtility.IsStorage(manager, storage) &&
+                !manager.HasBuffer<DroneStationReservedSlotElement>(storage))
+                manager.AddBuffer<DroneStationReservedSlotElement>(storage);
+    }
+
+    private static bool PreferNonSupplyCandidate(EntityManager manager, in DroneLogisticsTask task,
+        in DroneTaskCandidateDecisionElement candidate, in DroneTaskCandidateDecisionElement previous)
+    {
+        if (candidate.Task != previous.Task)
+            return DroneSchedulingUtility.EarlierTask(manager, candidate.Task, previous.Task);
+        if (task.DemolitionRoot == Entity.Null) return false;
+        float distance = DroneSchedulingUtility.ReadCurrentRouteResult(manager, candidate.RouteRequest).TotalDistance;
+        float previousDistance = DroneSchedulingUtility.ReadCurrentRouteResult(manager, previous.RouteRequest).TotalDistance;
+        return distance < previousDistance || (distance == previousDistance &&
+            DroneSchedulingUtility.ComparePlacement(manager, candidate.Destination, previous.Destination) < 0);
+    }
+
+    private static bool CanReservePickupRoute(EntityManager manager, Entity registry, in DroneLogisticsTask task,
+        in DroneTaskCandidateDecisionElement candidate, int quantity) =>
+        task.DemolitionRoot == Entity.Null || !manager.HasComponent<DroneStation>(candidate.Destination) ||
+        DroneDemolitionStorageUtility.TryReserveTransport(manager, registry, candidate, quantity, keep: false);
+
+    private static bool PrefersEarlierWork(EntityManager manager, NativeList<DroneTaskCandidateDecisionElement> candidates,
+        in DroneTaskCandidateDecisionElement member, Entity registry, int capacity, NativeHashSet<Entity> claimed,
+        NativeHashSet<Entity> rejectedCrews, NativeHashMap<Entity, int> remainingTransport)
+    {
+        Entity supplyHead = Entity.Null;
+        foreach (var candidate in candidates)
+        {
+            if (candidate.Worker != member.Worker || candidate.Task == member.Task) continue;
+            var task = manager.GetComponentData<DroneLogisticsTask>(candidate.Task);
+            if (task.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery && claimed.Contains(candidate.Source)) continue;
+            if (task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition &&
+                (claimed.Contains(task.Target) || rejectedCrews.Contains(candidate.Task))) continue;
+            if (task.Kind != DroneLogisticsTaskKindEnum.ConstructionSupply &&
+                !DroneSchedulingUtility.EarlierTask(manager, candidate.Task, member.Task)) continue;
+            bool limited = remainingTransport.TryGetValue(candidate.Task, out int remaining);
+            if (limited && remaining <= 0) continue;
+            int quantity = task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition
+                ? DroneDemolitionUtility.CandidateQuantity(manager, candidate, registry, capacity)
+                : DroneSchedulingUtility.CandidateQuantity(manager, candidate, registry, capacity);
+            if (limited) quantity = math.min(quantity, remaining);
+            if (quantity <= 0 || !CanReservePickupRoute(manager, registry, task, candidate, quantity)) continue;
+            if (task.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply)
+            {
+                if (DroneSchedulingUtility.EarlierTask(manager, candidate.Task, supplyHead)) supplyHead = candidate.Task;
+            }
+            else
+            {
+                return true;
+            }
+        }
+        return supplyHead != Entity.Null && DroneSchedulingUtility.EarlierTask(manager, supplyHead, member.Task);
+    }
+
+    // 분기마다 현재 남은 후보를 다시 모으되, 같은 집결 탐색 안에서는 작업 메모리를 재사용한다.
+    private struct RefundSearchBounds : System.IDisposable
+    {
+        private NativeHashMap<Entity, FixedBitSet> _destinations;
+        private NativeHashMap<Entity, FixedBitSet> _workerOptions;
+        private NativeHashMap<Entity, int> _workerLimits;
+        private NativeList<int> _minimumByType;
+
+        public RefundSearchBounds(Allocator allocator)
+        {
+            _destinations = new NativeHashMap<Entity, FixedBitSet>(8, allocator);
+            _workerOptions = new NativeHashMap<Entity, FixedBitSet>(8, allocator);
+            _workerLimits = new NativeHashMap<Entity, int>(8, allocator);
+            _minimumByType = new NativeList<int>(allocator);
+        }
+
+        public bool CanFill(EntityManager manager, Entity registry,
+            NativeList<DroneTaskCandidateDecisionElement> candidates, NativeList<DroneDemolitionRefundElement> costs,
+            int firstItem, int firstQuantity, int firstCandidate, NativeHashSet<Entity> used)
+        {
+            _destinations.Clear();
+            _workerOptions.Clear();
+            _minimumByType.Clear();
+            bool multipleTypes = firstItem + 1 < costs.Length;
+            long requiredWorkers = 0;
+            for (int item = firstItem; item < costs.Length; item++)
+            {
+                var type = costs[item].ItemType;
+                int required = item == firstItem ? firstQuantity : costs[item].Quantity;
+                _workerLimits.Clear();
+                int largest = 0;
+                long available = 0;
+                for (int c = item == firstItem ? firstCandidate : 0; c < candidates.Length; c++)
+                {
+                    var candidate = candidates[c];
+                    if (candidate.ItemType != type || used.Contains(candidate.Worker)) continue;
+                    if (multipleTypes)
+                    {
+                        _workerOptions.TryGetValue(candidate.Worker, out var workerTypes);
+                        workerTypes.Set((byte)type, true);
+                        _workerOptions[candidate.Worker] = workerTypes;
+                    }
+                    _workerLimits.TryGetValue(candidate.Worker, out int previous);
+                    if (candidate.Quantity > previous)
+                    {
+                        available += candidate.Quantity - previous;
+                        largest = math.max(largest, candidate.Quantity);
+                        _workerLimits[candidate.Worker] = candidate.Quantity;
+                    }
+                    _destinations.TryGetValue(candidate.Destination, out var allowed);
+                    allowed.Set((byte)type, true);
+                    _destinations[candidate.Destination] = allowed;
+                }
+                if (available < required) return false;
+                if (multipleTypes)
+                {
+                    int minimum = MinimumWorkers(required, available, largest);
+                    requiredWorkers += minimum;
+                    _minimumByType.Add(minimum);
+                }
+            }
+            if (multipleTypes && (_workerOptions.Count < requiredWorkers || !CanMatchWorkers(costs, firstItem))) return false;
+            return DroneDemolitionStorageUtility.CanFitRefund(manager, registry, _destinations, costs, firstItem, firstQuantity);
+        }
+
+        private int MinimumWorkers(int required, long available, int largest)
+        {
+            if (available == (long)_workerLimits.Count * largest) return 1 + (required - 1) / largest;
+            using var limits = _workerLimits.GetValueArray(Allocator.Temp);
+            limits.Sort();
+            int count = 0;
+            for (int i = limits.Length - 1; required > 0; i--)
+            {
+                required -= limits[i];
+                count++;
+            }
+            return count;
+        }
+
+        private bool CanMatchWorkers(NativeList<DroneDemolitionRefundElement> costs, int firstItem)
+        {
+            using var options = _workerOptions.GetValueArray(Allocator.Temp);
+            using var owners = new NativeArray<ItemTypeEnum>(options.Length, Allocator.Temp);
+            for (int i = 0; i < _minimumByType.Length; i++)
+            {
+                var type = costs[firstItem + i].ItemType;
+                for (int j = 0; j < _minimumByType[i]; j++)
+                {
+                    FixedBitSet visited = default;
+                    if (!DroneDemolitionUtility.TryMatchRefundUnit(type, options, owners, ref visited)) return false;
+                }
+            }
+            return true;
+        }
+
+        public void Dispose()
+        {
+            _minimumByType.Dispose();
+            _workerLimits.Dispose();
+            _workerOptions.Dispose();
+            _destinations.Dispose();
+        }
+    }
+
+    private static bool TryReserveRefundCrew(EntityManager manager, Entity registry, int capacity,
+        Entity root, NativeList<DroneTaskCandidateDecisionElement> candidates, NativeList<DroneDemolitionRefundElement> costs,
+        int itemIndex, int remaining, int firstCandidate, NativeHashSet<Entity> used,
+        NativeList<DroneTaskCandidateDecisionElement> crew, RefundSearchBounds bounds)
+    {
+        if (itemIndex == costs.Length)
+        {
+            // 예약이 마지막 빈 정박 공간을 차지하면 기존 경로 결과가 도달 가능해도 사용할 수 없다.
+            foreach (var member in crew)
+                if (!DroneDemolitionUtility.CanReachRefundStorage(manager, member.Worker, member.Source, member.Destination))
+                    return false;
+            return true;
+        }
+        if (!bounds.CanFill(manager, registry, candidates, costs, itemIndex, remaining, firstCandidate, used))
+            return false;
+
+        for (int i = firstCandidate; i < candidates.Length; i++)
+        {
+            var candidate = candidates[i];
+            if (candidate.ItemType != costs[itemIndex].ItemType || used.Contains(candidate.Worker)) continue;
+            int quantity = math.min(remaining, DroneDemolitionUtility.CandidateQuantity(manager, candidate, registry, capacity));
+            while (quantity > 0 && DroneDemolitionStorageUtility.TryReserveRefund(manager, candidate.Destination, registry,
+                root, candidate.Worker, candidate.ItemType, quantity, out int withoutLastEmptySlot))
+            {
+                var member = candidate;
+                member.Quantity = quantity;
+                crew.Add(member);
+                used.Add(member.Worker);
+                int next = quantity == remaining ? itemIndex + 1 : itemIndex;
+                int nextQuantity = remaining - quantity;
+                if (next > itemIndex && next < costs.Length) nextQuantity = costs[next].Quantity;
+                if (TryReserveRefundCrew(manager, registry, capacity, root, candidates, costs, next, nextQuantity,
+                    next == itemIndex ? i + 1 : 0, used, crew, bounds)) return true;
+
+                DroneDemolitionStorageUtility.ResizeClaim(manager, member.Destination, member.Worker, 0);
+                used.Remove(member.Worker);
+                crew.RemoveAt(crew.Length - 1);
+                // 마지막 빈 슬롯을 다른 품목이나 충전에 남기는 감량만 별도 배치가 된다.
+                quantity = withoutLastEmptySlot;
+            }
+        }
+        return false;
     }
 
     private void ScheduleTransportReservations(ref SystemState state, NativeArray<Entity> owners,
@@ -277,6 +625,8 @@ public partial struct DroneTaskReservationSystem : ISystem
         {
             var pending = pendingPublications[i];
             if (pending.PublicationQueued) continue;
+            if (pending.HasRetargetStorageClaim)
+                DroneDemolitionStorageUtility.ResizeClaim(manager, pending.Candidate.Destination, pending.Candidate.Worker, 0);
             if (pending.CommittedQuantity <= 0) continue;
             ConstructionSupplyReservationUtility.Release(manager, pending.Candidate.Destination,
                 pending.Candidate.ItemType, pending.CommittedQuantity);
@@ -335,11 +685,16 @@ public partial struct DroneTaskReservationSystem : ISystem
             {
                 continue;
             }
+            bool demolitionCargo = candidate.NextAction == DroneActionKindEnum.StoreCargo &&
+                manager.GetComponentData<DroneCargoState>(candidate.Worker).Origin == DroneCargoOriginEnum.DemolitionRecovery;
+            if (demolitionCargo && !DroneDemolitionStorageUtility.TryReserveTransport(manager, registry, candidate, quantity))
+                continue;
             pendingPublications.Add(new DroneTaskPendingPublicationElement
             {
                 Candidate = candidate,
                 Quantity = quantity,
-                CommittedQuantity = committedQuantity
+                CommittedQuantity = committedQuantity,
+                HasRetargetStorageClaim = demolitionCargo
             });
             usedWorkers.Add(candidate.Worker);
         }

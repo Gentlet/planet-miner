@@ -37,8 +37,10 @@ public static class DroneWorldItemRecoveryUtility
         switch (task.RecoveryReason)
         {
             case DroneRecoveryReasonEnum.DroneDrop:
-            case DroneRecoveryReasonEnum.BuildingDemolition:
                 return true;
+            case DroneRecoveryReasonEnum.BuildingDemolition:
+                return task.DemolitionRoot == Entity.Null ||
+                    DroneDemolitionUtility.IsBeltItemSource(manager, task.DemolitionRoot, task.Target);
             case DroneRecoveryReasonEnum.SiteClearance:
                 if (DroneSchedulingUtility.IsUnderSite(manager, task.Target, sites))
                 {

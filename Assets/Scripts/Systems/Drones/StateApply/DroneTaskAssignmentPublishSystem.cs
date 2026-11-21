@@ -45,10 +45,28 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
             if (pending.PublicationQueued) continue;
             if (pending.Quantity <= 0) continue;
             var candidate = pending.Candidate;
+            if (candidate.Assignment == Entity.Null && manager.HasComponent<DroneLogisticsTask>(candidate.Task) &&
+                manager.GetComponentData<DroneLogisticsTask>(candidate.Task).Kind == DroneLogisticsTaskKindEnum.BuildingDemolition)
+            {
+                i = PublishDemolitionCrew(manager, registry, carryingCapacity, ecb, pendingPublications, i);
+                continue;
+            }
             candidate.Quantity = pending.Quantity;
             // 후보 선택 당시와 최종 공개 사이의 상태 차이를 검사한다. 현재 수량과 상태로 공개 가능 여부를 마지막으로 확인한다.
             int quantity = DroneSchedulingUtility.CandidateQuantity(manager, candidate, registry, carryingCapacity,
                 pending.CommittedQuantity);
+            if (pending.HasRetargetStorageClaim)
+            {
+                if (DroneDemolitionStorageUtility.Quantity(manager, candidate.Destination, candidate.Worker) != pending.Quantity)
+                    quantity = 0;
+                if (quantity < pending.Quantity)
+                    DroneDemolitionStorageUtility.ResizeClaim(manager, candidate.Destination, candidate.Worker, quantity);
+                if (quantity > 0 && !DroneDemolitionUtility.CanReachRefundStorage(manager, candidate.Worker, Entity.Null, candidate.Destination))
+                {
+                    DroneDemolitionStorageUtility.ResizeClaim(manager, candidate.Destination, candidate.Worker, 0);
+                    quantity = 0;
+                }
+            }
             bool supply = pending.CommittedQuantity > 0;
             if (supply && quantity < pending.CommittedQuantity)
             {
@@ -60,6 +78,7 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
 
             if (quantity <= 0)
             {
+                pending.HasRetargetStorageClaim = false;
                 pending.Quantity = 0;
                 pendingPublications[i] = pending;
                 continue;
@@ -69,10 +88,13 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
             {
                 if (!PublishRetarget(manager, candidate, quantity, ecb))
                 {
+                    if (pending.HasRetargetStorageClaim)
+                        DroneDemolitionStorageUtility.ResizeClaim(manager, candidate.Destination, candidate.Worker, 0);
                     // 적재 배정 revision/연결이 바뀌어 공개가 실패하면 후보에만 남아 있는 현장 예약도 함께 해제한다.
                     ConstructionSupplyReservationUtility.Release(manager, candidate.Destination, candidate.ItemType,
                         pending.CommittedQuantity);
                     pending.CommittedQuantity = 0;
+                    pending.HasRetargetStorageClaim = false;
                     pending.Quantity = 0;
                 }
                 else
@@ -84,25 +106,63 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
                 continue;
             }
 
-            bool demolition = manager.GetComponentData<DroneLogisticsTask>(candidate.Task).Kind == DroneLogisticsTaskKindEnum.BuildingDemolition;
-            Entity assignment = RecordNewAssignment(manager, candidate, quantity,
-                demolition ? DroneActionKindEnum.DemolishBuilding :
-                supply ? DroneActionKindEnum.CollectFromStorage : DroneActionKindEnum.RecoverWorldItem, ecb);
-            if (!demolition)
+            var task = manager.GetComponentData<DroneLogisticsTask>(candidate.Task);
+            if (task.DemolitionRoot != Entity.Null &&
+                !DroneDemolitionStorageUtility.TryReserveTransport(manager, registry, candidate, quantity))
             {
-                ecb.AddComponent(assignment, new ConstructionSupplyReservation
-                {
-                    Site = supply ? candidate.Destination : Entity.Null,
-                    ItemType = candidate.ItemType,
-                    AssignmentRevision = 1,
-                    RemainingQuantity = supply ? quantity : 0
-                });
+                pending.Quantity = 0;
+                pendingPublications[i] = pending;
+                continue;
             }
+            Entity assignment = RecordNewAssignment(manager, candidate, quantity,
+                supply ? DroneActionKindEnum.CollectFromStorage : DroneActionKindEnum.RecoverWorldItem, ecb);
+            ecb.AddComponent(assignment, new ConstructionSupplyReservation
+            {
+                Site = supply ? candidate.Destination : Entity.Null,
+                ItemType = candidate.ItemType,
+                AssignmentRevision = 1,
+                RemainingQuantity = supply ? quantity : 0
+            });
             // PublicationQueued는 ECB 기록 완료 표시다. Playback 전 반복 실행과 다음 틱 미공개 예약 롤백을 구분한다.
             pending.Quantity = quantity;
             pending.PublicationQueued = true;
             pendingPublications[i] = pending;
         }
+    }
+
+    private static int PublishDemolitionCrew(EntityManager manager, Entity registry, int capacity, EntityCommandBuffer ecb,
+        DynamicBuffer<DroneTaskPendingPublicationElement> publications, int start)
+    {
+        Entity root = publications[start].Candidate.Task;
+        int end = start;
+        while (end + 1 < publications.Length && publications[end + 1].Candidate.Task == root) end++;
+        bool valid = true;
+        for (int i = start; i <= end; i++)
+        {
+            var member = publications[i];
+            var candidate = member.Candidate;
+            valid &= DroneDemolitionUtility.CandidateQuantity(manager, candidate, registry, capacity, checkSpace: false) >= member.Quantity &&
+                (candidate.ItemType == ItemTypeEnum.None ||
+                 (DroneDemolitionStorageUtility.Quantity(manager, candidate.Destination, candidate.Worker) == member.Quantity &&
+                  DroneDemolitionUtility.CanReachRefundStorage(manager, candidate.Worker, candidate.Source, candidate.Destination)));
+        }
+        for (int i = start; i <= end; i++)
+        {
+            var member = publications[i];
+            var candidate = member.Candidate;
+            if (valid)
+            {
+                RecordNewAssignment(manager, candidate, member.Quantity, DroneActionKindEnum.DemolishBuilding, ecb);
+                member.PublicationQueued = true;
+            }
+            else
+            {
+                DroneDemolitionStorageUtility.ResizeClaim(manager, candidate.Destination, candidate.Worker, 0);
+                member.Quantity = 0;
+            }
+            publications[i] = member;
+        }
+        return end;
     }
 
     private static void PublishTransportAssignments(EntityManager manager, Entity registry, int carryingCapacity,
@@ -123,6 +183,8 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
             candidate.Quantity = pending.Reservation.RemainingQuantity;
             int quantity = DroneSchedulingUtility.CandidateQuantity(manager, candidate, registry, carryingCapacity);
             var reservation = DroneTransportReservationUtility.Take(ref pending);
+            if (quantity > 0 && manager.GetComponentData<DroneLogisticsTask>(candidate.Task).DemolitionRoot != Entity.Null &&
+                !DroneDemolitionStorageUtility.TryReserveTransport(manager, registry, candidate, quantity)) quantity = 0;
             if (quantity <= 0)
             {
                 ReleaseTransportReservation(manager, ref reservation);

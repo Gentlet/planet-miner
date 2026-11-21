@@ -428,6 +428,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
                     (slot.Quantity > 0 && hasInput && ((uint)index >= (uint)layout.Length || layout[index].ItemType != slot.ItemType)))
                     ReportViolation("StorageInvariant", $"Invalid inventory at slot {index}.", owner);
             }
+            ValidateDemolitionStorageClaims(owner, slots, hasRegistry, items);
         }
 
         foreach (var (slots, owner) in SystemAPI.Query<DynamicBuffer<ProductSlotElement>>().WithEntityAccess())
@@ -450,7 +451,8 @@ public partial class WorldInvariantValidationSystem : SystemBase
             bool valid = value.Quantity == 0
                 ? value.ItemType == ItemTypeEnum.None && value.Origin == DroneCargoOriginEnum.None && !value.BlockAutomaticRecoveryOnDrop
                 : value.Quantity > 0 && value.Quantity <= capacityLookup && value.ItemType != ItemTypeEnum.None &&
-                  (value.Origin == DroneCargoOriginEnum.Supply || value.Origin == DroneCargoOriginEnum.Recovery);
+                  (value.Origin == DroneCargoOriginEnum.Supply || value.Origin == DroneCargoOriginEnum.Recovery ||
+                   value.Origin == DroneCargoOriginEnum.DemolitionRecovery);
             if (!valid) ReportViolation("DroneCargoInvariant", "Cargo quantity, type or origin is invalid.", owner);
         }
 
@@ -551,6 +553,41 @@ public partial class WorldInvariantValidationSystem : SystemBase
         return !hasRegistry || quantity <= ItemRegistry.GetMaxStack(items, type);
     }
 
+    private void ValidateDemolitionStorageClaims(Entity owner, DynamicBuffer<StorageSlotElement> slots,
+        bool hasRegistry, DynamicBuffer<ItemConfigElement> items)
+    {
+        if (!EntityManager.HasBuffer<DroneStationReservedSlotElement>(owner)) return;
+        var reservations = EntityManager.GetBuffer<DroneStationReservedSlotElement>(owner, true);
+        var storageRead = StationStorageUtility.StorageReadContext.Create(EntityManager, owner);
+        int generalSlots = slots.Length - storageRead.DedicatedSlotCount;
+        foreach (var claim in reservations)
+        {
+            Entity worker = claim.TransportWorker;
+            if (worker == Entity.Null) continue;
+
+            Entity link = EntityManager.HasComponent<DroneWorkerAssignment>(worker)
+                ? EntityManager.GetComponentData<DroneWorkerAssignment>(worker).Assignment : Entity.Null;
+            bool valid = EntityManager.HasComponent<DroneTaskAssignment>(link) &&
+                (uint)claim.SlotIndex < (uint)generalSlots && claim.Quantity > 0;
+            if (valid)
+            {
+                var assignment = EntityManager.GetComponentData<DroneTaskAssignment>(link);
+                valid = assignment.Worker == worker && assignment.Destination == owner && assignment.Task == claim.Task &&
+                    assignment.ItemType == claim.ItemType && !DroneSchedulingUtility.IsTerminal(assignment.State) &&
+                    !storageRead.IsDockOccupied(claim.SlotIndex);
+            }
+            if (valid && hasRegistry)
+            {
+                int maximum = ItemRegistry.GetMaxStack(items, claim.ItemType);
+                int free = InventorySlotUtility.FreeQuantity(slots[claim.SlotIndex], claim.ItemType, maximum);
+                valid = DroneDemolitionStorageUtility.FreeQuantity(reservations, claim.SlotIndex,
+                    claim.ItemType, free, worker) >= claim.Quantity;
+            }
+            if (!valid)
+                ReportViolation("StorageInvariant", "Demolition transport slot reservation is inconsistent.", owner);
+        }
+    }
+
     /// <summary>
     /// 최종 공개 원본의 드론 전용 슬롯과 정박 양방향 소유권을 검사한다.
     /// </summary>
@@ -590,6 +627,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 using var reservedSlots = new NativeHashSet<int>(math.max(1, total), Allocator.Temp);
                 foreach (var entry in EntityManager.GetBuffer<DroneStationReservedSlotElement>(station, true))
                 {
+                    if (entry.TransportWorker != Entity.Null) continue;
                     bool validReservation = (uint)entry.SlotIndex < (uint)items.Length && reservedSlots.Add(entry.SlotIndex) &&
                         EntityManager.HasBuffer<DroneStationRelocationMemberElement>(entry.Task);
                     if (validReservation)

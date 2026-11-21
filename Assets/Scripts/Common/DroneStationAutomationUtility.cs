@@ -164,7 +164,8 @@ internal static class DroneStationAutomationUtility
             {
                 var task = _manager.GetComponentData<DroneLogisticsTask>(taskEntity);
                 if (!DroneSchedulingUtility.IsTaskValid(_manager, task, _sites) ||
-                    DroneTaskRequestDecisionUtility.IsCancellationPlanned(_manager, _candidates, taskEntity))
+                    DroneTaskRequestDecisionUtility.IsCancellationPlanned(_manager, _candidates, taskEntity) ||
+                    DroneDemolitionUtility.IsDemolitionChildCancellationPlanned(_manager, _candidates, taskEntity))
                 {
                     continue;
                 }
@@ -320,7 +321,8 @@ internal static class DroneStationAutomationUtility
         in DemandTasksByNetwork demandTasks, in StorageCandidatesByNetwork storagesByNetwork,
         in DemandEndpointReads endpointReads, NativeHashSet<Entity>.ReadOnly evaluatingTargets,
         NativeArray<DroneStationNetworkDecision> networks, Entity registry, int capacity, float maximum,
-        NativeList<DroneStationActivationPlan> plans, int stockSlot = -1, int stockOrdinal = 0)
+        NativeList<DroneStationActivationPlan> plans, int stockSlot = -1, int stockOrdinal = 0,
+        Entity demolitionConfig = default)
     {
         if (manager.HasComponent<PreparingStationDemolition>(station) || manager.HasComponent<DroneStationRelocation>(drone)) return;
         float charge = manager.HasComponent<DroneBatteryState>(drone) ? manager.GetComponentData<DroneBatteryState>(drone).CurrentCharge : maximum;
@@ -342,11 +344,26 @@ internal static class DroneStationAutomationUtility
             if (demand <= 0) continue;
             if (task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition)
             {
-                if (endpointReads.TryGetPoint(task.Target, out float2 point))
+                if (!endpointReads.TryGetPoint(task.Target, out float2 point)) continue;
+                using var costs = DroneDemolitionUtility.ReadRefunds(manager, taskEntity, task, demolitionConfig);
+                if (costs.IsEmpty)
                 {
                     plans.Add(new DroneStationActivationPlan { Drone = drone, Station = station, Task = taskEntity,
                         StockSlot = stockSlot, StockOrdinal = stockOrdinal,
                         Origin = origin, Destination = point, Charge = charge, Quantity = 1, ViaSource = false });
+                    continue;
+                }
+                foreach (Entity storage in storagesByNetwork.GetStorages(network, demandTasks.NetworkBounds))
+                {
+                    if (storage == task.Target || !endpointReads.TryGetPoint(storage, out float2 destination)) continue;
+                    bool canReceive = false;
+                    foreach (var cost in costs)
+                        canReceive |= DroneSchedulingUtility.CountStorageSpace(manager, storage, cost.ItemType, registry,
+                            1, generalOnly: true) > 0;
+                    if (canReceive)
+                        plans.Add(new DroneStationActivationPlan { Drone = drone, Station = station, Task = taskEntity,
+                            StockSlot = stockSlot, StockOrdinal = stockOrdinal, Origin = origin, Source = point,
+                            Destination = destination, Charge = charge, Quantity = 1, ViaSource = true });
                 }
                 continue;
             }
@@ -395,6 +412,20 @@ internal static class DroneStationAutomationUtility
     private static int ReadDemand(EntityManager manager, Entity entity, in DroneLogisticsTask task,
         NativeArray<Entity> assignments, Entity candidates)
     {
+        if (task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition)
+        {
+            if (!DroneDemolitionUtility.TryGetDemolitionWork(manager, entity, out _) ||
+                !manager.HasComponent<DroneDemolitionProgress>(entity)) return 0;
+            var demolition = manager.GetComponentData<DroneDemolitionProgress>(entity);
+            if (demolition.AwaitingSpace || demolition.AssignedWorkers > 0 || demolition.RequiredWorkers == 0) return 0;
+
+            using var workers = new NativeHashSet<Entity>(4, Allocator.Temp);
+            foreach (var candidate in manager.GetBuffer<DroneTaskCandidateDecisionElement>(candidates, true))
+                if (candidate.Task == entity) workers.Add(candidate.Worker);
+            // 현재 유휴 기체가 전량 배정되면 Activation Reservation이 새 출고 요청을 막는다.
+            return math.max(1, demolition.RequiredWorkers - workers.Count);
+        }
+
         if (task.State != DroneLogisticsTaskStateEnum.Open) return 0;
         if (DroneSchedulingUtility.IsTransportKind(task.Kind))
         {
@@ -407,15 +438,11 @@ internal static class DroneStationAutomationUtility
         foreach (Entity owner in assignments)
         {
             var assignment = manager.GetComponentData<DroneTaskAssignment>(owner);
-            bool sameTarget = task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition
-                ? assignment.Task == entity : assignment.Source == task.Target;
-            if (sameTarget && !DroneSchedulingUtility.IsTerminal(assignment.State)) return 0;
+            if (assignment.Source == task.Target && !DroneSchedulingUtility.IsTerminal(assignment.State)) return 0;
         }
         foreach (var pending in manager.GetBuffer<DroneTaskPendingPublicationElement>(candidates, true))
         {
-            bool sameTarget = task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition
-                ? pending.Candidate.Task == entity : pending.Candidate.Source == task.Target;
-            if (sameTarget && (pending.Quantity > 0 || pending.PublicationQueued)) return 0;
+            if (pending.Candidate.Source == task.Target && (pending.Quantity > 0 || pending.PublicationQueued)) return 0;
         }
         return 1;
     }

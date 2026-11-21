@@ -31,6 +31,8 @@ public partial struct DroneStationActivationReservationSystem : ISystem
             Decisions = SystemAPI.GetComponentLookup<DroneStationDecision>(false),
             Tasks = SystemAPI.GetComponentLookup<DroneLogisticsTask>(true),
             Assignments = SystemAPI.GetComponentLookup<DroneTaskAssignment>(true),
+            Demolitions = SystemAPI.GetComponentLookup<DroneDemolitionProgress>(true),
+            SpaceBlocks = SystemAPI.GetBufferLookup<DroneDemolitionActivationBlockElement>(true),
             Requirements = SystemAPI.GetComponentLookup<DroneTransportRequirement>(true),
             Progress = SystemAPI.GetComponentLookup<DroneTransportProgress>(true),
             Materials = SystemAPI.GetBufferLookup<ConstructionMaterialRequirementElement>(true),
@@ -49,6 +51,8 @@ public partial struct DroneStationActivationReservationSystem : ISystem
         public ComponentLookup<DroneStationDecision> Decisions;
         [ReadOnly] public ComponentLookup<DroneLogisticsTask> Tasks;
         [ReadOnly] public ComponentLookup<DroneTaskAssignment> Assignments;
+        [ReadOnly] public ComponentLookup<DroneDemolitionProgress> Demolitions;
+        [ReadOnly] public BufferLookup<DroneDemolitionActivationBlockElement> SpaceBlocks;
         [ReadOnly] public ComponentLookup<DroneTransportRequirement> Requirements;
         [ReadOnly] public ComponentLookup<DroneTransportProgress> Progress;
         [ReadOnly] public BufferLookup<ConstructionMaterialRequirementElement> Materials;
@@ -101,7 +105,9 @@ public partial struct DroneStationActivationReservationSystem : ISystem
             {
                 return 0;
             }
-            if (task.State != DroneLogisticsTaskStateEnum.Open) return 0;
+            bool demolition = task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition;
+            if (task.State != DroneLogisticsTaskStateEnum.Open &&
+                !(demolition && task.Target == taskEntity && task.State == DroneLogisticsTaskStateEnum.ExecutionConfirmed)) return 0;
             if (DroneSchedulingUtility.IsTransportKind(task.Kind))
             {
                 var requirement = Requirements[taskEntity];
@@ -133,7 +139,13 @@ public partial struct DroneStationActivationReservationSystem : ISystem
                     ? publication.Candidate.Task == taskEntity : publication.Candidate.Source == task.Target;
                 if (sameTarget && (publication.Quantity > 0 || publication.PublicationQueued)) return 0;
             }
-            return 1;
+            if (!demolition) return 1;
+            foreach (var block in SpaceBlocks[Candidates])
+            {
+                if (block.Task == taskEntity) return 0;
+            }
+            return Demolitions.TryGetComponent(taskEntity, out var demolitionProgress) && !demolitionProgress.AwaitingSpace
+                ? demolitionProgress.RequiredWorkers : 0;
         }
     }
 }

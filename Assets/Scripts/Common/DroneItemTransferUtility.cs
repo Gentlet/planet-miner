@@ -10,7 +10,9 @@ public static class DroneItemTransferUtility
 {
     public static int CollectionLimit(EntityManager manager, Entity entity, in DroneTaskAssignment assignment)
     {
-        if (!DroneTransportEndpointUtility.IsArea(manager, assignment.Source, assignment.SourceArea))
+        if (!manager.HasComponent<DroneLogisticsTask>(assignment.Task)) return 0;
+        var sourceTask = manager.GetComponentData<DroneLogisticsTask>(assignment.Task);
+        if (!DroneTransportEndpointUtility.CanCollectFrom(manager, sourceTask, assignment.Source, assignment.SourceArea))
         {
             return 0;
         }

@@ -34,8 +34,11 @@ public static class DroneItemTransferValidationUtility
             !math.all(math.isfinite(observation.Position))) return false;
         if (!DroneItemTransferUtility.CargoHasSingleType(manager, action.Worker, assignment.ItemType)) return false;
         var cargo = manager.GetComponentData<DroneCargoState>(action.Worker);
-        var cargoOrigin = manager.GetComponentData<DroneCargoState>(action.Worker).Origin;
-        if (cargo.Quantity != 0 && cargoOrigin != DroneCargoOriginEnum.Supply && cargoOrigin != DroneCargoOriginEnum.Recovery) return false;
+        var cargoOrigin = cargo.Origin;
+        if (cargo.Quantity != 0 && cargoOrigin != DroneCargoOriginEnum.Supply &&
+            cargoOrigin != DroneCargoOriginEnum.Recovery && cargoOrigin != DroneCargoOriginEnum.DemolitionRecovery) return false;
+        if (cargoOrigin == DroneCargoOriginEnum.DemolitionRecovery && action.Kind == DroneActionKindEnum.StoreCargo &&
+            manager.HasComponent<PreparingStationDemolition>(assignment.Destination)) return false;
         if (manager.HasComponent<ConstructionSupplyReservation>(action.Assignment))
         {
             var reservation = manager.GetComponentData<ConstructionSupplyReservation>(action.Assignment);
@@ -46,7 +49,7 @@ public static class DroneItemTransferValidationUtility
         bool collection = action.Kind == DroneActionKindEnum.CollectFromStorage || action.Kind == DroneActionKindEnum.RecoverWorldItem;
         if (collection)
         {
-            if (action.Target != assignment.Source) return false;
+            if (action.Target != assignment.Source || manager.HasComponent<PreparingStationDemolition>(assignment.Destination)) return false;
             if (!IsAtCollectionPoint(manager, assignment)) return false;
             if (cargo.Quantity != 0) return false;
             if (manager.GetComponentData<DroneCargoState>(action.Worker).Origin != DroneCargoOriginEnum.None) return false;
@@ -65,7 +68,7 @@ public static class DroneItemTransferValidationUtility
                     {
                         return false;
                     }
-                    if (!DroneTransportEndpointUtility.IsArea(manager, assignment.Source, assignment.SourceArea) ||
+                    if (!DroneTransportEndpointUtility.CanCollectFrom(manager, task, assignment.Source, assignment.SourceArea) ||
                         !DroneTransportEndpointUtility.IsArea(manager, assignment.Destination, assignment.DestinationArea))
                     {
                         return false;
@@ -76,7 +79,7 @@ public static class DroneItemTransferValidationUtility
         }
         else if (action.Kind == DroneActionKindEnum.DropCargo)
         {
-            if (action.Target != Entity.Null) return false;
+            if (cargo.Origin == DroneCargoOriginEnum.DemolitionRecovery || action.Target != Entity.Null) return false;
             if (assignment.State != DroneTaskAssignmentStateEnum.Retargeting &&
                 assignment.State != DroneTaskAssignmentStateEnum.MovingToDestination &&
                 assignment.State != DroneTaskAssignmentStateEnum.AwaitingDelivery) return false;
@@ -177,7 +180,9 @@ public static class DroneItemTransferValidationUtility
             return false;
         }
         var task = manager.GetComponentData<DroneLogisticsTask>(reservation.Task);
-        if (!DroneSchedulingUtility.IsTransportKind(task.Kind) || task.State != DroneLogisticsTaskStateEnum.Open ||
+        bool deliveringDemolition = task.DemolitionRoot != Entity.Null && assignment.NextAction == DroneActionKindEnum.StoreCargo;
+        if (!DroneSchedulingUtility.IsTransportKind(task.Kind) ||
+            (!deliveringDemolition && task.State != DroneLogisticsTaskStateEnum.Open) ||
             task.ItemType != assignment.ItemType)
         {
             return false;
@@ -186,7 +191,7 @@ public static class DroneItemTransferValidationUtility
         var sourceArea = task.Kind == DroneLogisticsTaskKindEnum.StorageExport ? task.Area : DroneTransportAreaEnum.GeneralStorage;
         return task.Target == target && assignment.SourceArea == sourceArea &&
             assignment.DestinationArea == DroneTransportEndpointUtility.DestinationArea(task) &&
-            DroneTransportEndpointUtility.IsTarget(manager, task);
+            (deliveringDemolition || DroneTransportEndpointUtility.IsTarget(manager, task));
     }
 
     private static bool ReservationMatches(EntityManager manager, Entity entity, in DroneTaskAssignment assignment)

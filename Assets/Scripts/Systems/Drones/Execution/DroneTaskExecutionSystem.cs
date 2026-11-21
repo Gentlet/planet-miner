@@ -191,12 +191,16 @@ public partial struct DroneTaskExecutionSystem : ISystem
 
         if (DroneSchedulingUtility.IsTransportKind(decision.Kind))
         {
-            return DroneTransportEndpointUtility.IsArea(manager, decision.Target, decision.Area);
+            return decision.Purpose == DroneTransportPurposeEnum.DemolitionRecovery
+                ? DroneDemolitionUtility.IsInventorySource(manager, decision.DemolitionRoot, decision.Target, decision.Area)
+                : DroneTransportEndpointUtility.IsArea(manager, decision.Target, decision.Area);
         }
 
         if (decision.Kind == DroneLogisticsTaskKindEnum.WorldItemRecovery)
         {
-            return DroneSchedulingUtility.IsWorldItem(manager, decision.Target, decision.ItemType);
+            return DroneSchedulingUtility.IsWorldItem(manager, decision.Target, decision.ItemType) &&
+                (decision.DemolitionRoot == Entity.Null ||
+                 DroneDemolitionUtility.IsBeltItemSource(manager, decision.DemolitionRoot, decision.Target));
         }
 
         return false;

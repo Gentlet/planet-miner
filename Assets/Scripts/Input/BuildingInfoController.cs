@@ -23,10 +23,12 @@ public readonly struct BuildingInfoTaskRow
 {
     public readonly Entity Task;
     public readonly string Text;
-    public BuildingInfoTaskRow(Entity task, string text)
+    public readonly bool CanCancel;
+    public BuildingInfoTaskRow(Entity task, string text, bool canCancel = true)
     {
         Task = task;
         Text = text;
+        CanCancel = canCancel;
     }
 }
 
@@ -395,12 +397,33 @@ public sealed class BuildingInfoController : PeriodicWorldView
 
     private void ReadTasks(EntityManager manager, Entity entity)
     {
+        Entity demolition = Entity.Null;
+        if (manager.HasComponent<PendingBuildingDemolition>(entity))
+            demolition = manager.GetComponentData<PendingBuildingDemolition>(entity).Task;
+        else if (manager.HasComponent<PreparingStationDemolition>(entity))
+            demolition = manager.GetComponentData<PreparingStationDemolition>(entity).Task;
+        if (manager.HasComponent<DroneLogisticsTask>(demolition) && manager.HasComponent<DroneDemolitionProgress>(demolition))
+        {
+            var task = manager.GetComponentData<DroneLogisticsTask>(demolition);
+            var status = manager.GetComponentData<DroneDemolitionProgress>(demolition);
+            string text = task.State == DroneLogisticsTaskStateEnum.ExecutionConfirmed ? "철거 확정" :
+                status.AwaitingRelocation ? "정거장 드론 이전 중" :
+                status.AwaitingSpace && status.RemainingStock > 0 ? $"창고 공간 부족 · 재고 {status.RemainingStock}개 남음" :
+                status.AwaitingSpace ? "창고 공간 부족" :
+                status.RemainingStock > 0 ? $"재고 {status.RemainingStock}개 남음" :
+                status.RequiredWorkers == 0 ? "재고 확인 중" :
+                status.AssignedWorkers == 0 ? $"운반 가능한 드론 대기 · {status.RequiredWorkers}기 필요" :
+                $"환급 드론 {status.ArrivedWorkers}/{status.AssignedWorkers}기 도착";
+            if (task.State == DroneLogisticsTaskStateEnum.Open || task.State == DroneLogisticsTaskStateEnum.ExecutionConfirmed)
+                Tasks.Add(new BuildingInfoTaskRow(demolition, text, task.State == DroneLogisticsTaskStateEnum.Open));
+        }
+
         using var query = manager.CreateEntityQuery(typeof(DroneLogisticsTask), typeof(DroneTransportRequirement), typeof(DroneTransportProgress));
         using var tasks = query.ToEntityArray(Allocator.Temp);
         foreach (Entity root in tasks)
         {
             var task = manager.GetComponentData<DroneLogisticsTask>(root);
-            if (task.Target != entity)
+            if (task.Target != entity || task.DemolitionRoot != Entity.Null)
             {
                 continue;
             }

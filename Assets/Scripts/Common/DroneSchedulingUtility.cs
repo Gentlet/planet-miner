@@ -27,6 +27,8 @@ public static class DroneSchedulingUtility
             }
             if (!manager.HasBuffer<DroneDemolitionDecisionElement>(existing))
                 manager.AddBuffer<DroneDemolitionDecisionElement>(existing);
+            if (!manager.HasBuffer<DroneDemolitionActivationBlockElement>(existing))
+                manager.AddBuffer<DroneDemolitionActivationBlockElement>(existing);
             if (!manager.HasBuffer<DroneTaskPendingPublicationElement>(existing))
             {
                 manager.AddBuffer<DroneTaskPendingPublicationElement>(existing);
@@ -72,7 +74,8 @@ public static class DroneSchedulingUtility
             typeof(DroneTaskCreationDecisionElement), typeof(DroneTaskInvalidationDecisionElement),
             typeof(DroneTaskGenerationBlockElement), typeof(DroneTaskGenerationDecisionElement), typeof(DroneTransportPlanDecisionElement),
             typeof(DroneTransportPendingReservationElement), typeof(DroneReturnReservationElement), typeof(DroneDemolitionDecisionElement),
-            typeof(DroneStationRelocationCandidateElement), typeof(DroneStationRelocationIntentElement), typeof(DroneInventoryWithdrawalElement));
+            typeof(DroneStationRelocationCandidateElement), typeof(DroneStationRelocationIntentElement), typeof(DroneInventoryWithdrawalElement),
+            typeof(DroneDemolitionActivationBlockElement));
     }
 
     /// <summary>초기 능력/연구 Writer가 게시한 공통 값을 읽는다. 미게시 상태에 임의 기본값을 만들지 않는다.</summary>
@@ -194,7 +197,7 @@ public static class DroneSchedulingUtility
 
     public static int CountInventory(EntityManager manager, Entity storage, ItemTypeEnum type)
     {
-        if (type == ItemTypeEnum.Drone && manager.HasComponent<PreparingStationDemolition>(storage)) return 0;
+        if (manager.HasComponent<PreparingStationDemolition>(storage)) return 0;
         return IsStorage(manager, storage)
             ? InventorySlotUtility.Count(manager.GetBuffer<StorageSlotElement>(storage, true), type)
             : 0;
@@ -208,14 +211,14 @@ public static class DroneSchedulingUtility
 
     /// <summary>배정 후보와 실제 보관이 공유하는 필터·슬롯·MaxStack 계산. 보관 상태는 변경하지 않는다.</summary>
     public static int FindStorageSlot(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry,
-        DroneTransportAreaEnum area = default)
+        DroneTransportAreaEnum area = default, Entity worker = default)
     {
         var storageRead = StationStorageUtility.StorageReadContext.Create(manager, storage);
         if (!TryReadStorageLimit(manager, storage, type, registry, ref storageRead, out int slots, out int maxStack, area)) return -1;
         for (int slot = 0; slot < slots; slot++)
         {
             int candidate = StationStorageUtility.SearchSlot(slot, slots, storageRead.DedicatedSlotCount, type);
-            if (ReadSlotFreeQuantity(ref storageRead, type, candidate, maxStack, storageRead.SlotCount, storageRead.DedicatedSlotCount) > 0) return candidate;
+            if (ReadSlotFreeQuantity(ref storageRead, type, candidate, maxStack, storageRead.SlotCount, storageRead.DedicatedSlotCount, worker) > 0) return candidate;
         }
         return -1;
     }
@@ -291,7 +294,7 @@ public static class DroneSchedulingUtility
     // StoreCargo의 고정 한도는 공유한다. 목적지 자격은 슬롯마다 확인하고 점유는 이번 탐색의 컨텍스트에서 읽는다.
     internal static bool CanStoreInSlot(EntityManager manager, Entity storage, ItemTypeEnum type, int slot,
         int maxStack, ref int slotCount, ref int dedicatedSlotCount, ref bool hasReadSlots, DroneTransportAreaEnum area,
-        ref StationStorageUtility.StorageReadContext storageRead)
+        ref StationStorageUtility.StorageReadContext storageRead, Entity worker = default)
     {
         if (area == DroneTransportAreaEnum.Product || !DroneTransportEndpointUtility.IsArea(manager, storage, area))
         {
@@ -320,7 +323,7 @@ public static class DroneSchedulingUtility
         {
             return false;
         }
-        return ReadSlotFreeQuantity(ref storageRead, type, slot, maxStack, slotCount, dedicatedSlotCount) > 0;
+        return ReadSlotFreeQuantity(ref storageRead, type, slot, maxStack, slotCount, dedicatedSlotCount, worker) > 0;
     }
 
     /// <summary>
@@ -330,9 +333,10 @@ public static class DroneSchedulingUtility
     public static int CountStorageSpace(EntityManager manager, Entity storage, ItemTypeEnum type, Entity registry, int limit,
         DroneTransportAreaEnum area = default, bool generalOnly = false, Entity deliveryAssignment = default)
     {
-        if (type == ItemTypeEnum.Drone && manager.HasComponent<PreparingStationDemolition>(storage))
+        if (manager.HasComponent<PreparingStationDemolition>(storage))
         {
-            if (!DroneStationRelocationUtility.CanReceiveCommittedDroneCargo(manager, storage, deliveryAssignment))
+            if (type != ItemTypeEnum.Drone ||
+                !DroneStationRelocationUtility.CanReceiveCommittedDroneCargo(manager, storage, deliveryAssignment))
             {
                 return 0;
             }
@@ -343,6 +347,8 @@ public static class DroneSchedulingUtility
             return 0;
         }
 
+        Entity worker = manager.HasComponent<DroneTaskAssignment>(deliveryAssignment)
+            ? manager.GetComponentData<DroneTaskAssignment>(deliveryAssignment).Worker : Entity.Null;
         int available = 0;
         if (generalOnly)
         {
@@ -350,19 +356,19 @@ public static class DroneSchedulingUtility
         }
         for (int slot = 0; slot < slots && available < limit; slot++)
         {
-            available += math.min(limit - available, ReadSlotFreeQuantity(ref storageRead, type, slot, maxStack, storageRead.SlotCount, storageRead.DedicatedSlotCount));
+            available += math.min(limit - available, ReadSlotFreeQuantity(ref storageRead, type, slot, maxStack, storageRead.SlotCount, storageRead.DedicatedSlotCount, worker));
         }
         return available;
     }
 
-    private static int ReadSlotFreeQuantity(ref StationStorageUtility.StorageReadContext storageRead,
-        ItemTypeEnum type, int slot, int maxStack, int slotCount, int dedicatedSlotCount)
+    internal static int ReadSlotFreeQuantity(ref StationStorageUtility.StorageReadContext storageRead,
+        ItemTypeEnum type, int slot, int maxStack, int slotCount, int dedicatedSlotCount, Entity worker = default)
     {
         if (!StationStorageUtility.IsItemSlotAllowed(slot, slotCount, dedicatedSlotCount, type))
         {
             return 0;
         }
-        if (storageRead.IsDockOccupied(slot) || storageRead.IsReserved(slot))
+        if (storageRead.IsDockOccupied(slot))
         {
             return 0;
         }
@@ -372,7 +378,9 @@ public static class DroneSchedulingUtility
             var inputs = storageRead.InputSlots;
             if (slot >= inputs.Length || inputs[slot].ItemType != type) return 0;
         }
-        return (uint)slot < (uint)items.Length ? InventorySlotUtility.FreeQuantity(items[slot], type, maxStack) : 0;
+        return (uint)slot < (uint)items.Length
+            ? storageRead.FreeAfterReservations(slot, type, InventorySlotUtility.FreeQuantity(items[slot], type, maxStack), worker)
+            : 0;
     }
 
     public static bool IsUnderSite(EntityManager manager, Entity item, NativeArray<Entity> sites)
@@ -439,7 +447,7 @@ public static class DroneSchedulingUtility
 
     /// <summary>판단만 수행한다. 예약·작업·수행자 연결의 변경은 각 반영 단계가 소유한다.</summary>
     public static bool AssignmentNeedsCleanup(EntityManager manager, Entity assignmentEntity, in DroneTaskAssignment assignment,
-        NativeArray<Entity> sites)
+        NativeArray<Entity> sites, Entity registry = default)
     {
         if (assignment.ItemType == ItemTypeEnum.Drone &&
             ((assignment.NextAction == DroneActionKindEnum.CollectFromStorage &&
@@ -474,7 +482,9 @@ public static class DroneSchedulingUtility
                     return true;
                 }
                 task = manager.GetComponentData<DroneLogisticsTask>(reservation.Task);
-                if (!IsTaskValid(manager, task, sites))
+                bool loadedDemolition = task.DemolitionRoot != Entity.Null &&
+                    assignment.NextAction == DroneActionKindEnum.StoreCargo && ReadAssignmentCargoQuantity(manager, assignment) > 0;
+                if (!loadedDemolition && !IsTaskValid(manager, task, sites))
                 {
                     return true;
                 }
@@ -484,14 +494,27 @@ public static class DroneSchedulingUtility
         if (IsTerminal(assignment.State) || !IsActiveEntity(manager, assignment.Worker)) return true;
         if (assignment.State == DroneTaskAssignmentStateEnum.Retargeting) return true;
         if (assignment.NextAction == DroneActionKindEnum.DemolishBuilding)
-            return !manager.HasComponent<DroneLogisticsTask>(assignment.Task) ||
-                !IsTaskValid(manager, manager.GetComponentData<DroneLogisticsTask>(assignment.Task), sites);
+        {
+            if (!manager.HasComponent<DroneLogisticsTask>(assignment.Task) ||
+                !IsTaskValid(manager, manager.GetComponentData<DroneLogisticsTask>(assignment.Task), sites)) return true;
+            if (assignment.ItemType == ItemTypeEnum.None) return false;
+            if (registry == Entity.Null)
+            {
+                using var query = manager.CreateEntityQuery(ComponentType.ReadOnly<ItemRegistry>(), ComponentType.ReadOnly<ItemConfigElement>());
+                if (query.IsEmptyIgnoreFilter) return true;
+                registry = query.GetSingletonEntity();
+            }
+            // 집결 중 바뀐 필터와 슬롯도 최종 철거와 같은 기준으로 확인해 전원의 예약을 풀 수 있게 한다.
+            return !DroneDemolitionUtility.HasDestinationClaim(manager, assignmentEntity, assignment, registry);
+        }
         if (assignment.NextAction == DroneActionKindEnum.DropCargo)
             return ReadAssignmentCargoQuantity(manager, assignment) <= 0 ||
                    !ConstructionSiteWorldItemUtility.IsWorldPositionAllowed(manager, assignment.DropPosition);
         if (assignment.NextAction == DroneActionKindEnum.StoreCargo)
             return ReadAssignmentCargoQuantity(manager, assignment) <= 0 ||
-                !DroneTransportEndpointUtility.IsArea(manager, assignment.Destination, assignment.DestinationArea);
+                !DroneTransportEndpointUtility.IsArea(manager, assignment.Destination, assignment.DestinationArea) ||
+                (manager.HasComponent<PreparingStationDemolition>(assignment.Destination) &&
+                 manager.GetComponentData<DroneCargoState>(assignment.Worker).Origin == DroneCargoOriginEnum.DemolitionRecovery);
         if (!taskValidated)
         {
             if (assignment.Task == Entity.Null)
@@ -512,7 +535,7 @@ public static class DroneSchedulingUtility
             return task.Kind != DroneLogisticsTaskKindEnum.ConstructionSupply ||
                    task.Target != assignment.Destination || !IsSite(manager, assignment.Destination);
         if (assignment.NextAction == DroneActionKindEnum.CollectFromStorage)
-            return !DroneTransportEndpointUtility.IsArea(manager, assignment.Source, assignment.SourceArea) ||
+            return !DroneTransportEndpointUtility.CanCollectFrom(manager, task, assignment.Source, assignment.SourceArea) ||
                 (task.Purpose == DroneTransportPurposeEnum.ResearchRecovery &&
                  ResearchRecoveryUtility.Count(manager, assignment.Source, assignment.ItemType) == 0);
         if (assignment.NextAction == DroneActionKindEnum.RecoverWorldItem)
@@ -710,7 +733,10 @@ public static class DroneSchedulingUtility
         {
             return math.all(manager.GetComponentData<GridPosition>(request.Destination).Value == request.DestinationPosition);
         }
-        if (!direct && !MatchesRouteEndpoint(manager, request.Source, request.SourcePosition, endpoints))
+        if (!direct && !(request.DemolitionRoot == Entity.Null
+                ? MatchesRouteEndpoint(manager, request.Source, request.SourcePosition, endpoints)
+                : DroneDemolitionUtility.IsRouteSource(manager, request.DemolitionRoot, request.Source) &&
+                  math.all(manager.GetComponentData<GridPosition>(request.Source).Value == request.SourcePosition)))
         {
             return false;
         }
@@ -919,7 +945,7 @@ public static class DroneSchedulingUtility
             {
                 return 0;
             }
-            if (!DroneTransportEndpointUtility.IsArea(manager, candidate.Source, sourceArea))
+            if (!DroneTransportEndpointUtility.CanCollectFrom(manager, task, candidate.Source, sourceArea))
             {
                 return 0;
             }
@@ -978,7 +1004,12 @@ public static class DroneSchedulingUtility
         if (route.Kind != DroneRouteKindEnum.Direct || route.Assignment != candidate.Assignment ||
             route.Destination != candidate.Destination) return 0;
         if (candidate.NextAction == DroneActionKindEnum.StoreCargo)
+        {
+            if (manager.GetComponentData<DroneCargoState>(candidate.Worker).Origin == DroneCargoOriginEnum.DemolitionRecovery)
+                return DroneDemolitionStorageUtility.AvailableTransportSpace(manager, candidate.Destination,
+                    candidate.ItemType, registry, quantity, candidate.Assignment);
             return HasStorageSpace(manager, candidate.Destination, candidate.ItemType, registry) ? quantity : 0;
+        }
         if (candidate.NextAction != DroneActionKindEnum.SupplyConstructionSite) return 0;
         if (manager.GetComponentData<DroneCargoState>(candidate.Worker).Origin != DroneCargoOriginEnum.Supply) return 0;
         if (!IsActiveEntity(manager, candidate.Task)) return 0;

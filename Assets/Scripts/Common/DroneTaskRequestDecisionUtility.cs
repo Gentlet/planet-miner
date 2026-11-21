@@ -325,7 +325,9 @@ internal static class DroneTaskRequestDecisionUtility
             return DroneTaskRequestStatusEnum.Unsupported;
         }
 
-        if (task.State != DroneLogisticsTaskStateEnum.Open && task.State != DroneLogisticsTaskStateEnum.Closed)
+        if (task.DemolitionRoot != Entity.Null ||
+            (task.Kind == DroneLogisticsTaskKindEnum.BuildingDemolition && task.State != DroneLogisticsTaskStateEnum.Open) ||
+            (task.State != DroneLogisticsTaskStateEnum.Open && task.State != DroneLogisticsTaskStateEnum.Closed))
         {
             return DroneTaskRequestStatusEnum.Rejected;
         }

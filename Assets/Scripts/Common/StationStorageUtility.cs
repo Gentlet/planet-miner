@@ -128,6 +128,18 @@ public static class StationStorageUtility
 
         internal bool IsReserved(int slot)
         {
+            ReadReservations();
+            return _hasReservations && DroneStationRelocationUtility.IsReserved(_reservations, slot);
+        }
+
+        internal int FreeAfterReservations(int slot, ItemTypeEnum type, int free, Entity worker = default)
+        {
+            ReadReservations();
+            return _hasReservations ? DroneDemolitionStorageUtility.FreeQuantity(_reservations, slot, type, free, worker) : free;
+        }
+
+        private void ReadReservations()
+        {
             if (!_readReservations)
             {
                 _hasReservations = _manager.HasBuffer<DroneStationReservedSlotElement>(_storage);
@@ -137,7 +149,6 @@ public static class StationStorageUtility
                 }
                 _readReservations = true;
             }
-            return _hasReservations && DroneStationRelocationUtility.IsReserved(_reservations, slot);
         }
 
         internal bool HasInputSlots

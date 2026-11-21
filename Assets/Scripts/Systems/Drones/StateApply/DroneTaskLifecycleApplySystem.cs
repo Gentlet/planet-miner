@@ -21,6 +21,9 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
     private EntityQuery _assignments;
     private EntityQuery _actionRequests;
     private EntityQuery _actionResults;
+    private EntityQuery _demolitionResults;
+    private EntityQuery _refundConfig;
+    private EntityQuery _capacity;
 
     public void OnCreate(ref SystemState state)
     {
@@ -31,6 +34,9 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         _assignments = state.GetEntityQuery(ComponentType.ReadWrite<DroneTaskAssignment>());
         _actionRequests = state.GetEntityQuery(ComponentType.ReadOnly<DroneActionReadyRequest>());
         _actionResults = state.GetEntityQuery(ComponentType.ReadOnly<DroneItemTransferResult>());
+        _demolitionResults = state.GetEntityQuery(ComponentType.ReadOnly<BuildingDemolitionResult>(), ComponentType.ReadOnly<DroneLogisticsTask>());
+        _refundConfig = state.GetEntityQuery(ComponentType.ReadOnly<BuildingConstructionMaterialElement>());
+        _capacity = state.GetEntityQuery(ComponentType.ReadOnly<DroneCapacityState>());
         _actionRegistry = state.GetEntityQuery(ComponentType.ReadOnly<ItemRegistry>(), ComponentType.ReadOnly<ItemConfigElement>());
         _pendingResults = new NativeHashSet<Entity>(16, Allocator.Persistent);
     }
@@ -50,44 +56,160 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         var manager = state.EntityManager;
         var ecb = state.World.GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>().CreateCommandBuffer();
         using var droppedBlocks = new NativeList<DroneTaskGenerationBlockElement>(Allocator.Temp);
+        using var assignments = _assignments.ToEntityArray(Allocator.Temp);
+        Entity registry = _actionRegistry.IsEmptyIgnoreFilter ? Entity.Null : _actionRegistry.GetSingletonEntity();
+        ApplyDemolitionResults(manager, registry, assignments, ecb);
         ApplyActionTransfers(manager, ecb, droppedBlocks);
-        ApplyDemolitionDecisions(manager, ecb);
+        ApplyDemolitionDecisions(manager, registry, assignments, ecb);
         // 행동 반영 뒤의 배정 상태로 무효화 의도를 재검사한다. 요청/결과 참조는 ECB 재생 전까지 남겨 삭제를 보류한다.
         using var tasks = _tasks.ToEntityArray(Allocator.Temp);
         using var sites = _sites.ToEntityArray(Allocator.Temp);
-        using var assignments = _assignments.ToEntityArray(Allocator.Temp);
         using var requests = _actionRequests.ToComponentDataArray<DroneActionReadyRequest>(Allocator.Temp);
         using var results = _actionResults.ToComponentDataArray<DroneItemTransferResult>(Allocator.Temp);
-        ApplyInvalidationDecisions(manager, requests, results, ecb, sites);
+        ApplyInvalidationDecisions(manager, requests, results, ecb, sites, registry);
         ApplyTaskRequests(manager, ecb);
         foreach (var block in droppedBlocks) ecb.AppendToBuffer(_candidates, block);
         RetireEndedTasks(manager, tasks, assignments, ecb);
     }
 
-    private void ApplyDemolitionDecisions(EntityManager manager, EntityCommandBuffer ecb)
+    private void ApplyDemolitionDecisions(EntityManager manager, Entity registry, NativeArray<Entity> assignments,
+        EntityCommandBuffer ecb)
     {
         var decisions = manager.GetBuffer<DroneDemolitionDecisionElement>(_candidates);
+        using var checkedRoots = new NativeHashSet<Entity>(4, Allocator.Temp);
+        var invalidations = manager.GetBuffer<DroneTaskInvalidationDecisionElement>(_candidates, true);
+        Entity config = _refundConfig.IsEmptyIgnoreFilter ? Entity.Null : _refundConfig.GetSingletonEntity();
+        int capacity = DroneSchedulingUtility.ReadCarryingCapacity(_capacity);
         foreach (var decision in decisions)
         {
             if (!DroneDemolitionUtility.CanConfirm(manager, decision.Assignment, decision.AssignmentRevision,
                 decision.WorkerObservationRevision)) continue;
-            var assignment = manager.GetComponentData<DroneTaskAssignment>(decision.Assignment);
-            if (DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, assignment.Task)) continue;
-            var task = manager.GetComponentData<DroneLogisticsTask>(assignment.Task);
-            // 확인과 건물 삭제는 별도 공개 경계다. root는 건물 결과를 받을 때까지 보존한다.
-            task.State = DroneLogisticsTaskStateEnum.ExecutionConfirmed;
-            ecb.SetComponent(assignment.Task, task);
-            ecb.AddComponent<BuildingDemolitionExecutionRequest>(assignment.Task);
-            if (manager.HasComponent<PreparingStationDemolition>(task.Target))
+            Entity root = manager.GetComponentData<DroneTaskAssignment>(decision.Assignment).Task;
+            if (!checkedRoots.Add(root) ||
+                DroneTaskRequestDecisionUtility.IsCancellationPlanned(manager, _candidates, root)) continue;
+
+            bool invalid = false;
+            foreach (var intent in invalidations)
             {
-                ecb.AddComponent(task.Target, new PendingBuildingDemolition { Task = assignment.Task });
+                if (intent.Kind != DroneTaskInvalidationDecisionKindEnum.CancelAssignment &&
+                    intent.Kind != DroneTaskInvalidationDecisionKindEnum.InvalidateAssignment) continue;
+                if (!manager.HasComponent<DroneTaskAssignment>(intent.Target) ||
+                    manager.GetComponentData<DroneTaskAssignment>(intent.Target).Task != root) continue;
+                invalid = true;
+                break;
             }
-            assignment.State = DroneTaskAssignmentStateEnum.Completed;
-            assignment.NextAction = DroneActionKindEnum.None;
-            manager.SetComponentData(decision.Assignment, assignment);
-            manager.SetComponentData(assignment.Worker, new DroneWorkerAssignment());
+            var task = manager.GetComponentData<DroneLogisticsTask>(root);
+            if (invalid || !DroneDemolitionUtility.CanConfirmDemolitionCrew(manager, root, task, assignments, config, registry, capacity))
+                continue;
+            if (DroneDemolitionUtility.IsCommittedPickup(manager, root, task))
+            {
+                HandOffRefund(manager, root, task, registry, assignments, ecb);
+                continue;
+            }
+
+            // 확인 뒤에도 배정과 수납 위치를 유지해 다음 EndBuilding에서 전량을 다시 대조한다.
+            task.State = DroneLogisticsTaskStateEnum.ExecutionConfirmed;
+            ecb.SetComponent(root, task);
+            ecb.AddComponent<BuildingDemolitionExecutionRequest>(root);
+            if (manager.HasComponent<PreparingStationDemolition>(task.Target))
+                ecb.AddComponent(task.Target, new PendingBuildingDemolition { Task = root });
         }
         decisions.Clear();
+    }
+
+    private void ApplyDemolitionResults(EntityManager manager, Entity registry, NativeArray<Entity> assignments,
+        EntityCommandBuffer ecb)
+    {
+        using var roots = _demolitionResults.ToEntityArray(Allocator.Temp);
+        foreach (Entity root in roots)
+        {
+            var task = manager.GetComponentData<DroneLogisticsTask>(root);
+            if (task.State != DroneLogisticsTaskStateEnum.ExecutionConfirmed || task.Target == root) continue;
+            var result = manager.GetComponentData<BuildingDemolitionResult>(root).Status;
+            if (result == BuildingDemolitionResultStatus.Completed)
+            {
+                HandOffRefund(manager, root, task, registry, assignments, ecb);
+                continue;
+            }
+
+            foreach (Entity entity in assignments)
+            {
+                var assignment = manager.GetComponentData<DroneTaskAssignment>(entity);
+                if (assignment.Task == root && assignment.NextAction == DroneActionKindEnum.DemolishBuilding)
+                    ReleaseDemolitionWorker(manager, entity, assignment);
+            }
+            bool retry = result == BuildingDemolitionResultStatus.Retry;
+            task.State = retry ? DroneLogisticsTaskStateEnum.Open : DroneLogisticsTaskStateEnum.Closed;
+            ecb.SetComponent(root, task);
+            if (retry)
+            {
+                ecb.RemoveComponent<BuildingDemolitionResult>(root);
+                if (manager.HasComponent<PreparingStationDemolition>(task.Target) &&
+                    manager.HasComponent<PendingBuildingDemolition>(task.Target))
+                    ecb.RemoveComponent<PendingBuildingDemolition>(task.Target);
+            }
+        }
+    }
+
+    private static void HandOffRefund(EntityManager manager, Entity root, DroneLogisticsTask task, Entity registry,
+        NativeArray<Entity> assignments, EntityCommandBuffer ecb)
+    {
+        var refund = manager.GetBuffer<DroneDemolitionRefundElement>(root);
+        foreach (Entity entity in assignments)
+        {
+            var assignment = manager.GetComponentData<DroneTaskAssignment>(entity);
+            if (assignment.Task != root || assignment.NextAction != DroneActionKindEnum.DemolishBuilding) continue;
+            if (assignment.ItemType == ItemTypeEnum.None)
+            {
+                ReleaseDemolitionWorker(manager, entity, assignment);
+                continue;
+            }
+
+            int material = -1;
+            for (int i = 0; i < refund.Length; i++)
+            {
+                if (refund[i].ItemType != assignment.ItemType) continue;
+                material = i;
+                break;
+            }
+            if (material < 0 || refund[material].Quantity < assignment.AssignedQuantity ||
+                !DroneDemolitionUtility.CanReceiveAtSite(manager, entity, assignment, root) ||
+                !DroneDemolitionUtility.HasDestinationClaim(manager, entity, assignment, registry))
+            {
+                ReleaseDemolitionWorker(manager, entity, assignment);
+                continue;
+            }
+
+            manager.SetComponentData(assignment.Worker, new DroneCargoState
+            {
+                ItemType = assignment.ItemType, Quantity = assignment.AssignedQuantity, Origin = DroneCargoOriginEnum.DemolitionRecovery
+            });
+            assignment.State = DroneTaskAssignmentStateEnum.MovingToDestination;
+            assignment.NextAction = DroneActionKindEnum.StoreCargo;
+            assignment.Revision = assignment.Revision == uint.MaxValue ? 1 : assignment.Revision + 1;
+            manager.SetComponentData(entity, assignment);
+            var remaining = refund[material];
+            remaining.Quantity -= assignment.AssignedQuantity;
+            if (remaining.Quantity == 0) refund.RemoveAt(material);
+            else refund[material] = remaining;
+        }
+
+        // 삭제된 건물의 집결 위치와 미인계 환급 수량은 root에 남고, 납품할 창고는 수행자의 배정에 남는다.
+        if (refund.IsEmpty) task.State = DroneLogisticsTaskStateEnum.Closed;
+        else task.Target = root;
+        ecb.SetComponent(root, task);
+    }
+
+    private static void ReleaseDemolitionWorker(EntityManager manager, Entity entity, DroneTaskAssignment assignment)
+    {
+        DroneDemolitionStorageUtility.ResizeClaim(manager, assignment.Destination, assignment.Worker, 0);
+        if (manager.HasComponent<DroneWorkerAssignment>(assignment.Worker) &&
+            manager.GetComponentData<DroneWorkerAssignment>(assignment.Worker).Assignment == entity)
+            manager.SetComponentData(assignment.Worker, new DroneWorkerAssignment());
+        assignment.State = DroneTaskAssignmentStateEnum.Completed;
+        assignment.NextAction = DroneActionKindEnum.None;
+        assignment.Revision = assignment.Revision == uint.MaxValue ? 1 : assignment.Revision + 1;
+        manager.SetComponentData(entity, assignment);
     }
 
     private EntityQuery _taskRequests;
@@ -197,7 +319,7 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
 
     private void ApplyInvalidationDecisions(EntityManager manager,
         NativeArray<DroneActionReadyRequest> requests, NativeArray<DroneItemTransferResult> results,
-        EntityCommandBuffer ecb, NativeArray<Entity> sites)
+        EntityCommandBuffer ecb, NativeArray<Entity> sites, Entity registry)
     {
         // Decision이 지목한 대상만 처리한다. 여기서 새 무효 작업을 탐색하면 판단 단계와 변경 단계의 책임이 섞인다.
         var decisions = manager.GetBuffer<DroneTaskInvalidationDecisionElement>(_candidates);
@@ -210,15 +332,6 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
                 if (!manager.HasComponent<DroneLogisticsTask>(decision.Target)) continue;
                 var task = manager.GetComponentData<DroneLogisticsTask>(decision.Target);
                 if (task.State != DroneLogisticsTaskStateEnum.Open || DroneSchedulingUtility.IsTaskValid(manager, task, sites)) continue;
-                task.State = DroneLogisticsTaskStateEnum.Closed;
-                manager.SetComponentData(decision.Target, task);
-            }
-            else if (decision.Kind == DroneTaskInvalidationDecisionKindEnum.FinishDemolitionTask)
-            {
-                if (!manager.HasComponent<BuildingDemolitionResult>(decision.Target)) continue;
-                var task = manager.GetComponentData<DroneLogisticsTask>(decision.Target);
-                if (task.Kind != DroneLogisticsTaskKindEnum.BuildingDemolition ||
-                    task.State != DroneLogisticsTaskStateEnum.ExecutionConfirmed) continue;
                 task.State = DroneLogisticsTaskStateEnum.Closed;
                 manager.SetComponentData(decision.Target, task);
             }
@@ -249,7 +362,7 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
             else if (decision.Kind == DroneTaskInvalidationDecisionKindEnum.InvalidateAssignment ||
                      decision.Kind == DroneTaskInvalidationDecisionKindEnum.CancelAssignment)
             {
-                ApplyAssignmentInvalidation(manager, decision, requests, results, ecb, sites);
+                ApplyAssignmentInvalidation(manager, decision, requests, results, ecb, sites, registry);
             }
         }
         decisions.Clear();
@@ -257,7 +370,7 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
 
     private static void ApplyAssignmentInvalidation(EntityManager manager, in DroneTaskInvalidationDecisionElement decision,
         NativeArray<DroneActionReadyRequest> requests, NativeArray<DroneItemTransferResult> results,
-        EntityCommandBuffer ecb, NativeArray<Entity> sites)
+        EntityCommandBuffer ecb, NativeArray<Entity> sites, Entity registry)
     {
         Entity entity = decision.Target;
         if (!manager.HasComponent<DroneTaskAssignment>(entity)) return;
@@ -265,13 +378,16 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         // 과거 revision의 의도는 적용하지 않는다. 일반 무효화만 최신 자격을 재검사하고 명시 취소는 승인된 의도를 따른다.
         if (assignment.Revision != decision.AssignmentRevision) return;
         bool isExplicitCancellation = decision.Kind == DroneTaskInvalidationDecisionKindEnum.CancelAssignment;
-        if (!isExplicitCancellation && !DroneSchedulingUtility.AssignmentNeedsCleanup(manager, entity, assignment, sites)) return;
+        if (!isExplicitCancellation && !DroneSchedulingUtility.AssignmentNeedsCleanup(manager, entity, assignment, sites, registry)) return;
 
         bool workerExists = DroneSchedulingUtility.IsActiveEntity(manager, assignment.Worker);
         bool ownsWorker = workerExists && manager.HasComponent<DroneWorkerAssignment>(assignment.Worker) &&
                           manager.GetComponentData<DroneWorkerAssignment>(assignment.Worker).Assignment == entity;
         bool hasCargo = ownsWorker && manager.HasComponent<DroneCargoState>(assignment.Worker) &&
                         manager.GetComponentData<DroneCargoState>(assignment.Worker).Quantity > 0;
+        // Retargeting 진입 때 기존 슬롯은 반환했다. 같은 창고에 새로 확보한 재배정 슬롯은 Publish가 정산한다.
+        if (assignment.State != DroneTaskAssignmentStateEnum.Retargeting)
+            DroneDemolitionStorageUtility.ResizeClaim(manager, assignment.Destination, assignment.Worker, 0);
         // 적재품이 있으면 수행자 연결을 보존해 다음 Decision이 목적지만 재배정한다. 빈 적재의 확정 종료 상태는 유지한다.
         if (hasCargo) assignment.State = DroneTaskAssignmentStateEnum.Retargeting;
         else if (assignment.State != DroneTaskAssignmentStateEnum.Completed &&
@@ -616,8 +732,12 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
             if (budgetIndex < 0) break;
             var slot = budget[budgetIndex];
             int count = math.min(maximum - moved, limits.MaxStack - slot.ItemCount);
-            count = math.min(count, InventorySlotUtility.FreeQuantity(storage[slot.SlotIndex], assignment.ItemType, limits.MaxStack));
+            var storageRead = StationStorageUtility.StorageReadContext.Create(manager, assignment.Destination);
+            int free = storageRead.FreeAfterReservations(slot.SlotIndex, assignment.ItemType,
+                InventorySlotUtility.FreeQuantity(storage[slot.SlotIndex], assignment.ItemType, limits.MaxStack), assignment.Worker);
+            count = math.min(count, free);
             if (!InventorySlotUtility.TryAdd(storage, slot.SlotIndex, assignment.ItemType, count, limits.MaxStack)) break;
+            DroneDemolitionStorageUtility.Consume(manager, assignment.Destination, assignment.Worker, slot.SlotIndex, count);
             slot.ItemType = assignment.ItemType;
             slot.ItemCount += count;
             budget[budgetIndex] = slot;
@@ -704,7 +824,7 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
             if (slot.ItemCount >= maxStack) continue;
             if (DroneSchedulingUtility.CanStoreInSlot(manager, assignment.Destination, assignment.ItemType, slot.SlotIndex,
                 maxStack, ref limits.SlotCount, ref limits.DedicatedSlotCount, ref limits.HasReadSlots, assignment.DestinationArea,
-                ref storageRead))
+                ref storageRead, assignment.Worker))
             {
                 return i;
             }
@@ -729,15 +849,18 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
             manager.SetComponentData(reservation.Task, progress);
             manager.SetComponentData(entity, reservation);
         }
+        DroneDemolitionStorageUtility.ResizeClaim(manager, assignment.Destination, assignment.Worker, moved);
         assignment.AssignedQuantity = moved;
         if (moved > 0)
         {
             bool recovery = assignment.NextAction == DroneActionKindEnum.RecoverWorldItem;
+            bool demolition = manager.GetComponentData<DroneLogisticsTask>(assignment.Task).DemolitionRoot != Entity.Null;
             manager.SetComponentData(assignment.Worker, new DroneCargoState
             {
                 ItemType = assignment.ItemType,
                 Quantity = moved,
-                Origin = recovery ? DroneCargoOriginEnum.Recovery : DroneCargoOriginEnum.Supply
+                Origin = demolition ? DroneCargoOriginEnum.DemolitionRecovery :
+                    recovery ? DroneCargoOriginEnum.Recovery : DroneCargoOriginEnum.Supply
             });
             assignment.State = DroneTaskAssignmentStateEnum.MovingToDestination;
             assignment.NextAction = recovery || hasTransportReservation
@@ -782,6 +905,7 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
             // 현장/회수의 기존 부분 인계는 목적지 예약을 정산하고 잔여 화물을 재배정한다.
             DroneItemTransferUtility.ReduceReservation(manager, entity, ref reservation, 0);
         }
+        DroneDemolitionStorageUtility.ResizeClaim(manager, assignment.Destination, assignment.Worker, 0);
         assignment.State = hasCargo ? DroneTaskAssignmentStateEnum.Retargeting : DroneTaskAssignmentStateEnum.Completed;
         assignment.NextAction = DroneActionKindEnum.None;
         if (!hasCargo)

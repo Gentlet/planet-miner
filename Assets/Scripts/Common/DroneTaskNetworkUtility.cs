@@ -6,6 +6,45 @@ using Unity.Mathematics;
 /// <summary>이번 틱 준비 결과의 범위만 판정한다. 이전 공개 인덱스나 영속 드론 소속을 만들지 않는다.</summary>
 public static class DroneTaskNetworkUtility
 {
+    internal static void CollectNetworkBoundsIfNeeded(NativeArray<DroneStationNetworkDecision> networks,
+        NativeParallelMultiHashMap<Entity, DroneStationActivityBounds> networkBounds)
+    {
+        if (!networkBounds.IsEmpty)
+        {
+            return;
+        }
+
+        foreach (var station in networks)
+        {
+            networkBounds.Add(station.RepresentativeStation, station.ActivityBounds);
+        }
+    }
+
+    internal static NativeHashMap<Entity, FixedBitSet> ReadDemolitionDestinations(EntityManager manager,
+        in DroneLogisticsTask task, NativeArray<DroneStationNetworkDecision> networks,
+        in StorageCandidatesByNetwork storages, NativeParallelMultiHashMap<Entity, DroneStationActivityBounds> networkBounds,
+        bool crossNetwork)
+    {
+        CollectNetworkBoundsIfNeeded(networks, networkBounds);
+        var result = new NativeHashMap<Entity, FixedBitSet>(8, Allocator.Temp);
+        using var visited = new NativeHashSet<Entity>(4, Allocator.Temp);
+        var targetBounds = DroneTaskNetworkUtility.ReadTargetBounds(manager, task.Target);
+        var allItems = new FixedBitSet { Part0 = ulong.MaxValue, Part1 = ulong.MaxValue };
+        foreach (var station in networks)
+        {
+            if (!crossNetwork && !station.ActivityBounds.Overlaps(targetBounds)) continue;
+            Entity network = station.RepresentativeStation;
+            if (!visited.Add(network)) continue;
+            foreach (Entity storage in storages.GetStorages(network, networkBounds.AsReadOnly()))
+            {
+                if (storage != task.Target && DroneSchedulingUtility.IsStorage(manager, storage) &&
+                    !manager.HasComponent<PreparingStationDemolition>(storage))
+                    result.TryAdd(storage, allItems);
+            }
+        }
+        return result;
+    }
+
     public static Entity FindWorkerNetwork(NativeArray<DroneStationNetworkDecision> stations, float3 position)
     {
         int2 cell = (int2)math.floor(position.xy);

@@ -14,6 +14,7 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
 {
     private EntityQuery _stations, _workers, _tasks, _sites, _storages, _assignments, _requests, _results, _registry;
     private Entity _candidates;
+    private EntityQuery _demolitionConfig;
     private EntityQueryMask _stationMask, _workerMask;
     private DroneStationEligibility _eligibility;
 
@@ -31,6 +32,7 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
         _requests = SystemAPI.QueryBuilder().WithAll<DroneStationRequest>().Build();
         _results = SystemAPI.QueryBuilder().WithAll<DroneAutomaticStationRequest, DroneStationResult>().Build();
         _registry = SystemAPI.QueryBuilder().WithAll<ItemRegistry, ItemConfigElement>().Build();
+        _demolitionConfig = state.GetEntityQuery(ComponentType.ReadOnly<BuildingConstructionMaterialElement>());
         DroneStationEligibility.CreateMasks(ref state, out _stationMask, out _workerMask);
         _eligibility = DroneStationEligibility.Create(ref state, _stationMask, _workerMask);
         state.RequireForUpdate<PrefabDatabaseReady>();
@@ -64,6 +66,7 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
         using var flights = new NativeList<DroneFlightStation>(Allocator.TempJob);
         DroneStationAutomationUtility.BuildStations(manager, stations, flights);
         using var plans = new NativeList<DroneStationActivationPlan>(Allocator.TempJob);
+        Entity demolitionConfig = _demolitionConfig.IsEmptyIgnoreFilter ? Entity.Null : _demolitionConfig.GetSingletonEntity();
         using var intents = new NativeList<DroneStationAutomationIntent>(Allocator.Temp);
         float maximum = SystemAPI.GetSingleton<DroneBatteryConfig>().MaximumCharge;
         int capacity = SystemAPI.GetSingleton<DroneCapacityState>().CarryingCapacity;
@@ -128,7 +131,7 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
             if (docked && !linked && manager.GetComponentData<DroneCargoState>(worker).Quantity == 0)
             {
                 DroneStationAutomationUtility.PrepareDemand(manager, worker, station, demandTasks, storagesByNetwork,
-                    endpointReads, targetsUnderEvaluation, networks, registry, capacity, maximum, plans);
+                    endpointReads, targetsUnderEvaluation, networks, registry, capacity, maximum, plans, demolitionConfig: demolitionConfig);
             }
             var request = new DroneStationRequest { Drone = worker, Station = station, Operation = DroneStationOperation.Store };
             if (eligibility.Validate(request, maximum, true) != DroneStationRequestStatus.Applied)
@@ -164,7 +167,7 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
                     int count = inventory[slot].Quantity - alreadyRequested;
                     if (count <= 0) continue;
                     DroneStationAutomationUtility.PrepareDemand(manager, Entity.Null, station, demandTasks, storagesByNetwork,
-                        endpointReads, targetsUnderEvaluation, networks, registry, capacity, maximum, plans, slot, count);
+                        endpointReads, targetsUnderEvaluation, networks, registry, capacity, maximum, plans, slot, count, demolitionConfig);
                 }
             }
         }

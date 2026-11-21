@@ -202,7 +202,7 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
             !DroneStationRelocationUtility.CanReceiveCommittedDroneCargo(manager, storage, deliveryAssignment)) return 0;
         // 이 슬롯 기록은 런타임 Storage의 복제 원본이 아니라 이번 행동에 허용할 공간 상한이다.
         // 뒤의 출고로 공간이 늘어도 상한을 확장하지 않고, 실제 성공분만 Lifecycle의 슬롯 예산에서 차감한다.
-        if (DroneSchedulingUtility.FindStorageSlot(manager, storage, type, registry, assignment.DestinationArea) < 0)
+        if (DroneSchedulingUtility.FindStorageSlot(manager, storage, type, registry, assignment.DestinationArea, assignment.Worker) < 0)
         {
             return 0;
         }
@@ -225,14 +225,15 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
             });
             bool allowed = StationStorageUtility.IsItemSlotAllowed(slot, slotCount,
                 storageRead.DedicatedSlotCount, type) &&
-                !storageRead.IsDockOccupied(slot) && !storageRead.IsReserved(slot);
+                !storageRead.IsDockOccupied(slot);
             if (hasInputSlots)
             {
                 var inputs = storageRead.InputSlots;
                 allowed &= slot < inputs.Length && inputs[slot].ItemType == type;
             }
             if (!allowed || (currentType != ItemTypeEnum.None && currentType != type)) continue;
-            available += math.min(math.max(0, wanted - available), math.max(0, maxStack - count));
+            int free = storageRead.FreeAfterReservations(slot, type, math.max(0, maxStack - count), assignment.Worker);
+            available += math.min(math.max(0, wanted - available), free);
         }
         return available;
     }

@@ -383,6 +383,7 @@ public sealed class BuildingInfoView : MonoBehaviour
             var data = _controller.Tasks[i];
             row.Label.text = data.Text;
             row.Button.text = "취소";
+            row.Button.SetEnabled(data.CanCancel);
             row.Click = () => _controller.CancelTask(data.Task);
         }
     }

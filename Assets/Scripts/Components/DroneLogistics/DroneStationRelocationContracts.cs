@@ -49,13 +49,20 @@ public struct DroneStationRelocationMemberElement : IBufferElementData
     public readonly bool DepartureCommitted => HasDeparted || (SourceSlotIndex >= 0 && Drone != Entity.Null);
 }
 
-/// <summary>철거 작업과 멤버 인덱스로 식별하는 목적지 슬롯 예약. 해당 멤버의 도착만 허용한다.</summary>
+/// <summary>
+/// 정거장 이관은 작업/멤버 인덱스로 슬롯 전체를 확보한다.
+/// 철거 운반은 TransportWorker의 품목과 수량만 확보하며 목적지 슬롯의 다른 입고 예산에서 제외한다.
+/// </summary>
 [InternalBufferCapacity(0)]
 public struct DroneStationReservedSlotElement : IBufferElementData
 {
     public Entity Task;
     public int MemberIndex;
     public int SlotIndex;
+    // 정거장 이관은 슬롯 전체, 철거 화물은 수행자와 품목별 수량을 확보한다.
+    public Entity TransportWorker;
+    public ItemTypeEnum ItemType;
+    public int Quantity;
 }
 
 /// <summary>전원 자격이 준비된 원본 정거장의 이번 틱 후보다. 수납 재고 후보는 출발 슬롯으로 식별한다. 멤버 인덱스가 음수이면 빈 정거장이다.</summary>

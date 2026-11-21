@@ -242,7 +242,7 @@ public partial struct BuildingStorageInputReservationJob : IJobChunk
                 }
             }
         }
-        if (itemType == ItemTypeEnum.Drone && PreparingLookup.HasComponent(building))
+        if (PreparingLookup.HasComponent(building))
         {
             inputDecision.CanDeposit = false;
             inputDecision.TargetSlotIndex = -1;
@@ -255,8 +255,17 @@ public partial struct BuildingStorageInputReservationJob : IJobChunk
             {
                 if (reserved.SlotIndex >= 0 && reserved.SlotIndex < safeSlotCount)
                 {
-                    slotOccupancy[reserved.SlotIndex] = maxStack;
-                    slotTypes[reserved.SlotIndex] = ItemTypeEnum.Drone;
+                    int slot = reserved.SlotIndex;
+                    if (reserved.TransportWorker == Entity.Null || reserved.ItemType != itemType)
+                    {
+                        slotOccupancy[slot] = maxStack;
+                        slotTypes[slot] = reserved.TransportWorker == Entity.Null ? ItemTypeEnum.Drone : reserved.ItemType;
+                    }
+                    else
+                    {
+                        slotOccupancy[slot] = math.min(maxStack, slotOccupancy[slot] + reserved.Quantity);
+                        slotTypes[slot] = reserved.ItemType;
+                    }
                 }
             }
         }

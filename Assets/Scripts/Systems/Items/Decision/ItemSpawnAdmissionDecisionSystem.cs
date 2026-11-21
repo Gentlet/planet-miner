@@ -79,9 +79,11 @@ public partial struct ItemSpawnAdmissionDecisionJob : IJobEntity
             return;
         }
         bool blocked = PendingLookup.HasComponent(owner) ||
-            (request.ValueRO.ItemType == ItemTypeEnum.Drone && Preparing.HasComponent(owner)) ||
+            Preparing.HasComponent(owner) ||
             (destination == ItemSpawnDestination.Storage &&
-                DroneStationRelocationUtility.IsReserved(Reserved, owner, request.ValueRO.TargetSlotIndex));
+                Reserved.TryGetBuffer(owner, out var claims) &&
+                DroneDemolitionStorageUtility.FreeQuantity(claims, request.ValueRO.TargetSlotIndex,
+                    request.ValueRO.ItemType, int.MaxValue, Entity.Null) <= 0);
         if (!blocked)
         {
             return;

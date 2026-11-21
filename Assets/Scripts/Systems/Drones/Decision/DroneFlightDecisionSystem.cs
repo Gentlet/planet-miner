@@ -368,8 +368,10 @@ public partial struct DroneFlightDecisionSystem : ISystem
             decision.Assignment = link.Assignment;
             decision.AssignmentRevision = assignment.Revision;
             decision.Action = assignment.NextAction;
-            Entity goal = assignment.NextAction == DroneActionKindEnum.CollectFromStorage ||
-                assignment.NextAction == DroneActionKindEnum.RecoverWorldItem ? assignment.Source : assignment.Destination;
+            bool collecting = assignment.NextAction == DroneActionKindEnum.CollectFromStorage ||
+                assignment.NextAction == DroneActionKindEnum.RecoverWorldItem ||
+                (assignment.NextAction == DroneActionKindEnum.DemolishBuilding && assignment.ItemType != ItemTypeEnum.None);
+            Entity goal = collecting ? assignment.Source : assignment.Destination;
             float2 destination;
             bool valid;
             if (assignment.NextAction == DroneActionKindEnum.DropCargo)
@@ -388,8 +390,6 @@ public partial struct DroneFlightDecisionSystem : ISystem
                 return;
             }
             DroneFlightPlan plan;
-            bool collecting = assignment.NextAction == DroneActionKindEnum.CollectFromStorage ||
-                assignment.NextAction == DroneActionKindEnum.RecoverWorldItem;
             if (collecting &&
                 DroneTargetPointUtility.TryGetTargetPoint(assignment.Destination, Positions, Footprints, Directions, out var delivery))
             {
