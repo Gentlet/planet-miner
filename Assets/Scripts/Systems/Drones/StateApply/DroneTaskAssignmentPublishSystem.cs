@@ -31,17 +31,20 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
         var ecb = state.World.GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>().CreateCommandBuffer();
         var pendingPublications = manager.GetBuffer<DroneTaskPendingPublicationElement>(_candidates);
         Entity registry = _registry.IsEmptyIgnoreFilter ? Entity.Null : _registry.GetSingletonEntity();
-        var refundFlightReads = new DroneDemolitionUtility.RefundFlightReadContext();
+        var flightReads = new DroneDemolitionUtility.RefundFlightReadContext();
         try
         {
-            PublishExistingAssignments(manager, registry, carryingCapacity, ecb, pendingPublications, ref refundFlightReads);
+            PublishExistingAssignments(manager, registry, carryingCapacity, ecb, pendingPublications, ref flightReads);
+
+            // 앞 단계의 실제 예약 처리 뒤 현재 상태로 운반 검사를 시작한다.
+            flightReads.Invalidate();
+            var transportPending = manager.GetBuffer<DroneTransportPendingReservationElement>(_candidates);
+            PublishTransportAssignments(manager, registry, carryingCapacity, ecb, transportPending, ref flightReads);
         }
         finally
         {
-            refundFlightReads.Dispose();
+            flightReads.Dispose();
         }
-        var transportPending = manager.GetBuffer<DroneTransportPendingReservationElement>(_candidates);
-        PublishTransportAssignments(manager, registry, carryingCapacity, ecb, transportPending);
     }
 
     private static void PublishExistingAssignments(EntityManager manager, Entity registry, int carryingCapacity,
@@ -179,7 +182,8 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
     }
 
     private static void PublishTransportAssignments(EntityManager manager, Entity registry, int carryingCapacity,
-        EntityCommandBuffer ecb, DynamicBuffer<DroneTransportPendingReservationElement> pendingReservations)
+        EntityCommandBuffer ecb, DynamicBuffer<DroneTransportPendingReservationElement> pendingReservations,
+        ref DroneDemolitionUtility.RefundFlightReadContext flightReads)
     {
         for (int i = 0; i < pendingReservations.Length; i++)
         {
@@ -197,7 +201,7 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
             int quantity = DroneSchedulingUtility.CandidateQuantity(manager, candidate, registry, carryingCapacity);
             var reservation = DroneTransportReservationUtility.Take(ref pending);
             if (quantity > 0 && manager.GetComponentData<DroneLogisticsTask>(candidate.Task).DemolitionRoot != Entity.Null &&
-                !DroneDemolitionStorageUtility.TryReserveTransport(manager, registry, candidate, quantity)) quantity = 0;
+                !DroneDemolitionStorageUtility.TryReserveTransport(manager, registry, candidate, quantity, ref flightReads)) quantity = 0;
             if (quantity <= 0)
             {
                 ReleaseTransportReservation(manager, ref reservation);

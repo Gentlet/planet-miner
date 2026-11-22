@@ -194,14 +194,33 @@ internal static class DroneDemolitionStorageUtility
     internal static bool TryReserveTransport(EntityManager manager, Entity registry,
         in DroneTaskCandidateDecisionElement candidate, int quantity)
     {
+        var flightReads = new DroneDemolitionUtility.RefundFlightReadContext();
+        try
+        {
+            return TryReserveTransport(manager, registry, candidate, quantity, ref flightReads);
+        }
+        finally
+        {
+            flightReads.Dispose();
+        }
+    }
+
+    internal static bool TryReserveTransport(EntityManager manager, Entity registry,
+        in DroneTaskCandidateDecisionElement candidate, int quantity, ref DroneDemolitionUtility.RefundFlightReadContext flightReads)
+    {
         Entity destination = candidate.Destination;
         if (!TryReserve(manager, destination, registry, candidate.Task, candidate.Worker, candidate.ItemType, quantity, false, out _))
             return false;
+        if (!manager.HasComponent<DroneStation>(destination)) return true;
 
-        bool reachable = !manager.HasComponent<DroneStation>(destination) ||
-            DroneDemolitionUtility.CanReachRefundStorage(manager, candidate.Worker, candidate.Source, destination);
-        if (!reachable) ResizeClaim(manager, destination, candidate.Worker, 0);
-        return reachable;
+        // 슬롯이 충전을 막을 수 있다. 성공하면 이 상태를 유지하고 거부하면 반환 결과를 다음 검사에 반영한다.
+        flightReads.RefreshDockAvailability(manager, destination);
+        if (DroneDemolitionUtility.CanReachRefundStorage(manager, candidate.Worker, candidate.Source, destination, ref flightReads))
+            return true;
+
+        ResizeClaim(manager, destination, candidate.Worker, 0);
+        flightReads.RefreshDockAvailability(manager, destination);
+        return false;
     }
 
     internal static bool TestPickupRoute(EntityManager manager, Entity registry, in DroneTaskCandidateDecisionElement candidate,
