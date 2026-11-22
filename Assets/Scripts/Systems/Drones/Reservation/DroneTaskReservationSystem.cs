@@ -170,6 +170,7 @@ public partial struct DroneTaskReservationSystem : ISystem
         var oldTransport = manager.GetBuffer<DroneTransportPendingReservationElement>(_candidates, true);
         var decisions = manager.GetBuffer<DroneTaskInvalidationDecisionElement>(_candidates, true);
         var remainingTransport = new NativeHashMap<Entity, int>(16, Allocator.Temp);
+        var flightReads = new DroneDemolitionUtility.RefundFlightReadContext();
         try
         {
             using var visitedWorkers = new NativeHashSet<Entity>(16, Allocator.Temp);
@@ -243,7 +244,7 @@ public partial struct DroneTaskReservationSystem : ISystem
                     }
                     else if (otherHead < 0 || PreferNonSupplyCandidate(manager, task, candidate, candidates[otherHead]))
                     {
-                        if (!CanReservePickupRoute(manager, registry, task, candidate, quantity)) continue;
+                        if (!CanReservePickupRoute(manager, registry, task, candidate, quantity, ref flightReads)) continue;
                         otherHead = c;
                         otherQuantity = quantity;
                     }
@@ -285,11 +286,13 @@ public partial struct DroneTaskReservationSystem : ISystem
                             if (!canJoin.TryGetValue(member.Worker, out bool eligible))
                             {
                                 eligible = !PrefersEarlierWork(manager, candidates, member, registry, carryingCapacity,
-                                    claimedTargets, rejectedCrews, remainingTransport);
+                                    claimedTargets, rejectedCrews, remainingTransport, ref flightReads);
                                 canJoin.Add(member.Worker, eligible);
                             }
                             if (eligible) available.Add(member);
                         }
+                        // 환급 집결 탐색은 여러 정거장에 슬롯을 확보할 수 있어 다음 선회수 검사는 목록을 다시 만든다.
+                        flightReads.Invalidate();
                         using var bounds = new RefundSearchBounds(Allocator.Temp);
                         selectedCrew = TryReserveRefundCrew(manager, registry, carryingCapacity, chosen.Task, available,
                             costs, 0, costs[0].Quantity, 0, usedWorkers, crew, bounds);
@@ -346,6 +349,7 @@ public partial struct DroneTaskReservationSystem : ISystem
         }
         finally
         {
+            flightReads.Dispose();
             remainingTransport.Dispose();
         }
     }
@@ -407,13 +411,14 @@ public partial struct DroneTaskReservationSystem : ISystem
     }
 
     private static bool CanReservePickupRoute(EntityManager manager, Entity registry, in DroneLogisticsTask task,
-        in DroneTaskCandidateDecisionElement candidate, int quantity) =>
+        in DroneTaskCandidateDecisionElement candidate, int quantity, ref DroneDemolitionUtility.RefundFlightReadContext flightReads) =>
         task.DemolitionRoot == Entity.Null || !manager.HasComponent<DroneStation>(candidate.Destination) ||
-        DroneDemolitionStorageUtility.TryReserveTransport(manager, registry, candidate, quantity, keep: false);
+        DroneDemolitionStorageUtility.TestPickupRoute(manager, registry, candidate, quantity, ref flightReads);
 
     private static bool PrefersEarlierWork(EntityManager manager, NativeList<DroneTaskCandidateDecisionElement> candidates,
         in DroneTaskCandidateDecisionElement member, Entity registry, int capacity, NativeHashSet<Entity> claimed,
-        NativeHashSet<Entity> rejectedCrews, NativeHashMap<Entity, int> remainingTransport)
+        NativeHashSet<Entity> rejectedCrews, NativeHashMap<Entity, int> remainingTransport,
+        ref DroneDemolitionUtility.RefundFlightReadContext flightReads)
     {
         Entity supplyHead = Entity.Null;
         foreach (var candidate in candidates)
@@ -431,7 +436,7 @@ public partial struct DroneTaskReservationSystem : ISystem
                 ? DroneDemolitionUtility.CandidateQuantity(manager, candidate, registry, capacity)
                 : DroneSchedulingUtility.CandidateQuantity(manager, candidate, registry, capacity);
             if (limited) quantity = math.min(quantity, remaining);
-            if (quantity <= 0 || !CanReservePickupRoute(manager, registry, task, candidate, quantity)) continue;
+            if (quantity <= 0 || !CanReservePickupRoute(manager, registry, task, candidate, quantity, ref flightReads)) continue;
             if (task.Kind == DroneLogisticsTaskKindEnum.ConstructionSupply)
             {
                 if (DroneSchedulingUtility.EarlierTask(manager, candidate.Task, supplyHead)) supplyHead = candidate.Task;

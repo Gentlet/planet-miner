@@ -208,40 +208,29 @@ internal static class DroneStationAutomationUtility
         {
             if (!DroneTargetPointUtility.TryGetTargetPoint(manager, station, out float2 point, out int2 anchor)) continue;
             var network = manager.GetComponentData<DroneStationNetworkDecision>(station);
-            var items = manager.GetBuffer<StorageSlotElement>(station, true);
-            var docks = manager.GetBuffer<DockedDroneElement>(station, true);
-            int slotCount = manager.GetComponentData<Storage>(station).SlotCount;
-            bool hasReservations = slotCount > 0 && manager.HasBuffer<DroneStationReservedSlotElement>(station);
-            var reservations = hasReservations ? manager.GetBuffer<DroneStationReservedSlotElement>(station, true) : default;
-            bool hasReadPreparing = false;
-            bool preparing = false;
-            bool canDock = false;
-            for (int slot = 0; slot < slotCount; slot++)
-            {
-                bool occupied = hasReservations && DroneStationRelocationUtility.IsReserved(reservations, slot);
-                occupied |= items[slot].Quantity > 0;
-                foreach (var dock in docks) occupied |= dock.SlotIndex == slot;
-                if (occupied)
-                {
-                    continue;
-                }
-                if (!hasReadPreparing)
-                {
-                    preparing = manager.HasComponent<PreparingStationDemolition>(station);
-                    hasReadPreparing = true;
-                }
-                if (!preparing)
-                {
-                    canDock = true;
-                    break;
-                }
-            }
             bool hasStamp = manager.HasComponent<PlacementStamp>(station);
             flights.Add(new DroneFlightStation { Entity = station, Position = point, Network = network.RepresentativeStation,
                 Bounds = network.ActivityBounds, Anchor = anchor,
-                CanDock = canDock, HasStamp = hasStamp,
+                CanDock = CanDockAtStation(manager, station), HasStamp = hasStamp,
                 Stamp = hasStamp ? manager.GetComponentData<PlacementStamp>(station) : default });
         }
+    }
+
+    internal static bool CanDockAtStation(EntityManager manager, Entity station)
+    {
+        var items = manager.GetBuffer<StorageSlotElement>(station, true);
+        var docks = manager.GetBuffer<DockedDroneElement>(station, true);
+        int slotCount = manager.GetComponentData<Storage>(station).SlotCount;
+        bool hasReservations = slotCount > 0 && manager.HasBuffer<DroneStationReservedSlotElement>(station);
+        var reservations = hasReservations ? manager.GetBuffer<DroneStationReservedSlotElement>(station, true) : default;
+        for (int slot = 0; slot < slotCount; slot++)
+        {
+            bool occupied = hasReservations && DroneStationRelocationUtility.IsReserved(reservations, slot);
+            occupied |= items[slot].Quantity > 0;
+            foreach (var dock in docks) occupied |= dock.SlotIndex == slot;
+            if (!occupied) return !manager.HasComponent<PreparingStationDemolition>(station);
+        }
+        return false;
     }
 
     /// <summary>수행자 우선권, 정박 재개 후보와 새 경로 평가 때문에 출고를 보류할 대상을 모은다.</summary>

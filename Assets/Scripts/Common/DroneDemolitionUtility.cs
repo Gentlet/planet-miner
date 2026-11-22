@@ -1,3 +1,4 @@
+using System;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
@@ -266,28 +267,83 @@ public static class DroneDemolitionUtility
     internal static bool CanReachRefundStorage(EntityManager manager, Entity worker, Entity site, Entity storage,
         bool arrived = false)
     {
+        var flightReads = new RefundFlightReadContext();
+        try
+        {
+            return CanReachRefundStorage(manager, worker, site, storage, ref flightReads, arrived);
+        }
+        finally
+        {
+            flightReads.Dispose();
+        }
+    }
+
+    internal static bool CanReachRefundStorage(EntityManager manager, Entity worker, Entity site, Entity storage,
+        ref RefundFlightReadContext flightReads, bool arrived = false)
+    {
         if (!DroneTargetPointUtility.TryGetTargetPoint(manager, storage, out float2 destination)) return false;
         float2 origin = manager.GetComponentData<LocalTransform>(worker).Position.xy;
         float2 source = origin;
         if (site != Entity.Null && !DroneTargetPointUtility.TryGetTargetPoint(manager, site, out source)) return false;
+        if (!flightReads.TryReadStations(manager)) return false;
 
-        using var movement = manager.CreateEntityQuery(ComponentType.ReadOnly<DroneMovementConfig>());
-        using var battery = manager.CreateEntityQuery(ComponentType.ReadOnly<DroneBatteryConfig>());
-        if (movement.IsEmptyIgnoreFilter || battery.IsEmptyIgnoreFilter) return false;
-        using var stations = manager.CreateEntityQuery(ComponentType.ReadOnly<DroneStation>(),
-            ComponentType.ReadOnly<DroneStationNetworkDecision>(), ComponentType.ReadOnly<Storage>(),
-            ComponentType.ReadOnly<StorageSlotElement>(), ComponentType.ReadOnly<DockedDroneElement>(),
-            ComponentType.Exclude<PendingBuildingDemolition>());
-        using var owners = stations.ToEntityArray(Allocator.Temp);
-        using var flights = new NativeList<DroneFlightStation>(Allocator.Temp);
-        DroneStationAutomationUtility.BuildStations(manager, owners, flights);
         float charge = manager.GetComponentData<DroneBatteryState>(worker).CurrentCharge;
-        float maximum = battery.GetSingleton<DroneBatteryConfig>().MaximumCharge;
-        float rate = movement.GetSingleton<DroneMovementConfig>().EnergyPerDistance;
         var plan = arrived || site == Entity.Null
-            ? DroneFlightPlanningUtility.Plan(source, destination, charge, maximum, rate, flights)
-            : DroneFlightPlanningUtility.PlanViaSource(origin, source, destination, charge, maximum, rate, flights);
+            ? DroneFlightPlanningUtility.Plan(source, destination, charge, flightReads.MaximumCharge,
+                flightReads.EnergyPerDistance, flightReads.Stations)
+            : DroneFlightPlanningUtility.PlanViaSource(origin, source, destination, charge, flightReads.MaximumCharge,
+                flightReads.EnergyPerDistance, flightReads.Stations);
         return plan.Status == DroneRouteEvaluationStatusEnum.Reachable;
+    }
+
+    internal struct RefundFlightReadContext : IDisposable
+    {
+        public NativeList<DroneFlightStation> Stations { get; private set; }
+        public float MaximumCharge { get; private set; }
+        public float EnergyPerDistance { get; private set; }
+
+        public bool TryReadStations(EntityManager manager)
+        {
+            if (Stations.IsCreated) return true;
+
+            using var movement = manager.CreateEntityQuery(ComponentType.ReadOnly<DroneMovementConfig>());
+            using var battery = manager.CreateEntityQuery(ComponentType.ReadOnly<DroneBatteryConfig>());
+            if (movement.IsEmptyIgnoreFilter || battery.IsEmptyIgnoreFilter) return false;
+
+            MaximumCharge = battery.GetSingleton<DroneBatteryConfig>().MaximumCharge;
+            EnergyPerDistance = movement.GetSingleton<DroneMovementConfig>().EnergyPerDistance;
+            using var stations = manager.CreateEntityQuery(ComponentType.ReadOnly<DroneStation>(),
+                ComponentType.ReadOnly<DroneStationNetworkDecision>(), ComponentType.ReadOnly<Storage>(),
+                ComponentType.ReadOnly<StorageSlotElement>(), ComponentType.ReadOnly<DockedDroneElement>(),
+                ComponentType.Exclude<PendingBuildingDemolition>());
+            using var owners = stations.ToEntityArray(Allocator.Temp);
+            Stations = new NativeList<DroneFlightStation>(owners.Length, Allocator.Temp);
+            DroneStationAutomationUtility.BuildStations(manager, owners, Stations);
+            return true;
+        }
+
+        public void RefreshDockAvailability(EntityManager manager, Entity station)
+        {
+            var stations = Stations;
+            if (!stations.IsCreated) return;
+            for (int i = 0; i < stations.Length; i++)
+            {
+                var flight = stations[i];
+                if (flight.Entity != station) continue;
+                flight.CanDock = DroneStationAutomationUtility.CanDockAtStation(manager, station);
+                stations[i] = flight;
+                return;
+            }
+        }
+
+        public void Invalidate()
+        {
+            if (!Stations.IsCreated) return;
+            Stations.Dispose();
+            Stations = default;
+        }
+
+        public void Dispose() => Invalidate();
     }
 
     internal static bool HasDestinationClaim(EntityManager manager, Entity entity, in DroneTaskAssignment assignment, Entity registry) =>

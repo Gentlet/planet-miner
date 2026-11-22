@@ -191,9 +191,8 @@ internal static class DroneDemolitionStorageUtility
         return false;
     }
 
-    /// <summary>슬롯 확보 뒤 충전 경로를 검사한다. keep이 false이면 성공해도 시험한 확보량을 즉시 반환한다.</summary>
     internal static bool TryReserveTransport(EntityManager manager, Entity registry,
-        in DroneTaskCandidateDecisionElement candidate, int quantity, bool keep = true)
+        in DroneTaskCandidateDecisionElement candidate, int quantity)
     {
         Entity destination = candidate.Destination;
         if (!TryReserve(manager, destination, registry, candidate.Task, candidate.Worker, candidate.ItemType, quantity, false, out _))
@@ -201,8 +200,28 @@ internal static class DroneDemolitionStorageUtility
 
         bool reachable = !manager.HasComponent<DroneStation>(destination) ||
             DroneDemolitionUtility.CanReachRefundStorage(manager, candidate.Worker, candidate.Source, destination);
-        if (!reachable || !keep) ResizeClaim(manager, destination, candidate.Worker, 0);
+        if (!reachable) ResizeClaim(manager, destination, candidate.Worker, 0);
         return reachable;
+    }
+
+    internal static bool TestPickupRoute(EntityManager manager, Entity registry, in DroneTaskCandidateDecisionElement candidate,
+        int quantity, ref DroneDemolitionUtility.RefundFlightReadContext flightReads)
+    {
+        Entity destination = candidate.Destination;
+        if (!TryReserve(manager, destination, registry, candidate.Task, candidate.Worker, candidate.ItemType, quantity, false, out _))
+            return false;
+
+        // 임시 확보 중의 정박 자격으로 경로를 검사하고, 반환한 슬롯은 다음 후보의 검사에 반영한다.
+        try
+        {
+            flightReads.RefreshDockAvailability(manager, destination);
+            return DroneDemolitionUtility.CanReachRefundStorage(manager, candidate.Worker, candidate.Source, destination, ref flightReads);
+        }
+        finally
+        {
+            ResizeClaim(manager, destination, candidate.Worker, 0);
+            flightReads.RefreshDockAvailability(manager, destination);
+        }
     }
 
     internal static int AvailableTransportSpace(EntityManager manager, Entity storage, ItemTypeEnum type,
