@@ -93,8 +93,6 @@ public partial struct DroneTaskDecisionSystem : ISystem
         Entity registry = _registry.IsEmptyIgnoreFilter ? Entity.Null : _registry.GetSingletonEntity();
         using var networkBounds = new NativeParallelMultiHashMap<Entity, DroneStationActivityBounds>(math.max(1, networks.Length), Allocator.Temp);
         using var storagesByNetwork = new StorageCandidatesByNetwork(manager, storages);
-        UpdateDemolitionProgress(manager, tasks, assignments, networks, storagesByNetwork, networkBounds,
-            config, registry, carryingCapacity);
         using var busyWorkers = new NativeHashSet<Entity>(16, Allocator.Temp);
         using var claimedRecoveryItems = new NativeHashSet<Entity>(16, Allocator.Temp);
         using var usedRoutes = new NativeHashSet<Entity>(16, Allocator.Temp);
@@ -130,10 +128,15 @@ public partial struct DroneTaskDecisionSystem : ISystem
         }
 
         using var invalidCrews = new NativeHashSet<Entity>(4, Allocator.Temp);
+        using var demolitionCrewCounts = new NativeHashMap<Entity, (int Assigned, int Arrived)>(4, Allocator.Temp);
         for (int a = 0; a < assignments.Length; a++)
         {
             var assignment = manager.GetComponentData<DroneTaskAssignment>(assignments[a]);
-            if (!DroneSchedulingUtility.IsTerminal(assignment.State) &&
+            bool terminal = DroneSchedulingUtility.IsTerminal(assignment.State);
+            bool demolition = assignment.NextAction == DroneActionKindEnum.DemolishBuilding;
+            // 취소·무효화 의도보다 먼저 공개된 배정을 세어 기존 진행 상태의 시점을 유지한다.
+            if (demolition && !terminal) CountDemolitionCrewAssignment(demolitionCrewCounts, assignment);
+            if (!terminal &&
                 (cancellations.IsPlanned(assignment.Task) ||
                  ((assignment.NextAction == DroneActionKindEnum.CollectFromStorage ||
                    assignment.NextAction == DroneActionKindEnum.RecoverWorldItem) &&
@@ -149,8 +152,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
             }
             if (DroneSchedulingUtility.AssignmentNeedsCleanup(manager, assignments[a], assignment, sites, registry))
             {
-                if (assignment.NextAction == DroneActionKindEnum.DemolishBuilding &&
-                    !DroneSchedulingUtility.IsTerminal(assignment.State)) invalidCrews.Add(assignment.Task);
+                if (demolition && !terminal) invalidCrews.Add(assignment.Task);
                 invalidationDecisions.Add(new DroneTaskInvalidationDecisionElement
                 {
                     Kind = DroneTaskInvalidationDecisionKindEnum.InvalidateAssignment,
@@ -160,7 +162,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 continue;
             }
             busyWorkers.Add(assignment.Worker);
-            if (assignment.NextAction == DroneActionKindEnum.DemolishBuilding)
+            if (demolition)
             {
                 uint observed = manager.GetComponentData<DroneWorkerObservation>(assignment.Worker).Revision;
                 if (DroneDemolitionUtility.CanConfirm(manager, assignments[a], assignment.Revision, observed))
@@ -193,6 +195,9 @@ public partial struct DroneTaskDecisionSystem : ISystem
                     });
             }
         }
+        UpdateDemolitionProgress(manager, tasks, demolitionCrewCounts.AsReadOnly(), networks, storagesByNetwork, networkBounds,
+            config, registry, carryingCapacity);
+
         using var routesByKey = new NativeHashMap<RouteRequestKey, Entity>(math.max(1, routes.Length), Allocator.Temp);
         IndexCurrentRoutes(manager, routes, routesByKey, workers.Length, carryingCapacity);
 
@@ -970,10 +975,19 @@ public partial struct DroneTaskDecisionSystem : ISystem
         BuildDemolitionRecoveryCreationDecisions(manager, taskEntities, tasks.AsArray(), decisions, ref cancellations);
     }
 
+    private static void CountDemolitionCrewAssignment(NativeHashMap<Entity, (int Assigned, int Arrived)> crewCounts,
+        in DroneTaskAssignment assignment)
+    {
+        crewCounts.TryGetValue(assignment.Task, out var crew);
+        crew.Assigned++;
+        if (assignment.State == DroneTaskAssignmentStateEnum.AwaitingDelivery) crew.Arrived++;
+        crewCounts[assignment.Task] = crew;
+    }
+
     private void UpdateDemolitionProgress(EntityManager manager, NativeArray<Entity> tasks,
-        NativeArray<Entity> assignments, NativeArray<DroneStationNetworkDecision> networks,
-        in StorageCandidatesByNetwork storages, NativeParallelMultiHashMap<Entity, DroneStationActivityBounds> networkBounds,
-        Entity config, Entity registry, int capacity)
+        NativeHashMap<Entity, (int Assigned, int Arrived)>.ReadOnly demolitionCrewCounts,
+        NativeArray<DroneStationNetworkDecision> networks, in StorageCandidatesByNetwork storages,
+        NativeParallelMultiHashMap<Entity, DroneStationActivityBounds> networkBounds, Entity config, Entity registry, int capacity)
     {
         foreach (Entity root in tasks)
         {
@@ -994,13 +1008,10 @@ public partial struct DroneTaskDecisionSystem : ISystem
             {
                 using var costs = DroneDemolitionUtility.ReadRefunds(manager, root, task, config);
                 progress.RequiredWorkers = DroneDemolitionUtility.RequiredWorkers(costs, capacity);
-                foreach (Entity entity in assignments)
+                if (demolitionCrewCounts.TryGetValue(root, out var crew))
                 {
-                    var assignment = manager.GetComponentData<DroneTaskAssignment>(entity);
-                    if (assignment.Task != root || assignment.NextAction != DroneActionKindEnum.DemolishBuilding ||
-                        DroneSchedulingUtility.IsTerminal(assignment.State)) continue;
-                    progress.AssignedWorkers++;
-                    if (assignment.State == DroneTaskAssignmentStateEnum.AwaitingDelivery) progress.ArrivedWorkers++;
+                    progress.AssignedWorkers = crew.Assigned;
+                    progress.ArrivedWorkers = crew.Arrived;
                 }
                 if (progress.AssignedWorkers == 0 && !costs.IsEmpty)
                 {
