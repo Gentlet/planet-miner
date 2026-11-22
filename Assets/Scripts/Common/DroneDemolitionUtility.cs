@@ -325,7 +325,7 @@ public static class DroneDemolitionUtility
         public void RefreshDockAvailability(EntityManager manager, Entity station)
         {
             var stations = Stations;
-            if (!stations.IsCreated) return;
+            if (!stations.IsCreated || !manager.HasComponent<DroneStation>(station)) return;
             for (int i = 0; i < stations.Length; i++)
             {
                 var flight = stations[i];

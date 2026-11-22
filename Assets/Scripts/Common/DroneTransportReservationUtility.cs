@@ -8,19 +8,10 @@ using Unity.Mathematics;
 /// </summary>
 public static class DroneTransportReservationUtility
 {
-    public static int ProjectedRemaining(Entity task, in DroneTransportRequirement requirement,
-        in DroneTransportProgress progress, DynamicBuffer<DroneTransportPendingReservationElement> pending,
-        int releasingQuantity = 0)
+    public static int ProjectedRemaining(in DroneTransportRequirement requirement,
+        in DroneTransportProgress progress, long returningQuantity)
     {
-        long remaining = (long)requirement.Quantity - progress.DeliveredQuantity - progress.ReservedQuantity + releasingQuantity;
-        for (int i = 0; i < pending.Length; i++)
-        {
-            if (pending[i].Reservation.Task == task)
-            {
-                // 다음 Reservation이 반환할 미인계 승인량은 이번 Decision에서 다시 계획할 수 있다.
-                remaining += pending[i].Reservation.RemainingQuantity;
-            }
-        }
+        long remaining = (long)requirement.Quantity - progress.DeliveredQuantity - progress.ReservedQuantity + returningQuantity;
         return (int)math.max(0L, remaining);
     }
 
@@ -38,9 +29,7 @@ public static class DroneTransportReservationUtility
         }
         for (int i = 0; i < decisions.Length; i++)
         {
-            bool ending = decisions[i].Kind == DroneTaskInvalidationDecisionKindEnum.InvalidateAssignment ||
-                decisions[i].Kind == DroneTaskInvalidationDecisionKindEnum.CancelAssignment;
-            if (ending && decisions[i].Target == owner)
+            if (IsReleaseDecision(decisions[i].Kind) && decisions[i].Target == owner)
             {
                 return true;
             }
@@ -48,19 +37,41 @@ public static class DroneTransportReservationUtility
         return false;
     }
 
-    public static int ReadReleasingQuantity(EntityManager manager, Entity task, NativeArray<Entity> owners,
-        DynamicBuffer<DroneTaskInvalidationDecisionElement> decisions)
+    // 조회 단계의 반환 예정량이다. 배정과 예약의 원본은 Reservation Job이 정산한다.
+    public static void CollectReturningQuantities(EntityManager manager, NativeArray<Entity> owners,
+        DynamicBuffer<DroneTransportPendingReservationElement> pending, DynamicBuffer<DroneTaskInvalidationDecisionElement> decisions,
+        NativeHashMap<Entity, long> quantities)
     {
-        int quantity = 0;
-        for (int i = 0; i < owners.Length; i++)
+        using var endingOwners = new NativeHashSet<Entity>(decisions.Length, Allocator.Temp);
+        foreach (var decision in decisions)
         {
-            var reservation = manager.GetComponentData<DroneTransportReservation>(owners[i]);
-            if (reservation.Task == task && ShouldRelease(owners[i], manager.HasComponent<DroneTaskAssignment>(owners[i]), decisions))
-            {
-                quantity += reservation.RemainingQuantity;
-            }
+            if (IsReleaseDecision(decision.Kind)) endingOwners.Add(decision.Target);
         }
-        return quantity;
+
+        foreach (Entity owner in owners)
+        {
+            var reservation = manager.GetComponentData<DroneTransportReservation>(owner);
+            if (reservation.RemainingQuantity == 0) continue;
+            if (endingOwners.Contains(owner) || !manager.HasComponent<DroneTaskAssignment>(owner))
+                AddReturningQuantity(quantities, reservation);
+        }
+
+        // 이전에 확보했으나 인계하지 못한 수량도 이번 선택에 다시 사용할 수 있다.
+        foreach (var approval in pending)
+        {
+            if (approval.Reservation.RemainingQuantity != 0)
+                AddReturningQuantity(quantities, approval.Reservation);
+        }
+    }
+
+    private static bool IsReleaseDecision(DroneTaskInvalidationDecisionKindEnum kind) =>
+        kind == DroneTaskInvalidationDecisionKindEnum.InvalidateAssignment ||
+        kind == DroneTaskInvalidationDecisionKindEnum.CancelAssignment;
+
+    private static void AddReturningQuantity(NativeHashMap<Entity, long> quantities, in DroneTransportReservation reservation)
+    {
+        quantities.TryGetValue(reservation.Task, out long previouslyReturning);
+        quantities[reservation.Task] = previouslyReturning + reservation.RemainingQuantity;
     }
 
     public static bool TryReserve(Entity task, in DroneTransportRequirement requirement,

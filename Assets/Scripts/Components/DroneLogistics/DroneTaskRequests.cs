@@ -1,4 +1,6 @@
+using System;
 using Unity.Entities;
+using Unity.Mathematics;
 
 public enum DroneTaskRequestOperationEnum : byte
 {
@@ -61,7 +63,7 @@ public struct DroneTaskRequestSequence : IComponentData
 }
 
 /// <summary>일반 운반은 종류/대상/품목/영역/목적을 식별한다. 공급과 회수는 영역/목적을 무시하며 회수 품목은 None으로 정규화한다.</summary>
-public struct DroneTaskGenerationKey
+public struct DroneTaskGenerationKey : IEquatable<DroneTaskGenerationKey>
 {
     public DroneLogisticsTaskKindEnum Kind;
     public Entity Target;
@@ -69,6 +71,10 @@ public struct DroneTaskGenerationKey
     public DroneTransportAreaEnum Area;
     public DroneTransportPurposeEnum Purpose;
     public bool Equals(DroneTaskGenerationKey other) => Kind == other.Kind && Target == other.Target && ItemType == other.ItemType && Area == other.Area && Purpose == other.Purpose;
+    public override bool Equals(object obj) => obj is DroneTaskGenerationKey other && Equals(other);
+    public override int GetHashCode() => unchecked((int)(math.hash(new int4(Target.Index, Target.Version, (int)Kind, (int)ItemType)) ^
+        math.hash(new int2((int)Area, (int)Purpose))));
+
     public static DroneTaskGenerationKey From(DroneLogisticsTaskKindEnum kind, Entity target, ItemTypeEnum itemType,
         DroneTransportAreaEnum area = default, DroneTransportPurposeEnum purpose = default) => new DroneTaskGenerationKey
     {

@@ -169,6 +169,8 @@ public partial struct DroneTaskReservationSystem : ISystem
         var pendingPublications = manager.GetBuffer<DroneTaskPendingPublicationElement>(_candidates);
         var oldTransport = manager.GetBuffer<DroneTransportPendingReservationElement>(_candidates, true);
         var decisions = manager.GetBuffer<DroneTaskInvalidationDecisionElement>(_candidates, true);
+        using var returningTransport = new NativeHashMap<Entity, long>(16, Allocator.Temp);
+        bool collectedTransportReturns = false;
         var remainingTransport = new NativeHashMap<Entity, int>(16, Allocator.Temp);
         var flightReads = new DroneDemolitionUtility.RefundFlightReadContext();
         try
@@ -210,10 +212,16 @@ public partial struct DroneTaskReservationSystem : ISystem
                     {
                         if (!remainingTransport.TryGetValue(candidate.Task, out int remaining))
                         {
-                            remaining = DroneTransportReservationUtility.ProjectedRemaining(candidate.Task,
+                            if (!collectedTransportReturns)
+                            {
+                                DroneTransportReservationUtility.CollectReturningQuantities(manager, owners, oldTransport,
+                                    decisions, returningTransport);
+                                collectedTransportReturns = true;
+                            }
+                            returningTransport.TryGetValue(candidate.Task, out long returning);
+                            remaining = DroneTransportReservationUtility.ProjectedRemaining(
                                 manager.GetComponentData<DroneTransportRequirement>(candidate.Task),
-                                manager.GetComponentData<DroneTransportProgress>(candidate.Task), oldTransport,
-                                DroneTransportReservationUtility.ReadReleasingQuantity(manager, candidate.Task, owners, decisions));
+                                manager.GetComponentData<DroneTransportProgress>(candidate.Task), returning);
                             remainingTransport.Add(candidate.Task, remaining);
                         }
                         quantity = math.min(candidate.Quantity, remaining);
@@ -291,11 +299,9 @@ public partial struct DroneTaskReservationSystem : ISystem
                             }
                             if (eligible) available.Add(member);
                         }
-                        // 환급 집결 탐색은 여러 정거장에 슬롯을 확보할 수 있어 다음 선회수 검사는 목록을 다시 만든다.
-                        flightReads.Invalidate();
                         using var bounds = new RefundSearchBounds(Allocator.Temp);
                         selectedCrew = TryReserveRefundCrew(manager, registry, carryingCapacity, chosen.Task, available,
-                            costs, 0, costs[0].Quantity, 0, usedWorkers, crew, bounds);
+                            costs, 0, costs[0].Quantity, 0, usedWorkers, crew, bounds, ref flightReads);
                     }
                     if (!selectedCrew)
                     {
@@ -556,13 +562,14 @@ public partial struct DroneTaskReservationSystem : ISystem
     private static bool TryReserveRefundCrew(EntityManager manager, Entity registry, int capacity,
         Entity root, NativeList<DroneTaskCandidateDecisionElement> candidates, NativeList<DroneDemolitionRefundElement> costs,
         int itemIndex, int remaining, int firstCandidate, NativeHashSet<Entity> used,
-        NativeList<DroneTaskCandidateDecisionElement> crew, RefundSearchBounds bounds)
+        NativeList<DroneTaskCandidateDecisionElement> crew, RefundSearchBounds bounds,
+        ref DroneDemolitionUtility.RefundFlightReadContext flightReads)
     {
         if (itemIndex == costs.Length)
         {
             // 예약이 마지막 빈 정박 공간을 차지하면 기존 경로 결과가 도달 가능해도 사용할 수 없다.
             foreach (var member in crew)
-                if (!DroneDemolitionUtility.CanReachRefundStorage(manager, member.Worker, member.Source, member.Destination))
+                if (!DroneDemolitionUtility.CanReachRefundStorage(manager, member.Worker, member.Source, member.Destination, ref flightReads))
                     return false;
             return true;
         }
@@ -577,6 +584,8 @@ public partial struct DroneTaskReservationSystem : ISystem
             while (quantity > 0 && DroneDemolitionStorageUtility.TryReserveRefund(manager, candidate.Destination, registry,
                 root, candidate.Worker, candidate.ItemType, quantity, out int withoutLastEmptySlot))
             {
+                // 재귀가 읽는 정거장 목록은 현재 분기에서 확보한 슬롯을 반영한다.
+                flightReads.RefreshDockAvailability(manager, candidate.Destination);
                 var member = candidate;
                 member.Quantity = quantity;
                 crew.Add(member);
@@ -585,9 +594,10 @@ public partial struct DroneTaskReservationSystem : ISystem
                 int nextQuantity = remaining - quantity;
                 if (next > itemIndex && next < costs.Length) nextQuantity = costs[next].Quantity;
                 if (TryReserveRefundCrew(manager, registry, capacity, root, candidates, costs, next, nextQuantity,
-                    next == itemIndex ? i + 1 : 0, used, crew, bounds)) return true;
+                    next == itemIndex ? i + 1 : 0, used, crew, bounds, ref flightReads)) return true;
 
                 DroneDemolitionStorageUtility.ResizeClaim(manager, member.Destination, member.Worker, 0);
+                flightReads.RefreshDockAvailability(manager, member.Destination);
                 used.Remove(member.Worker);
                 crew.RemoveAt(crew.Length - 1);
                 // 마지막 빈 슬롯을 다른 품목이나 충전에 남기는 감량만 별도 배치가 된다.

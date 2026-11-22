@@ -47,6 +47,12 @@ internal static class DroneTaskRequestDecisionUtility
         var controls = manager.GetBuffer<DroneTaskGenerationDecisionElement>(candidates);
         controls.Clear();
         using var records = ReadRequests(manager, requests);
+        if (records.IsEmpty) return;
+
+        using var existingTasks = new NativeParallelMultiHashMap<DroneTaskGenerationKey, int>(tasks.Length, Allocator.Temp);
+        using var creatingRequests = new NativeHashMap<DroneTaskGenerationKey, Entity>(records.Length, Allocator.Temp);
+        using var cancelledTasks = new NativeHashSet<Entity>(records.Length, Allocator.Temp);
+        bool indexedExistingTasks = false;
         foreach (var record in records)
         {
             var request = record.Request;
@@ -61,50 +67,20 @@ internal static class DroneTaskRequestDecisionUtility
                 if (decision.Status == DroneTaskRequestStatusEnum.Created)
                 {
                     var key = Key(request);
-                    foreach (Entity taskEntity in tasks)
+                    if (!indexedExistingTasks)
                     {
-                        var task = manager.GetComponentData<DroneLogisticsTask>(taskEntity);
-                        if (DroneSchedulingUtility.IsTaskValid(manager, task, sites) && key.Equals(Key(task)) && !IsCancellationPlanned(manager, candidates, taskEntity))
-                        {
-                            decision.Task = taskEntity;
-                            decision.Status = DroneTaskRequestStatusEnum.Existing;
-                            break;
-                        }
+                        IndexExistingTasks(manager, tasks, existingTasks);
+                        indexedExistingTasks = true;
                     }
-
-                    if (decision.Task == Entity.Null)
+                    decision.Task = FindExistingTask(manager, tasks, sites, key, existingTasks, cancelledTasks);
+                    if (decision.Task != Entity.Null)
                     {
-                        foreach (var earlier in records)
-                        {
-                            if (earlier.Entity == record.Entity)
-                            {
-                                break;
-                            }
-
-                            if (earlier.Request.Operation != DroneTaskRequestOperationEnum.Create || !key.Equals(Key(earlier.Request)))
-                            {
-                                continue;
-                            }
-
-                            var prior = manager.GetComponentData<DroneTaskRequestDecision>(earlier.Entity);
-                            if (prior.Status != DroneTaskRequestStatusEnum.Created && prior.Status != DroneTaskRequestStatusEnum.Existing)
-                            {
-                                continue;
-                            }
-
-                            if (prior.Task != Entity.Null && IsCancellationPlanned(manager, candidates, prior.Task))
-                            {
-                                continue;
-                            }
-
-                            decision.Task = prior.Task;
-                            if (prior.Task == Entity.Null)
-                            {
-                                decision.CreatingRequest = prior.CreatingRequest == Entity.Null ? earlier.Entity : prior.CreatingRequest;
-                            }
-                            decision.Status = DroneTaskRequestStatusEnum.Existing;
-                            break;
-                        }
+                        decision.Status = DroneTaskRequestStatusEnum.Existing;
+                    }
+                    else if (creatingRequests.TryGetValue(key, out Entity earlier))
+                    {
+                        decision.Status = DroneTaskRequestStatusEnum.Existing;
+                        decision.CreatingRequest = earlier;
                     }
 
                     // 유효한 기존/선행 root의 최초 목표량은 유지한다. 현재 회수 재고 상한은 새 root에만 적용한다.
@@ -120,6 +96,9 @@ internal static class DroneTaskRequestDecisionUtility
                             decision.Status = DroneTaskRequestStatusEnum.Rejected;
                         }
                     }
+                    // 아직 생성되지 않은 root의 첫 승인만 보관한다. 기존 root를 참조한 요청은 취소 뒤 재사용할 수 없다.
+                    if (decision.Status == DroneTaskRequestStatusEnum.Created)
+                        creatingRequests.Add(key, record.Entity);
                     if (decision.Status == DroneTaskRequestStatusEnum.Created || decision.Status == DroneTaskRequestStatusEnum.Existing)
                     {
                         controls.Add(new DroneTaskGenerationDecisionElement { Key = key, Blocked = false });
@@ -131,6 +110,7 @@ internal static class DroneTaskRequestDecisionUtility
                 decision.Status = ValidateCancellation(manager, candidates, request.Task, assignments);
                 if (decision.Status == DroneTaskRequestStatusEnum.Cancelled)
                 {
+                    cancelledTasks.Add(request.Task);
                     controls.Add(new DroneTaskGenerationDecisionElement { Key = Key(manager.GetComponentData<DroneLogisticsTask>(request.Task)), Blocked = true, CancelledTask = request.Task });
                 }
             }
@@ -141,6 +121,28 @@ internal static class DroneTaskRequestDecisionUtility
 
             manager.SetComponentData(record.Entity, decision);
         }
+    }
+
+    private static void IndexExistingTasks(EntityManager manager, NativeArray<Entity> tasks,
+        NativeParallelMultiHashMap<DroneTaskGenerationKey, int> existingTasks)
+    {
+        for (int i = 0; i < tasks.Length; i++)
+            existingTasks.Add(Key(manager.GetComponentData<DroneLogisticsTask>(tasks[i])), i);
+    }
+
+    private static Entity FindExistingTask(EntityManager manager, NativeArray<Entity> tasks, NativeArray<Entity> sites,
+        in DroneTaskGenerationKey key, NativeParallelMultiHashMap<DroneTaskGenerationKey, int> existingTasks,
+        NativeHashSet<Entity> cancelledTasks)
+    {
+        // 해시 버퍼의 순회 순서와 관계없이 기존 작업 배열에서 처음 발견되는 유효한 작업을 고른다.
+        int earliest = tasks.Length;
+        foreach (int index in existingTasks.GetValuesForKey(key))
+        {
+            if (index >= earliest || cancelledTasks.Contains(tasks[index])) continue;
+            var task = manager.GetComponentData<DroneLogisticsTask>(tasks[index]);
+            if (DroneSchedulingUtility.IsTaskValid(manager, task, sites)) earliest = index;
+        }
+        return earliest < tasks.Length ? tasks[earliest] : Entity.Null;
     }
 
     public static DroneTaskGenerationKey Key(in DroneLogisticsTask task) => DroneTaskGenerationKey.From(task.Kind, task.Target, task.ItemType, task.Area, task.Purpose);

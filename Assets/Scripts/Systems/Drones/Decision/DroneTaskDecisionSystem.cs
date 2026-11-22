@@ -80,7 +80,6 @@ public partial struct DroneTaskDecisionSystem : ISystem
         using var workers = _workers.ToEntityArray(Allocator.Temp);
         using var routes = _routes.ToEntityArray(Allocator.Temp);
         using var assignments = _assignments.ToEntityArray(Allocator.Temp);
-        using var transportReservations = _transportReservations.ToEntityArray(Allocator.Temp);
         // ToComponentDataArray는 같은 틱 정거장 Decision Writer 완료 뒤 준비된 결과만 읽는다.
         using var networks = _stations.ToComponentDataArray<DroneStationNetworkDecision>(Allocator.Temp);
         var transportPlans = manager.GetBuffer<DroneTransportPlanDecisionElement>(_candidates);
@@ -210,6 +209,8 @@ public partial struct DroneTaskDecisionSystem : ISystem
             carryingCapacity, ref cancellations);
         using var tasksByNetwork = new TaskCandidatesByNetwork(Allocator.Temp);
         using var candidateReads = new TaskCandidateReads(manager, registry);
+        using var returningTransport = new NativeHashMap<Entity, long>(16, Allocator.Temp);
+        bool collectedTransportReturns = false;
         using var pickupDestinations = new NativeList<PickupDestination>(Allocator.Temp);
         bool collectedNewTasks = false;
         for (int w = 0; w < workers.Length; w++)
@@ -292,9 +293,16 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 int transportQuantity = 0;
                 if (transport)
                 {
+                    if (!collectedTransportReturns)
+                    {
+                        using var transportReservations = _transportReservations.ToEntityArray(Allocator.Temp);
+                        DroneTransportReservationUtility.CollectReturningQuantities(manager, transportReservations,
+                            pendingTransport, invalidationDecisions, returningTransport);
+                        collectedTransportReturns = true;
+                    }
                     // 이번 Reservation에서 반환할 양까지 반영해 새 배정에 쓸 잔량이 있을 때만 경로를 준비한다.
-                    transportQuantity = math.min(carryingCapacity, candidateReads.GetProjectedRemaining(
-                        tasks[t], pendingTransport, transportReservations, invalidationDecisions));
+                    transportQuantity = math.min(carryingCapacity,
+                        candidateReads.GetProjectedRemaining(tasks[t], returningTransport.AsReadOnly()));
                     if (transportQuantity <= 0)
                     {
                         continue;
@@ -489,15 +497,14 @@ public partial struct DroneTaskDecisionSystem : ISystem
             return space;
         }
 
-        public int GetProjectedRemaining(Entity task, DynamicBuffer<DroneTransportPendingReservationElement> pending,
-            NativeArray<Entity> reservations, DynamicBuffer<DroneTaskInvalidationDecisionElement> invalidations)
+        public int GetProjectedRemaining(Entity task, NativeHashMap<Entity, long>.ReadOnly returningQuantities)
         {
             if (!_remainingQuantities.TryGetValue(task, out int remaining))
             {
-                int releasing = DroneTransportReservationUtility.ReadReleasingQuantity(_manager, task, reservations, invalidations);
-                remaining = DroneTransportReservationUtility.ProjectedRemaining(task,
+                returningQuantities.TryGetValue(task, out long returning);
+                remaining = DroneTransportReservationUtility.ProjectedRemaining(
                     _manager.GetComponentData<DroneTransportRequirement>(task),
-                    _manager.GetComponentData<DroneTransportProgress>(task), pending, releasing);
+                    _manager.GetComponentData<DroneTransportProgress>(task), returning);
                 _remainingQuantities.Add(task, remaining);
             }
             return remaining;

@@ -31,13 +31,22 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
         var ecb = state.World.GetOrCreateSystemManaged<EndSimulationEntityCommandBufferSystem>().CreateCommandBuffer();
         var pendingPublications = manager.GetBuffer<DroneTaskPendingPublicationElement>(_candidates);
         Entity registry = _registry.IsEmptyIgnoreFilter ? Entity.Null : _registry.GetSingletonEntity();
-        PublishExistingAssignments(manager, registry, carryingCapacity, ecb, pendingPublications);
+        var refundFlightReads = new DroneDemolitionUtility.RefundFlightReadContext();
+        try
+        {
+            PublishExistingAssignments(manager, registry, carryingCapacity, ecb, pendingPublications, ref refundFlightReads);
+        }
+        finally
+        {
+            refundFlightReads.Dispose();
+        }
         var transportPending = manager.GetBuffer<DroneTransportPendingReservationElement>(_candidates);
         PublishTransportAssignments(manager, registry, carryingCapacity, ecb, transportPending);
     }
 
     private static void PublishExistingAssignments(EntityManager manager, Entity registry, int carryingCapacity,
-        EntityCommandBuffer ecb, DynamicBuffer<DroneTaskPendingPublicationElement> pendingPublications)
+        EntityCommandBuffer ecb, DynamicBuffer<DroneTaskPendingPublicationElement> pendingPublications,
+        ref DroneDemolitionUtility.RefundFlightReadContext refundFlightReads)
     {
         for (int i = 0; i < pendingPublications.Length; i++)
         {
@@ -48,9 +57,11 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
             if (candidate.Assignment == Entity.Null && manager.HasComponent<DroneLogisticsTask>(candidate.Task) &&
                 manager.GetComponentData<DroneLogisticsTask>(candidate.Task).Kind == DroneLogisticsTaskKindEnum.BuildingDemolition)
             {
-                i = PublishDemolitionCrew(manager, registry, carryingCapacity, ecb, pendingPublications, i);
+                i = PublishDemolitionCrew(manager, registry, carryingCapacity, ecb, pendingPublications, i, ref refundFlightReads);
                 continue;
             }
+            // 집결 외 공개는 목적지 예약을 조정할 수 있어 다음 집결 검사부터 목록을 다시 만든다.
+            refundFlightReads.Invalidate();
             candidate.Quantity = pending.Quantity;
             // 후보 선택 당시와 최종 공개 사이의 상태 차이를 검사한다. 현재 수량과 상태로 공개 가능 여부를 마지막으로 확인한다.
             int quantity = DroneSchedulingUtility.CandidateQuantity(manager, candidate, registry, carryingCapacity,
@@ -131,7 +142,8 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
     }
 
     private static int PublishDemolitionCrew(EntityManager manager, Entity registry, int capacity, EntityCommandBuffer ecb,
-        DynamicBuffer<DroneTaskPendingPublicationElement> publications, int start)
+        DynamicBuffer<DroneTaskPendingPublicationElement> publications, int start,
+        ref DroneDemolitionUtility.RefundFlightReadContext flightReads)
     {
         Entity root = publications[start].Candidate.Task;
         int end = start;
@@ -144,7 +156,7 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
             valid &= DroneDemolitionUtility.CandidateQuantity(manager, candidate, registry, capacity, checkSpace: false) >= member.Quantity &&
                 (candidate.ItemType == ItemTypeEnum.None ||
                  (DroneDemolitionStorageUtility.Quantity(manager, candidate.Destination, candidate.Worker) == member.Quantity &&
-                  DroneDemolitionUtility.CanReachRefundStorage(manager, candidate.Worker, candidate.Source, candidate.Destination)));
+                  DroneDemolitionUtility.CanReachRefundStorage(manager, candidate.Worker, candidate.Source, candidate.Destination, ref flightReads)));
         }
         for (int i = start; i <= end; i++)
         {
@@ -158,6 +170,7 @@ public partial struct DroneTaskAssignmentPublishSystem : ISystem
             else
             {
                 DroneDemolitionStorageUtility.ResizeClaim(manager, candidate.Destination, candidate.Worker, 0);
+                flightReads.RefreshDockAvailability(manager, candidate.Destination);
                 member.Quantity = 0;
             }
             publications[i] = member;
