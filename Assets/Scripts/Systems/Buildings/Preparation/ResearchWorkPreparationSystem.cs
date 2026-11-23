@@ -146,7 +146,7 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
         var ingredients = registryRead.Ingredients.Read(Ingredients, Registry);
         if (!configured.ValueRO)
         {
-            ConfigureSlots(ingredients, registryRead.ItemConfigs.Read(ItemConfigs, Items), slots);
+            ResearchMaterialUtility.ConfigureInputSlots(ingredients, registryRead.ItemConfigs.Read(ItemConfigs, Items), slots);
             storage = new Storage(slots.Length);
             stored.Resize(slots.Length, NativeArrayOptions.ClearMemory);
             filter = new StorageFilter(StorageFilterMode.Whitelist);
@@ -244,37 +244,6 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
         }
         preparation.CanStartCycle = cycle.ResearchId == 0 && ResearchMaterialUtility.HasMaterials(
             definition, ingredients, stored);
-    }
-
-    private static void ConfigureSlots(DynamicBuffer<ResearchIngredientElement> ingredients,
-        DynamicBuffer<ItemConfigElement> items, DynamicBuffer<BuildingInputSlotElement> slots)
-    {
-        // 모든 정의의 품목별 최대치를 고정 슬롯으로 구성하여 선택 변경이 StorageSlotElement의 슬롯을 재배치하지 않게 한다.
-        slots.Clear();
-        foreach (var item in items)
-        {
-            if (item.ItemType == ItemTypeEnum.None)
-            {
-                continue;
-            }
-            int maximum = 0;
-            foreach (var ingredient in ingredients)
-            {
-                if (ingredient.ItemType == item.ItemType && ingredient.Amount > maximum)
-                {
-                    maximum = ingredient.Amount;
-                }
-            }
-            if (maximum == 0)
-            {
-                continue;
-            }
-            long count = BuildingInputSlotUtility.RequiredSlotCount((long)maximum * ResearchMaterialUtility.BufferedCycleCount, item.MaxStack);
-            for (int i = 0; i < count; i++)
-            {
-                slots.Add(new BuildingInputSlotElement(item.ItemType));
-            }
-        }
     }
 
 }

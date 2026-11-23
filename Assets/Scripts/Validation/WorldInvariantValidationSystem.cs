@@ -651,17 +651,17 @@ public partial class WorldInvariantValidationSystem : SystemBase
             var slots = new HashSet<int>();
             foreach (var entry in docked)
             {
-                bool valid = registered.Add(entry.Drone) && slots.Add(entry.SlotIndex) &&
-                    entry.SlotIndex >= 0 && entry.SlotIndex < total &&
-                    EntityManager.HasComponent<DroneDocked>(entry.Drone) && EntityManager.HasComponent<DroneWorker>(entry.Drone) &&
-                    !EntityManager.HasComponent<ItemIdentity>(entry.Drone);
-                if (valid)
+                if (!registered.Add(entry.Drone))
                 {
-                    var relation = EntityManager.GetComponentData<DroneDocked>(entry.Drone);
-                    valid = relation.Station == station && relation.SlotIndex == entry.SlotIndex;
+                    ReportViolation("DroneStationInvariant", "Duplicate docked actor.", station);
+                    continue;
                 }
-                valid &= (uint)entry.SlotIndex < (uint)items.Length && items[entry.SlotIndex].Quantity == 0;
-                if (!valid)
+                if (!slots.Add(entry.SlotIndex))
+                {
+                    ReportViolation("DroneStationInvariant", "Duplicate docked slot.", station);
+                    continue;
+                }
+                if (!StationStorageUtility.MatchesDockedWorker(EntityManager, station, entry, total, items))
                 {
                     ReportViolation("DroneStationInvariant", "Docked actor/slot ownership is inconsistent.", station);
                 }

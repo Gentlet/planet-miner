@@ -8,7 +8,7 @@ using Unity.Transforms;
 /// <summary>
 /// 공개된 수집/납품/안전 방출 도착으로 이번 틱 인계 요청을 판단한다. 별도 타이머나 실물 Writer는 없다.
 /// 후보 판단은 병렬 Job이며 기존 접수 번호/요청 생성 API 호출만 메인 스레드에서 수행한다.
-/// 자신이 생성한 결과만 다음 Decision에 소비하여 종료 배정의 참조를 남기지 않는다.
+/// 자신이 생성한 결과와 세션 복원에서 인계받은 결과를 다음 Decision에 소비하여 종료 배정의 참조를 남기지 않는다.
 /// </summary>
 [UpdateInGroup(typeof(DroneDecisionGroup))]
 [UpdateAfter(typeof(DroneTaskDecisionSystem))]
@@ -21,7 +21,14 @@ public partial struct DroneActionRequestDecisionSystem : ISystem
 
     public void OnCreate(ref SystemState state)
     {
-        _ownedRequests = state.GetEntityQuery(ComponentType.ReadOnly<DroneAutomaticActionRequest>());
+        _ownedRequests = state.GetEntityQuery(new EntityQueryDesc
+        {
+            Any = new[]
+            {
+                ComponentType.ReadOnly<DroneAutomaticActionRequest>(),
+                ComponentType.ReadOnly<RestoredDroneActionResultOwner>()
+            }
+        });
         _pendingRequests = state.GetEntityQuery(ComponentType.ReadOnly<DroneActionReadyRequest>());
         _candidates = DroneSchedulingUtility.GetOrCreateCandidates(state.EntityManager);
     }

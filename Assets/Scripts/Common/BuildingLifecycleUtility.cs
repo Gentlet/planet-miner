@@ -4,13 +4,32 @@ using Unity.Mathematics;
 using Unity.Transforms;
 
 /// <summary>
-/// 역할·목적: 직접 생성과 현장 완공이 같은 완공 건물 초기화 경계를 사용하게 한다.
+/// 역할·목적: 직접 생성, 현장 완공, 저장 복원이 완공 건물 초기화를 공유하게 한다.
 /// 입력·출력: BuildingId로 설정과 프리팹을 찾고, 설정의 역할과 티어로 런타임 구성을 초기화한다.
-/// 이용: 직접 생성과 완공이 호출한다. 설정이나 프리팹이 누락되면 오류를 기록하고 Null을 반환한다.
-/// 수명·가시화: 반환 Entity는 지연 생성 참조이며 실제 건물은 호출자가 지정한 종료 ECB에서 실체화한다. 요청/현장/자재 소비와 실패 보존 정책은 호출자가 소유한다.
+/// 이용: 직접 생성, 완공과 저장 복원이 호출한다. 설정이나 프리팹이 누락되면 오류를 기록하고 Null을 반환한다.
+/// 수명·가시화: 반환 Entity는 지연 생성 참조다. 시뮬레이션 생성은 종료 ECB, 복원은 공개 전 World의 전용 ECB에서 실체화한다.
+/// 요청/현장/자재 소비와 실패 보존 정책은 호출자가 소유한다.
 /// </summary>
 public static class BuildingLifecycleUtility
 {
+    internal static Entity CreateConstructionSite(ref EntityCommandBuffer ecb, int2 origin, int2 baseSize,
+        DirectionEnum direction, in ConstructionSite state, in PlacementStamp stamp, in PlannedBuildingSettings settings)
+    {
+        Entity site = ecb.CreateEntity();
+        ecb.AddComponent(site, new BuildingType(BuildingTypeEnum.ConstructionSite, 0));
+        ecb.AddComponent(site, new BuildingFootprint(baseSize));
+        ecb.AddComponent(site, new GridPosition(origin));
+        ecb.AddComponent(site, new Direction(direction));
+        ecb.AddComponent(site, state);
+        ecb.AddComponent(site, stamp);
+        ecb.AddComponent(site, LocalTransform.FromPosition(origin.x, origin.y, 0f));
+        if (settings.HasValues)
+        {
+            ecb.AddComponent(site, settings);
+        }
+        return site;
+    }
+
     internal struct SpawnRegistryReadContext
     {
         internal RegistryBufferReadCache<BuildingConfigElement> Configs;
@@ -81,8 +100,6 @@ public static class BuildingLifecycleUtility
     {
         // Config가 유일한 크기 원본이다. 전달 크기는 승인된 현장/요청의 일치 확인용이며 덮어쓰기 입력이 아니다.
         int2 baseFootprint = config.Footprint;
-        float speed = config.Speed;
-        int storageCapacity = config.StorageCapacity;
         if (baseFootprint.x <= 0 || baseFootprint.y <= 0)
         {
             SimulationFailureUtility.Record(ref ecb, "[BuildingLifecycleUtility] Invalid configured building footprint. Spawn rejected.");
@@ -102,7 +119,15 @@ public static class BuildingLifecycleUtility
         {
             return RejectMissingDefinition(ref ecb, config.BuildingId, (FixedString32Bytes)"prefab");
         }
-        if (!PrefabLookupUtility.TryGetBuildingPrefab(buffer, config.BuildingId, out Entity prefabEntity))
+        return SpawnConfiguredBuilding(ref ecb, position, direction, stamp, config, buffer);
+    }
+
+    // 준비된 설정과 프리팹으로 생성할 때 역할과 월드 수명의 초기화를 공유한다.
+    internal static Entity SpawnConfiguredBuilding(ref EntityCommandBuffer ecb, int2 position,
+        DirectionEnum direction, PlacementStamp stamp, in BuildingConfigElement config,
+        in DynamicBuffer<BuildingPrefabElement> prefabs)
+    {
+        if (!PrefabLookupUtility.TryGetBuildingPrefab(prefabs, config.BuildingId, out Entity prefabEntity))
         {
             return RejectMissingDefinition(ref ecb, config.BuildingId, (FixedString32Bytes)"prefab");
         }
@@ -113,16 +138,16 @@ public static class BuildingLifecycleUtility
         Entity newBuilding = RuntimePrefabLifecycleUtility.Instantiate(ref ecb, prefabEntity);
 
         ecb.AddComponent(newBuilding, new BuildingType(config.BuildingType, config.Tier, config.BuildingId));
-        ecb.AddComponent(newBuilding, new BuildingFootprint(baseFootprint));
+        ecb.AddComponent(newBuilding, new BuildingFootprint(config.Footprint));
         ecb.AddComponent(newBuilding, new GridPosition(position));
         ecb.AddComponent(newBuilding, new Direction(direction));
         ecb.AddComponent(newBuilding, stamp);
         ecb.SetComponent(newBuilding, LocalTransform.FromPosition(spawnPosition));
 
         int totalStorageCapacity = config.BuildingType is BuildingTypeEnum.MainFacility or BuildingTypeEnum.DroneStation
-            ? storageCapacity + config.DroneStationStorageCapacity
-            : storageCapacity;
-        AttachTypeSpecificComponents(ref ecb, newBuilding, config.BuildingType, direction, speed, totalStorageCapacity);
+            ? config.StorageCapacity + config.DroneStationStorageCapacity
+            : config.StorageCapacity;
+        AttachTypeSpecificComponents(ref ecb, newBuilding, config.BuildingType, direction, config.Speed, totalStorageCapacity);
         if (DroneStationRangeUtility.IsStationType(config.BuildingType))
         {
             ecb.AddComponent(newBuilding, new DroneStationStorage { DedicatedSlotCount = config.DroneStationStorageCapacity });

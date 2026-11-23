@@ -13,6 +13,7 @@ using Unity.Mathematics;
 public static class BuildingPlacementValidationUtility
 {
     private static PlacementValidationResult ValidateSinglePlacement(
+        EntityManager manager,
         in PlacementCandidate candidate,
         in NativeParallelHashMap<int2, BuildingInfo>.ReadOnly buildingMap,
         in NativeParallelHashMap<int2, Entity>.ReadOnly resourceMap,
@@ -43,9 +44,10 @@ public static class BuildingPlacementValidationUtility
         bool hasResource = false;
         bool hasGroundItems = false;
         Entity beltToRedirect = Entity.Null;
+        BuildingInfo originBuilding = default;
         // 방향 변경은 기존 벨트의 원점에서 실행하므로 같은 원점의 회전 점유를 검사한다.
         if (candidate.TargetType == BuildingTypeEnum.Belt &&
-            buildingMap.TryGetValue(candidate.OriginPosition, out var originBuilding) &&
+            buildingMap.TryGetValue(candidate.OriginPosition, out originBuilding) &&
             originBuilding.Type == BuildingTypeEnum.Belt && originBuilding.BuildingId == candidate.BuildingId &&
             math.all(originBuilding.OriginPosition == candidate.OriginPosition))
         {
@@ -91,16 +93,52 @@ public static class BuildingPlacementValidationUtility
 
         if (beltToRedirect != Entity.Null)
         {
+            int2 next = candidate.OriginPosition + candidate.Direction.ToInt2();
+            if (originBuilding.Direction != candidate.Direction && buildingMap.TryGetValue(next, out var destination) &&
+                destination.Type == BuildingTypeEnum.Belt &&
+                !HasRedirectSpacing(manager, itemMap, candidate.OriginPosition, next))
+            {
+                return new PlacementValidationResult(PlacementValidationCode.InsufficientBeltSpacing);
+            }
             return new PlacementValidationResult(PlacementValidationCode.BeltUpgradeAllowed, hasGroundItems);
         }
 
         return new PlacementValidationResult(PlacementValidationCode.Success, hasGroundItems);
     }
 
+    // 방향 변경은 실물 진행도를 보존하므로 새 출구/입구에 이미 있는 아이템 사이의 간격을 승인 전에 확인한다.
+    private static bool HasRedirectSpacing(EntityManager manager, in NativeParallelMultiHashMap<int2, Entity>.ReadOnly items,
+        int2 origin, int2 next)
+    {
+        if (!items.TryGetFirstValue(origin, out Entity item, out var sourceIterator) ||
+            !items.TryGetFirstValue(next, out Entity ahead, out var targetIterator))
+        {
+            return true;
+        }
+        float maxSourceProgress = float.NegativeInfinity;
+        do
+        {
+            if (manager.HasComponent<BeltMovementState>(item) && manager.IsComponentEnabled<BeltMovementState>(item))
+            {
+                maxSourceProgress = math.max(maxSourceProgress, manager.GetComponentData<BeltMovementState>(item).Progress);
+            }
+        } while (items.TryGetNextValue(out item, ref sourceIterator));
+        do
+        {
+            if (manager.HasComponent<BeltMovementState>(ahead) && manager.IsComponentEnabled<BeltMovementState>(ahead) &&
+                !BeltEntryUtility.HasBoundarySpacing(maxSourceProgress, manager.GetComponentData<BeltMovementState>(ahead).Progress))
+            {
+                return false;
+            }
+        } while (items.TryGetNextValue(out ahead, ref targetIterator));
+        return true;
+    }
+
     /// <summary>
     /// ID로 해석한 건물 정의와 현재 점유를 기준으로 묶음 배치를 검증한다.
     /// </summary>
     public static void ValidateBatchPlacement(
+        EntityManager manager,
         NativeArray<PlacementCandidate> candidates,
         PlacementFlags flags,
         in NativeParallelHashMap<int2, BuildingInfo>.ReadOnly buildingMap,
@@ -142,6 +180,7 @@ public static class BuildingPlacementValidationUtility
             }
 
             var singleResult = ValidateSinglePlacement(
+                manager,
                 candidate,
                 buildingMap,
                 resourceMap,

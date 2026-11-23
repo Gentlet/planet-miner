@@ -8,6 +8,9 @@ using Unity.Mathematics;
 /// </summary>
 public static class BeltEntryUtility
 {
+    internal static bool HasBoundarySpacing(float exitProgress, float entryProgress) =>
+        1f - exitProgress + entryProgress >= GameConstants.ItemSpacing - GameConstants.AlignmentEpsilon;
+
     /// <summary>인덱스에서 셀의 벨트를 찾고, EndCommand에서 회전했을 수 있는 방향은 현재 원본에서 읽는다.</summary>
     internal static bool TryGetDirectedBelt(int2 position, in NativeParallelHashMap<int2, BeltInfo> belts,
         in ComponentLookup<Direction> directions, out BeltInfo belt)

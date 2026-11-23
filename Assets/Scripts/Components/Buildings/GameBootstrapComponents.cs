@@ -11,8 +11,8 @@ public struct GameBootstrapRequest : IRequestComponent
 }
 
 /// <summary>
-/// 주 시설과 시작 실물이 같은 EndBuilding에 공개됐음을 나타내는 World 수명의 기록이다.
-/// 설정/재고/지급 잔량과 구분하며, 재진입은 이 참조를 확인하고 생성이나 지급을 반복하지 않는다.
+/// 시작이 완료된 World의 주 시설 참조다. 새 게임은 초기 지급과 함께 EndBuilding에 게시한다.
+/// 복원은 저장한 시설과 재고로 별도 World에 구성한다. 재진입은 이 참조로 생성과 지급의 중복을 막는다.
 /// </summary>
 public struct GameBootstrapState : IComponentData
 {

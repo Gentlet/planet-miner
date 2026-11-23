@@ -1,18 +1,30 @@
 using System;
 using Unity.Entities;
 
-/// <summary>필수 초기화가 끝난 뒤 생성/지급을 한 번 접수한다. 실제 공개는 기존 EndBuilding 소유자에게 맡긴다.</summary>
+/// <summary>시작 대기와 필수 초기화가 끝난 뒤 생성/지급을 한 번 접수한다. 실제 공개는 기존 EndBuilding 소유자에게 맡긴다.</summary>
 [UpdateInGroup(typeof(InitializationSystemGroup), OrderLast = true)]
 [UpdateAfter(typeof(PrefabDatabaseInitializationSystem))]
 [UpdateAfter(typeof(StartingItemConfigInitializationSystem))]
 [UpdateAfter(typeof(DroneConfigInitializationSystem))]
 public partial class GameBootstrapInitializationSystem : SystemBase
 {
+    private EntityQuery _sessionStartPendingQuery;
+
+    protected override void OnCreate()
+    {
+        _sessionStartPendingQuery = GetEntityQuery(ComponentType.ReadOnly<GameSessionStartPending>());
+    }
+
     protected override void OnUpdate()
     {
         if (SimulationFailureUtility.HasFatalError(EntityManager))
         {
             Enabled = false;
+            return;
+        }
+
+        if (!_sessionStartPendingQuery.IsEmptyIgnoreFilter)
+        {
             return;
         }
 

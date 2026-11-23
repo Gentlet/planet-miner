@@ -9,7 +9,8 @@ using Unity.Transforms;
 /// 입력·출력: 자원 설정과 등록 프리팹/해결된 참조 배열을 읽어 위치·품목·잔량·Transform을 호출자의 ECB에 기록한다.
 /// 이용: ResourceGenerationCommandSystem이 청크 생성 요청에서 호출한다. 필요한 프리팹 조회 실패는 생성 기록 전에 false로 반환한다.
 /// 수명·경계: 후보별 RNG는 시드 해시로 재생성하고 주변 후보 청크를 평가하므로 로드 순서가 광맥 경계를 바꾸지 않는다.
-/// 임시 참조 배열은 호출 범위에서 Dispose하며 자원 생성은 EndCommand Playback에 확정한다.
+/// 임시 참조 배열은 호출 범위에서 Dispose하며 청크 생성 자원은 EndCommand에 공개한다.
+/// 저장 복원은 자원 생성 원형 초기화를 공유하고 실물 공개는 별도 World의 전환 경계를 따른다.
 /// </summary>
 public static class ResourceGenerationUtility
 {
@@ -195,11 +196,16 @@ public static class ResourceGenerationUtility
                 if (!occupied.Add(cell))
                     continue;
 
-                Entity entity = RuntimePrefabLifecycleUtility.Instantiate(ref ecb, prefabEntity);
-                ecb.SetComponent(entity, LocalTransform.FromPosition(new float3(cell.x, cell.y, 0f)));
-                ecb.AddComponent(entity, new GridPosition(cell));
-                ecb.AddComponent(entity, new ResourceNode(config.ResourceType, amount));
+                SpawnResourceNode(ref ecb, prefabEntity, cell, config.ResourceType, amount);
             }
         }
+    }
+
+    internal static void SpawnResourceNode(ref EntityCommandBuffer ecb, Entity prefab, int2 cell, ItemTypeEnum type, int amount)
+    {
+        Entity entity = RuntimePrefabLifecycleUtility.Instantiate(ref ecb, prefab);
+        ecb.SetComponent(entity, LocalTransform.FromPosition(new float3(cell.x, cell.y, 0f)));
+        ecb.AddComponent(entity, new GridPosition(cell));
+        ecb.AddComponent(entity, new ResourceNode(type, amount));
     }
 }

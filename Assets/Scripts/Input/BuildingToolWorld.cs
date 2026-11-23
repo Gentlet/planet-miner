@@ -230,7 +230,7 @@ public static class BuildingToolWorld
                     settings[i] = PlacementValidationCode.InvalidBuildingSettings;
                 }
             }
-            BuildingPlacementValidationUtility.ValidateBatchPlacement(native, PlacementFlags.StrictAllOrNothing,
+            BuildingPlacementValidationUtility.ValidateBatchPlacement(manager, native, PlacementFlags.StrictAllOrNothing,
                 buildings.GetSingleton<BuildingSpatialIndex>().Map.AsReadOnly(),
                 resources.GetSingleton<ResourceSpatialIndex>().Map.AsReadOnly(),
                 items.GetSingleton<ItemSpatialIndex>().Map.AsReadOnly(), validation,

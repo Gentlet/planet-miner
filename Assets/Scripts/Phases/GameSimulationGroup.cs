@@ -1,9 +1,10 @@
+using System;
 using Unity.Entities;
 
 /// <summary>
 /// 역할/목적: Unity SimulationSystemGroup 안에서 Command→Preparation→PowerSimulation→BuildingSimulation→DroneSimulation→SimulationCommit→Synchronization을 실행한다.
 /// 입력·생성자: 프리팹 DB Ready, 각 설정 소유자의 게시 엔티티/버퍼와 초기화/실행 경계의 SimulationFatalError.
-/// 실행 조건: 틱 시작에 DB와 필수 설정이 준비되고 중단 오류가 없어야 전체 그룹을 한 번 실행한다.
+/// 실행 조건: 시작 대기가 끝나고 DB와 필수 설정이 준비되며 중단 오류가 없을 때 전체 그룹을 한 번 실행한다.
 /// 출력/정리: EndCommand/EndPower/EndBuilding/EndSimulation에서 ECB를 재생한다. 실행 중 NextTick 오류는 현재 틱을 마친 뒤 다음 틱부터 차단한다.
 /// Power 검증 오류는 EndPower에서 RemainingDomains로 공개되어 같은 틱의 Building/Drone 실행을 건너뛴다.
 /// </summary>
@@ -12,16 +13,21 @@ public partial class GameSimulationGroup : ComponentSystemGroup
 {
     private EntityQuery _readyQuery;
     private EntityQuery _fatalErrorQuery;
+    private EntityQuery _sessionStartPendingQuery;
     private EntityQuery _buildingConfigQuery;
     private EntityQuery _itemConfigQuery;
     private EntityQuery _recipeConfigQuery;
     private EntityQuery _worldConfigQuery;
+
+    // 저장 요청자는 EndSimulation과 Synchronization을 지난 현재 틱의 원본만 읽는다.
+    internal event Action<EntityManager> TickCompleted;
 
     protected override void OnCreate()
     {
         base.OnCreate();
         _readyQuery = GetEntityQuery(ComponentType.ReadOnly<PrefabDatabaseReady>());
         _fatalErrorQuery = GetEntityQuery(ComponentType.ReadOnly<SimulationFatalError>());
+        _sessionStartPendingQuery = GetEntityQuery(ComponentType.ReadOnly<GameSessionStartPending>());
         _buildingConfigQuery = GetEntityQuery(ComponentType.ReadOnly<BuildingConfig>(),
             ComponentType.ReadOnly<BuildingConfigElement>(), ComponentType.ReadOnly<BuildingConstructionMaterialElement>(),
             ComponentType.ReadOnly<ResearchStatBonuses>());
@@ -35,6 +41,11 @@ public partial class GameSimulationGroup : ComponentSystemGroup
 
     protected override void OnUpdate()
     {
+        if (!_sessionStartPendingQuery.IsEmptyIgnoreFilter)
+        {
+            return;
+        }
+
         // 준비 전 또는 중단 오류 후에는 일부 phase만 진행하지 않고 게임 그룹 전체를 건너뛴다.
         if (_readyQuery.IsEmptyIgnoreFilter)
         {
@@ -54,5 +65,6 @@ public partial class GameSimulationGroup : ComponentSystemGroup
         }
 
         base.OnUpdate();
+        TickCompleted?.Invoke(EntityManager);
     }
 }

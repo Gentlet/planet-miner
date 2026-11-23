@@ -57,6 +57,23 @@ public static class StationStorageUtility
         return false;
     }
 
+    // 정박 중인 드론은 빈 보관 슬롯 하나를 점유하며, 수행자도 같은 정거장과 슬롯을 가리킨다.
+    internal static bool MatchesDockedWorker(EntityManager manager, Entity station, DockedDroneElement entry,
+        int slotCount, DynamicBuffer<StorageSlotElement> items)
+    {
+        if ((uint)entry.SlotIndex >= (uint)slotCount || (uint)entry.SlotIndex >= (uint)items.Length)
+        {
+            return false;
+        }
+        if (items[entry.SlotIndex].Quantity != 0 || !manager.HasComponent<DroneWorker>(entry.Drone) ||
+            manager.HasComponent<ItemIdentity>(entry.Drone) || !manager.HasComponent<DroneDocked>(entry.Drone))
+        {
+            return false;
+        }
+        var dock = manager.GetComponentData<DroneDocked>(entry.Drone);
+        return dock.Station == station && dock.SlotIndex == entry.SlotIndex;
+    }
+
     // 읽기 전용 탐색 한 번의 고정 메타데이터/버퍼만 공유한다. 슬롯 점유 판단은 매번 수행한다.
     internal ref struct StorageReadContext
     {

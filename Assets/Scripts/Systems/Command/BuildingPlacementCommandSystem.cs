@@ -154,6 +154,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
             // 직전 동기화의 점유·앞 요청의 최종 승인·이 묶음 내부 후보 충돌을 검사한다.
             // 같은 틱의 취소/철거가 기록됐더라도 인덱스가 갱신되기 전 점유는 그대로 사용한다.
             BuildingPlacementValidationUtility.ValidateBatchPlacement(
+                state.EntityManager,
                 candidates,
                 request.Flags,
                 buildingMap.AsReadOnly(),
@@ -192,29 +193,11 @@ public partial struct BuildingPlacementCommandSystem : ISystem
 
                 if (res.IsValid)
                 {
-                    // 공사 현장 엔티티 생성
-                    var siteEntity = ecb.CreateEntity();
-                    ecb.AddComponent(siteEntity, new BuildingType(BuildingTypeEnum.ConstructionSite, 0));
-
-                    // Size에는 방향 적용 전 크기를 저장한다. 점유 조회 시에만 회전한다.
-                    int2 baseSize = candidate.FootprintSize;
-                    ecb.AddComponent(siteEntity, new BuildingFootprint(baseSize));
-                    ecb.AddComponent(siteEntity, new GridPosition(candidate.OriginPosition));
-                    ecb.AddComponent(siteEntity, new Direction(candidate.Direction));
-
-                    var flags = ConstructionSiteFlags.None;
-                    if (res.HasGroundItems)
-                    {
-                        flags |= ConstructionSiteFlags.AwaitingItemClearance;
-                    }
-
-                    ecb.AddComponent(siteEntity, new ConstructionSite(candidate.TargetType, candidate.TargetTier, candidate.BuildingId, flags));
-                    if (candidateBuffer[i].Settings.HasValues)
-                    {
-                        ecb.AddComponent(siteEntity, candidateBuffer[i].Settings);
-                    }
-                    ecb.AddComponent(siteEntity, new PlacementStamp(candidateTick, (uint)i, request.ReceiptSequence));
-                    ecb.AddComponent(siteEntity, LocalTransform.FromPosition(candidate.OriginPosition.x, candidate.OriginPosition.y, 0f));
+                    var flags = res.HasGroundItems ? ConstructionSiteFlags.AwaitingItemClearance : ConstructionSiteFlags.None;
+                    var site = new ConstructionSite(candidate.TargetType, candidate.TargetTier, candidate.BuildingId, flags);
+                    var stamp = new PlacementStamp(candidateTick, (uint)i, request.ReceiptSequence);
+                    Entity siteEntity = BuildingLifecycleUtility.CreateConstructionSite(ref ecb, candidate.OriginPosition,
+                        candidate.FootprintSize, candidate.Direction, site, stamp, candidateBuffer[i].Settings);
 
                     // 요구 수량과 실물 참조를 분리한다. 현장은 요구량만으로 자재를 소유하지 않으며
                     var reqBuffer = ecb.AddBuffer<ConstructionMaterialRequirementElement>(siteEntity);

@@ -2,7 +2,7 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 역할·목적: Initialization에서 시작 영역의 청크 로드 요청을 한 번 넣는다.
+/// 역할·목적: 시작 대기가 끝난 뒤 Initialization에서 시작 영역의 청크 로드 요청을 한 번 넣는다.
 /// 입력·생성자: WorldGenerationConfigLoadSystem이 게시한 ResourceGenerationSettings.InitialChunkSize.
 /// 출력·소유권: 없으면 World 단일 ChunkLoadRequestQueue/버퍼를 즉시 만들고 원점 주변 N×N 좌표를 추가한다.
 /// 이용·정리: ChunkLoadCommandSystem이 요청을 소비하고 ResourceGenerationCommandSystem으로 넘긴다. 부트스트랩은 제출 뒤 비활성화한다.
@@ -12,13 +12,21 @@ using Unity.Mathematics;
 [UpdateAfter(typeof(WorldGenerationConfigLoadSystem))]
 public partial struct InitialChunkLoadBootstrapSystem : ISystem
 {
+    private EntityQuery _sessionStartPendingQuery;
+
     public void OnCreate(ref SystemState state)
     {
         state.RequireForUpdate<ResourceGenerationSettings>();
+        _sessionStartPendingQuery = state.GetEntityQuery(ComponentType.ReadOnly<GameSessionStartPending>());
     }
 
     public void OnUpdate(ref SystemState state)
     {
+        if (!_sessionStartPendingQuery.IsEmptyIgnoreFilter)
+        {
+            return;
+        }
+
         var settings = SystemAPI.GetSingleton<ResourceGenerationSettings>();
         if (!WorldGenerationConfigLoader.TryValidateWorldSettings(settings.WorldSeed, settings.InitialChunkSize, out string error))
         {
