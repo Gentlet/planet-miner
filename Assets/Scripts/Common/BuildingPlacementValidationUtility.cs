@@ -18,18 +18,18 @@ public static class BuildingPlacementValidationUtility
         in NativeParallelHashMap<int2, BuildingInfo>.ReadOnly buildingMap,
         in NativeParallelHashMap<int2, Entity>.ReadOnly resourceMap,
         in NativeParallelMultiHashMap<int2, Entity>.ReadOnly itemMap,
-        bool isUnlocked)
+        in BuildingConfigElement config)
     {
-        if (candidate.TargetType == BuildingTypeEnum.MainFacility)
+        if (config.Placement.BootstrapOnly)
         {
             return new PlacementValidationResult(PlacementValidationCode.NotPlayerBuildable);
         }
-        if (!isUnlocked)
+        if (!config.IsUnlocked)
         {
             return new PlacementValidationResult(PlacementValidationCode.BlockedByResearch);
         }
 
-        if (candidate.TargetTier <= 0 || candidate.FootprintSize.x <= 0 || candidate.FootprintSize.y <= 0)
+        if (config.Tier <= 0 || candidate.FootprintSize.x <= 0 || candidate.FootprintSize.y <= 0)
         {
             return new PlacementValidationResult(PlacementValidationCode.InvalidFootprint);
         }
@@ -46,9 +46,9 @@ public static class BuildingPlacementValidationUtility
         Entity beltToRedirect = Entity.Null;
         BuildingInfo originBuilding = default;
         // 방향 변경은 기존 벨트의 원점에서 실행하므로 같은 원점의 회전 점유를 검사한다.
-        if (candidate.TargetType == BuildingTypeEnum.Belt &&
+        if (config.BeltTransport.IsPresent &&
             buildingMap.TryGetValue(candidate.OriginPosition, out originBuilding) &&
-            originBuilding.Type == BuildingTypeEnum.Belt && originBuilding.BuildingId == candidate.BuildingId &&
+            manager.HasComponent<BeltComponent>(originBuilding.Entity) && originBuilding.BuildingId == candidate.BuildingId &&
             math.all(originBuilding.OriginPosition == candidate.OriginPosition))
         {
             beltToRedirect = originBuilding.Entity;
@@ -64,7 +64,8 @@ public static class BuildingPlacementValidationUtility
                 if (buildingMap.TryGetValue(cell, out var existingBuilding) &&
                     (beltToRedirect == Entity.Null || existingBuilding.Entity != beltToRedirect))
                 {
-                    if (existingBuilding.Type == BuildingTypeEnum.ConstructionSite)
+                    if (manager.HasComponent<ConstructionSite>(existingBuilding.Entity) ||
+                        existingBuilding.BuildingId == 0 && !manager.Exists(existingBuilding.Entity))
                     {
                         return new PlacementValidationResult(PlacementValidationCode.BlockedByConstructionSite);
                     }
@@ -86,7 +87,7 @@ public static class BuildingPlacementValidationUtility
         }
 
         // 4. 채굴기(Miner) 전용 자원 충족 검사: 풋프린트 내 자원 노드가 최소 1개 이상 존재해야 함
-        if (candidate.TargetType == BuildingTypeEnum.Miner && !hasResource)
+        if (config.Mining.IsPresent && !hasResource)
         {
             return new PlacementValidationResult(PlacementValidationCode.RequiresResourceNode);
         }
@@ -95,7 +96,7 @@ public static class BuildingPlacementValidationUtility
         {
             int2 next = candidate.OriginPosition + candidate.Direction.ToInt2();
             if (originBuilding.Direction != candidate.Direction && buildingMap.TryGetValue(next, out var destination) &&
-                destination.Type == BuildingTypeEnum.Belt &&
+                manager.HasComponent<BeltComponent>(destination.Entity) &&
                 !HasRedirectSpacing(manager, itemMap, candidate.OriginPosition, next))
             {
                 return new PlacementValidationResult(PlacementValidationCode.InsufficientBeltSpacing);
@@ -162,9 +163,6 @@ public static class BuildingPlacementValidationUtility
                 anyFailed = true;
                 continue;
             }
-            candidate.TargetType = config.BuildingType;
-            candidate.TargetTier = config.Tier;
-            candidates[i] = candidate;
             if (settingsRejections.IsCreated && settingsRejections[i] != PlacementValidationCode.Success)
             {
                 results[i] = new PlacementValidationResult(settingsRejections[i]);
@@ -185,7 +183,7 @@ public static class BuildingPlacementValidationUtility
                 buildingMap,
                 resourceMap,
                 itemMap,
-                config.IsUnlocked);
+                config);
 
             if (!singleResult.IsValid)
             {

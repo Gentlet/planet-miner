@@ -80,6 +80,21 @@ public static class BeltEntryUtility
         return bestBelt;
     }
 
+    internal static int FindStorageOutputSlot(in DynamicBuffer<StorageSlotElement> items, bool hasDroneStorage,
+        in FuelStorageSlots fuel)
+    {
+        int end = fuel.Count > 0 && !fuel.BeltOutput ? fuel.Start : items.Length;
+        for (int i = 0; i < end; i++)
+        {
+            var item = items[i];
+            if (item.Quantity > 0 && (!hasDroneStorage || item.ItemType != ItemTypeEnum.Drone))
+            {
+                return i;
+            }
+        }
+        return -1;
+    }
+
     internal static bool TryFindBuildingOutputBelt(
         int2 anchor,
         int2 size,

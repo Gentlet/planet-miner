@@ -69,6 +69,8 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
             BuildingItemInputDecisionHandle = SystemAPI.GetComponentTypeHandle<BuildingItemInputDecision>(false),
             ItemIdentityHandle = SystemAPI.GetComponentTypeHandle<ItemIdentity>(true),
             StorageLookup = _storageLookup,
+            StorageFilters = SystemAPI.GetComponentLookup<StorageFilter>(true),
+            FuelSlots = SystemAPI.GetComponentLookup<FuelStorageSlots>(true),
             StationStorageLookup = _stationStorageLookup,
             DockedLookup = _dockedLookup,
             ReservedLookup = SystemAPI.GetBufferLookup<DroneStationReservedSlotElement>(true),
@@ -130,6 +132,8 @@ public partial struct BuildingStorageInputReservationJob : IJobChunk
     [ReadOnly]
     public ComponentLookup<Storage> StorageLookup;
     [ReadOnly] public ComponentLookup<DroneStationStorage> StationStorageLookup;
+    [ReadOnly] public ComponentLookup<FuelStorageSlots> FuelSlots;
+    [ReadOnly] public ComponentLookup<StorageFilter> StorageFilters;
     [ReadOnly] public BufferLookup<DockedDroneElement> DockedLookup;
     [ReadOnly] public BufferLookup<DroneStationReservedSlotElement> ReservedLookup;
     [ReadOnly] public ComponentLookup<PreparingStationDemolition> PreparingLookup;
@@ -269,8 +273,6 @@ public partial struct BuildingStorageInputReservationJob : IJobChunk
                 }
             }
         }
-        int sameTypeSlot = -1;
-        int firstEmptySlot = -1;
 
         if (ResearchLimits.TryGetBuffer(building, out var researchLimits))
         {
@@ -300,32 +302,19 @@ public partial struct BuildingStorageInputReservationJob : IJobChunk
             }
         }
 
-        for (int s = 0; s < safeSlotCount; s++)
+        bool hasFuel = FuelSlots.TryGetComponent(building, out var fuel);
+        int targetSlot = -1;
+        if (hasFuel && fuel.Allows(itemType))
         {
-            if (!StationStorageUtility.IsItemSlotAllowed(s, slotCount, dedicated, itemType, true))
-            {
-                continue;
-            }
-            if (hasInputSlots && inputSlots[s].ItemType != itemType)
-            {
-                continue;
-            }
-
-            if (slotOccupancy[s] == 0)
-            {
-                if (firstEmptySlot == -1)
-                {
-                    firstEmptySlot = s;
-                }
-            }
-            else if (slotTypes[s] == itemType && slotOccupancy[s] < maxStack)
-            {
-                sameTypeSlot = s;
-                break; // 가장 낮은 번호의 여유 슬롯 선택
-            }
+            targetSlot = FindSlot(fuel.Start, safeSlotCount, 0, itemType, maxStack,
+                default, false, slotOccupancy, slotTypes);
         }
-
-        int targetSlot = sameTypeSlot != -1 ? sameTypeSlot : firstEmptySlot;
+        if (targetSlot == -1 && (!StorageFilters.TryGetComponent(building, out var filter) || filter.IsItemAllowed(itemType)))
+        {
+            int nonFuelCount = hasFuel ? fuel.Start : safeSlotCount;
+            targetSlot = FindSlot(0, nonFuelCount, dedicated, itemType, maxStack,
+                inputSlots, hasInputSlots, slotOccupancy, slotTypes);
+        }
 
         if (targetSlot != -1)
         {
@@ -348,4 +337,27 @@ public partial struct BuildingStorageInputReservationJob : IJobChunk
             inputDecisionEnabled.ValueRW = false;
         }
     }
+    private static int FindSlot(int start, int end, int dedicated, ItemTypeEnum itemType, int maxStack,
+        in DynamicBuffer<BuildingInputSlotElement> inputs, bool hasInputs,
+        in FixedList512Bytes<int> quantities, in FixedList512Bytes<ItemTypeEnum> itemTypes)
+    {
+        int firstEmpty = -1;
+        for (int slot = start; slot < end; slot++)
+        {
+            if (!StationStorageUtility.IsItemSlotAllowed(slot, end, dedicated, itemType, true) ||
+                (hasInputs && inputs[slot].ItemType != itemType))
+                continue;
+            if (quantities[slot] == 0)
+            {
+                if (firstEmpty == -1)
+                    firstEmpty = slot;
+            }
+            else if (itemTypes[slot] == itemType && quantities[slot] < maxStack)
+            {
+                return slot;
+            }
+        }
+        return firstEmpty;
+    }
+
 }

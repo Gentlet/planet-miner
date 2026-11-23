@@ -23,7 +23,7 @@ public partial struct DroneStationSpatialSyncSystem : ISystem
             Map = new NativeParallelHashMap<Entity, DroneStationCoverage>(_mapCapacity, Allocator.Persistent)
         });
         state.EntityManager.AddComponent<DroneStationSpatialIndexFence>(entity);
-        _stations = SystemAPI.QueryBuilder().WithAll<DroneStation, DroneStationNetwork, BuildingType, GridPosition, Direction>()
+        _stations = SystemAPI.QueryBuilder().WithAll<DroneStation, DroneStationNetwork, BuildingIdentity, GridPosition, Direction>()
             .WithAll<BuildingFootprint>().WithNone<PendingBuildingDemolition>().Build();
         state.RequireForUpdate<BuildingConfig>();
     }
@@ -54,7 +54,7 @@ public partial struct DroneStationSpatialSyncSystem : ISystem
         {
             EntityHandle = SystemAPI.GetEntityTypeHandle(),
             NetworkHandle = SystemAPI.GetComponentTypeHandle<DroneStationNetwork>(true),
-            TypeHandle = SystemAPI.GetComponentTypeHandle<BuildingType>(true),
+            TypeHandle = SystemAPI.GetComponentTypeHandle<BuildingIdentity>(true),
             PositionHandle = SystemAPI.GetComponentTypeHandle<GridPosition>(true),
             DirectionHandle = SystemAPI.GetComponentTypeHandle<Direction>(true),
             FootprintHandle = SystemAPI.GetComponentTypeHandle<BuildingFootprint>(true),
@@ -72,7 +72,7 @@ internal struct PopulateDroneStationSpatialIndexJob : IJobChunk
 {
     [ReadOnly] public EntityTypeHandle EntityHandle;
     [ReadOnly] public ComponentTypeHandle<DroneStationNetwork> NetworkHandle;
-    [ReadOnly] public ComponentTypeHandle<BuildingType> TypeHandle;
+    [ReadOnly] public ComponentTypeHandle<BuildingIdentity> TypeHandle;
     [ReadOnly] public ComponentTypeHandle<GridPosition> PositionHandle;
     [ReadOnly] public ComponentTypeHandle<Direction> DirectionHandle;
     [ReadOnly] public ComponentTypeHandle<BuildingFootprint> FootprintHandle;
@@ -106,7 +106,7 @@ internal struct PopulateDroneStationSpatialIndexJob : IJobChunk
             {
                 RepresentativeStation = representative,
                 Bounds = DroneStationRangeUtility.GetActivityBounds(positions[index].Value, footprints[index].Size,
-                    directions[index].dir, config.DroneStationRangeInChunks)
+                    directions[index].dir, config.DroneStation.RangeInChunks)
             });
         }
     }

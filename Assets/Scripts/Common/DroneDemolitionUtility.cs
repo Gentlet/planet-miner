@@ -8,12 +8,9 @@ public static class DroneDemolitionUtility
 {
     public static bool IsTarget(EntityManager manager, Entity target)
     {
-        if (target == Entity.Null || !manager.HasComponent<BuildingType>(target)) return false;
+        if (target == Entity.Null || !manager.HasComponent<BuildingIdentity>(target)) return false;
         if (manager.HasComponent<Prefab>(target) || manager.HasComponent<IndestructibleBuilding>(target)) return false;
-        var type = manager.GetComponentData<BuildingType>(target).Type;
-        return type != BuildingTypeEnum.None && type != BuildingTypeEnum.ConstructionSite &&
-            type != BuildingTypeEnum.MainFacility &&
-            manager.HasComponent<GridPosition>(target) && manager.HasComponent<BuildingFootprint>(target) &&
+        return manager.HasComponent<GridPosition>(target) && manager.HasComponent<BuildingFootprint>(target) &&
             manager.HasComponent<Direction>(target);
     }
 
@@ -58,8 +55,8 @@ public static class DroneDemolitionUtility
         }
 
         if (!manager.HasBuffer<BuildingConstructionMaterialElement>(config) ||
-            !manager.HasComponent<BuildingType>(task.Target)) return costs;
-        int id = manager.GetComponentData<BuildingType>(task.Target).BuildingId;
+            !manager.HasComponent<BuildingIdentity>(task.Target)) return costs;
+        int id = manager.GetComponentData<BuildingIdentity>(task.Target).BuildingId;
         foreach (var material in manager.GetBuffer<BuildingConstructionMaterialElement>(config, true))
         {
             if (material.BuildingId != id || material.Quantity <= 0) continue;
@@ -142,8 +139,7 @@ public static class DroneDemolitionUtility
 
     internal static DroneTransportAreaEnum StorageArea(EntityManager manager, Entity source)
     {
-        var type = manager.GetComponentData<BuildingType>(source).Type;
-        return type == BuildingTypeEnum.Storage || type == BuildingTypeEnum.DroneStation
+        return manager.HasComponent<GeneralItemStorage>(source)
             ? DroneTransportAreaEnum.GeneralStorage : DroneTransportAreaEnum.Input;
     }
 
@@ -152,7 +148,9 @@ public static class DroneDemolitionUtility
         return TryGetDemolitionWork(manager, root, out var task) && task.Target == source && CanDrain(manager, task) &&
             (area == DroneTransportAreaEnum.Product
                 ? manager.HasBuffer<ProductSlotElement>(source)
-                : area == StorageArea(manager, source) && manager.HasBuffer<StorageSlotElement>(source));
+                : manager.HasBuffer<StorageSlotElement>(source) &&
+                  (area == StorageArea(manager, source) ||
+                   area == DroneTransportAreaEnum.Input && manager.HasComponent<FuelStorageSlots>(source)));
     }
 
     internal static bool IsStoppedBeltItem(EntityManager manager, Entity building, Entity item)

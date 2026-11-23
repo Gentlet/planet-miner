@@ -23,7 +23,7 @@ public partial struct StorageFilterCommandSystem : ISystem
         {
             Requests = entities.AsDeferredJobArray(),
             RequestLookup = SystemAPI.GetComponentLookup<ChangeStorageFilterRequest>(true),
-            Types = SystemAPI.GetComponentLookup<BuildingType>(true),
+            EditableFilters = SystemAPI.GetComponentLookup<EditableStorageFilter>(true),
             Filters = SystemAPI.GetComponentLookup<StorageFilter>(),
             Disabled = SystemAPI.GetComponentLookup<Disabled>(true),
             Prefabs = SystemAPI.GetComponentLookup<Prefab>(true),
@@ -41,7 +41,7 @@ internal struct ApplyStorageFiltersJob : Unity.Jobs.IJob
 {
     [ReadOnly] public NativeArray<Entity> Requests;
     [ReadOnly] public ComponentLookup<ChangeStorageFilterRequest> RequestLookup;
-    [ReadOnly] public ComponentLookup<BuildingType> Types;
+    [ReadOnly] public ComponentLookup<EditableStorageFilter> EditableFilters;
     public ComponentLookup<StorageFilter> Filters;
     [ReadOnly] public ComponentLookup<Disabled> Disabled;
     [ReadOnly] public ComponentLookup<Prefab> Prefabs;
@@ -75,11 +75,11 @@ internal struct ApplyStorageFiltersJob : Unity.Jobs.IJob
             {
                 continue;
             }
-            if (!Types.TryGetComponent(request.Target, out var buildingType) || !Filters.HasComponent(request.Target))
+            if (!EditableFilters.HasComponent(request.Target) || !Filters.HasComponent(request.Target))
             {
                 continue;
             }
-            if (buildingType.Type != BuildingTypeEnum.Storage || Disabled.HasComponent(request.Target) ||
+            if (Disabled.HasComponent(request.Target) ||
                 Prefabs.HasComponent(request.Target) || Demolition.HasComponent(request.Target))
             {
                 continue;

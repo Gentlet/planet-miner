@@ -21,6 +21,25 @@ public static class StationStorageUtility
         return !beltInput || slot >= general;
     }
 
+    public static int NonFuelSlotCount(EntityManager manager, Entity owner, int total)
+    {
+        return manager.HasComponent<FuelStorageSlots>(owner)
+            ? manager.GetComponentData<FuelStorageSlots>(owner).Start : total;
+    }
+
+    public static bool IsTransportSlotAllowed(EntityManager manager, Entity owner, DroneTransportAreaEnum area,
+        ItemTypeEnum type, int slot, int total, int dedicated)
+    {
+        if (manager.HasComponent<FuelStorageSlots>(owner))
+        {
+            var fuel = manager.GetComponentData<FuelStorageSlots>(owner);
+            if (area == DroneTransportAreaEnum.Input)
+                return slot >= fuel.Start && slot < fuel.Start + fuel.Count && fuel.Allows(type);
+            total = fuel.Start;
+        }
+        return IsItemSlotAllowed(slot, total, dedicated, type);
+    }
+
     public static int ReadDedicatedCount(EntityManager manager, Entity storage)
     {
         return manager.HasComponent<DroneStationStorage>(storage)
@@ -114,6 +133,13 @@ public static class StationStorageUtility
                 }
                 return _dedicated;
             }
+        }
+
+        internal int NonFuelSlotCount => StationStorageUtility.NonFuelSlotCount(_manager, _storage, SlotCount);
+
+        internal bool AllowsTransport(DroneTransportAreaEnum area, ItemTypeEnum type, int slot)
+        {
+            return IsTransportSlotAllowed(_manager, _storage, area, type, slot, SlotCount, DedicatedSlotCount);
         }
 
         internal DynamicBuffer<StorageSlotElement> StoredItems

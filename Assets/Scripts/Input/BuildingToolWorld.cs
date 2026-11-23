@@ -51,8 +51,7 @@ public static class BuildingToolWorld
         }
         foreach (var config in manager.GetBuffer<BuildingConfigElement>(query.GetSingletonEntity(), true))
         {
-            if (config.BuildingId > 0 && config.IsUnlocked && config.BuildingType != BuildingTypeEnum.None &&
-                config.BuildingType != BuildingTypeEnum.ConstructionSite && config.BuildingType != BuildingTypeEnum.MainFacility)
+            if (config.BuildingId > 0 && config.IsUnlocked && !config.Placement.BootstrapOnly)
             {
                 result.Add(new BuildingToolCatalogEntry(config));
             }
@@ -60,16 +59,37 @@ public static class BuildingToolWorld
         return result;
     }
 
-    public static bool TryCapture(EntityManager manager, Entity entity, out PlacementRequestCandidateElement candidate,
-        out BuildingTypeEnum role)
+    public static bool TryCapture(EntityManager manager, Entity entity, out PlacementRequestCandidateElement candidate)
+    {
+        if (!TryReadDefinitions(manager, out var definitions))
+        {
+            candidate = default;
+            return false;
+        }
+        return TryCapture(manager, entity, definitions, out candidate);
+    }
+
+    private static bool TryReadDefinitions(EntityManager manager, out DynamicBuffer<BuildingConfigElement> definitions)
+    {
+        using var query = manager.CreateEntityQuery(typeof(BuildingConfig), typeof(BuildingConfigElement));
+        if (query.CalculateEntityCount() != 1)
+        {
+            definitions = default;
+            return false;
+        }
+        definitions = manager.GetBuffer<BuildingConfigElement>(query.GetSingletonEntity(), true);
+        return true;
+    }
+
+    private static bool TryCapture(EntityManager manager, Entity entity, in DynamicBuffer<BuildingConfigElement> definitions,
+        out PlacementRequestCandidateElement candidate)
     {
         candidate = default;
-        role = default;
         if (!manager.Exists(entity))
         {
             return false;
         }
-        if (!manager.HasComponent<BuildingType>(entity) || !manager.HasComponent<BuildingFootprint>(entity) ||
+        if (!manager.HasComponent<BuildingFootprint>(entity) ||
             !manager.HasComponent<GridPosition>(entity) || !manager.HasComponent<Direction>(entity))
         {
             return false;
@@ -79,54 +99,69 @@ public static class BuildingToolWorld
         {
             return false;
         }
-        var building = manager.GetComponentData<BuildingType>(entity);
-        int buildingId = building.BuildingId;
-        BuildingTypeEnum type = building.Type;
+        int buildingId;
         PlannedBuildingSettings settings = default;
-        if (type == BuildingTypeEnum.ConstructionSite)
+        if (manager.HasComponent<ConstructionSite>(entity))
         {
             var site = manager.GetComponentData<ConstructionSite>(entity);
             if ((site.Flags & ConstructionSiteFlags.Cancelled) != 0)
             {
                 return false;
             }
-            type = site.TargetBuildingType;
             buildingId = site.TargetBuildingId;
             if (manager.HasComponent<PlannedBuildingSettings>(entity))
             {
                 settings = manager.GetComponentData<PlannedBuildingSettings>(entity);
             }
         }
-        else if (type == BuildingTypeEnum.Crafter && manager.HasComponent<CrafterState>(entity))
+        else
         {
-            settings.HasRecipe = true;
-            settings.RecipeId = manager.GetComponentData<CrafterState>(entity).SelectedRecipeId;
+            if (!manager.HasComponent<BuildingIdentity>(entity))
+                return false;
+            buildingId = manager.GetComponentData<BuildingIdentity>(entity).BuildingId;
+            if (manager.HasComponent<CrafterState>(entity))
+            {
+                settings.HasRecipe = true;
+                settings.RecipeId = manager.GetComponentData<CrafterState>(entity).SelectedRecipeId;
+            }
+            if (manager.HasComponent<EditableStorageFilter>(entity) && manager.HasComponent<StorageFilter>(entity))
+            {
+                settings.HasStorageFilter = true;
+                settings.Filter = manager.GetComponentData<StorageFilter>(entity);
+            }
         }
-        else if (type == BuildingTypeEnum.Storage && manager.HasComponent<StorageFilter>(entity))
-        {
-            settings.HasStorageFilter = true;
-            settings.Filter = manager.GetComponentData<StorageFilter>(entity);
-        }
-        if (type == BuildingTypeEnum.None || type == BuildingTypeEnum.ConstructionSite || type == BuildingTypeEnum.MainFacility)
+
+        if (!BuildingConfigLookupUtility.TryGetConfig(definitions, buildingId, out var definition) || definition.Placement.BootstrapOnly)
         {
             return false;
         }
+
         candidate = new PlacementRequestCandidateElement(buildingId,
             manager.GetComponentData<BuildingFootprint>(entity).Size,
             manager.GetComponentData<GridPosition>(entity).Value,
             manager.GetComponentData<Direction>(entity).dir) { Settings = settings };
-        role = type;
         return true;
     }
 
     public static List<Entity> Select(EntityManager manager, int2 first, int2 last)
     {
+        return TryReadDefinitions(manager, out var definitions)
+            ? Select(manager, first, last, definitions)
+            : new List<Entity>();
+    }
+
+    private static List<Entity> Select(EntityManager manager, int2 first, int2 last, in DynamicBuffer<BuildingConfigElement> definitions)
+    {
         var result = new List<Entity>();
-        using var query = manager.CreateEntityQuery(typeof(BuildingType), typeof(GridPosition), typeof(BuildingFootprint), typeof(Direction));
+        using var query = manager.CreateEntityQuery(new EntityQueryDesc
+        {
+            All = new[] { ComponentType.ReadOnly<GridPosition>(), ComponentType.ReadOnly<BuildingFootprint>(), ComponentType.ReadOnly<Direction>() },
+            Any = new[] { ComponentType.ReadOnly<BuildingIdentity>(), ComponentType.ReadOnly<ConstructionSite>() }
+        });
         using var entities = query.ToEntityArray(Allocator.Temp);
         foreach (Entity entity in entities)
         {
-            if (!TryCapture(manager, entity, out var candidate, out _))
+            if (!TryCapture(manager, entity, definitions, out var candidate))
             {
                 continue;
             }
@@ -148,10 +183,14 @@ public static class BuildingToolWorld
     public static List<BuildingBlueprintElement> Copy(EntityManager manager, int2 first, int2 last)
     {
         var result = new List<BuildingBlueprintElement>();
-        int2 pivot = math.min(first, last);
-        foreach (Entity entity in Select(manager, first, last))
+        if (!TryReadDefinitions(manager, out var definitions))
         {
-            if (!TryCapture(manager, entity, out var candidate, out _) || candidate.BuildingId <= 0)
+            return result;
+        }
+        int2 pivot = math.min(first, last);
+        foreach (Entity entity in Select(manager, first, last, definitions))
+        {
+            if (!TryCapture(manager, entity, definitions, out var candidate))
             {
                 continue;
             }
@@ -174,7 +213,7 @@ public static class BuildingToolWorld
 
     public static void RequestTarget(EntityManager manager, Entity target)
     {
-        if (!TryCapture(manager, target, out _, out _))
+        if (!TryCapture(manager, target, out _))
         {
             return;
         }
@@ -236,7 +275,7 @@ public static class BuildingToolWorld
                 native[i] = candidate;
                 if (candidate.Settings.HasValues &&
                     BuildingConfigLookupUtility.TryGetConfig(definitions, candidate.BuildingId, out var config) &&
-                    !BuildingSettingsUtility.IsAllowed(config.BuildingType, candidate.Settings, ref settingsRead))
+                    !BuildingSettingsUtility.IsAllowed(config, candidate.Settings, ref settingsRead))
                 {
                     settings[i] = PlacementValidationCode.InvalidBuildingSettings;
                 }

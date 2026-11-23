@@ -30,7 +30,7 @@ public partial struct PowerGridTopologyReservationSystem : ISystem
         var collect = new CollectPowerPolesJob
         {
             Entities = poles.AsDeferredJobArray(), ConfigEntity = configEntity,
-            BuildingTypeLookup = SystemAPI.GetComponentLookup<BuildingType>(true),
+            Identities = SystemAPI.GetComponentLookup<BuildingIdentity>(true),
             ConfigLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
             DisabledLookup = SystemAPI.GetComponentLookup<Disabled>(true),
             GridPositionLookup = SystemAPI.GetComponentLookup<GridPosition>(true),
@@ -182,7 +182,7 @@ internal struct CollectPowerPolesJob : IJob
 {
     [ReadOnly] public NativeArray<Entity> Entities;
     public Entity ConfigEntity;
-    [ReadOnly] public ComponentLookup<BuildingType> BuildingTypeLookup;
+    [ReadOnly] public ComponentLookup<BuildingIdentity> Identities;
     [ReadOnly] public BufferLookup<BuildingConfigElement> ConfigLookup;
     [ReadOnly] public ComponentLookup<Disabled> DisabledLookup;
     [ReadOnly] public ComponentLookup<GridPosition> GridPositionLookup;
@@ -222,7 +222,7 @@ internal struct CollectPowerPolesJob : IJob
         out PowerPoleSnapshot snapshot)
     {
         snapshot = default;
-        if (!BuildingTypeLookup.TryGetComponent(entity, out var type) ||
+        if (!Identities.TryGetComponent(entity, out var type) ||
             !GridPositionLookup.TryGetComponent(entity, out var position) ||
             !PowerGridConnectionLookup.TryGetComponent(entity, out var connection) ||
             !PowerGridTopologyDecisionLookup.HasComponent(entity))
@@ -230,10 +230,6 @@ internal struct CollectPowerPolesJob : IJob
             return false;
         }
 
-        if (type.Type != BuildingTypeEnum.PowerPole && type.Type != BuildingTypeEnum.MainFacility)
-        {
-            return false;
-        }
         if (!BuildingConfigLookupUtility.TryGetConfig(configs, type.BuildingId, out var config))
         {
             return false;
@@ -253,7 +249,7 @@ internal struct CollectPowerPolesJob : IJob
         {
             Entity = entity,
             Position = position.Value,
-            ConnectionRange = config.Power.ConnectionRange,
+            ConnectionRange = config.Power.Grid.ConnectionRange,
             ExistingGrid = connection.Grid,
             HasStamp = hasStamp,
             Stamp = stamp

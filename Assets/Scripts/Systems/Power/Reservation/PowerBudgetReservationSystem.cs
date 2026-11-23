@@ -54,10 +54,13 @@ public partial struct PowerBudgetReservationSystem : ISystem
             Consumers = consumers.AsDeferredJobArray(),
             ConfigEntity = configEntity,
             ConfigLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
-            TypeLookup = SystemAPI.GetComponentLookup<BuildingType>(true),
+            Identities = SystemAPI.GetComponentLookup<BuildingIdentity>(true),
             ConsumerLookup = SystemAPI.GetComponentLookup<PowerConsumer>(true),
             GeneratorLookup = SystemAPI.GetComponentLookup<PowerGenerator>(true),
             FuelLookup = SystemAPI.GetComponentLookup<FuelEnergyState>(true),
+            FuelSlots = SystemAPI.GetComponentLookup<FuelStorageSlots>(true),
+            Stored = SystemAPI.GetBufferLookup<StorageSlotElement>(true),
+            FuelSpends = SystemAPI.GetBufferLookup<PowerFuelSpend>(),
             GeneratorPlans = SystemAPI.GetComponentLookup<PowerGeneratorSupplyPlan>(),
             Reservations = SystemAPI.GetComponentLookup<PowerSupplyReservation>(),
             DeltaTime = math.min(SystemAPI.Time.DeltaTime, GameConstants.MaxSimulationDeltaTime)
@@ -75,18 +78,15 @@ internal struct PowerGridBudget
 {
     public double Requested;
     public double BaseAvailable;
-    public double CoalAvailable;
+    public double FuelAvailable;
     public double Assigned;
 }
 
 internal struct PowerGeneratorBudgetInput
 {
     public Entity Representative;
-    public BuildingType BuildingType;
-    public bool TypeRead;
     public bool PowerSettingsRead;
     public double RatedEnergy;
-    public float CoalEnergyPerItem;
 }
 
 internal struct PowerConsumerBudgetInput
@@ -106,10 +106,13 @@ internal struct AllocatePowerBudgetsJob : IJob
     [ReadOnly] public NativeList<PowerConsumerBudgetInput> ConsumerInputs;
     public Entity ConfigEntity;
     [ReadOnly] public BufferLookup<BuildingConfigElement> ConfigLookup;
-    [ReadOnly] public ComponentLookup<BuildingType> TypeLookup;
+    [ReadOnly] public ComponentLookup<BuildingIdentity> Identities;
     [ReadOnly] public ComponentLookup<PowerConsumer> ConsumerLookup;
     [ReadOnly] public ComponentLookup<PowerGenerator> GeneratorLookup;
     [ReadOnly] public ComponentLookup<FuelEnergyState> FuelLookup;
+    [ReadOnly] public ComponentLookup<FuelStorageSlots> FuelSlots;
+    [ReadOnly] public BufferLookup<StorageSlotElement> Stored;
+    public BufferLookup<PowerFuelSpend> FuelSpends;
     public ComponentLookup<PowerGeneratorSupplyPlan> GeneratorPlans;
     public ComponentLookup<PowerSupplyReservation> Reservations;
     public float DeltaTime;
@@ -129,10 +132,10 @@ internal struct AllocatePowerBudgetsJob : IJob
         foreach (Entity representative in representatives)
         {
             var budget = budgets[representative];
-            double requestedAllocation = System.Math.Min(budget.Requested, budget.BaseAvailable + budget.CoalAvailable);
+            double requestedAllocation = System.Math.Min(budget.Requested, budget.BaseAvailable + budget.FuelAvailable);
             double baseAllocation = System.Math.Min(requestedAllocation, budget.BaseAvailable);
-            AllocateGenerators(representative, BuildingTypeEnum.MainFacility, baseAllocation, ref configs);
-            AllocateGenerators(representative, BuildingTypeEnum.CoalGenerator, requestedAllocation - baseAllocation, ref configs);
+            AllocateGenerators(representative, usesFuel: false, baseAllocation, ref configs);
+            AllocateGenerators(representative, usesFuel: true, requestedAllocation - baseAllocation, ref configs);
         }
         // 발전기 float 예산을 반영한 합계로 공급률을 다시 계산하여 소비자에게 더 큰 예산을 게시하지 않는다.
         for (int i = 0; i < Generators.Length; i++)
@@ -140,11 +143,19 @@ internal struct AllocatePowerBudgetsJob : IJob
             Entity generator = Generators[i];
             Entity representative = GeneratorInputs[i].Representative;
             var plan = GeneratorPlans[generator];
-            var type = ReadGeneratorType(i);
-            if (type.Type == BuildingTypeEnum.CoalGenerator)
+            if (FuelSlots.TryGetComponent(generator, out var fuelSlots) && FuelSpends.TryGetBuffer(generator, out var spends))
             {
-                var settings = GetGeneratorPowerSettings(i, type, ref configs);
-                PowerFuelUtility.PrepareConsumption(ref plan, FuelLookup[generator].RemainingEnergy, settings.CoalEnergyPerItem);
+                if (!configs.IsCreated)
+                    configs = ConfigLookup[ConfigEntity];
+                spends.Clear();
+                plan.ExpectedFuelEnergy = FuelLookup[generator].RemainingEnergy;
+                if (BuildingConfigLookupUtility.TryGetConfig(configs, Identities[generator].BuildingId, out var config) &&
+                    PowerFuelUtility.TryPlan(plan.ExpectedFuelEnergy, plan.AllocatedEnergy, Stored[generator],
+                        fuelSlots, config, out var planned, out plan.RemainingEnergyAfterConsumption))
+                {
+                    foreach (var spend in planned)
+                        spends.Add(spend);
+                }
             }
             GeneratorPlans[generator] = plan;
             if (representative == Entity.Null)
@@ -171,13 +182,13 @@ internal struct AllocatePowerBudgetsJob : IJob
             }
             budgets.TryGetValue(representative, out var budget);
             float available = GeneratorLookup.IsComponentEnabled(generator) ? GeneratorPlans[generator].AvailableEnergy : 0f;
-            if (ReadGeneratorType(i).Type == BuildingTypeEnum.MainFacility)
+            if (!FuelSlots.HasComponent(generator))
             {
                 budget.BaseAvailable += available;
             }
             else
             {
-                budget.CoalAvailable += available;
+                budget.FuelAvailable += available;
             }
             budgets[representative] = budget;
         }
@@ -199,19 +210,7 @@ internal struct AllocatePowerBudgetsJob : IJob
         }
     }
 
-    private BuildingType ReadGeneratorType(int index)
-    {
-        var input = GeneratorInputs[index];
-        if (!input.TypeRead)
-        {
-            input.BuildingType = TypeLookup[Generators[index]];
-            input.TypeRead = true;
-            GeneratorInputs[index] = input;
-        }
-        return input.BuildingType;
-    }
-
-    private PowerGeneratorBudgetInput GetGeneratorPowerSettings(int index, in BuildingType type,
+    private PowerGeneratorBudgetInput GetGeneratorPowerSettings(int index,
         ref DynamicBuffer<BuildingConfigElement> configs)
     {
         var input = GeneratorInputs[index];
@@ -223,17 +222,16 @@ internal struct AllocatePowerBudgetsJob : IJob
         {
             configs = ConfigLookup[ConfigEntity];
         }
-        BuildingConfigLookupUtility.TryGetConfig(configs, type.BuildingId, out var config);
+        BuildingConfigLookupUtility.TryGetConfig(configs, Identities[Generators[index]].BuildingId, out var config);
         // 기존 에너지 계산과 같이 float 곱셈을 마친 뒤 합산용 double로 보관한다.
-        float ratedEnergy = config.Power.MaximumGeneration * DeltaTime;
+        float ratedEnergy = config.Power.Generation.MaximumGeneration * DeltaTime;
         input.RatedEnergy = ratedEnergy;
-        input.CoalEnergyPerItem = config.Power.CoalEnergyPerItem;
         input.PowerSettingsRead = true;
         GeneratorInputs[index] = input;
         return input;
     }
 
-    private void AllocateGenerators(Entity representative, BuildingTypeEnum kind, double required,
+    private void AllocateGenerators(Entity representative, bool usesFuel, double required,
         ref DynamicBuffer<BuildingConfigElement> configs)
     {
         if (required <= 0d)
@@ -243,10 +241,9 @@ internal struct AllocatePowerBudgetsJob : IJob
         double remainingRated = 0d;
         for (int i = 0; i < Generators.Length; i++)
         {
-            var type = ReadGeneratorType(i);
-            if (type.Type == kind && GeneratorInputs[i].Representative == representative)
+            if (FuelSlots.HasComponent(Generators[i]) == usesFuel && GeneratorInputs[i].Representative == representative)
             {
-                remainingRated += GetGeneratorPowerSettings(i, type, ref configs).RatedEnergy;
+                remainingRated += GetGeneratorPowerSettings(i, ref configs).RatedEnergy;
             }
         }
         var limited = new NativeParallelHashSet<Entity>(math.max(1, Generators.Length), Allocator.Temp);
@@ -258,8 +255,7 @@ internal struct AllocatePowerBudgetsJob : IJob
             for (int i = 0; i < Generators.Length; i++)
             {
                 Entity generator = Generators[i];
-                var type = ReadGeneratorType(i);
-                if (type.Type != kind || GeneratorInputs[i].Representative != representative)
+                if (FuelSlots.HasComponent(generator) != usesFuel || GeneratorInputs[i].Representative != representative)
                 {
                     continue;
                 }
@@ -268,7 +264,7 @@ internal struct AllocatePowerBudgetsJob : IJob
                     continue;
                 }
                 var plan = GeneratorPlans[generator];
-                double rated = GetGeneratorPowerSettings(i, type, ref configs).RatedEnergy;
+                double rated = GetGeneratorPowerSettings(i, ref configs).RatedEnergy;
                 if (plan.AvailableEnergy < rated * utilization)
                 {
                     plan.AllocatedEnergy = plan.AvailableEnergy;
@@ -286,8 +282,7 @@ internal struct AllocatePowerBudgetsJob : IJob
             for (int i = 0; i < Generators.Length; i++)
             {
                 Entity generator = Generators[i];
-                var type = ReadGeneratorType(i);
-                if (type.Type != kind || GeneratorInputs[i].Representative != representative)
+                if (FuelSlots.HasComponent(generator) != usesFuel || GeneratorInputs[i].Representative != representative)
                 {
                     continue;
                 }
@@ -296,7 +291,7 @@ internal struct AllocatePowerBudgetsJob : IJob
                     continue;
                 }
                 var plan = GeneratorPlans[generator];
-                plan.AllocatedEnergy = PowerFrameUtility.RoundEnergyDown(GetGeneratorPowerSettings(i, type, ref configs).RatedEnergy * utilization,
+                plan.AllocatedEnergy = PowerFrameUtility.RoundEnergyDown(GetGeneratorPowerSettings(i, ref configs).RatedEnergy * utilization,
                     plan.AvailableEnergy);
                 GeneratorPlans[generator] = plan;
             }

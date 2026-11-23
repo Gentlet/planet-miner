@@ -52,7 +52,7 @@ internal static class GameConstructionSave
     }
 
     public static void Record(ref EntityCommandBuffer ecb, EntityManager manager, List<SavedConstructionSite> sites,
-        HashSet<int2> occupied, IReadOnlyDictionary<int, ItemTypeEnum> itemTypes, Dictionary<string, SavedTaskTarget> taskTargets)
+        HashSet<int2> occupied, IReadOnlyDictionary<int, ItemTypeEnum> itemTypes, Dictionary<string, int> taskTargets)
     {
         using var configQuery = manager.CreateEntityQuery(typeof(BuildingConfig), typeof(BuildingConfigElement),
             typeof(BuildingConstructionMaterialElement));
@@ -72,7 +72,7 @@ internal static class GameConstructionSave
                 throw new InvalidDataException("공사 현장 저장 ID가 없습니다.");
             }
             if (!BuildingConfigLookupUtility.TryGetConfig(configs, saved.TargetBuildingId, out var config) ||
-                config.BuildingType is BuildingTypeEnum.None or BuildingTypeEnum.MainFacility or BuildingTypeEnum.ConstructionSite or BuildingTypeEnum.Count ||
+                config.Placement.BootstrapOnly ||
                 !config.IsUnlocked)
             {
                 throw new InvalidDataException("저장한 공사 현장의 건물 정의가 유효하지 않습니다.");
@@ -85,7 +85,7 @@ internal static class GameConstructionSave
             int2 origin = GameWorldSnapshot.ReadCell(saved.Origin);
             GameWorldRestore.AddFootprint(occupied, origin, BuildingFootprintUtility.GetEffectiveSize(config.Footprint, saved.Direction));
             var flags = saved.AwaitingItemClearance ? ConstructionSiteFlags.AwaitingItemClearance : ConstructionSiteFlags.None;
-            var state = new ConstructionSite(config.BuildingType, config.Tier, config.BuildingId, flags);
+            var state = new ConstructionSite(config.BuildingId, flags);
             var stamp = new PlacementStamp(saved.Stamp.Tick, saved.Stamp.Order, saved.Stamp.Receipt);
             var settings = new PlannedBuildingSettings
             {
@@ -97,14 +97,14 @@ internal static class GameConstructionSave
                 settings.HasStorageFilter = true;
                 settings.Filter = GameWorldRestore.ReadFilter(saved.PlannedStorageFilter, itemTypes);
             }
-            if (!BuildingSettingsUtility.IsAllowed(config.BuildingType, settings, ref settingsRead))
+            if (!BuildingSettingsUtility.IsAllowed(config, settings, ref settingsRead))
             {
                 throw new InvalidDataException("공사 현장의 예정 건물 설정이 유효하지 않습니다.");
             }
 
             Entity entity = BuildingLifecycleUtility.CreateConstructionSite(ref ecb, origin, config.Footprint,
-                saved.Direction, state, stamp, settings);
-            if (!taskTargets.TryAdd(saved.Id, new SavedTaskTarget(entity, BuildingTypeEnum.ConstructionSite)))
+                saved.Direction, state, stamp, settings, config.DisplayName);
+            if (!GameWorldRestore.TryRecordTarget(ecb, taskTargets, saved.Id, entity))
             {
                 throw new InvalidDataException("공사 현장 저장 ID가 중복됩니다.");
             }

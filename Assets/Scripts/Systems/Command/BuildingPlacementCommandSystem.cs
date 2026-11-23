@@ -146,7 +146,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                 candidates[i] = candidate;
                 if (candidate.Settings.HasValues &&
                     BuildingConfigLookupUtility.TryGetConfig(configs, candidate.BuildingId, out var definition) &&
-                    !BuildingSettingsUtility.IsAllowed(definition.BuildingType, candidate.Settings, ref settingsRead))
+                    !BuildingSettingsUtility.IsAllowed(definition, candidate.Settings, ref settingsRead))
                 {
                     settingsRejections[i] = PlacementValidationCode.InvalidBuildingSettings;
                 }
@@ -195,10 +195,11 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                 if (res.IsValid)
                 {
                     var flags = res.HasGroundItems ? ConstructionSiteFlags.AwaitingItemClearance : ConstructionSiteFlags.None;
-                    var site = new ConstructionSite(candidate.TargetType, candidate.TargetTier, candidate.BuildingId, flags);
+                    var site = new ConstructionSite(candidate.BuildingId, flags);
+                    BuildingConfigLookupUtility.TryGetConfig(configs, candidate.BuildingId, out var definition);
                     var stamp = new PlacementStamp(candidateTick, (uint)i, request.ReceiptSequence);
                     Entity siteEntity = BuildingLifecycleUtility.CreateConstructionSite(ref ecb, candidate.OriginPosition,
-                        candidate.FootprintSize, candidate.Direction, site, stamp, candidateBuffer[i].Settings);
+                        candidate.FootprintSize, candidate.Direction, site, stamp, candidateBuffer[i].Settings, definition.DisplayName);
 
                     // 요구 수량과 실물 참조를 분리한다. 현장은 요구량만으로 자재를 소유하지 않으며
                     var reqBuffer = ecb.AddBuffer<ConstructionMaterialRequirementElement>(siteEntity);

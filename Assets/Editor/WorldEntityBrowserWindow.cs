@@ -45,7 +45,7 @@ internal sealed class WorldEntityBrowserWindow : EditorWindow
         {
             new EntityGroup("Resource", ComponentType.ReadOnly<ResourceNode>()),
             new EntityGroup("Item", ComponentType.ReadOnly<ItemIdentity>()),
-            new EntityGroup("Building", ComponentType.ReadOnly<BuildingType>()),
+            new EntityGroup("Building", ComponentType.ReadOnly<BuildingIdentity>()),
             new EntityGroup("ConfigData", ComponentType.ReadOnly<ConfigDataDebugTag>(), includeGridPosition: false)
         };
         foreach (var group in _groups)

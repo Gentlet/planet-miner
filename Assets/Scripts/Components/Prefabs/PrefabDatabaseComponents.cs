@@ -23,16 +23,13 @@ public struct BuildingPrefabDatabase : IComponentData
 public struct BuildingPrefabElement : IBufferElementData
 {
     public int BuildingId;
-    public BuildingTypeEnum Type;
-    public int Tier;
     public Entity Prefab;
-    public BuildingPrefabElement(BuildingTypeEnum type, int tier, Entity prefab, int buildingId)
+    public BuildingPrefabElement(Entity prefab, int buildingId)
     {
         BuildingId = buildingId;
-        Type = type;
-        Tier = tier;
         Prefab = prefab;
     }
+
 }
 
 /// <summary>

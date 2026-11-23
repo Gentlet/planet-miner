@@ -30,14 +30,20 @@ internal struct DroneStationEligibility
     public EntityQueryMask StationMask;
     public EntityQueryMask WorkerMask;
     [ReadOnly] public EntityStorageInfoLookup Entities;
-    [ReadOnly] public ComponentLookup<BuildingType> BuildingTypes;
+    [ReadOnly] public ComponentLookup<DroneStation> StationRoles;
     [ReadOnly] public ComponentLookup<DroneBatteryState> Batteries;
     [ReadOnly] public ComponentLookup<DroneActivityState> Activities;
     [ReadOnly] public ComponentLookup<DroneWorkerAssignment> Assignments;
     [ReadOnly] public ComponentLookup<DroneCargoState> Cargo;
     [ReadOnly] public ComponentLookup<DroneDocked> Docks;
     [ReadOnly] public ComponentLookup<DroneMovementState> Movements;
+    private int NonFuelSlotCount(Entity station)
+    {
+        return FuelSlots.TryGetComponent(station, out var fuel) ? fuel.Start : Storages[station].SlotCount;
+    }
+
     [ReadOnly] public ComponentLookup<Storage> Storages;
+    [ReadOnly] public ComponentLookup<FuelStorageSlots> FuelSlots;
     [ReadOnly] public ComponentLookup<GridPosition> Positions;
     [ReadOnly] public ComponentLookup<LocalTransform> Transforms;
     [ReadOnly] public ComponentLookup<BuildingFootprint> Footprints;
@@ -51,7 +57,7 @@ internal struct DroneStationEligibility
     public static void CreateMasks(ref SystemState state, out EntityQueryMask station, out EntityQueryMask worker)
     {
         using var stations = new EntityQueryBuilder(Allocator.Temp)
-            .WithAll<BuildingType, DroneStationStorage, Storage, GridPosition, StorageSlotElement, DockedDroneElement>()
+            .WithAll<DroneStation, DroneStationStorage, Storage, GridPosition, StorageSlotElement, DockedDroneElement>()
             .WithNone<Disabled, Prefab, PendingBuildingDemolition>();
         station = stations.Build(ref state).GetEntityQueryMask();
         using var workers = new EntityQueryBuilder(Allocator.Temp)
@@ -68,7 +74,7 @@ internal struct DroneStationEligibility
         {
             StationMask = station, WorkerMask = worker,
             Entities = state.GetEntityStorageInfoLookup(),
-            BuildingTypes = state.GetComponentLookup<BuildingType>(true),
+            StationRoles = state.GetComponentLookup<DroneStation>(true),
             Batteries = state.GetComponentLookup<DroneBatteryState>(true),
             Activities = state.GetComponentLookup<DroneActivityState>(true),
             Assignments = state.GetComponentLookup<DroneWorkerAssignment>(true),
@@ -76,6 +82,7 @@ internal struct DroneStationEligibility
             Docks = state.GetComponentLookup<DroneDocked>(true),
             Movements = state.GetComponentLookup<DroneMovementState>(true),
             Storages = state.GetComponentLookup<Storage>(true),
+            FuelSlots = state.GetComponentLookup<FuelStorageSlots>(true),
             Positions = state.GetComponentLookup<GridPosition>(true),
             Transforms = state.GetComponentLookup<LocalTransform>(true),
             Footprints = state.GetComponentLookup<BuildingFootprint>(true),
@@ -91,7 +98,7 @@ internal struct DroneStationEligibility
     public void Update(ref SystemState state)
     {
         Entities.Update(ref state);
-        BuildingTypes.Update(ref state);
+        StationRoles.Update(ref state);
         Batteries.Update(ref state);
         Activities.Update(ref state);
         Assignments.Update(ref state);
@@ -99,6 +106,7 @@ internal struct DroneStationEligibility
         Docks.Update(ref state);
         Movements.Update(ref state);
         Storages.Update(ref state);
+        FuelSlots.Update(ref state);
         Positions.Update(ref state);
         Transforms.Update(ref state);
         Footprints.Update(ref state);
@@ -116,10 +124,10 @@ internal struct DroneStationEligibility
         Entity drone = request.Drone;
         Entity station = request.Station;
         if (!Entities.Exists(station) || !StationMask.MatchesIgnoreFilter(station) ||
-            !DroneStationRangeUtility.IsStationType(BuildingTypes[station].Type)) return DroneStationRequestStatus.Rejected;
+            !StationRoles.HasComponent(station)) return DroneStationRequestStatus.Rejected;
         if (request.Operation == DroneStationOperation.ActivateStored)
         {
-            if ((uint)request.SourceSlotIndex >= (uint)Storages[station].SlotCount) return DroneStationRequestStatus.Rejected;
+            if ((uint)request.SourceSlotIndex >= (uint)NonFuelSlotCount(station)) return DroneStationRequestStatus.Rejected;
             if (relocationRequest)
             {
                 if (!Preparing.TryGetComponent(station, out var preparation) || !preparation.Started ||
@@ -216,7 +224,7 @@ internal struct DroneStationEligibility
                     matches++;
                 }
             }
-            if (dock.Station != station || dock.SlotIndex < 0 || dock.SlotIndex >= Storages[station].SlotCount || matches != 1)
+            if (dock.Station != station || dock.SlotIndex < 0 || dock.SlotIndex >= NonFuelSlotCount(station) || matches != 1)
             {
                 return DroneStationRequestStatus.Rejected;
             }

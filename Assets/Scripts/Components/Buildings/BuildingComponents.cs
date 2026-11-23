@@ -1,54 +1,22 @@
 using Unity.Entities;
 using Unity.Mathematics;
 
-/// <summary>
-/// 역할·목적: 완공 건물과 ConstructionSite의 종류 번호를 정의한다.
-/// 부착 엔티티: 완공 건물과 현장의 BuildingType 및 설정과 프리팹 등록의 역할 필드에 사용한다.
-/// 생성·이용: 배치/생성에서 BuildingId로 찾은 정의의 역할을 읽어 설치 조건과 런타임 구성을 결정한다.
-/// 제거: 값을 담은 데이터의 수명을 따른다. enum·프리팹 존재만으로 전력·연구·드론 수행 기능이 구현된 것은 아니다. None/Count는 일반 생성 대상이 아니다.
-/// </summary>
-public enum BuildingTypeEnum : byte
+/// <summary>완공된 건물의 설정 ID. 공사 현장은 ConstructionSite가 목표 ID를 소유한다.</summary>
+public struct BuildingIdentity : IComponentData
 {
-    None,
-    Storage,
-    Miner,
-    Crafter,
-    PowerPole,
-    CoalGenerator,
-    ResearchBuilding,
-    MainFacility,
-    DroneStation,
-    Splitter,
-    Merger,
-    Belt,
-    ConstructionSite,
-    Count
-}
-
-/// <summary>
-/// 역할·목적: 건물/현장의 종류를 식별하여 생성·철거·공간 등록의 분기를 결정한다.
-/// 부착 엔티티: 런타임 완공 건물 및 공사 현장. 현장은 ConstructionSite 종류를 사용하며 프리팹 DB의 종류 정보와 구분한다.
-/// 생성: BuildingLifecycleUtility의 완공 건물 초기화와 BuildingPlacementCommandSystem의 현장 생성에서 설정한다.
-/// 이용: BuildingDemolitionCommandSystem(Command), BuildingLifecycleApplySystem(StateApply), BuildingSpatialSyncSystem(Synchronization) 등이 읽는다.
-/// 제거: 해당 건물/현장 엔티티가 삭제될 때 함께 제거한다. 종류만 바꾸어 현장을 완공 건물로 전환하지 않는다.
-/// </summary>
-public struct BuildingType : IComponentData
-{
-    /// <summary>완공 건물의 설정 ID. 공사 현장의 목표 ID는 ConstructionSite가 소유한다.</summary>
     public int BuildingId;
-    public BuildingTypeEnum Type;
-    /// <summary>완공 건물은 명시적 양수 티어, 현장 분류는 0이며 목표 티어는 ConstructionSite가 소유한다.</summary>
-    public int Tier;
 
-    public BuildingType(BuildingTypeEnum type, int tier, int buildingId = 0)
+    public BuildingIdentity(int buildingId)
     {
         BuildingId = buildingId;
-        Type = type;
-        Tier = tier;
     }
-
-    public static implicit operator BuildingTypeEnum(BuildingType b) => b.Type;
 }
+
+/// <summary>운반과 필터 명령이 판정하는 일반 보관 자격이다.</summary>
+public struct GeneralItemStorage : IComponentData { }
+
+/// <summary>플레이어가 일반 보관 필터를 변경할 수 있는 건물에 부착한다.</summary>
+public struct EditableStorageFilter : IComponentData { }
 
 /// <summary>
 /// 역할·목적: 건물/현장의 방향 적용 전 기본 타일 크기를 보관하여 점유 영역 계산의 기준을 제공한다.
@@ -75,7 +43,7 @@ public struct BuildingFootprint : IComponentData
 
 /// <summary>
 /// 역할·목적: 완공 건물의 사용자 철거를 막는 보호 태그.
-/// 부착 엔티티: 철거를 금지할 완공 건물. BuildingLifecycleUtility는 MainFacility 생성 시 부착한다.
+/// 부착 엔티티: 철거를 금지할 완공 건물. BuildingLifecycleUtility가 철거 보호 설정을 읽어 부착한다.
 /// 생성·이용: 생성 경계에서 설정하며 BuildingDemolitionCommandSystem(Command)이 철거 가능성을 검사할 때 읽는다.
 /// 제거: 건물/World 수명 종료 시 함께 제거한다. 현재 사용자 요청으로 보호를 해제하는 Writer는 없다.
 /// </summary>

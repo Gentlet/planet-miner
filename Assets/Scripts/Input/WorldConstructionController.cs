@@ -23,7 +23,6 @@ public sealed class WorldConstructionController : MonoBehaviour
     private readonly List<BuildingToolPreviewItem> _preview = new List<BuildingToolPreviewItem>();
     private PlacementRequestCandidateElement _selected;
     private PlannedBuildingSettings _copiedSettings;
-    private BuildingTypeEnum _settingsType;
     private bool _dragging;
     private bool _hasPointer;
     private int2 _start;
@@ -362,7 +361,7 @@ public sealed class WorldConstructionController : MonoBehaviour
     {
         _dragging = false;
         Entity target = BuildingToolWorld.TargetAt(_world.EntityManager, _pointer);
-        if (!BuildingToolWorld.TryCapture(_world.EntityManager, target, out var candidate, out var role))
+        if (!BuildingToolWorld.TryCapture(_world.EntityManager, target, out var candidate))
         {
             Status = "복사할 설정이 없습니다";
             Changed?.Invoke();
@@ -370,7 +369,6 @@ public sealed class WorldConstructionController : MonoBehaviour
         }
         if (candidate.Settings.HasValues)
         {
-            _settingsType = role;
             _copiedSettings = candidate.Settings;
             Status = "설정을 복사했습니다";
         }
@@ -382,7 +380,7 @@ public sealed class WorldConstructionController : MonoBehaviour
         _dragging = false;
         Entity target = BuildingToolWorld.TargetAt(_world.EntityManager, _pointer);
         Status = "설정을 적용할 수 없습니다";
-        if (!BuildingToolWorld.TryCapture(_world.EntityManager, target, out _, out var role))
+        if (!BuildingToolWorld.TryCapture(_world.EntityManager, target, out _))
         {
             Changed?.Invoke();
             return;
@@ -393,11 +391,8 @@ public sealed class WorldConstructionController : MonoBehaviour
             Changed?.Invoke();
             return;
         }
-        if (role == _settingsType)
-        {
-            Entity request = BuildingSettingsUtility.Submit(_world.EntityManager, target, _copiedSettings);
-            Status = request == Entity.Null ? "설정을 적용할 수 없습니다" : "설정 적용 요청 접수";
-        }
+        Entity request = BuildingSettingsUtility.Submit(_world.EntityManager, target, _copiedSettings);
+        Status = request == Entity.Null ? "설정을 적용할 수 없습니다" : "설정 적용 요청 접수";
         Changed?.Invoke();
     }
 }

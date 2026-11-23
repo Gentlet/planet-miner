@@ -15,17 +15,7 @@ public class BuildingPrefabDatabaseAuthoring : MonoBehaviour
     public struct BuildingPrefabEntry
     {
         public int BuildingId;
-        public BuildingTypeEnum Type;
-        public int Tier;
         public GameObject Prefab;
-
-        public BuildingPrefabEntry(BuildingTypeEnum type, int tier, GameObject prefab, int buildingId)
-        {
-            BuildingId = buildingId;
-            Type = type;
-            Tier = tier;
-            Prefab = prefab;
-        }
     }
 
     [Tooltip("건물 ID / 역할 / 티어와 프리팹을 등록합니다. 건물 ID와 설정은 외부 TableBuilder의 BuildingDefinitions.xml에서 편집합니다.")]
@@ -45,7 +35,7 @@ public class BuildingPrefabDatabaseAuthoring : MonoBehaviour
                 Entity prefabEntity = entry.Prefab == null
                     ? Entity.Null
                     : GetEntity(entry.Prefab, TransformUsageFlags.Renderable);
-                buffer.Add(new BuildingPrefabElement(entry.Type, entry.Tier, prefabEntity, entry.BuildingId));
+                buffer.Add(new BuildingPrefabElement(prefabEntity, entry.BuildingId));
             }
         }
     }

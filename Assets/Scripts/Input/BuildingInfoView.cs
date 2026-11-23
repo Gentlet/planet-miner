@@ -247,18 +247,19 @@ public sealed class BuildingInfoView : MonoBehaviour
             }
         }
 
-        bool crafter = _controller.Type == BuildingTypeEnum.Crafter;
-        bool storage = _controller.Type == BuildingTypeEnum.Storage;
-        _settings.style.display = crafter || storage ? DisplayStyle.Flex : DisplayStyle.None;
+        bool crafter = _controller.HasCrafting;
+        bool storage = _controller.HasGeneralStorage;
+        bool editableFilter = _controller.HasEditableFilter;
+        _settings.style.display = crafter || editableFilter ? DisplayStyle.Flex : DisplayStyle.None;
         _recipe.style.display = crafter ? DisplayStyle.Flex : DisplayStyle.None;
         var applyRecipe = _settings.Q<Button>("apply-recipe");
         applyRecipe.style.display = crafter ? DisplayStyle.Flex : DisplayStyle.None;
         applyRecipe.SetEnabled(_controller.CanEditRecipe);
         _recipe.SetEnabled(_controller.CanEditRecipe);
-        _filterMode.style.display = storage ? DisplayStyle.Flex : DisplayStyle.None;
-        _filterList.style.display = storage ? DisplayStyle.Flex : DisplayStyle.None;
-        _settings.Q<Button>("apply-filter").style.display = storage ? DisplayStyle.Flex : DisplayStyle.None;
-        bool transport = storage || crafter || _controller.Type == BuildingTypeEnum.MainFacility || _controller.Type == BuildingTypeEnum.DroneStation || _controller.Type == BuildingTypeEnum.CoalGenerator || _controller.Type == BuildingTypeEnum.ResearchBuilding || _controller.Type == BuildingTypeEnum.Miner;
+        _filterMode.style.display = editableFilter ? DisplayStyle.Flex : DisplayStyle.None;
+        _filterList.style.display = editableFilter ? DisplayStyle.Flex : DisplayStyle.None;
+        _settings.Q<Button>("apply-filter").style.display = editableFilter ? DisplayStyle.Flex : DisplayStyle.None;
+        bool transport = storage || _controller.HasInput || _controller.HasProductOutput;
         _transport.style.display = transport ? DisplayStyle.Flex : DisplayStyle.None;
         bool itemCatalogChanged = _item.choices.Count != _controller.ItemTypes.Count;
         if (!itemCatalogChanged)
@@ -316,17 +317,17 @@ public sealed class BuildingInfoView : MonoBehaviour
             }
 
             _areas.Clear();
-            if (storage || _controller.Type == BuildingTypeEnum.MainFacility || _controller.Type == BuildingTypeEnum.DroneStation)
+            if (storage)
             {
                 _areas.Add(DroneTransportAreaEnum.GeneralStorage);
             }
 
-            if (crafter || _controller.Type == BuildingTypeEnum.CoalGenerator || _controller.Type == BuildingTypeEnum.ResearchBuilding)
+            if (_controller.HasInput)
             {
                 _areas.Add(DroneTransportAreaEnum.Input);
             }
 
-            if (crafter || _controller.Type == BuildingTypeEnum.Miner)
+            if (_controller.HasProductOutput)
             {
                 _areas.Add(DroneTransportAreaEnum.Product);
             }

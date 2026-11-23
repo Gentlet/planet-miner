@@ -11,6 +11,7 @@ public static class BuildingConfigLoader
 {
     public const string DefaultResourcePath = "Config/" + BuildingResourceName;
     public const string DefaultMaterialsResourcePath = "Config/" + MaterialsResourceName;
+    private const int MaxFuelTypes = 63;
     private const string BuildingResourceName = "BuildingDefinitions";
     private const string MaterialsResourceName = "BuildingConstructionMaterials";
 
@@ -131,18 +132,14 @@ public static class BuildingConfigLoader
 
     private static BuildingDefinitions ReadBuildingDefinitions(string json)
     {
-        var table = JsonConvert.DeserializeObject<BuildingDefinitions>(json, new StringEnumConverter { AllowIntegerValues = false });
+        var table = JsonConvert.DeserializeObject<BuildingDefinitions>(json, new JsonSerializerSettings
+        {
+            MissingMemberHandling = MissingMemberHandling.Error,
+            Converters = { new StringEnumConverter { AllowIntegerValues = false } }
+        });
         if (table == null)
         {
             throw new JsonSerializationException("Missing building table.");
-        }
-        if (table.LegacyBuildings != null)
-        {
-            if (table.Buildings != null)
-            {
-                throw new JsonSerializationException("Use one building definitions array: buildingDefinitions or legacy buildings.");
-            }
-            table.Buildings = table.LegacyBuildings;
         }
         if (table.Buildings == null)
         {
@@ -190,7 +187,12 @@ public static class BuildingConfigLoader
             {
                 throw new JsonSerializationException($"Missing, invalid, or duplicate buildingId {row.BuildingId}.");
             }
-            configs.Add(DecodeBuilding(row));
+            var config = DecodeBuilding(row, itemIds);
+            if (!ValidateDefinition(config, out var reason))
+            {
+                throw new JsonSerializationException($"Building {row.BuildingId}: {reason}");
+            }
+            configs.Add(config);
 
             if (materialRows != null)
             {
@@ -206,7 +208,7 @@ public static class BuildingConfigLoader
                 {
                     if (material == null)
                     {
-                        throw new JsonSerializationException($"Null material for building {row.BuildingType}/{row.Tier}.");
+                        throw new JsonSerializationException($"Null material for building {row.BuildingId}.");
                     }
                     if (material.BuildingId != 0 && material.BuildingId != row.BuildingId)
                     {
@@ -216,6 +218,11 @@ public static class BuildingConfigLoader
                         material.Quantity ?? 1));
                 }
             }
+        }
+
+        if (requireMaterialItemIds && !HasOneBootstrap(configs))
+        {
+            throw new JsonSerializationException("Exactly one BootstrapOnly building is required.");
         }
 
         if (materialRows == null)
@@ -258,44 +265,108 @@ public static class BuildingConfigLoader
         return material.ItemType;
     }
 
-    private static BuildingConfigElement DecodeBuilding(BuildingRow row)
+    private static BuildingConfigElement DecodeBuilding(BuildingRow row, IReadOnlyDictionary<int, ItemTypeEnum> itemIds)
     {
-        if (!string.IsNullOrEmpty(row.LegacyRequiredResearch) ||
-            (row.RequiredResearchId != 0 && !ConfigIdUtility.IsInCategory(row.RequiredResearchId, ConfigIdUtility.ResearchCategory)))
+        if (row.RequiredResearchId != 0 && !ConfigIdUtility.IsInCategory(row.RequiredResearchId, ConfigIdUtility.ResearchCategory))
         {
-            throw new JsonSerializationException($"Building {row.BuildingType}/{row.Tier} requires a numeric requiredResearchId in category 140 or 0.");
+            throw new JsonSerializationException($"Building {row.BuildingId} requires a numeric requiredResearchId in category 140 or 0.");
         }
         if (row.Footprint.Length != 2)
         {
-            throw new JsonSerializationException($"Building {row.BuildingType}/{row.Tier} footprint must contain two dimensions.");
+            throw new JsonSerializationException($"Building {row.BuildingId} footprint must contain two dimensions.");
         }
-        BuildingPowerConfig power = default;
-        if (row.Power != null)
+
+        var features = row.Features;
+        var config = new BuildingConfigElement
         {
-            power = new BuildingPowerConfig(row.Power.SupplyRange, row.Power.ConnectionRange, row.Power.MaximumGeneration,
-                row.Power.MaximumConsumption, row.Power.CoalEnergyPerItem);
+            BuildingId = row.BuildingId,
+            Tier = row.Tier,
+            DisplayName = new FixedString128Bytes(row.DisplayName),
+            IsUnlocked = row.IsUnlockedByDefault,
+            RequiredResearch = row.RequiredResearchId,
+            Footprint = new int2(row.Footprint[0], row.Footprint[1]),
+            BeltTransport = DecodeSpeed(features.BeltTransport),
+            Mining = DecodeSpeed(features.Mining),
+            Crafting = DecodeSpeed(features.Crafting),
+            Research = DecodeSpeed(features.Research),
+            DroneCharging = features.DroneCharging != null
+        };
+        if (features.ItemStorage is ItemStorageRow storage)
+        {
+            config.ItemStorage = new BuildingItemStorageConfig { IsPresent = true, Slots = storage.Slots, FilterEditable = storage.FilterEditable };
         }
-        return new BuildingConfigElement(
-            row.BuildingType,
-            row.Tier,
-            new FixedString128Bytes(row.DisplayName),
-            row.Speed,
-            row.StorageCapacity,
-            row.IsUnlockedByDefault,
-            row.RequiredResearchId,
-            new int2(row.Footprint[0], row.Footprint[1]),
-            power,
-            row.DroneStationRangeInChunks,
-            row.DroneStationStorageCapacity,
-            row.BuildingId);
+        if (features.DroneStation is StationRow station)
+            config.DroneStation = new BuildingDroneStationConfig
+            {
+                IsPresent = true, RangeInChunks = math.max(0, station.RangeInChunks), DroneSlots = station.DroneSlots
+            };
+        if (features.BeltRouting is RoutingRow routing)
+        {
+            config.BeltRouting = routing.Mode switch
+            {
+                "Split" => BeltRoutingMode.Split,
+                "Merge" => BeltRoutingMode.Merge,
+                _ => throw new JsonSerializationException($"Building {row.BuildingId} has an invalid routing mode.")
+            };
+        }
+        if (features.Placement is PlacementRow placement)
+        {
+            config.Placement.BootstrapOnly = placement.Mode switch
+            {
+                "BootstrapOnly" => true,
+                "Normal" => false,
+                _ => throw new JsonSerializationException($"Building {row.BuildingId} has an invalid placement mode.")
+            };
+            config.Placement.Indestructible = placement.Indestructible;
+        }
+        if (features.PowerGrid is GridRow grid)
+        {
+            config.Power.Grid = new BuildingPowerGridConfig { IsPresent = true, SupplyRange = grid.SupplyRange, ConnectionRange = grid.ConnectionRange };
+        }
+        if (features.WorkPower is WorkPowerRow work)
+        {
+            config.Power.Work = new BuildingWorkPowerConfig { IsPresent = true, MaximumConsumption = work.MaximumConsumption };
+        }
+        if (features.PowerGeneration is GenerationRow generation)
+        {
+            config.Power.Generation.IsPresent = true;
+            config.Power.Generation.MaximumGeneration = generation.MaximumGeneration;
+            if (generation.FuelStorage is FuelStorageRow fuelStorage)
+            {
+                config.Power.Generation.FuelStorage = DecodeFuelStorage(fuelStorage, row.BuildingId, itemIds);
+            }
+        }
+        return config;
+    }
+
+    private static BuildingSpeedConfig DecodeSpeed(SpeedRow row)
+    {
+        return row == null ? default : new BuildingSpeedConfig(row.Speed);
+    }
+
+    private static BuildingFuelStorageConfig DecodeFuelStorage(FuelStorageRow row, int buildingId,
+        IReadOnlyDictionary<int, ItemTypeEnum> itemIds)
+    {
+        var storage = new BuildingFuelStorageConfig { IsPresent = true, Slots = row.Slots, BeltOutput = row.BeltOutput };
+        foreach (var fuel in row.Fuels)
+        {
+            if (fuel == null)
+            {
+                throw new JsonSerializationException($"Building {buildingId} has a null fuel row.");
+            }
+            if (storage.Fuels.Length == MaxFuelTypes)
+            {
+                throw new JsonSerializationException($"Building {buildingId} exceeds {MaxFuelTypes} fuel rows.");
+            }
+            storage.Fuels.Add(new BuildingFuelConfig(ItemConfigInitSystem.ResolveItemId(fuel.ItemId, itemIds), fuel.EnergyPerItem));
+        }
+        return storage;
     }
 
     private sealed class BuildingDefinitions
     {
         [JsonProperty("buildingDefinitions")]
         public List<BuildingRow> Buildings { get; set; }
-        [JsonProperty("buildings")]
-        public List<BuildingRow> LegacyBuildings { get; set; }
         [JsonProperty(Required = Required.DisallowNull)]
         public List<ConstructionMaterialRow> ConstructionMaterials { get; set; }
     }
@@ -310,23 +381,110 @@ public static class BuildingConfigLoader
     {
         public int BuildingId { get; set; }
         [JsonProperty(Required = Required.Always)]
-        public BuildingTypeEnum BuildingType { get; set; }
+        public FeaturesRow Features { get; set; }
         [JsonProperty(Required = Required.Always)]
         public int Tier { get; set; }
         [JsonProperty(Required = Required.Always)]
         public string DisplayName { get; set; }
-        public float Speed { get; set; }
-        public int StorageCapacity { get; set; }
+        public string TextureResourcePath { get; set; }
         public bool IsUnlockedByDefault { get; set; } = true;
-        [JsonProperty("requiredResearch")]
-        public string LegacyRequiredResearch { get; set; }
         public int RequiredResearchId { get; set; }
         [JsonProperty(Required = Required.Always)]
         public int[] Footprint { get; set; }
-        public PowerRow Power { get; set; }
-        public int DroneStationRangeInChunks { get; set; }
-        public int DroneStationStorageCapacity { get; set; }
         public List<ConstructionMaterialRow> Materials { get; set; }
+    }
+
+    private sealed class FeaturesRow
+    {
+        public SpeedRow BeltTransport { get; set; }
+        public SpeedRow Mining { get; set; }
+        public SpeedRow Crafting { get; set; }
+        public SpeedRow Research { get; set; }
+        public RoutingRow BeltRouting { get; set; }
+        public ItemStorageRow ItemStorage { get; set; }
+        public GridRow PowerGrid { get; set; }
+        public WorkPowerRow WorkPower { get; set; }
+        public GenerationRow PowerGeneration { get; set; }
+        public StationRow DroneStation { get; set; }
+        public ChargingRow DroneCharging { get; set; }
+        public PlacementRow Placement { get; set; }
+    }
+
+    private sealed class SpeedRow
+    {
+        [JsonProperty(Required = Required.Always)]
+        public float Speed { get; set; }
+    }
+
+    private sealed class RoutingRow
+    {
+        [JsonProperty(Required = Required.Always)]
+        public string Mode { get; set; }
+    }
+
+    private sealed class ItemStorageRow
+    {
+        [JsonProperty(Required = Required.Always)]
+        public int Slots { get; set; }
+        [JsonProperty(Required = Required.Always)]
+        public bool FilterEditable { get; set; }
+    }
+
+    private sealed class GridRow
+    {
+        [JsonProperty(Required = Required.Always)]
+        public int SupplyRange { get; set; }
+        [JsonProperty(Required = Required.Always)]
+        public int ConnectionRange { get; set; }
+    }
+
+    private sealed class WorkPowerRow
+    {
+        [JsonProperty(Required = Required.Always)]
+        public float MaximumConsumption { get; set; }
+    }
+
+    private sealed class GenerationRow
+    {
+        [JsonProperty(Required = Required.Always)]
+        public float MaximumGeneration { get; set; }
+        public FuelStorageRow FuelStorage { get; set; }
+    }
+
+    private sealed class FuelStorageRow
+    {
+        [JsonProperty(Required = Required.Always)]
+        public int Slots { get; set; }
+        [JsonProperty(Required = Required.Always)]
+        public bool BeltOutput { get; set; }
+        [JsonProperty(Required = Required.Always)]
+        public List<FuelRow> Fuels { get; set; }
+    }
+
+    private sealed class FuelRow
+    {
+        [JsonProperty(Required = Required.Always)]
+        public int ItemId { get; set; }
+        [JsonProperty(Required = Required.Always)]
+        public float EnergyPerItem { get; set; }
+    }
+
+    private sealed class StationRow
+    {
+        [JsonProperty(Required = Required.Always)]
+        public int RangeInChunks { get; set; }
+        [JsonProperty(Required = Required.Always)]
+        public int DroneSlots { get; set; }
+    }
+
+    private sealed class ChargingRow { }
+
+    private sealed class PlacementRow
+    {
+        [JsonProperty(Required = Required.Always)]
+        public string Mode { get; set; }
+        [JsonProperty(Required = Required.Always)]
+        public bool Indestructible { get; set; }
     }
 
     private sealed class ConstructionMaterialRow
@@ -338,16 +496,7 @@ public static class BuildingConfigLoader
         public int? Quantity { get; set; }
     }
 
-    private sealed class PowerRow
-    {
-        public int SupplyRange { get; set; }
-        public int ConnectionRange { get; set; }
-        public float MaximumGeneration { get; set; }
-        public float MaximumConsumption { get; set; }
-        public float CoalEnergyPerItem { get; set; }
-    }
-
-    /// <summary>제품 초기화의 사전 등록도 전체 건물 종류와 게시 버퍼를 요구한다. 격리 테스트는 Init을 실행하지 않는다.</summary>
+    /// <summary>사전 등록된 ECS 설정도 동일한 정의와 재료 계약을 검사한다.</summary>
     public static bool ValidatePublishedConfig(EntityManager entityManager, Entity entity)
     {
         if (!entityManager.HasBuffer<BuildingConfigElement>(entity) ||
@@ -368,7 +517,7 @@ public static class BuildingConfigLoader
         {
             materials.Add(entry);
         }
-        if (!ValidateDefinitions(configs, materials, out var keys, out var buildingIds))
+        if (!ValidateDefinitions(configs, materials, out var buildingIds))
         {
             return false;
         }
@@ -386,7 +535,7 @@ public static class BuildingConfigLoader
             Debug.LogError("[BuildingConfigLoader] Pre-registered runtime configuration is missing a buildingId.");
             return false;
         }
-        return ValidateRequiredTypes(keys);
+        return true;
     }
 
     /// <summary>
@@ -404,7 +553,7 @@ public static class BuildingConfigLoader
             return Entity.Null;
         }
 
-        if (!ValidateDefinitions(configs, materials, out _, out _))
+        if (!ValidateDefinitions(configs, materials, out _))
         {
             return Entity.Null;
         }
@@ -435,7 +584,9 @@ public static class BuildingConfigLoader
             for (int i = 0; i < configs.Count; i++)
             {
                 configBuffer.Add(configs[i]);
-                runtimeBuffer.Add(new BuildingRuntimeConfigElement(configs[i].BuildingId, configs[i].Speed, configs[i].StorageCapacity));
+                var config = configs[i];
+                float speed = config.BeltTransport.Speed + config.Mining.Speed + config.Crafting.Speed + config.Research.Speed;
+                runtimeBuffer.Add(new BuildingRuntimeConfigElement(config.BuildingId, speed, config.ItemStorage.Slots));
             }
 
             if (materials != null)
@@ -457,9 +608,8 @@ public static class BuildingConfigLoader
 
     // 직접 전달되거나 사전 등록된 ECS 값은 TableBuilder를 거치지 않는다.
     private static bool ValidateDefinitions(List<BuildingConfigElement> configs, List<BuildingConstructionMaterialElement> materials,
-        out HashSet<(BuildingTypeEnum Type, int Tier)> keys, out HashSet<int> ids)
+        out HashSet<int> ids)
     {
-        keys = new HashSet<(BuildingTypeEnum Type, int Tier)>();
         ids = new HashSet<int>();
         foreach (var config in configs)
         {
@@ -468,17 +618,16 @@ public static class BuildingConfigLoader
                 Debug.LogError($"[BuildingConfigLoader] Invalid or duplicate buildingId {config.BuildingId}.");
                 return false;
             }
-            if (config.BuildingType <= BuildingTypeEnum.None || config.BuildingType >= BuildingTypeEnum.Count ||
-                config.BuildingType == BuildingTypeEnum.ConstructionSite || config.Tier <= 0 ||
-                string.IsNullOrWhiteSpace(config.DisplayName.ToString()) || !keys.Add((config.BuildingType, config.Tier)))
+            if (!ValidateDefinition(config, out var reason))
             {
-                Debug.LogError("[BuildingConfigLoader] Invalid or duplicate building type/tier, or empty displayName.");
+                Debug.LogError($"[BuildingConfigLoader] Building {config.BuildingId}: {reason}");
                 return false;
             }
-            if (!ValidateDefinition(config))
-            {
-                return false;
-            }
+        }
+        if (!HasOneBootstrap(configs))
+        {
+            Debug.LogError("[BuildingConfigLoader] Exactly one BootstrapOnly building is required.");
+            return false;
         }
         if (materials != null)
         {
@@ -511,116 +660,95 @@ public static class BuildingConfigLoader
         return true;
     }
 
-    private static bool ValidateDefinition(in BuildingConfigElement config)
+    private static bool HasOneBootstrap(List<BuildingConfigElement> configs)
     {
-        if (config.Footprint.x <= 0 || config.Footprint.y <= 0)
+        return configs.FindAll(config => config.Placement.BootstrapOnly).Count == 1;
+    }
+
+    private static bool ValidateDefinition(in BuildingConfigElement config, out string reason)
+    {
+        bool station = config.DroneStation.IsPresent;
+        bool storage = config.ItemStorage.IsPresent;
+        var power = config.Power;
+        var fuels = power.Generation.FuelStorage;
+        int workerCount = (config.Mining.IsPresent ? 1 : 0) + (config.Crafting.IsPresent ? 1 : 0) +
+            (config.Research.IsPresent ? 1 : 0);
+        bool worker = workerCount != 0;
+        bool belt = config.BeltTransport.IsPresent;
+        bool routing = config.BeltRouting != BeltRoutingMode.None;
+        bool dynamicInput = config.Crafting.IsPresent || config.Research.IsPresent;
+        if (config.Footprint.x <= 0 || config.Footprint.y <= 0 || config.Tier <= 0 ||
+            string.IsNullOrWhiteSpace(config.DisplayName.ToString()))
         {
-            Debug.LogError($"[BuildingConfigLoader] {config.BuildingType} has invalid footprint. Both dimensions must be positive.");
+            reason = "Invalid footprint, tier or displayName.";
             return false;
         }
-        if (!ValidatePublishedPower(config))
+        if ((!worker && !belt && !routing && !storage && !station && !power.Grid.IsPresent && !power.Generation.IsPresent) ||
+            workerCount > 1 || worker != power.Work.IsPresent ||
+            worker && (belt || config.DroneCharging) ||
+            belt && routing || config.BeltRouting > BeltRoutingMode.Merge ||
+            config.ItemStorage.FilterEditable && !storage ||
+            config.DroneCharging && !station ||
+            dynamicInput && (storage || station || fuels.IsPresent))
         {
+            reason = "Feature dependencies or shared input ownership are invalid.";
             return false;
         }
-        bool station = DroneStationRangeUtility.IsStationType(config.BuildingType);
-        // CoalGenerator의 용량은 바로 위 전력 역할 검증이 검사한다.
-        bool storesItems = station || config.BuildingType == BuildingTypeEnum.Storage;
-        if (storesItems && (config.StorageCapacity <= 0 || config.StorageCapacity > GameConstants.MaxStorageSlots))
+        if (config.Placement.BootstrapOnly && (!storage || !station || config.Tier != 1 || !config.Placement.Indestructible))
         {
-            Debug.LogError("[BuildingConfigLoader] Invalid storage capacity; expected 1..MaxStorageSlots.");
+            reason = "BootstrapOnly requires tier 1, ItemStorage, DroneStation and indestructible placement.";
             return false;
         }
-        if ((station && (config.DroneStationStorageCapacity <= 0 ||
-                (long)config.StorageCapacity + config.DroneStationStorageCapacity > GameConstants.MaxStorageSlots)) ||
-            (!station && config.DroneStationStorageCapacity != 0))
+        if (!IsValidSpeed(config.BeltTransport) || !IsValidSpeed(config.Mining) ||
+            !IsValidSpeed(config.Crafting) || !IsValidSpeed(config.Research) ||
+            config.BeltTransport.Speed > GameConstants.MaxBeltSpeed)
         {
-            Debug.LogError("[BuildingConfigLoader] Invalid station dedicated/general storage capacity.");
+            reason = "Invalid speed for the declared feature.";
             return false;
         }
-        if (!DroneStationRangeUtility.IsStationType(config.BuildingType) && config.DroneStationRangeInChunks != 0)
+        if (storage != (config.ItemStorage.Slots > 0) || station != (config.DroneStation.DroneSlots > 0) ||
+            fuels.IsPresent != (fuels.Slots > 0) || config.ItemStorage.Slots < 0 || fuels.Slots < 0 ||
+            config.DroneStation.DroneSlots < 0 || config.DroneStation.RangeInChunks < 0 ||
+            (!station && config.DroneStation.RangeInChunks != 0) ||
+            (long)config.ItemStorage.Slots + config.DroneStation.DroneSlots + fuels.Slots > GameConstants.MaxStorageSlots)
         {
-            Debug.LogError("[BuildingConfigLoader] Only MainFacility and DroneStation can define a drone station range.");
+            reason = "Invalid general, drone, or fuel slot capacity or station range.";
             return false;
         }
+        if ((!power.Grid.IsPresent && (power.Grid.SupplyRange != 0 || power.Grid.ConnectionRange != 0)) ||
+            power.Grid.SupplyRange < 0 || power.Grid.ConnectionRange < 0 ||
+            !math.isfinite(power.Generation.MaximumGeneration) || !math.isfinite(power.Work.MaximumConsumption) ||
+            (power.Generation.IsPresent ? power.Generation.MaximumGeneration <= 0f : power.Generation.MaximumGeneration != 0f) ||
+            (power.Work.IsPresent ? power.Work.MaximumConsumption <= 0f : power.Work.MaximumConsumption != 0f))
+        {
+            reason = "Invalid power settings for the declared features.";
+            return false;
+        }
+        if (fuels.IsPresent && !power.Generation.IsPresent || fuels.BeltOutput && !fuels.IsPresent ||
+            fuels.IsPresent != (fuels.Fuels.Length > 0) || fuels.Fuels.Length > MaxFuelTypes)
+        {
+            reason = "Fuel storage or allowed fuel rows do not match the generator settings.";
+            return false;
+        }
+
+        var itemTypes = new HashSet<ItemTypeEnum>();
+        foreach (var fuel in fuels.Fuels)
+        {
+            if (fuel.ItemType is ItemTypeEnum.None or ItemTypeEnum.Drone ||
+                (int)fuel.ItemType >= FixedBitSet.Capacity || !Enum.IsDefined(typeof(ItemTypeEnum), fuel.ItemType) ||
+                !itemTypes.Add(fuel.ItemType) ||
+                !math.isfinite(fuel.EnergyPerItem) || fuel.EnergyPerItem <= 0f)
+            {
+                reason = $"Invalid or duplicate energy settings for fuel {fuel.ItemType}.";
+                return false;
+            }
+        }
+        reason = null;
         return true;
     }
-
-    private static bool ValidateRequiredTypes(HashSet<(BuildingTypeEnum Type, int Tier)> types)
+    private static bool IsValidSpeed(in BuildingSpeedConfig config)
     {
-        var missing = new List<BuildingTypeEnum>();
-        foreach (BuildingTypeEnum type in Enum.GetValues(typeof(BuildingTypeEnum)))
-        {
-            if (type == BuildingTypeEnum.None || type == BuildingTypeEnum.Count || type == BuildingTypeEnum.ConstructionSite)
-            {
-                continue;
-            }
-            if (!types.Contains((type, 1)))
-            {
-                missing.Add(type);
-            }
-        }
-        if (missing.Count == 0)
-        {
-            return true;
-        }
-        Debug.LogError($"[BuildingConfigLoader] Missing required tier 1 building types: {string.Join(", ", missing)}.");
-        return false;
+        return math.isfinite(config.Speed) && (config.IsPresent ? config.Speed > 0f : config.Speed == 0f);
     }
 
-    private static bool ValidatePublishedPower(in BuildingConfigElement config)
-    {
-        BuildingPowerConfig power = config.Power;
-        BuildingTypeEnum type = config.BuildingType;
-        int tier = config.Tier;
-        if (power.SupplyRange < 0 || power.ConnectionRange < 0 ||
-            !math.isfinite(power.MaximumGeneration) || !math.isfinite(power.MaximumConsumption) ||
-            !math.isfinite(power.CoalEnergyPerItem) || power.MaximumGeneration < 0f ||
-            power.MaximumConsumption < 0f || power.CoalEnergyPerItem < 0f)
-        {
-            return RejectPublishedPower(type, tier, "has invalid power values");
-        }
-        bool expectsPower = type is BuildingTypeEnum.PowerPole or BuildingTypeEnum.MainFacility or BuildingTypeEnum.CoalGenerator
-            or BuildingTypeEnum.Miner or BuildingTypeEnum.Crafter or BuildingTypeEnum.ResearchBuilding;
-        if (power.HasConfiguration != expectsPower)
-        {
-            return RejectPublishedPower(type, tier, "has missing or unexpected power configuration");
-        }
-        bool valid;
-        switch (type)
-        {
-            case BuildingTypeEnum.PowerPole:
-                valid = power.MaximumGeneration == 0f && power.MaximumConsumption == 0f && power.CoalEnergyPerItem == 0f;
-                break;
-            case BuildingTypeEnum.MainFacility:
-                valid = power.SupplyRange == 0 && power.MaximumGeneration > 0f &&
-                    power.MaximumConsumption == 0f && power.CoalEnergyPerItem == 0f;
-                break;
-            case BuildingTypeEnum.CoalGenerator:
-                valid = power.SupplyRange == 0 && power.ConnectionRange == 0 && power.MaximumGeneration > 0f &&
-                    power.MaximumConsumption == 0f && power.CoalEnergyPerItem > 0f &&
-                    config.StorageCapacity > 0 && config.StorageCapacity <= GameConstants.MaxStorageSlots;
-                break;
-            case BuildingTypeEnum.Miner:
-            case BuildingTypeEnum.Crafter:
-            case BuildingTypeEnum.ResearchBuilding:
-                valid = power.SupplyRange == 0 && power.ConnectionRange == 0 && power.MaximumGeneration == 0f &&
-                    power.MaximumConsumption > 0f && power.CoalEnergyPerItem == 0f;
-                break;
-            default:
-                valid = power.SupplyRange == 0 && power.ConnectionRange == 0 && power.MaximumGeneration == 0f &&
-                    power.MaximumConsumption == 0f && power.CoalEnergyPerItem == 0f;
-                break;
-        }
-        if (!valid)
-        {
-            return RejectPublishedPower(type, tier, "has power values or fuel slots inconsistent with its building role");
-        }
-        return true;
-    }
-
-    private static bool RejectPublishedPower(BuildingTypeEnum type, int tier, string reason)
-    {
-        Debug.LogError($"[BuildingConfigLoader] {type}/{tier} {reason}.");
-        return false;
-    }
 }

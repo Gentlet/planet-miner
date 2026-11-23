@@ -16,22 +16,25 @@ internal static class RuntimeEntityDebugNames
     }
 
     [Conditional("UNITY_EDITOR")]
-    internal static void SetBuilding(EntityCommandBuffer ecb, Entity entity, BuildingTypeEnum type, int tier)
+    internal static void SetBuilding(EntityCommandBuffer ecb, Entity entity, in BuildingConfigElement config)
     {
-        FixedString64Bytes name = GetBuildingName(type);
-        if (type != BuildingTypeEnum.MainFacility)
+        FixedString64Bytes name = default;
+        name.CopyFromTruncated(config.DisplayName);
+        if (!config.Placement.BootstrapOnly)
         {
             name.Append((FixedString32Bytes)" T");
-            name.Append(tier);
+            name.Append(config.Tier);
         }
         ecb.SetName(entity, name);
     }
 
     [Conditional("UNITY_EDITOR")]
-    internal static void SetConstructionSite(EntityCommandBuffer ecb, Entity entity, BuildingTypeEnum targetType)
+    internal static void SetConstructionSite(EntityCommandBuffer ecb, Entity entity, in FixedString128Bytes displayName)
     {
         var name = (FixedString64Bytes)"Site / ";
-        name.Append(GetBuildingName(targetType));
+        var label = new FixedString32Bytes();
+        label.CopyFromTruncated(displayName);
+        name.Append(label);
         ecb.SetName(entity, name);
     }
 
@@ -63,25 +66,6 @@ internal static class RuntimeEntityDebugNames
         var name = (FixedString64Bytes)"Task / ";
         name.Append(GetDroneTaskName(kind));
         ecb.SetName(entity, name);
-    }
-
-    private static FixedString64Bytes GetBuildingName(BuildingTypeEnum type)
-    {
-        switch (type)
-        {
-            case BuildingTypeEnum.Storage: return (FixedString64Bytes)"Storage";
-            case BuildingTypeEnum.Miner: return (FixedString64Bytes)"Miner";
-            case BuildingTypeEnum.Crafter: return (FixedString64Bytes)"Crafter";
-            case BuildingTypeEnum.PowerPole: return (FixedString64Bytes)"Power Pole";
-            case BuildingTypeEnum.CoalGenerator: return (FixedString64Bytes)"Coal Generator";
-            case BuildingTypeEnum.ResearchBuilding: return (FixedString64Bytes)"Research Building";
-            case BuildingTypeEnum.MainFacility: return (FixedString64Bytes)"Main Facility";
-            case BuildingTypeEnum.DroneStation: return (FixedString64Bytes)"Drone Station";
-            case BuildingTypeEnum.Splitter: return (FixedString64Bytes)"Splitter";
-            case BuildingTypeEnum.Merger: return (FixedString64Bytes)"Merger";
-            case BuildingTypeEnum.Belt: return (FixedString64Bytes)"Belt";
-            default: return (FixedString64Bytes)"Building";
-        }
     }
 
     private static FixedString32Bytes GetDroneTaskName(DroneLogisticsTaskKindEnum kind)

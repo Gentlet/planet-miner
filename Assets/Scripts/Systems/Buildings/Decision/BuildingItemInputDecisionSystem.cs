@@ -64,6 +64,7 @@ public partial struct BuildingItemInputDecisionSystem : ISystem
             BeltMap = beltIndex.Map,
             StorageLookup = _storageLookup,
             Destroy = SystemAPI.GetComponentLookup<DestroyItemRequest>(true),
+            FuelSlots = SystemAPI.GetComponentLookup<FuelStorageSlots>(true),
             StorageFilterLookup = _storageFilterLookup,
             CrafterStateLookup = _crafterStateLookup,
             PendingDemolitionLookup = _pendingDemolitionLookup
@@ -100,6 +101,7 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
 
     [ReadOnly]
     public ComponentLookup<StorageFilter> StorageFilterLookup;
+    [ReadOnly] public ComponentLookup<FuelStorageSlots> FuelSlots;
 
     [ReadOnly]
     public ComponentLookup<CrafterState> CrafterStateLookup;
@@ -181,15 +183,12 @@ public partial struct BuildingItemInputDecisionJob : IJobEntity
             }
         }
 
-        // 6. StorageFilter 검사 (필터가 부착된 경우)
-        if (StorageFilterLookup.TryGetComponent(buildingInfo.Entity, out var filter))
-        {
-            if (!filter.IsItemAllowed(itemIdentity.Type))
-            {
-                // 필터로 인해 입고 거부
-                return;
-            }
-        }
+        bool hasFuel = FuelSlots.TryGetComponent(buildingInfo.Entity, out var fuel);
+        bool fuelAllowed = hasFuel && fuel.Allows(itemIdentity.Type);
+        bool generalAllowed = (!hasFuel || fuel.Start > 0) &&
+            (!StorageFilterLookup.TryGetComponent(buildingInfo.Entity, out var filter) || filter.IsItemAllowed(itemIdentity.Type));
+        if (!fuelAllowed && !generalAllowed)
+            return;
 
         // 7. 입고 적합 판정: ReservationPhase로 의도 전달
         inputDecision.TargetBuilding = buildingInfo.Entity;

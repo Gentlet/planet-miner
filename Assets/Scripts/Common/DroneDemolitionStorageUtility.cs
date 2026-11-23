@@ -77,7 +77,7 @@ internal static class DroneDemolitionStorageUtility
             var reservations = manager.HasBuffer<DroneStationReservedSlotElement>(storage)
                 ? manager.GetBuffer<DroneStationReservedSlotElement>(storage, true) : default;
             var filter = manager.HasComponent<StorageFilter>(storage) ? manager.GetComponentData<StorageFilter>(storage) : default;
-            int total = read.SlotCount;
+            int total = read.NonFuelSlotCount;
             int dedicated = read.DedicatedSlotCount;
             int general = math.min(read.StoredItems.Length, math.min(total, GameConstants.MaxStorageSlots) - dedicated);
             var remaining = needs.AsArray();
@@ -89,7 +89,7 @@ internal static class DroneDemolitionStorageUtility
                 {
                     var need = remaining[n];
                     if (!destination.Value.IsSet((byte)need.Type) || !filter.IsItemAllowed(need.Type)) continue;
-                    int free = DroneSchedulingUtility.ReadSlotFreeQuantity(ref read, need.Type, slot, need.MaxStack, total, dedicated);
+                    int free = DroneSchedulingUtility.ReadSlotFreeQuantity(ref read, need.Type, slot, need.MaxStack);
                     if (free <= 0) continue;
                     if (typed)
                     {
@@ -164,7 +164,7 @@ internal static class DroneDemolitionStorageUtility
         var reservations = manager.GetBuffer<DroneStationReservedSlotElement>(storage);
         var read = StationStorageUtility.StorageReadContext.Create(manager, storage);
         int max = ItemRegistry.GetMaxStack(manager.GetBuffer<ItemConfigElement>(registry, true), type);
-        int total = read.SlotCount;
+        int total = read.NonFuelSlotCount;
         int dedicated = read.DedicatedSlotCount;
         int general = math.min(read.StoredItems.Length, math.min(total, GameConstants.MaxStorageSlots) - dedicated);
         int initialRows = reservations.Length;
@@ -175,7 +175,7 @@ internal static class DroneDemolitionStorageUtility
             for (int slot = 0; slot < general && remaining > 0; slot++)
             {
                 if (matchingStacksFirst && HasAssignedType(ref read, reservations, slot) != (pass == 0)) continue;
-                int amount = math.min(remaining, DroneSchedulingUtility.ReadSlotFreeQuantity(ref read, type, slot, max, total, dedicated));
+                int amount = math.min(remaining, DroneSchedulingUtility.ReadSlotFreeQuantity(ref read, type, slot, max));
                 if (amount <= 0) continue;
                 if (pass == 1) quantityWithoutLastEmptySlot = quantity - remaining;
                 reservations.Add(new DroneStationReservedSlotElement

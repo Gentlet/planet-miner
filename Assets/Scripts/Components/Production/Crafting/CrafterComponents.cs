@@ -18,7 +18,7 @@ public enum CrafterStatusEnum : byte
 
 /// <summary>
 /// 역할·목적: 선택/적용 레시피·실제 진행도·속도·제작 착수 여부·현재 상태를 소유한다.
-/// 부착 엔티티: BuildingType=Crafter인 완공 제작기 건물이다.
+/// 부착 엔티티: BuildingIdentity=Crafter인 완공 제작기 건물이다.
 /// 생성: BuildingLifecycleUtility가 레시피 없음·진행도 0·설정 속도로 붙인다.
 /// 이용: CrafterRecipeCommandSystem(Command)이 레시피 변경/잔여 입력을 정리하고 CrafterDecisionSystem(Decision)이 실행/상태 전이를 판단한다.
 /// CrafterExecutionSystem(Execution)은 재료 선소비·진행·생산 완료를, CrafterStateApplySystem(StateApply)은 NextStatus 반영을 담당한다.

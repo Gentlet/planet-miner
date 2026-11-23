@@ -159,9 +159,9 @@ public sealed class WorldDroneCoverageView : PeriodicWorldView
         }
         foreach (var config in manager.GetBuffer<BuildingConfigElement>(query.GetSingletonEntity(), true))
         {
-            if (DroneStationRangeUtility.IsStationType(config.BuildingType))
+            if (config.DroneStation.IsPresent)
             {
-                _stationRanges.Add(config.BuildingId, config.DroneStationRangeInChunks);
+                _stationRanges.Add(config.BuildingId, config.DroneStation.RangeInChunks);
             }
         }
     }

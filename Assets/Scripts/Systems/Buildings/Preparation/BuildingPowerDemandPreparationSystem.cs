@@ -17,7 +17,7 @@ public partial struct BuildingPowerDemandPreparationSystem : ISystem
     public void OnCreate(ref SystemState state)
     {
         _consumerQuery = SystemAPI.QueryBuilder().WithAll<PowerConsumer, PowerDemand>()
-            .WithAll<BuildingType>().WithNone<PendingBuildingDemolition>()
+            .WithAll<BuildingIdentity>().WithNone<PendingBuildingDemolition>()
             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState).Build();
     }
 
@@ -33,7 +33,7 @@ public partial struct BuildingPowerDemandPreparationSystem : ISystem
             EntityHandle = SystemAPI.GetEntityTypeHandle(),
             PowerDemandHandle = SystemAPI.GetComponentTypeHandle<PowerDemand>(false),
             PowerConsumerHandle = SystemAPI.GetComponentTypeHandle<PowerConsumer>(false),
-            BuildingTypeHandle = SystemAPI.GetComponentTypeHandle<BuildingType>(true),
+            IdentityHandle = SystemAPI.GetComponentTypeHandle<BuildingIdentity>(true),
             Validation = validationOwner.Validation, ConfigEntity = configEntity,
             ConfigLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
             MinerLookup = SystemAPI.GetComponentLookup<MinerWorkPreparation>(true),
@@ -54,7 +54,7 @@ internal partial struct PrepareBuildingPowerDemandJob : IJobChunk
     [ReadOnly] public EntityTypeHandle EntityHandle;
     public ComponentTypeHandle<PowerDemand> PowerDemandHandle;
     public ComponentTypeHandle<PowerConsumer> PowerConsumerHandle;
-    [ReadOnly] public ComponentTypeHandle<BuildingType> BuildingTypeHandle;
+    [ReadOnly] public ComponentTypeHandle<BuildingIdentity> IdentityHandle;
 
     private struct RegistryReadContext
     {
@@ -67,7 +67,7 @@ internal partial struct PrepareBuildingPowerDemandJob : IJobChunk
         var powerDemandValues = chunk.GetNativeArray(ref PowerDemandHandle);
         var powerDemandEnabled = chunk.GetEnabledMask(ref PowerDemandHandle);
         var powerConsumerEnabled = chunk.GetEnabledMask(ref PowerConsumerHandle);
-        var buildingTypeValues = chunk.GetNativeArray(ref BuildingTypeHandle);
+        var buildingTypeValues = chunk.GetNativeArray(ref IdentityHandle);
         var registryRead = new RegistryReadContext();
         var enumerator = new ChunkEntityEnumerator(useEnabledMask, chunkEnabledMask, chunk.Count);
         while (enumerator.NextEntityIndex(out int index))
@@ -91,7 +91,7 @@ internal partial struct PrepareBuildingPowerDemandJob : IJobChunk
     [ReadOnly] public BufferLookup<DroneChargingPreparationElement> ChargingLookup;
     public float DeltaTime;
 
-    private void ExecuteEntity(Entity entity, ref PowerDemand demand, EnabledRefRW<PowerDemand> prepared, EnabledRefRW<PowerConsumer> intent, in BuildingType type, ref RegistryReadContext registryRead)
+    private void ExecuteEntity(Entity entity, ref PowerDemand demand, EnabledRefRW<PowerDemand> prepared, EnabledRefRW<PowerConsumer> intent, in BuildingIdentity type, ref RegistryReadContext registryRead)
     {
         if (Validation.Value.HasError)
         {
@@ -105,40 +105,34 @@ internal partial struct PrepareBuildingPowerDemandJob : IJobChunk
         }
         bool canWork = false;
         float requestedEnergy = 0f;
-        switch (type.Type)
+        if (MinerLookup.HasComponent(entity))
         {
-            case BuildingTypeEnum.Miner:
-                if (!MinerLookup.IsComponentEnabled(entity))
-                {
-                    return;
-                }
-                canWork = MinerLookup[entity].CanMine;
-                break;
-            case BuildingTypeEnum.Crafter:
-                if (!CrafterLookup.IsComponentEnabled(entity))
-                {
-                    return;
-                }
-                var decision = CrafterLookup[entity];
-                canWork = decision.CanStartCraft || decision.CanAdvance;
-                break;
-            case BuildingTypeEnum.DroneStation:
-            case BuildingTypeEnum.MainFacility:
-                double chargingEnergy = 0d;
-                foreach (var charging in ChargingLookup[entity]) chargingEnergy += charging.RequestedEnergy;
-                requestedEnergy = PowerFrameUtility.RoundEnergyUp(chargingEnergy);
-                break;
-            case BuildingTypeEnum.ResearchBuilding:
-                if (!ResearchLookup.IsComponentEnabled(entity))
-                {
-                    return;
-                }
-                var research = ResearchLookup[entity];
-                canWork = research.CanStartCycle || research.CanAdvance;
-                break;
+            if (!MinerLookup.IsComponentEnabled(entity))
+                return;
+            canWork = MinerLookup[entity].CanMine;
         }
-        // 충전은 준비된 부족분만 요청한다. 생산/연구도 전력 외 작업 자격이 없으면 고정 대기 소비를 만들지 않는다.
-        demand.RequestedEnergy = canWork ? config.Power.MaximumConsumption * DeltaTime : requestedEnergy;
+        else if (CrafterLookup.HasComponent(entity))
+        {
+            if (!CrafterLookup.IsComponentEnabled(entity))
+                return;
+            var preparation = CrafterLookup[entity];
+            canWork = preparation.CanStartCraft || preparation.CanAdvance;
+        }
+        else if (ResearchLookup.HasComponent(entity))
+        {
+            if (!ResearchLookup.IsComponentEnabled(entity))
+                return;
+            var preparation = ResearchLookup[entity];
+            canWork = preparation.CanStartCycle || preparation.CanAdvance;
+        }
+        if (ChargingLookup.TryGetBuffer(entity, out var chargingPlan))
+        {
+            double chargingEnergy = 0d;
+            foreach (var charging in chargingPlan)
+                chargingEnergy += charging.RequestedEnergy;
+            requestedEnergy = PowerFrameUtility.RoundEnergyUp(chargingEnergy);
+        }
+        demand.RequestedEnergy = canWork ? config.Power.Work.MaximumConsumption * DeltaTime : requestedEnergy;
         intent.ValueRW = demand.RequestedEnergy > 0f;
         prepared.ValueRW = true;
     }

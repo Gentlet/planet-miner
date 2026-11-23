@@ -36,7 +36,7 @@ public partial struct MergerDecisionSystem : ISystem
 
         _mergerQuery = SystemAPI.QueryBuilder()
             .WithAllRW<RoutingTransferDecision>()
-            .WithAll<BuildingType, MergerRoutingState, GridPosition>()
+            .WithAll<MergerRoutingState, GridPosition>()
             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
             .Build();
     }
@@ -109,7 +109,6 @@ public partial struct MergerDecisionJob : IJobEntity
         Entity entity,
         ref RoutingTransferDecision decision,
         EnabledRefRW<RoutingTransferDecision> decisionEnabled,
-        in BuildingType buildingType,
         in MergerRoutingState routingState,
         in GridPosition gridPos)
     {
@@ -122,11 +121,6 @@ public partial struct MergerDecisionJob : IJobEntity
             return;
         }
 
-        if (buildingType.Type != BuildingTypeEnum.Merger)
-        {
-            decisionEnabled.ValueRW = false;
-            return;
-        }
 
         int2 mergerPos = gridPos.Value;
 

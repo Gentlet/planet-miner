@@ -104,8 +104,8 @@ public struct PlacementValidationResult
 public struct PlacementCandidate
 {
     public int BuildingId;
-    internal BuildingTypeEnum TargetType;
-    internal int TargetTier;
+
+
     public int2 FootprintSize;
     public int2 OriginPosition;
     public DirectionEnum Direction;
@@ -114,8 +114,8 @@ public struct PlacementCandidate
         DirectionEnum direction = DirectionEnum.Up)
     {
         BuildingId = buildingId;
-        TargetType = BuildingTypeEnum.None;
-        TargetTier = 0;
+
+
         FootprintSize = footprintSize;
         OriginPosition = originPosition;
         Direction = direction;

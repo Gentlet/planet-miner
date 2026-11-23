@@ -33,3 +33,14 @@ public struct StorageSlotElement : IBufferElementData
         Quantity = quantity;
     }
 }
+
+/// <summary>일반/드론 슬롯 뒤에서 Power가 소비하고, 입출고가 연료 허용 목록을 적용하는 고정 구간.</summary>
+public struct FuelStorageSlots : IComponentData
+{
+    public int Start;
+    public int Count;
+    public bool BeltOutput;
+    public FixedBitSet AllowedItems;
+
+    public bool Allows(ItemTypeEnum item) => Count > 0 && AllowedItems.IsSet((byte)item);
+}

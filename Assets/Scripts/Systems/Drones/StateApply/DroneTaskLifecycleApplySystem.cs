@@ -816,7 +816,7 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
                 limits.DedicatedSlotCount = storageRead.DedicatedSlotCount;
                 limits.HasReadSlots = true;
             }
-            if (generalOnly && slot.SlotIndex >= limits.SlotCount - limits.DedicatedSlotCount)
+            if (generalOnly && slot.SlotIndex >= storageRead.NonFuelSlotCount - limits.DedicatedSlotCount)
             {
                 continue;
             }

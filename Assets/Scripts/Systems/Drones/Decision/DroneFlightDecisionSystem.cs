@@ -44,6 +44,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
             Reserved = SystemAPI.GetBufferLookup<DroneStationReservedSlotElement>(true),
             Stamps = SystemAPI.GetComponentLookup<PlacementStamp>(true),
             Construction = SystemAPI.GetComponentLookup<ConstructionSite>(true),
+            FuelSlots = SystemAPI.GetComponentLookup<FuelStorageSlots>(true),
             Storages = SystemAPI.GetComponentLookup<Storage>(true),
             Items = SystemAPI.GetBufferLookup<StorageSlotElement>(true), Docks = SystemAPI.GetBufferLookup<DockedDroneElement>(true)
         }.Schedule(JobHandle.CombineDependencies(state.Dependency, stationOwnersReady, siteOwnersReady));
@@ -89,6 +90,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
         [ReadOnly] public ComponentLookup<PlacementStamp> Stamps;
         [ReadOnly] public ComponentLookup<ConstructionSite> Construction;
         [ReadOnly] public ComponentLookup<Storage> Storages;
+        [ReadOnly] public ComponentLookup<FuelStorageSlots> FuelSlots;
         [ReadOnly] public BufferLookup<StorageSlotElement> Items;
         [ReadOnly] public BufferLookup<DockedDroneElement> Docks;
 
@@ -112,7 +114,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
                     Docks.TryGetBuffer(entity, out var docks) &&
                     !Preparing.HasComponent(entity))
                 {
-                    int slotCount = storage.SlotCount;
+                    int slotCount = FuelSlots.TryGetComponent(entity, out var fuel) ? fuel.Start : storage.SlotCount;
                     DynamicBuffer<DroneStationReservedSlotElement> reservations = default;
                     if (slotCount > 0)
                     {

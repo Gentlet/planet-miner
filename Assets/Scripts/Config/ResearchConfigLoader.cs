@@ -458,26 +458,10 @@ public static class ResearchConfigLoader
         }
         foreach (var building in buildings)
         {
-            double bonus;
-            float fallback;
-            switch (building.BuildingType)
-            {
-                case BuildingTypeEnum.Miner: bonus = maximumBonuses.MiningSpeed; fallback = 1f; break;
-                case BuildingTypeEnum.Crafter: bonus = maximumBonuses.CraftingSpeed; fallback = 1f; break;
-                case BuildingTypeEnum.Belt: bonus = maximumBonuses.BeltSpeed; fallback = 2f; break;
-                case BuildingTypeEnum.ResearchBuilding: bonus = maximumBonuses.ResearchSpeed; fallback = 1f; break;
-                default: continue;
-            }
-            double maximumEffectiveSpeed = (building.Speed > 0f ? building.Speed : fallback) * (1d + bonus);
-            if (!IsFinite(maximumEffectiveSpeed) || maximumEffectiveSpeed > float.MaxValue)
-            {
-                throw new ArgumentException("Research speed bonuses exceed the supported finite speed range.");
-            }
-            // 실행이 사용하는 float 최종 속도로 비교하여 안전한 상한 경계의 소수 보너스를 오거부하지 않는다.
-            if (building.BuildingType == BuildingTypeEnum.Belt && (float)maximumEffectiveSpeed > GameConstants.MaxBeltSpeed)
-            {
-                throw new ArgumentException("Research belt speed bonuses exceed the safe belt speed limit.");
-            }
+            ValidateSpeedBonus(building.Mining, maximumBonuses.MiningSpeed);
+            ValidateSpeedBonus(building.Crafting, maximumBonuses.CraftingSpeed);
+            ValidateSpeedBonus(building.Research, maximumBonuses.ResearchSpeed);
+            ValidateSpeedBonus(building.BeltTransport, maximumBonuses.BeltSpeed, GameConstants.MaxBeltSpeed);
         }
 
         var definitions = new Dictionary<int, ResearchDefinitionElement>();
@@ -503,8 +487,8 @@ public static class ResearchConfigLoader
         }
         foreach (var building in buildings)
         {
-            if (building.BuildingType == BuildingTypeEnum.ResearchBuilding &&
-                (!IsFinite(building.Speed) || building.Speed <= 0f))
+            if (building.Research.IsPresent &&
+                (!IsFinite(building.Research.Speed) || building.Research.Speed <= 0f))
             {
                 throw new ArgumentException("Research building speed must be finite and positive.");
             }
@@ -701,6 +685,16 @@ public static class ResearchConfigLoader
         {
             throw new ArgumentException($"Research '{name}' must be finite and positive.");
         }
+    }
+
+    private static void ValidateSpeedBonus(in BuildingSpeedConfig settings, double bonus, float maximum = float.MaxValue)
+    {
+        if (!settings.IsPresent)
+            return;
+
+        double effectiveSpeed = settings.Speed * (1d + bonus);
+        if (!IsFinite(effectiveSpeed) || effectiveSpeed > float.MaxValue || (float)effectiveSpeed > maximum)
+            throw new ArgumentException("Research speed bonuses exceed the supported speed limit.");
     }
 
     private static bool IsFinite(double value)

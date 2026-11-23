@@ -13,61 +13,65 @@ public struct BuildingConfig : IComponentData
 {
 }
 
-/// <summary>
-/// 역할·목적: 건물 종류·티어별 속도·저장 슬롯 수·해금 상태·연구 식별자·방향 적용 전 기본 크기를 제공한다.
-/// 부착 엔티티: BuildingConfig 통합 설정 엔티티의 버퍼다.
-/// 생성: 외부 TableBuilder가 설정값을 검증하고 BuildingConfigInitSystem이 생성 JSON을 해석하여 게시한다.
-/// 이용: BuildingPlacementCommandSystem(Command)이 배치 해금·기본 크기를 읽고 BuildingLifecycleUtility가 StateApply 건물 생성의 타입별 상태를 초기화한다.
-/// 제거: 생성/배치 요청으로 항목을 소비하지 않는다. 기본 스펙은 보존하고 제품 연구 경로는 초기화/완료 Apply에서 IsUnlocked를 갱신한다. 버퍼는 설정 엔티티/World 수명을 따른다.
-/// </summary>
+/// <summary>건물 ID별 기능 설정과 해금 상태. 공통 생성과 배치가 읽으며 런타임 작업 상태는 소유하지 않는다.</summary>
 public struct BuildingConfigElement : IBufferElementData
 {
-    /// <summary>설정 게시와 배치/생성에서 사용하는 양수 건물 식별자.</summary>
     public int BuildingId;
-    public BuildingTypeEnum BuildingType;
     public int Tier;
-    /// <summary>설정의 표시 이름. 종류·티어 식별과 독립적이며 중복을 허용한다.</summary>
     public FixedString128Bytes DisplayName;
-    public float Speed;
-    public int StorageCapacity;
     public bool IsUnlocked;
     public int RequiredResearch;
-    /// <summary>이 종류·티어의 방향 적용 전 고정 점유 크기. 명시적 양수 설정이 필수이며 기본값으로 보충하지 않는다.</summary>
     public int2 Footprint;
-    /// <summary>이 종류·Tier의 전력 능력 원본. 미대상 종류는 default이며 런타임 수요/공급은 별도 컴포넌트다.</summary>
-    public BuildingPowerConfig Power;
-    /// <summary>주 시설·드론 정거장의 정사각형 활동 영역을 확장할 청크 수. 음수는 0으로 사용한다.</summary>
-    public int DroneStationRangeInChunks;
-    /// <summary>일반 storageCapacity와 별개인 드론 전용 슬롯 수. 정거장 종류에만 양수로 설정한다.</summary>
-    public int DroneStationStorageCapacity;
 
-    public BuildingConfigElement(
-        BuildingTypeEnum buildingType,
-        int tier,
-        FixedString128Bytes displayName,
-        float speed,
-        int storageCapacity,
-        bool isUnlocked,
-        int requiredResearch = default,
-        int2 footprint = default,
-        BuildingPowerConfig power = default,
-        int droneStationRangeInChunks = 0,
-        int droneStationStorageCapacity = 0,
-        int buildingId = 0)
+    public BuildingSpeedConfig BeltTransport;
+    public BuildingSpeedConfig Mining;
+    public BuildingSpeedConfig Crafting;
+    public BuildingSpeedConfig Research;
+    public BeltRoutingMode BeltRouting;
+    public BuildingItemStorageConfig ItemStorage;
+    public BuildingPowerConfig Power;
+    public BuildingDroneStationConfig DroneStation;
+    public bool DroneCharging;
+    public BuildingPlacementConfig Placement;
+}
+
+public struct BuildingSpeedConfig
+{
+    public bool IsPresent;
+    public float Speed;
+
+    public BuildingSpeedConfig(float speed)
     {
-        BuildingId = buildingId;
-        BuildingType = buildingType;
-        Tier = tier;
-        DisplayName = displayName;
+        IsPresent = true;
         Speed = speed;
-        StorageCapacity = storageCapacity;
-        IsUnlocked = isUnlocked;
-        RequiredResearch = requiredResearch;
-        Footprint = footprint;
-        Power = power;
-        DroneStationRangeInChunks = math.max(0, droneStationRangeInChunks);
-        DroneStationStorageCapacity = droneStationStorageCapacity;
     }
+}
+
+public enum BeltRoutingMode : byte
+{
+    None,
+    Split,
+    Merge
+}
+
+public struct BuildingItemStorageConfig
+{
+    public bool IsPresent;
+    public int Slots;
+    public bool FilterEditable;
+}
+
+public struct BuildingDroneStationConfig
+{
+    public bool IsPresent;
+    public int RangeInChunks;
+    public int DroneSlots;
+}
+
+public struct BuildingPlacementConfig
+{
+    public bool BootstrapOnly;
+    public bool Indestructible;
 }
 
 /// <summary>
@@ -88,5 +92,17 @@ public struct BuildingConstructionMaterialElement : IBufferElementData
         BuildingId = buildingId;
         ItemType = itemType;
         Quantity = quantity;
+    }
+}
+
+public readonly struct BuildingFuelConfig
+{
+    public readonly ItemTypeEnum ItemType;
+    public readonly float EnergyPerItem;
+
+    public BuildingFuelConfig(ItemTypeEnum itemType, float energyPerItem)
+    {
+        ItemType = itemType;
+        EnergyPerItem = energyPerItem;
     }
 }

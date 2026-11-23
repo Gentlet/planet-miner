@@ -483,10 +483,6 @@ public partial class WorldInvariantValidationSystem : SystemBase
     // 제작기와 연구소는 현재 정의에 필요한 입력 슬롯이 없거나 슬롯을 처음 구성하기 전에 빈 레이아웃을 유지할 수 있다.
     private bool AllowsZeroInputSlots(Entity owner)
     {
-        if (!SystemAPI.TryGetComponent<BuildingType>(owner, out var building))
-        {
-            return false;
-        }
         if (!SystemAPI.TryGetComponent<StorageFilter>(owner, out var filter))
         {
             return false;
@@ -496,12 +492,8 @@ public partial class WorldInvariantValidationSystem : SystemBase
             return false;
         }
 
-        if (building.Type == BuildingTypeEnum.Crafter)
+        if (SystemAPI.TryGetComponent<CrafterState>(owner, out var crafter))
         {
-            if (!SystemAPI.TryGetComponent<CrafterState>(owner, out var crafter))
-            {
-                return false;
-            }
             if (crafter.SelectedRecipeId == 0)
             {
                 return true;
@@ -522,10 +514,6 @@ public partial class WorldInvariantValidationSystem : SystemBase
             return recipe.IngredientCount == 0;
         }
 
-        if (building.Type != BuildingTypeEnum.ResearchBuilding)
-        {
-            return false;
-        }
         if (!SystemAPI.HasComponent<ResearchInputConfigured>(owner))
         {
             return false;
@@ -559,7 +547,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
         if (!EntityManager.HasBuffer<DroneStationReservedSlotElement>(owner)) return;
         var reservations = EntityManager.GetBuffer<DroneStationReservedSlotElement>(owner, true);
         var storageRead = StationStorageUtility.StorageReadContext.Create(EntityManager, owner);
-        int generalSlots = slots.Length - storageRead.DedicatedSlotCount;
+        int generalSlots = storageRead.NonFuelSlotCount - storageRead.DedicatedSlotCount;
         foreach (var claim in reservations)
         {
             Entity worker = claim.TransportWorker;
@@ -593,13 +581,9 @@ public partial class WorldInvariantValidationSystem : SystemBase
     /// </summary>
     private void ValidateDroneStationInvariants()
     {
-        foreach (var (type, station) in SystemAPI.Query<RefRO<BuildingType>>()
+        foreach (var (_, station) in SystemAPI.Query<RefRO<DroneStation>>()
                      .WithOptions(EntityQueryOptions.IncludeDisabledEntities).WithEntityAccess())
         {
-            if (!DroneStationRangeUtility.IsStationType(type.ValueRO.Type))
-            {
-                continue;
-            }
             if (!EntityManager.HasComponent<DroneStationStorage>(station) || !EntityManager.HasComponent<Storage>(station) ||
                 !EntityManager.HasBuffer<StorageSlotElement>(station) || !EntityManager.HasBuffer<DockedDroneElement>(station))
             {
@@ -611,13 +595,13 @@ public partial class WorldInvariantValidationSystem : SystemBase
                  SystemAPI.Query<RefRO<DroneStationStorage>, RefRO<Storage>, DynamicBuffer<DockedDroneElement>,
                      DynamicBuffer<StorageSlotElement>>().WithOptions(EntityQueryOptions.IncludeDisabledEntities).WithEntityAccess())
         {
-            int total = storage.ValueRO.SlotCount;
+            int total = StationStorageUtility.NonFuelSlotCount(EntityManager, station, storage.ValueRO.SlotCount);
             int dedicated = stationStorage.ValueRO.DedicatedSlotCount;
-            if (dedicated <= 0 || total <= dedicated || total > GameConstants.MaxStorageSlots)
+            if (dedicated <= 0 || total < dedicated || total > GameConstants.MaxStorageSlots)
             {
                 ReportViolation("DroneStationInvariant", "Invalid dedicated/general capacity.", station);
             }
-            for (int index = 0; index < items.Length; index++)
+            for (int index = 0; index < math.min(total, items.Length); index++)
             {
                 if (items[index].Quantity > 0 && !StationStorageUtility.IsItemSlotAllowed(index, total, dedicated, items[index].ItemType))
                     ReportViolation("DroneStationInvariant", "Item occupies an incompatible station slot.", station);
@@ -628,7 +612,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
                 foreach (var entry in EntityManager.GetBuffer<DroneStationReservedSlotElement>(station, true))
                 {
                     if (entry.TransportWorker != Entity.Null) continue;
-                    bool validReservation = (uint)entry.SlotIndex < (uint)items.Length && reservedSlots.Add(entry.SlotIndex) &&
+                    bool validReservation = (uint)entry.SlotIndex < (uint)math.min(total, items.Length) && reservedSlots.Add(entry.SlotIndex) &&
                         EntityManager.HasBuffer<DroneStationRelocationMemberElement>(entry.Task);
                     if (validReservation)
                     {

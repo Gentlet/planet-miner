@@ -44,29 +44,35 @@ internal static class GameWorldRestore
         // 해금 원본을 복원해야 저장한 레시피와 현장 설정의 자격을 검사할 수 있다.
         GameProductionRestore.RestoreResearchProgress(manager, snapshot.Research, snapshot.IsLegacyFormat);
         var occupied = new HashSet<int2>();
-        var taskTargets = new Dictionary<string, SavedTaskTarget>(StringComparer.Ordinal);
+        var taskTargets = new Dictionary<string, int>(StringComparer.Ordinal);
+        Dictionary<string, SavedBuilding> savedBuildings;
         var ecb = new EntityCommandBuffer(Allocator.Temp);
         try
         {
-            var belts = RecordBuildings(ref ecb, manager, snapshot, occupied, taskTargets, out var savedBuildings);
+            var belts = RecordBuildings(ref ecb, manager, snapshot, occupied, taskTargets, out savedBuildings);
             GameConstructionSave.Record(ref ecb, manager, snapshot.ConstructionSites, occupied, itemTypes, taskTargets);
             RecordResources(ref ecb, manager, savedWorld.ResourceNodes, generatedChunks, itemTypes);
             RecordWorldItems(ref ecb, manager, snapshot, belts, itemTypes, taskTargets);
-            if (snapshot.PassiveDroneTasks != null)
-            {
-                GamePassiveDroneTaskSave.Record(ecb, snapshot.PassiveDroneTasks, taskTargets, itemTypes, savedWorld.NextDroneTaskSequence);
-            }
-            if (snapshot.DroneLogistics != null)
-            {
-                GameDroneSave.Record(manager, ref ecb, snapshot.DroneLogistics, taskTargets);
-            }
             ecb.Playback(manager);
-            RestoreBuildingState(manager, savedBuildings, itemTypes, savedWorld.MainFacilityId, snapshot.IsLegacyFormat);
         }
         finally
         {
             ecb.Dispose();
         }
+
+        RestoreBuildingState(manager, savedBuildings, itemTypes, savedWorld.MainFacilityId, snapshot.IsLegacyFormat);
+        var restoredTargets = ResolveTargetsAndRemoveIndices(manager, taskTargets);
+        using var droneCommands = new EntityCommandBuffer(Allocator.Temp);
+        if (snapshot.PassiveDroneTasks != null)
+        {
+            GamePassiveDroneTaskSave.Record(manager, droneCommands, snapshot.PassiveDroneTasks,
+                restoredTargets, itemTypes, savedWorld.NextDroneTaskSequence);
+        }
+        if (snapshot.DroneLogistics != null)
+        {
+            GameDroneSave.Record(manager, droneCommands, snapshot.DroneLogistics, restoredTargets);
+        }
+        droneCommands.Playback(manager);
 
         // 프리팹을 읽은 SubScene 수명에서 실물을 분리한 뒤 첫 틱이 읽을 인덱스를 만든다.
         using var pendingDetach = manager.CreateEntityQuery(new EntityQueryDesc
@@ -82,6 +88,48 @@ internal static class GameWorldRestore
         GameDroneSaveValidation.Validate(manager);
         world.GetExistingSystemManaged<SynchronizationGroup>().Update();
         manager.CompleteAllTrackedJobs();
+    }
+
+    // 첫 재생 뒤 실제 컴포넌트로 드론 참조를 검사할 수 있도록 복원 중에만 순번을 부착한다.
+    private struct RestoreTargetIndex : IComponentData
+    {
+        public int Value;
+    }
+
+    internal static bool TryRecordTarget(EntityCommandBuffer ecb, Dictionary<string, int> targetIndices, string id, Entity entity)
+    {
+        int index = targetIndices.Count;
+        if (!targetIndices.TryAdd(id, index))
+        {
+            return false;
+        }
+
+        ecb.AddComponent(entity, new RestoreTargetIndex { Value = index });
+        return true;
+    }
+
+    private static Dictionary<string, Entity> ResolveTargetsAndRemoveIndices(EntityManager manager, Dictionary<string, int> targetIndices)
+    {
+        using var query = manager.CreateEntityQuery(new EntityQueryDesc
+        {
+            All = new[] { ComponentType.ReadOnly<RestoreTargetIndex>() },
+            Options = EntityQueryOptions.IncludeDisabledEntities
+        });
+        using var entities = query.ToEntityArray(Allocator.Temp);
+        var byIndex = new Entity[targetIndices.Count];
+        foreach (var entity in entities)
+        {
+            byIndex[manager.GetComponentData<RestoreTargetIndex>(entity).Value] = entity;
+        }
+
+        var targets = new Dictionary<string, Entity>(targetIndices.Count, StringComparer.Ordinal);
+        foreach (var entry in targetIndices)
+        {
+            targets.Add(entry.Key, byIndex[entry.Value]);
+        }
+
+        manager.RemoveComponent<RestoreTargetIndex>(query);
+        return targets;
     }
 
     private static HashSet<int2> ReadChunks(List<int[]> coordinates)
@@ -100,7 +148,7 @@ internal static class GameWorldRestore
 
     private static Dictionary<int2, DirectionEnum> RecordBuildings(ref EntityCommandBuffer ecb,
         EntityManager manager, GameWorldSnapshot snapshot, HashSet<int2> occupied,
-        Dictionary<string, SavedTaskTarget> taskTargets, out Dictionary<string, SavedBuilding> savedBuildings)
+        Dictionary<string, int> taskTargets, out Dictionary<string, SavedBuilding> savedBuildings)
     {
         using var configQuery = manager.CreateEntityQuery(typeof(BuildingConfig), typeof(BuildingConfigElement));
         var configs = manager.GetBuffer<BuildingConfigElement>(configQuery.GetSingletonEntity(), true);
@@ -124,8 +172,7 @@ internal static class GameWorldRestore
             {
                 throw new InvalidDataException("건물 저장 ID가 중복됩니다.");
             }
-            if (!BuildingConfigLookupUtility.TryGetConfig(configs, building.BuildingTypeId, out var config) ||
-                config.BuildingType is BuildingTypeEnum.None or BuildingTypeEnum.ConstructionSite or BuildingTypeEnum.Count)
+            if (!BuildingConfigLookupUtility.TryGetConfig(configs, building.BuildingTypeId, out var config))
             {
                 throw new InvalidDataException("저장 파일에 지원하지 않는 건물 정의가 있습니다.");
             }
@@ -135,7 +182,7 @@ internal static class GameWorldRestore
             }
 
             int2 origin = GameWorldSnapshot.ReadCell(building.Origin);
-            if (config.BuildingType == BuildingTypeEnum.MainFacility)
+            if (config.Placement.BootstrapOnly)
             {
                 if (hasMainFacility || building.Id != snapshot.World.MainFacilityId || config.Tier != 1 ||
                     !origin.Equals(int2.zero) || building.Direction != DirectionEnum.Up)
@@ -145,7 +192,7 @@ internal static class GameWorldRestore
                 hasMainFacility = true;
             }
             AddFootprint(occupied, origin, BuildingFootprintUtility.GetEffectiveSize(config.Footprint, building.Direction));
-            if (config.BuildingType == BuildingTypeEnum.Belt && !building.Disabled)
+            if (config.BeltTransport.IsPresent && !building.Disabled)
             {
                 belts.Add(origin, building.Direction);
             }
@@ -157,7 +204,10 @@ internal static class GameWorldRestore
             }
             Entity instance = BuildingLifecycleUtility.InstantiateConfiguredBuilding(ref ecb, origin, building.Direction,
                 stamp, config, prefab, manager.HasComponent<PostTransformMatrix>(prefab));
-            taskTargets.Add(building.Id, new SavedTaskTarget(instance, config.BuildingType));
+            if (!TryRecordTarget(ecb, taskTargets, building.Id, instance))
+            {
+                throw new InvalidDataException("건물 저장 ID가 중복됩니다.");
+            }
             if (building.Disabled)
             {
                 ecb.AddComponent<Disabled>(instance);
@@ -214,7 +264,7 @@ internal static class GameWorldRestore
 
     private static void RecordWorldItems(ref EntityCommandBuffer ecb, EntityManager manager,
         GameWorldSnapshot snapshot, Dictionary<int2, DirectionEnum> belts, IReadOnlyDictionary<int, ItemTypeEnum> itemTypes,
-        Dictionary<string, SavedTaskTarget> taskTargets)
+        Dictionary<string, int> taskTargets)
     {
         using var prefabQuery = manager.CreateEntityQuery(typeof(ItemPrefabDatabase), typeof(ItemPrefabElement));
         var prefabs = manager.GetBuffer<ItemPrefabElement>(prefabQuery.GetSingletonEntity(), true);
@@ -237,7 +287,7 @@ internal static class GameWorldRestore
                 throw new InvalidDataException("월드 아이템의 원형이 유효하지 않습니다.");
             }
             Entity instance = ItemLifecycleUtility.SpawnPrefabItem(ref ecb, prefab, type, cell);
-            if (!taskTargets.TryAdd(item.Id, new SavedTaskTarget(instance, BuildingTypeEnum.None, type)))
+            if (!TryRecordTarget(ecb, taskTargets, item.Id, instance))
             {
                 throw new InvalidDataException("월드 아이템의 저장 ID가 중복됩니다.");
             }
@@ -272,7 +322,7 @@ internal static class GameWorldRestore
     {
         using var buildings = manager.CreateEntityQuery(new EntityQueryDesc
         {
-            All = new[] { ComponentType.ReadOnly<BuildingType>(), ComponentType.ReadOnly<GridPosition>() },
+            All = new[] { ComponentType.ReadOnly<BuildingIdentity>(), ComponentType.ReadOnly<GridPosition>() },
             None = new[] { ComponentType.ReadOnly<ConstructionSite>() },
             Options = EntityQueryOptions.IncludeDisabledEntities
         });
@@ -323,6 +373,9 @@ internal static class GameWorldRestore
         bool hasFixedInput = manager.HasBuffer<BuildingInputSlotElement>(building);
         var inputSlots = hasFixedInput ? manager.GetBuffer<BuildingInputSlotElement>(building, true) : default;
         int dedicated = StationStorageUtility.ReadDedicatedCount(manager, building);
+        int nonFuelCount = StationStorageUtility.NonFuelSlotCount(manager, building, slots.Length);
+        bool hasFuel = manager.HasComponent<FuelStorageSlots>(building);
+        var fuel = hasFuel ? manager.GetComponentData<FuelStorageSlots>(building) : default;
         foreach (var entry in saved.Slots)
         {
             if (entry == null)
@@ -332,7 +385,9 @@ internal static class GameWorldRestore
             ItemTypeEnum type = ResolveItem(entry.ItemId, itemTypes);
             if ((uint)entry.Slot >= (uint)slots.Length || slots[entry.Slot].Quantity != 0 ||
                 (hasFixedInput && inputSlots[entry.Slot].ItemType != type) ||
-                !StationStorageUtility.IsItemSlotAllowed(entry.Slot, slots.Length, dedicated, type))
+                !(entry.Slot >= nonFuelCount
+                    ? fuel.Allows(type)
+                    : StationStorageUtility.IsItemSlotAllowed(entry.Slot, nonFuelCount, dedicated, type)))
             {
                 throw new InvalidDataException("저장 슬롯의 번호 또는 품목이 유효하지 않습니다.");
             }
@@ -341,7 +396,10 @@ internal static class GameWorldRestore
                 throw new InvalidDataException("저장 슬롯의 수량이 유효하지 않습니다.");
             }
         }
-        manager.SetComponentData(building, ReadFilter(saved, itemTypes));
+        if (nonFuelCount > 0 || !hasFuel)
+        {
+            manager.SetComponentData(building, ReadFilter(saved, itemTypes));
+        }
     }
 
     internal static StorageFilter ReadFilter(SavedStorageFilter saved, IReadOnlyDictionary<int, ItemTypeEnum> itemTypes)

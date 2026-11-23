@@ -6,7 +6,7 @@ using Unity.Mathematics;
 /// <summary>
 /// 역할·목적: Decision에서 보관품의 첫 실물을 보낼 외향 벨트 후보를 찾는다.
 /// 입력·생성자: 건물 생성/입고가 유지하는 StorageSlotElement, 회전 footprint와 Synchronization의 벨트/월드 실물 인덱스.
-/// 출력·소유권: 건물의 BuildingItemOutputDecision과 enable 상태만 쓴다. 보관품을 제거하거나 이동시키지 않는다.
+/// 출력·소유권: 생산품 버퍼가 없는 건물의 BuildingItemOutputDecision만 작성한다. 보관품 수량은 변경하지 않는다.
 /// 이용·정리: BeltDestinationReservationSystem이 목적지 경합을 중재하고 BuildingItemStorageApplySystem이 인계 후 결정을 소비한다.
 /// 건물 둘레에서 처음 가능한 벨트를 선택하며 철거 승인 건물/벨트는 제외한다. ECB 구조 변경은 없다.
 /// </summary>
@@ -67,6 +67,7 @@ public partial struct StorageItemOutputDecisionSystem : ISystem
             DestroyItemRequestLookup = _destroyRequestLookup,
             PendingDemolitionLookup = _pendingDemolitionLookup,
             PreparingDemolitionLookup = SystemAPI.GetComponentLookup<PreparingStationDemolition>(true),
+            FuelSlots = SystemAPI.GetComponentLookup<FuelStorageSlots>(true),
             StationStorageLookup = _stationStorageLookup
         };
 
@@ -105,6 +106,7 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
     public ComponentLookup<PendingBuildingDemolition> PendingDemolitionLookup;
     [ReadOnly] public ComponentLookup<PreparingStationDemolition> PreparingDemolitionLookup;
     [ReadOnly] public ComponentLookup<DroneStationStorage> StationStorageLookup;
+    [ReadOnly] public ComponentLookup<FuelStorageSlots> FuelSlots;
 
     public void Execute(
         Entity building,
@@ -115,29 +117,17 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
         in GridPosition gridPos,
         in Direction dir)
     {
+        outputDecision = default;
+        outputDecisionEnabled.ValueRW = false;
         if (PendingDemolitionLookup.HasComponent(building) || PreparingDemolitionLookup.HasComponent(building))
         {
-            outputDecision.CanOutput = false;
-            outputDecision.ItemType = ItemTypeEnum.None;
-            outputDecision.TargetBeltPosition = int2.zero;
-            outputDecisionEnabled.ValueRW = false;
             return;
         }
 
-        int outputIndex = 0;
-        bool station = StationStorageLookup.HasComponent(building);
-        while (outputIndex < storedItems.Length)
+        FuelSlots.TryGetComponent(building, out var fuel);
+        int outputIndex = BeltEntryUtility.FindStorageOutputSlot(storedItems, StationStorageLookup.HasComponent(building), fuel);
+        if (outputIndex < 0)
         {
-            var slot = storedItems[outputIndex];
-            if (slot.Quantity > 0 && (!station || slot.ItemType != ItemTypeEnum.Drone)) break;
-            outputIndex++;
-        }
-        if (outputIndex == storedItems.Length)
-        {
-            outputDecision.CanOutput = false;
-            outputDecision.ItemType = ItemTypeEnum.None;
-            outputDecision.TargetBeltPosition = int2.zero;
-            outputDecisionEnabled.ValueRW = false;
             return;
         }
 
@@ -145,21 +135,11 @@ public partial struct StorageItemOutputDecisionJob : IJobEntity
                 BeltMap, ItemMap, Directions, PendingDemolitionLookup, DestroyItemRequestLookup, BeltMovementStateLookup,
                 out int2 foundBeltPos))
         {
-            // 첫 보관 실물을 출고 후보로 지정한다. 실제 제거/이동은 Reservation 승인 뒤 Apply가 수행한다.
-            outputDecision.CanOutput = true;
-            outputDecision.ItemType = storedItems[outputIndex].ItemType;
-            outputDecision.SourceSlotIndex = outputIndex;
-            outputDecision.FromProduct = false;
-            outputDecision.TargetBeltPosition = foundBeltPos;
+            outputDecision = new BuildingItemOutputDecision(true, storedItems[outputIndex].ItemType, foundBeltPos)
+            {
+                SourceSlotIndex = outputIndex
+            };
             outputDecisionEnabled.ValueRW = true;
-        }
-        else
-        {
-            // 외향 벨트가 없거나 여유 공간 미확보: 방출 대기
-            outputDecision.CanOutput = false;
-            outputDecision.ItemType = ItemTypeEnum.None;
-            outputDecision.TargetBeltPosition = int2.zero;
-            outputDecisionEnabled.ValueRW = false;
         }
     }
 }

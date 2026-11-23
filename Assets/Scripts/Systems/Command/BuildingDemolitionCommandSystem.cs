@@ -75,7 +75,8 @@ public partial struct BuildingDemolitionCommandSystem : ISystem
             ECB = ecb,
             Legacy = SystemAPI.GetComponentLookup<DemolishBuildingRequest>(true),
             Requests = SystemAPI.GetComponentLookup<DroneTaskRequest>(true),
-            Buildings = SystemAPI.GetComponentLookup<BuildingType>(true),
+            Buildings = SystemAPI.GetComponentLookup<BuildingIdentity>(true),
+            Stations = SystemAPI.GetComponentLookup<DroneStation>(true),
             Indestructible = SystemAPI.GetComponentLookup<IndestructibleBuilding>(true),
             Prefabs = SystemAPI.GetComponentLookup<Prefab>(true),
             Pending = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true),
@@ -125,7 +126,8 @@ public partial struct ValidateBuildingDemolitionJob : IJobEntity
     public EntityQueryMask StationShape;
     [ReadOnly] public ComponentLookup<DemolishBuildingRequest> Legacy;
     [ReadOnly] public ComponentLookup<DroneTaskRequest> Requests;
-    [ReadOnly] public ComponentLookup<BuildingType> Buildings;
+    [ReadOnly] public ComponentLookup<BuildingIdentity> Buildings;
+    [ReadOnly] public ComponentLookup<DroneStation> Stations;
     [ReadOnly] public ComponentLookup<IndestructibleBuilding> Indestructible;
     [ReadOnly] public ComponentLookup<Prefab> Prefabs;
     [ReadOnly] public ComponentLookup<PendingBuildingDemolition> Pending;
@@ -158,22 +160,21 @@ public partial struct ValidateBuildingDemolitionJob : IJobEntity
         {
             return;
         }
-        if (!Buildings.TryGetComponent(target, out var buildingType))
+        if (!Buildings.HasComponent(target))
         {
             return;
         }
         if (!TargetShape.MatchesIgnoreFilter(target)) return;
         if (Prefabs.HasComponent(target) || Indestructible.HasComponent(target)) return;
-        var type = buildingType.Type;
-        if (type == BuildingTypeEnum.None || type == BuildingTypeEnum.ConstructionSite || type == BuildingTypeEnum.MainFacility) return;
-        if (type == BuildingTypeEnum.DroneStation && !StationShape.MatchesIgnoreFilter(target)) return;
+        bool station = Stations.HasComponent(target);
+        if (station && !StationShape.MatchesIgnoreFilter(target)) return;
         if (Pending.HasComponent(target) && !Released.Contains(target)) return;
         if (Preparing.HasComponent(target) && !Released.Contains(target)) return;
         // 이 단일 Command에서 접수하기 전까지 다른 Submit은 실행되지 않는다. 발급 불가한 레거시 입력은 중단 전에 거부한다.
         if (legacy && LegacySequenceBudget.Value == 0) return;
         if (!Accepted.Add(target)) return;
         if (legacy) LegacySequenceBudget.Value--;
-        if (type == BuildingTypeEnum.DroneStation)
+        if (station)
         {
             ECB.AddComponent<PreparingStationDemolition>(target);
             if (legacy) LegacyTargets.Enqueue(target);

@@ -27,11 +27,16 @@ public static class BuildingSettingsUtility
         return mask;
     }
 
-    internal static bool IsAllowed(BuildingTypeEnum type, in PlannedBuildingSettings settings, ref SettingsReadContext read)
+    internal static bool IsAllowed(in BuildingConfigElement config, in PlannedBuildingSettings settings, ref SettingsReadContext read)
+    {
+        return IsAllowed(config.Crafting.IsPresent, config.ItemStorage.FilterEditable, settings, ref read);
+    }
+
+    private static bool IsAllowed(bool supportsRecipe, bool supportsFilter, in PlannedBuildingSettings settings, ref SettingsReadContext read)
     {
         if (settings.HasRecipe)
         {
-            if (type != BuildingTypeEnum.Crafter || settings.RecipeId < 0)
+            if (!supportsRecipe || settings.RecipeId < 0)
             {
                 return false;
             }
@@ -50,7 +55,7 @@ public static class BuildingSettingsUtility
         }
         if (settings.HasStorageFilter)
         {
-            if (type != BuildingTypeEnum.Storage)
+            if (!supportsFilter)
             {
                 return false;
             }
@@ -117,13 +122,13 @@ public static class BuildingSettingsUtility
 
     public static Entity Submit(EntityManager manager, Entity target, in PlannedBuildingSettings settings)
     {
-        if (!manager.HasComponent<BuildingType>(target))
+        if (!manager.HasComponent<BuildingIdentity>(target))
         {
             return Entity.Null;
         }
-        var type = manager.GetComponentData<BuildingType>(target).Type;
         var read = new SettingsReadContext(manager);
-        if (!settings.HasValues || !IsAllowed(type, settings, ref read))
+        if (!settings.HasValues || !IsAllowed(IsEditableCrafter(manager, target),
+            manager.HasComponent<EditableStorageFilter>(target), settings, ref read))
         {
             return Entity.Null;
         }

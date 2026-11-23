@@ -24,7 +24,7 @@ public partial struct GameBootstrapApplySystem : ISystem
         _requests = state.GetEntityQuery(typeof(GameBootstrapRequest));
         _records = SystemAPI.QueryBuilder().WithAll<GameBootstrapState>()
             .WithOptions(EntityQueryOptions.IncludeDisabledEntities).Build();
-        _buildings = SystemAPI.QueryBuilder().WithAll<BuildingType>()
+        _buildings = SystemAPI.QueryBuilder().WithAny<BuildingIdentity, ConstructionSite>()
             .WithOptions(EntityQueryOptions.IncludeDisabledEntities).Build();
         _spawns = state.GetEntityQuery(typeof(SpawnBuildingRequest));
         _itemsWithPositions = state.GetEntityQuery(ComponentType.ReadOnly<ItemIdentity>(),
@@ -56,7 +56,7 @@ public partial struct GameBootstrapApplySystem : ISystem
             ItemEntities = itemEntities.AsDeferredJobArray(),
             RequestData = SystemAPI.GetComponentLookup<GameBootstrapRequest>(true),
             RecordData = SystemAPI.GetComponentLookup<GameBootstrapState>(true),
-            BuildingTypes = SystemAPI.GetComponentLookup<BuildingType>(true),
+            Identities = SystemAPI.GetComponentLookup<BuildingIdentity>(true),
             Positions = SystemAPI.GetComponentLookup<GridPosition>(true),
             Footprints = SystemAPI.GetComponentLookup<BuildingFootprint>(true),
             Directions = SystemAPI.GetComponentLookup<Direction>(true),
@@ -96,7 +96,7 @@ public struct ApplyGameBootstrapJob : IJob
     [ReadOnly] public NativeArray<Entity> ItemEntities;
     [ReadOnly] public ComponentLookup<GameBootstrapRequest> RequestData;
     [ReadOnly] public ComponentLookup<GameBootstrapState> RecordData;
-    [ReadOnly] public ComponentLookup<BuildingType> BuildingTypes;
+    [ReadOnly] public ComponentLookup<BuildingIdentity> Identities;
     [ReadOnly] public ComponentLookup<GridPosition> Positions;
     [ReadOnly] public ComponentLookup<BuildingFootprint> Footprints;
     [ReadOnly] public ComponentLookup<Direction> Directions;
@@ -156,14 +156,14 @@ public struct ApplyGameBootstrapJob : IJob
         using var worldItemPositions = new NativeList<int2>(Allocator.Temp);
         ConstructionCompletionUtility.CollectWorldItemPositions(
             ItemEntities, DestroyRequests, Positions, worldItemPositions);
-        if (!ValidateBootstrapConflictsAndRecordFailure(config.Footprint, configs, worldItemPositions.AsArray()))
+        if (!ValidateBootstrapConflictsAndRecordFailure(config.BuildingId, config.Footprint, configs, worldItemPositions.AsArray()))
         {
             ECB.DestroyEntity(request);
             return;
         }
 
         using var slots = new NativeList<ItemSlot>(Allocator.Temp);
-        if (!PrepareItemSlots(config.StorageCapacity, config.DroneStationStorageCapacity, slots))
+        if (!PrepareItemSlots(config.ItemStorage.Slots, config.DroneStation.DroneSlots, slots))
         {
             ECB.DestroyEntity(request);
             return;
@@ -179,7 +179,7 @@ public struct ApplyGameBootstrapJob : IJob
         }
 
         var inventory = ECB.SetBuffer<StorageSlotElement>(main);
-        inventory.Resize(config.StorageCapacity + config.DroneStationStorageCapacity, NativeArrayOptions.ClearMemory);
+        inventory.Resize(config.ItemStorage.Slots + config.DroneStation.DroneSlots + config.Power.Generation.FuelStorage.Slots, NativeArrayOptions.ClearMemory);
         foreach (var slot in slots)
         {
             inventory[slot.Slot] = new StorageSlotElement(slot.Type, slot.Quantity);
@@ -196,7 +196,7 @@ public struct ApplyGameBootstrapJob : IJob
     {
         foreach (var definition in configs)
         {
-            if (definition.BuildingType == BuildingTypeEnum.MainFacility && definition.Tier == 1)
+            if (definition.Placement.BootstrapOnly && definition.Tier == 1)
             {
                 config = definition;
                 return true;
@@ -208,14 +208,14 @@ public struct ApplyGameBootstrapJob : IJob
 
     private bool IsValidRecord(Entity main, int expectedBuildingId)
     {
-        if (!BuildingTypes.TryGetComponent(main, out var type) ||
+        if (!Identities.TryGetComponent(main, out var type) ||
             !Positions.TryGetComponent(main, out var position) ||
             !Directions.TryGetComponent(main, out var direction))
         {
             return false;
         }
 
-        if (type.BuildingId != expectedBuildingId || type.Type != BuildingTypeEnum.MainFacility || type.Tier != 1 ||
+        if (type.BuildingId != expectedBuildingId ||
             !math.all(position.Value == int2.zero) || direction.dir != DirectionEnum.Up)
         {
             return false;
@@ -224,7 +224,7 @@ public struct ApplyGameBootstrapJob : IJob
         int mainCount = 0;
         for (int i = 0; i < Buildings.Length; i++)
         {
-            if (BuildingTypes[Buildings[i]].Type == BuildingTypeEnum.MainFacility)
+            if (Identities.TryGetComponent(Buildings[i], out var identity) && identity.BuildingId == expectedBuildingId)
             {
                 mainCount++;
             }
@@ -232,13 +232,13 @@ public struct ApplyGameBootstrapJob : IJob
         return mainCount == 1;
     }
 
-    private bool ValidateBootstrapConflictsAndRecordFailure(int2 size, DynamicBuffer<BuildingConfigElement> configs,
+    private bool ValidateBootstrapConflictsAndRecordFailure(int bootstrapId, int2 size, DynamicBuffer<BuildingConfigElement> configs,
         NativeArray<int2> worldItemPositions)
     {
         for (int i = 0; i < Buildings.Length; i++)
         {
             Entity building = Buildings[i];
-            if (BuildingTypes[building].Type == BuildingTypeEnum.MainFacility)
+            if (Identities.TryGetComponent(building, out var identity) && identity.BuildingId == bootstrapId)
             {
                 Fail("[GameBootstrapApplySystem] Existing main facility has no bootstrap record.");
                 return false;
@@ -263,7 +263,7 @@ public struct ApplyGameBootstrapJob : IJob
                 Requirements.TryGetBuffer(building, out var requirements) && !DisabledEntities.HasComponent(building))
             {
                 if (BuildingConfigLookupUtility.TryGetConfig(configs, site.TargetBuildingId, out var target) &&
-                    target.BuildingType == BuildingTypeEnum.MainFacility &&
+                    target.Placement.BootstrapOnly &&
                     (site.Flags & ConstructionSiteFlags.Cancelled) == 0 &&
                     ConstructionCompletionUtility.AreMaterialsSatisfied(requirements) &&
                     !ConstructionCompletionUtility.HasBlockingWorldItem(buildingPosition, occupiedSize, worldItemPositions))
@@ -292,7 +292,7 @@ public struct ApplyGameBootstrapJob : IJob
             {
                 continue;
             }
-            if (target.BuildingType == BuildingTypeEnum.MainFacility)
+            if (target.Placement.BootstrapOnly)
             {
                 Fail("[GameBootstrapApplySystem] Another main facility spawn is already pending.");
                 return false;

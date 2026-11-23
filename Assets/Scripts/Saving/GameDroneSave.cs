@@ -25,7 +25,7 @@ internal static class GameDroneSave
         var rows = new List<(Entity Entity, SavedDroneEntity Row)>();
         foreach (var existing in savedIds)
         {
-            if (manager.HasComponent<BuildingType>(existing.Key))
+            if (manager.HasComponent<BuildingIdentity>(existing.Key) || manager.HasComponent<ConstructionSite>(existing.Key))
             {
                 rows.Add((existing.Key, new SavedDroneEntity { Id = existing.Value, Kind = SavedDroneKindEnum.Building }));
             }
@@ -218,13 +218,13 @@ internal static class GameDroneSave
         id.StartsWith(RemovedPrefix, StringComparison.Ordinal) &&
         int.TryParse(id.Substring(RemovedPrefix.Length), NumberStyles.None, CultureInfo.InvariantCulture, out _);
 
-    public static void Record(EntityManager manager, ref EntityCommandBuffer ecb, SavedDroneWorld snapshot,
-        Dictionary<string, SavedTaskTarget> worldEntities)
+    public static void Record(EntityManager manager, EntityCommandBuffer ecb, SavedDroneWorld snapshot,
+        Dictionary<string, Entity> worldEntities)
     {
         var entities = new Dictionary<string, Entity>(StringComparer.Ordinal);
         foreach (var existing in worldEntities)
         {
-            entities.Add(existing.Key, existing.Value.Entity);
+            entities.Add(existing.Key, existing.Value);
         }
         foreach (var row in snapshot.Entities)
         {
@@ -284,7 +284,7 @@ internal static class GameDroneSave
     }
 
     private static Entity RecordOwner(EntityManager manager, ref EntityCommandBuffer ecb, SavedDroneEntity row,
-        Dictionary<string, SavedTaskTarget> worldEntities)
+        Dictionary<string, Entity> worldEntities)
     {
         switch (row.Kind)
         {
@@ -302,11 +302,12 @@ internal static class GameDroneSave
             case SavedDroneKindEnum.Building:
             case SavedDroneKindEnum.Item:
                 if (!worldEntities.TryGetValue(row.Id, out var target) ||
-                    (row.Kind == SavedDroneKindEnum.Item ? target.ItemType == ItemTypeEnum.None : target.BuildingType == BuildingTypeEnum.None))
+                    (row.Kind == SavedDroneKindEnum.Item ? !manager.HasComponent<ItemIdentity>(target) :
+                        !manager.HasComponent<BuildingIdentity>(target) && !manager.HasComponent<ConstructionSite>(target)))
                 {
                     throw new InvalidDataException("드론 소유 상태의 대상과 월드 엔티티 역할이 일치하지 않습니다.");
                 }
-                return target.Entity;
+                return target;
             case SavedDroneKindEnum.Scheduling:
                 using (var query = manager.CreateEntityQuery(typeof(DroneTaskGenerationBlockElement)))
                 {

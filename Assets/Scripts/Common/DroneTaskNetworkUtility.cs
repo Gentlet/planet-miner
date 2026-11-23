@@ -88,7 +88,7 @@ public static class DroneTaskNetworkUtility
     {
         int2 position = manager.GetComponentData<GridPosition>(target).Value;
         int2 size = new int2(1, 1);
-        if (manager.HasComponent<BuildingType>(target))
+        if (manager.HasComponent<BuildingIdentity>(target) || manager.HasComponent<ConstructionSite>(target))
         {
             size = BuildingFootprintUtility.GetEffectiveSize(manager.GetComponentData<BuildingFootprint>(target).Size,
                 manager.GetComponentData<Direction>(target).dir);

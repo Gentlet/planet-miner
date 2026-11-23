@@ -132,36 +132,12 @@ public partial class PrefabDatabaseInitializationSystem : SystemBase
             return false;
         }
         var configs = EntityManager.GetBuffer<BuildingConfigElement>(configQuery.GetSingletonEntity(), true);
-        var expected = new Dictionary<int, (BuildingTypeEnum Type, int Tier)>();
-        var configuredTiers = new HashSet<(BuildingTypeEnum Type, int Tier)>();
+        var expected = new HashSet<int>();
         foreach (var config in configs)
         {
-            if (config.BuildingType <= BuildingTypeEnum.None || config.BuildingType >= BuildingTypeEnum.Count ||
-                config.BuildingType == BuildingTypeEnum.ConstructionSite || config.Tier <= 0)
-            {
-                error = $"Invalid building configuration role/tier for ID {config.BuildingId}: {config.BuildingType}/{config.Tier}.";
-                return false;
-            }
-            if (config.BuildingId <= 0 || !expected.TryAdd(config.BuildingId, (config.BuildingType, config.Tier)))
+            if (config.BuildingId <= 0 || !expected.Add(config.BuildingId))
             {
                 error = $"Invalid or duplicate building configuration ID {config.BuildingId}.";
-                return false;
-            }
-            if (!configuredTiers.Add((config.BuildingType, config.Tier)))
-            {
-                error = $"Duplicate building configuration: {config.BuildingType}/{config.Tier}.";
-                return false;
-            }
-        }
-        foreach (BuildingTypeEnum type in Enum.GetValues(typeof(BuildingTypeEnum)))
-        {
-            if (type == BuildingTypeEnum.None || type == BuildingTypeEnum.Count || type == BuildingTypeEnum.ConstructionSite)
-            {
-                continue;
-            }
-            if (!configuredTiers.Contains((type, 1)))
-            {
-                error = $"Missing building tier 1 configuration: {type}.";
                 return false;
             }
         }
@@ -170,17 +146,12 @@ public partial class PrefabDatabaseInitializationSystem : SystemBase
         {
             if (entry.BuildingId <= 0 || !ids.Add(entry.BuildingId))
             {
-                error = $"Invalid or duplicate building prefab ID {entry.BuildingId}: {entry.Type}/{entry.Tier}.";
+                error = $"Invalid or duplicate building prefab ID {entry.BuildingId}.";
                 return false;
             }
-            if (!expected.TryGetValue(entry.BuildingId, out var definition))
+            if (!expected.Contains(entry.BuildingId))
             {
                 error = $"Building prefab has no configuration for ID {entry.BuildingId}.";
-                return false;
-            }
-            if (entry.Type != definition.Type || entry.Tier != definition.Tier)
-            {
-                error = $"Mismatched building prefab role/tier for ID {entry.BuildingId}: {entry.Type}/{entry.Tier}.";
                 return false;
             }
             if (!ValidatePrefab(entry.Prefab, $"Building ID {entry.BuildingId}", out error))
@@ -188,7 +159,7 @@ public partial class PrefabDatabaseInitializationSystem : SystemBase
                 return false;
             }
         }
-        foreach (int buildingId in expected.Keys)
+        foreach (int buildingId in expected)
         {
             if (!ids.Contains(buildingId))
             {

@@ -38,6 +38,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             Reserved = SystemAPI.GetBufferLookup<DroneStationReservedSlotElement>(),
             Positions = SystemAPI.GetComponentLookup<GridPosition>(true),
             Footprints = SystemAPI.GetComponentLookup<BuildingFootprint>(true), Directions = SystemAPI.GetComponentLookup<Direction>(true),
+            FuelSlots = SystemAPI.GetComponentLookup<FuelStorageSlots>(true),
             Networks = SystemAPI.GetComponentLookup<DroneStationNetworkDecision>(true), Storages = SystemAPI.GetComponentLookup<Storage>(true),
             Dedicated = SystemAPI.GetComponentLookup<DroneStationStorage>(true), Stamps = SystemAPI.GetComponentLookup<PlacementStamp>(true),
             Pending = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true),
@@ -83,6 +84,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
         [ReadOnly] public ComponentLookup<Direction> Directions;
         [ReadOnly] public ComponentLookup<DroneStationNetworkDecision> Networks;
         [ReadOnly] public ComponentLookup<Storage> Storages;
+        [ReadOnly] public ComponentLookup<FuelStorageSlots> FuelSlots;
         [ReadOnly] public ComponentLookup<DroneStationStorage> Dedicated;
         [ReadOnly] public ComponentLookup<PlacementStamp> Stamps;
         [ReadOnly] public ComponentLookup<PendingBuildingDemolition> Pending;
@@ -187,7 +189,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             {
                 Entity station = Stations[stationIndex];
                 if (Preparations.HasComponent(station) || Pending.HasComponent(station)) continue;
-                int slotCount = Storages[station].SlotCount;
+                int slotCount = FuelSlots.TryGetComponent(station, out var fuel) ? fuel.Start : Storages[station].SlotCount;
                 int dedicatedSlotCount = Dedicated[station].DedicatedSlotCount;
                 var storedItems = Items[station];
                 var dockedDrones = Docks[station];
@@ -485,7 +487,8 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
             bool hasReservations = Reserved.TryGetBuffer(source, out var reservations);
             var items = Items[source];
             var docks = Docks[source];
-            for (int slot = 0; slot < storage.SlotCount; slot++)
+            int nonFuelCount = FuelSlots.TryGetComponent(source, out var fuel) ? fuel.Start : storage.SlotCount;
+            for (int slot = 0; slot < nonFuelCount; slot++)
             {
                 bool occupied = hasReservations && DroneStationRelocationUtility.IsReserved(reservations, slot);
                 int departingStock = 0;
@@ -507,7 +510,7 @@ public partial struct DroneStationRelocationReservationSystem : ISystem
         private int FindChargingSlotAfterCohortDeparture(Entity station, Entity source,
             NativeList<SlotReservationPlan> plans, NativeHashSet<int> sourceChargingSlotsAfterDeparture)
         {
-            int total = Storages[station].SlotCount;
+            int total = FuelSlots.TryGetComponent(station, out var fuel) ? fuel.Start : Storages[station].SlotCount;
             if (total <= 0)
             {
                 return -1;

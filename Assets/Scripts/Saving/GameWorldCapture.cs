@@ -19,7 +19,9 @@ internal static class GameWorldCapture
         CaptureWorld(manager, snapshot.World, items);
         snapshot.Research = CaptureResearch(manager);
 
-        using var buildings = RuntimeQuery<BuildingType>(manager);
+        using var occupiedQuery = new EntityQueryBuilder(Allocator.Temp);
+        using var buildings = occupiedQuery.WithAny<BuildingIdentity, ConstructionSite>()
+            .WithOptions(EntityQueryOptions.IncludeDisabledEntities).Build(manager);
         using var buildingEntities = buildings.ToEntityArray(Allocator.Temp);
         var savedIds = new Dictionary<Entity, string>(buildingEntities.Length);
         var activeBelts = new Dictionary<int2, DirectionEnum>();
@@ -163,7 +165,7 @@ internal static class GameWorldCapture
         var building = new SavedBuilding
         {
             Id = savedIds[entity],
-            BuildingTypeId = manager.GetComponentData<BuildingType>(entity).BuildingId,
+            BuildingTypeId = manager.GetComponentData<BuildingIdentity>(entity).BuildingId,
             Origin = GameWorldSnapshot.WriteCell(manager.GetComponentData<GridPosition>(entity).Value),
             Direction = manager.GetComponentData<Direction>(entity).dir,
             Stamp = new SavedPlacementStamp { Tick = stamp.Tick, Receipt = stamp.ReceiptSequence, Order = stamp.Order },

@@ -5,7 +5,7 @@ using Unity.Transforms;
 
 /// <summary>
 /// 역할·목적: 직접 생성, 현장 완공, 저장 복원이 완공 건물 초기화를 공유하게 한다.
-/// 입력·출력: BuildingId로 설정과 프리팹을 찾고, 설정의 역할과 티어로 런타임 구성을 초기화한다.
+/// 입력·출력: BuildingId로 설정과 프리팹을 찾고, 설정된 기능으로 런타임 구성을 초기화한다.
 /// 이용: 직접 생성, 완공과 저장 복원이 호출한다. 설정이나 프리팹이 누락되면 오류를 기록하고 Null을 반환한다.
 /// 수명·가시화: 반환 Entity는 지연 생성 참조다. 시뮬레이션 생성은 종료 ECB, 복원은 공개 전 World의 전용 ECB에서 실체화한다.
 /// 요청/현장/자재 소비와 실패 보존 정책은 호출자가 소유한다.
@@ -13,11 +13,10 @@ using Unity.Transforms;
 public static class BuildingLifecycleUtility
 {
     internal static Entity CreateConstructionSite(ref EntityCommandBuffer ecb, int2 origin, int2 baseSize,
-        DirectionEnum direction, in ConstructionSite state, in PlacementStamp stamp, in PlannedBuildingSettings settings)
+        DirectionEnum direction, in ConstructionSite state, in PlacementStamp stamp, in PlannedBuildingSettings settings, in FixedString128Bytes displayName)
     {
         Entity site = ecb.CreateEntity();
-        RuntimeEntityDebugNames.SetConstructionSite(ecb, site, state.TargetBuildingType);
-        ecb.AddComponent(site, new BuildingType(BuildingTypeEnum.ConstructionSite, 0));
+        RuntimeEntityDebugNames.SetConstructionSite(ecb, site, displayName);
         ecb.AddComponent(site, new BuildingFootprint(baseSize));
         ecb.AddComponent(site, new GridPosition(origin));
         ecb.AddComponent(site, new Direction(direction));
@@ -148,9 +147,9 @@ public static class BuildingLifecycleUtility
 
         // 프리팹 확보 전에는 건물 생성 명령을 기록하지 않는다. 공사 완료 호출자는 Null을 보고 현장/자재를 보존할 수 있다.
         Entity newBuilding = RuntimePrefabLifecycleUtility.Instantiate(ref ecb, prefabEntity);
-        RuntimeEntityDebugNames.SetBuilding(ecb, newBuilding, config.BuildingType, config.Tier);
+        RuntimeEntityDebugNames.SetBuilding(ecb, newBuilding, config);
 
-        ecb.AddComponent(newBuilding, new BuildingType(config.BuildingType, config.Tier, config.BuildingId));
+        ecb.AddComponent(newBuilding, new BuildingIdentity(config.BuildingId));
         ecb.AddComponent(newBuilding, new BuildingFootprint(config.Footprint));
         ecb.AddComponent(newBuilding, new GridPosition(position));
         ecb.AddComponent(newBuilding, new Direction(direction));
@@ -158,16 +157,7 @@ public static class BuildingLifecycleUtility
         RecordVisualTransform(ref ecb, newBuilding, LocalTransform.FromPosition(spawnPosition), config.Footprint,
             direction, fitFootprint: !hasAuthoredPostTransform);
 
-        int totalStorageCapacity = config.BuildingType is BuildingTypeEnum.MainFacility or BuildingTypeEnum.DroneStation
-            ? config.StorageCapacity + config.DroneStationStorageCapacity
-            : config.StorageCapacity;
-        AttachTypeSpecificComponents(ref ecb, newBuilding, config.BuildingType, direction, config.Speed, totalStorageCapacity);
-        if (DroneStationRangeUtility.IsStationType(config.BuildingType))
-        {
-            ecb.AddComponent(newBuilding, new DroneStationStorage { DedicatedSlotCount = config.DroneStationStorageCapacity });
-            ecb.AddBuffer<DockedDroneElement>(newBuilding);
-            ecb.AddBuffer<DroneChargingPreparationElement>(newBuilding);
-        }
+        AttachConfiguredFeatures(ref ecb, newBuilding, config, direction);
 
         return newBuilding;
     }
@@ -198,119 +188,128 @@ public static class BuildingLifecycleUtility
         return Entity.Null;
     }
 
-    public static void AttachTypeSpecificComponents(
-        ref EntityCommandBuffer ecb,
-        Entity building,
-        BuildingTypeEnum type,
-        DirectionEnum direction,
-        float speed,
-        int storageCapacity)
+    internal static void AttachConfiguredFeatures(ref EntityCommandBuffer ecb, Entity building, in BuildingConfigElement config,
+        DirectionEnum direction)
     {
-        switch (type)
+        if (config.BeltTransport.IsPresent)
         {
-            case BuildingTypeEnum.Belt:
-                float beltSpeed = speed > 0f ? speed : 2.0f;
-                ecb.AddComponent(building, new BeltComponent(math.min(beltSpeed, GameConstants.MaxBeltSpeed)));
-                break;
+            float beltSpeed = config.BeltTransport.Speed > 0f ? config.BeltTransport.Speed : 2f;
+            ecb.AddComponent(building, new BeltComponent(math.min(beltSpeed, GameConstants.MaxBeltSpeed)));
+        }
+        if (config.Mining.IsPresent)
+        {
+            ecb.AddComponent(building, new MinerState(config.Mining.Speed > 0f ? config.Mining.Speed : 1f));
+            ecb.AddComponent<MinerWorkPreparation>(building);
+            ecb.SetComponentEnabled<MinerWorkPreparation>(building, false);
+            ecb.AddComponent<MinerDecision>(building);
+            ecb.SetComponentEnabled<MinerDecision>(building, false);
+            ecb.AddBuffer<ProductSlotElement>(building);
+            ecb.AddBuffer<ProductResult>(building);
+            ecb.AddComponent<BuildingItemOutputDecision>(building);
+            ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);
+        }
+        if (config.Crafting.IsPresent)
+        {
+            ecb.AddComponent(building, new CrafterState(selectedRecipeId: 0, speed: config.Crafting.Speed > 0f ? config.Crafting.Speed : 1f));
+            ecb.AddComponent<CrafterWorkPreparation>(building);
+            ecb.SetComponentEnabled<CrafterWorkPreparation>(building, false);
+            ecb.AddComponent<CrafterDecision>(building);
+            ecb.SetComponentEnabled<CrafterDecision>(building, false);
+            ecb.AddComponent(building, new CrafterStateDecision(CrafterStatusEnum.NoRecipe));
+            ecb.SetComponentEnabled<CrafterStateDecision>(building, false);
+            ecb.AddComponent(building, new Storage(0));
+            ecb.AddComponent(building, new StorageFilter(StorageFilterMode.Whitelist));
+            ecb.AddBuffer<BuildingInputSlotElement>(building);
+            ecb.AddBuffer<StorageSlotElement>(building);
+            ecb.AddBuffer<ProductSlotElement>(building);
+            ecb.AddBuffer<ProductResult>(building);
+            ecb.AddComponent<BuildingItemOutputDecision>(building);
+            ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);
+        }
+        if (config.Research.IsPresent)
+        {
+            ecb.AddComponent<ResearchCycleState>(building);
+            ecb.AddComponent<ResearchInputConfigured>(building);
+            ecb.SetComponentEnabled<ResearchInputConfigured>(building, false);
+            ecb.AddComponent<ResearchWorkPreparation>(building);
+            ecb.SetComponentEnabled<ResearchWorkPreparation>(building, false);
+            ecb.AddComponent<ResearchDecision>(building);
+            ecb.SetComponentEnabled<ResearchDecision>(building, false);
+            ecb.AddComponent(building, new Storage(0));
+            ecb.AddComponent(building, new StorageFilter(StorageFilterMode.Whitelist));
+            ecb.AddBuffer<StorageSlotElement>(building);
+            ecb.AddBuffer<BuildingInputSlotElement>(building);
+            ecb.AddBuffer<ResearchInputLimitElement>(building);
+            ecb.AddBuffer<ResearchRecoveryElement>(building);
+            ecb.AddBuffer<ResearchContributionElement>(building);
+        }
+        if (config.BeltRouting == BeltRoutingMode.Split)
+        {
+            ecb.AddComponent(building, new SplitterRoutingState(Entity.Null, direction, 0));
+            ecb.AddComponent<RoutingTransferDecision>(building);
+            ecb.SetComponentEnabled<RoutingTransferDecision>(building, false);
+        }
+        if (config.BeltRouting == BeltRoutingMode.Merge)
+        {
+            ecb.AddComponent(building, new MergerRoutingState(Entity.Null, direction, 0));
+            ecb.AddComponent<RoutingTransferDecision>(building);
+            ecb.SetComponentEnabled<RoutingTransferDecision>(building, false);
+        }
+        var fuelConfig = config.Power.Generation.FuelStorage;
+        int nonFuelSlots = config.ItemStorage.Slots + config.DroneStation.DroneSlots;
+        if (config.ItemStorage.IsPresent || config.DroneStation.IsPresent || fuelConfig.IsPresent)
+        {
+            AttachStorageComponents(ref ecb, building, nonFuelSlots + fuelConfig.Slots, !config.Mining.IsPresent);
+        }
+        if (config.ItemStorage.IsPresent)
+        {
+            ecb.AddComponent<GeneralItemStorage>(building);
+        }
+        if (config.ItemStorage.FilterEditable)
+        {
+            ecb.AddComponent<EditableStorageFilter>(building);
+        }
 
-            case BuildingTypeEnum.Miner:
-                AttachPowerParticipantComponents(ref ecb, building);
-                AttachPowerConsumerComponents(ref ecb, building);
-                ecb.AddComponent(building, new MinerState(speed > 0f ? speed : 1.0f));
-                ecb.AddComponent<MinerWorkPreparation>(building);
-                ecb.SetComponentEnabled<MinerWorkPreparation>(building, false);
-                ecb.AddComponent<MinerDecision>(building);
-                ecb.SetComponentEnabled<MinerDecision>(building, false);
-                ecb.AddBuffer<ProductSlotElement>(building);
-                ecb.AddBuffer<ProductResult>(building);
-                ecb.AddComponent<BuildingItemOutputDecision>(building);
-                ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);
-                break;
+        if (fuelConfig.IsPresent)
+        {
+            var fuel = new FuelStorageSlots { Start = nonFuelSlots, Count = fuelConfig.Slots, BeltOutput = fuelConfig.BeltOutput };
+            foreach (var definition in fuelConfig.Fuels)
+            {
+                fuel.AllowedItems.Set((byte)definition.ItemType, true);
+            }
+            ecb.AddComponent(building, fuel);
+        }
+        if (config.DroneStation.IsPresent)
+        {
+            AttachDroneStationComponents(ref ecb, building);
+            ecb.AddComponent(building, new DroneStationStorage { DedicatedSlotCount = config.DroneStation.DroneSlots });
+            ecb.AddBuffer<DockedDroneElement>(building);
+        }
+        if (config.DroneCharging)
+        {
+            ecb.AddBuffer<DroneChargingPreparationElement>(building);
+        }
+        if (config.Placement.Indestructible)
+        {
+            ecb.AddComponent<IndestructibleBuilding>(building);
+        }
 
-            // 레시피가 정해지기 전에는 재료를 받지 않는다. Command의 레시피 변경이 품목별 슬롯을 구성한다.
-            case BuildingTypeEnum.Crafter:
-                AttachPowerParticipantComponents(ref ecb, building);
-                AttachPowerConsumerComponents(ref ecb, building);
-                ecb.AddComponent(building, new CrafterState(selectedRecipeId: 0, speed: speed > 0f ? speed : 1.0f));
-                ecb.AddComponent<CrafterWorkPreparation>(building);
-                ecb.SetComponentEnabled<CrafterWorkPreparation>(building, false);
-                ecb.AddComponent<CrafterDecision>(building);
-                ecb.SetComponentEnabled<CrafterDecision>(building, false);
-                ecb.AddComponent(building, new CrafterStateDecision(CrafterStatusEnum.NoRecipe));
-                ecb.SetComponentEnabled<CrafterStateDecision>(building, false);
-                ecb.AddComponent(building, new Storage(0));
-                ecb.AddComponent(building, new StorageFilter(StorageFilterMode.Whitelist));
-                ecb.AddBuffer<BuildingInputSlotElement>(building);
-                ecb.AddBuffer<StorageSlotElement>(building);
-                ecb.AddBuffer<ProductSlotElement>(building);
-                ecb.AddBuffer<ProductResult>(building);
-                ecb.AddComponent<BuildingItemOutputDecision>(building);
-                ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);
-                break;
+        if (config.Power.Grid.IsPresent)
+        {
+            AttachPowerPoleComponents(ref ecb, building);
+        }
+        else if (config.Power.Generation.IsPresent || config.Power.Work.IsPresent || config.DroneCharging)
+        {
+            AttachPowerParticipantComponents(ref ecb, building);
+        }
 
-            case BuildingTypeEnum.Storage:
-                AttachStorageComponents(ref ecb, building, storageCapacity);
-                break;
-
-            case BuildingTypeEnum.DroneStation:
-                AttachDroneStationComponents(ref ecb, building);
-                AttachStorageComponents(ref ecb, building, storageCapacity);
-                AttachPowerParticipantComponents(ref ecb, building);
-                AttachPowerConsumerComponents(ref ecb, building);
-                break;
-
-            case BuildingTypeEnum.Splitter:
-                ecb.AddComponent(building, new SplitterRoutingState(Entity.Null, direction, 0));
-                ecb.AddComponent<RoutingTransferDecision>(building);
-                ecb.SetComponentEnabled<RoutingTransferDecision>(building, false);
-                break;
-
-            case BuildingTypeEnum.Merger:
-                ecb.AddComponent(building, new MergerRoutingState(Entity.Null, direction, 0));
-                ecb.AddComponent<RoutingTransferDecision>(building);
-                ecb.SetComponentEnabled<RoutingTransferDecision>(building, false);
-                break;
-
-            case BuildingTypeEnum.MainFacility:
-                AttachDroneStationComponents(ref ecb, building);
-                ecb.AddComponent<IndestructibleBuilding>(building);
-                AttachStorageComponents(ref ecb, building, storageCapacity);
-                AttachPowerPoleComponents(ref ecb, building);
-                AttachPowerGeneratorComponents(ref ecb, building, false);
-                AttachPowerConsumerComponents(ref ecb, building);
-                break;
-
-            case BuildingTypeEnum.PowerPole:
-                AttachPowerPoleComponents(ref ecb, building);
-                break;
-
-            case BuildingTypeEnum.CoalGenerator:
-                AttachStorageComponents(ref ecb, building, storageCapacity);
-                var fuelFilter = new StorageFilter(StorageFilterMode.Whitelist);
-                fuelFilter.Mask.Set((byte)ItemTypeEnum.Coal, true);
-                ecb.SetComponent(building, fuelFilter);
-                AttachPowerParticipantComponents(ref ecb, building);
-                AttachPowerGeneratorComponents(ref ecb, building, true);
-                break;
-
-            case BuildingTypeEnum.ResearchBuilding:
-                ecb.AddComponent<ResearchCycleState>(building);
-                ecb.AddComponent<ResearchInputConfigured>(building);
-                ecb.SetComponentEnabled<ResearchInputConfigured>(building, false);
-                ecb.AddComponent<ResearchWorkPreparation>(building);
-                ecb.SetComponentEnabled<ResearchWorkPreparation>(building, false);
-                ecb.AddComponent<ResearchDecision>(building);
-                ecb.SetComponentEnabled<ResearchDecision>(building, false);
-                ecb.AddComponent(building, new Storage(0));
-                ecb.AddComponent(building, new StorageFilter(StorageFilterMode.Whitelist));
-                ecb.AddBuffer<StorageSlotElement>(building);
-                ecb.AddBuffer<BuildingInputSlotElement>(building);
-                ecb.AddBuffer<ResearchInputLimitElement>(building);
-                ecb.AddBuffer<ResearchRecoveryElement>(building);
-                ecb.AddBuffer<ResearchContributionElement>(building);
-                AttachPowerParticipantComponents(ref ecb, building);
-                AttachPowerConsumerComponents(ref ecb, building);
-                break;
+        if (config.Power.Generation.IsPresent)
+        {
+            AttachPowerGeneratorComponents(ref ecb, building, fuelConfig.IsPresent);
+        }
+        if (config.Power.Work.IsPresent || config.DroneCharging)
+        {
+            AttachPowerConsumerComponents(ref ecb, building);
         }
     }
 
@@ -350,6 +349,7 @@ public static class BuildingLifecycleUtility
         if (usesFuel)
         {
             ecb.AddComponent<FuelEnergyState>(building);
+            ecb.AddBuffer<PowerFuelSpend>(building);
         }
     }
 
@@ -360,13 +360,16 @@ public static class BuildingLifecycleUtility
         ecb.AddComponent(building, new PowerGridConnection { PowerPole = building, Grid = Entity.Null });
     }
 
-    private static void AttachStorageComponents(ref EntityCommandBuffer ecb, Entity building, int storageCapacity)
+    private static void AttachStorageComponents(ref EntityCommandBuffer ecb, Entity building, int storageCapacity, bool addOutputDecision)
     {
         ecb.AddComponent(building, new Storage(storageCapacity));
         var slots = ecb.AddBuffer<StorageSlotElement>(building);
         slots.Resize(storageCapacity, Unity.Collections.NativeArrayOptions.ClearMemory);
         ecb.AddComponent(building, new StorageFilter());
-        ecb.AddComponent<BuildingItemOutputDecision>(building);
-        ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);
+        if (addOutputDecision)
+        {
+            ecb.AddComponent<BuildingItemOutputDecision>(building);
+            ecb.SetComponentEnabled<BuildingItemOutputDecision>(building, false);
+        }
     }
 }

@@ -11,7 +11,7 @@ public partial struct ResearchWorkPreparationSystem : ISystem
     private EntityQuery _workQuery;
     public void OnCreate(ref SystemState state)
     {
-        _workQuery = SystemAPI.QueryBuilder().WithAll<BuildingType>().WithAll<ResearchCycleState>().WithAllRW<ResearchWorkPreparation>().WithAllRW<ResearchInputConfigured>().WithAllRW<Storage>().WithAllRW<StorageFilter>().WithAllRW<BuildingInputSlotElement>().WithAllRW<ResearchInputLimitElement>().WithAllRW<ResearchRecoveryElement>().WithAllRW<StorageSlotElement>().WithAll<ResearchContributionElement>().WithOptions(EntityQueryOptions.IgnoreComponentEnabledState).Build();
+        _workQuery = SystemAPI.QueryBuilder().WithAll<BuildingIdentity>().WithAll<ResearchCycleState>().WithAllRW<ResearchWorkPreparation>().WithAllRW<ResearchInputConfigured>().WithAllRW<Storage>().WithAllRW<StorageFilter>().WithAllRW<BuildingInputSlotElement>().WithAllRW<ResearchInputLimitElement>().WithAllRW<ResearchRecoveryElement>().WithAllRW<StorageSlotElement>().WithAll<ResearchContributionElement>().WithOptions(EntityQueryOptions.IgnoreComponentEnabledState).Build();
 
         state.RequireForUpdate<ResearchRegistry>();
         state.RequireForUpdate<ItemRegistry>();
@@ -24,7 +24,7 @@ public partial struct ResearchWorkPreparationSystem : ISystem
         state.Dependency = new PrepareResearchWorkJob
         {
             EntityHandle = SystemAPI.GetEntityTypeHandle(),
-            BuildingTypeHandle = SystemAPI.GetComponentTypeHandle<BuildingType>(true),
+            IdentityHandle = SystemAPI.GetComponentTypeHandle<BuildingIdentity>(true),
             ResearchCycleStateHandle = SystemAPI.GetComponentTypeHandle<ResearchCycleState>(true),
             ResearchWorkPreparationHandle = SystemAPI.GetComponentTypeHandle<ResearchWorkPreparation>(false),
             ResearchInputConfiguredHandle = SystemAPI.GetComponentTypeHandle<ResearchInputConfigured>(false),
@@ -55,7 +55,7 @@ public partial struct ResearchWorkPreparationSystem : ISystem
 internal partial struct PrepareResearchWorkJob : IJobChunk
 {
     [ReadOnly] public EntityTypeHandle EntityHandle;
-    [ReadOnly] public ComponentTypeHandle<BuildingType> BuildingTypeHandle;
+    [ReadOnly] public ComponentTypeHandle<BuildingIdentity> IdentityHandle;
     [ReadOnly] public ComponentTypeHandle<ResearchCycleState> ResearchCycleStateHandle;
     public ComponentTypeHandle<ResearchWorkPreparation> ResearchWorkPreparationHandle;
     public ComponentTypeHandle<ResearchInputConfigured> ResearchInputConfiguredHandle;
@@ -79,7 +79,7 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
     public void Execute(in ArchetypeChunk chunk, int unfilteredChunkIndex, bool useEnabledMask, in v128 chunkEnabledMask)
     {
         var entities = chunk.GetNativeArray(EntityHandle);
-        var buildingTypeValues = chunk.GetNativeArray(ref BuildingTypeHandle);
+        var buildingTypeValues = chunk.GetNativeArray(ref IdentityHandle);
         var researchCycleStateValues = chunk.GetNativeArray(ref ResearchCycleStateHandle);
         var researchWorkPreparationValues = chunk.GetNativeArray(ref ResearchWorkPreparationHandle);
         var researchWorkPreparationEnabled = chunk.GetEnabledMask(ref ResearchWorkPreparationHandle);
@@ -133,7 +133,7 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
     [ReadOnly] public BufferLookup<BuildingConfigElement> BuildingConfigs;
     [ReadOnly] public ComponentLookup<PendingBuildingDemolition> Demolition;
 
-    private void ExecuteEntity(Entity entity, in BuildingType type, in ResearchCycleState cycle,
+    private void ExecuteEntity(Entity entity, in BuildingIdentity type, in ResearchCycleState cycle,
         ref ResearchWorkPreparation preparation, EnabledRefRW<ResearchWorkPreparation> prepared,
         EnabledRefRW<ResearchInputConfigured> configured, ref Storage storage, ref StorageFilter filter,
         ref DynamicBuffer<BuildingInputSlotElement> slots, ref DynamicBuffer<ResearchInputLimitElement> limits,
@@ -231,7 +231,7 @@ internal partial struct PrepareResearchWorkJob : IJobChunk
             return;
         }
         preparation.DefinitionIndex = index;
-        preparation.Speed = ResearchRewardUtility.EffectiveSpeed(config.Speed, SpeedBonus);
+        preparation.Speed = ResearchRewardUtility.EffectiveSpeed(config.Research.Speed, SpeedBonus);
         preparation.CanAdvance = cycle.ResearchId == active && active != 0;
         if (recovery.Length > 0)
         {

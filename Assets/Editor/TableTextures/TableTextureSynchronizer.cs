@@ -92,11 +92,6 @@ public static class TableTextureSynchronizer
                     throw new InvalidDataException($"{owner}: missing prefab or duplicate BuildingId.");
                 }
 
-                if (row.Value<string>("buildingType") != entry.Type.ToString() || row.Value<int>("tier") != entry.Tier)
-                {
-                    throw new InvalidDataException($"{owner}: building type and tier must match {entry.Type} tier {entry.Tier}.");
-                }
-
                 AddAssignment(assignments, protectedMaterials, entry.Prefab, "Building", owner, row.Value<string>("textureResourcePath"));
             }
 

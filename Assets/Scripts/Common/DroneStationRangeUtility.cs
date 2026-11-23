@@ -20,8 +20,6 @@ public struct DroneStationActivityBounds
 [BurstCompile]
 public static class DroneStationRangeUtility
 {
-    public static bool IsStationType(BuildingTypeEnum type) =>
-        type == BuildingTypeEnum.MainFacility || type == BuildingTypeEnum.DroneStation;
 
     /// <summary>
     /// 긴 변에 맞춰 짧은 축을 양쪽으로 확장한다. 홀수 여백의 남는 1셀은 양의 축에 둔다.

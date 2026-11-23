@@ -21,7 +21,7 @@ public partial struct PowerGridConnectionDecisionSystem : ISystem
             .WithAll<BuildingFootprint, Direction>()
             .WithNone<PowerPole, PendingBuildingDemolition>()
             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState).Build();
-        _poleQuery = SystemAPI.QueryBuilder().WithAll<PowerPole, BuildingType, GridPosition>()
+        _poleQuery = SystemAPI.QueryBuilder().WithAll<PowerPole, BuildingIdentity, GridPosition>()
             .WithNone<PendingBuildingDemolition>().Build();
     }
 
@@ -42,7 +42,7 @@ public partial struct PowerGridConnectionDecisionSystem : ISystem
             ConfigEntity = configEntity,
             ConfigLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
             PositionLookup = SystemAPI.GetComponentLookup<GridPosition>(true),
-            TypeLookup = SystemAPI.GetComponentLookup<BuildingType>(true),
+            Identities = SystemAPI.GetComponentLookup<BuildingIdentity>(true),
             Inputs = inputs, Ready = inputsReady
         }.Schedule(JobHandle.CombineDependencies(polesReady, state.Dependency));
         var selection = new SelectPowerGridConnectionJob
@@ -73,7 +73,7 @@ internal struct BuildPowerPoleSelectionInputsJob : IJob
     public Entity ConfigEntity;
     [ReadOnly] public BufferLookup<BuildingConfigElement> ConfigLookup;
     [ReadOnly] public ComponentLookup<GridPosition> PositionLookup;
-    [ReadOnly] public ComponentLookup<BuildingType> TypeLookup;
+    [ReadOnly] public ComponentLookup<BuildingIdentity> Identities;
     public NativeList<PowerPoleSelectionInput> Inputs;
     public NativeReference<bool> Ready;
 
@@ -86,7 +86,7 @@ internal struct BuildPowerPoleSelectionInputsJob : IJob
         var configs = ConfigLookup[ConfigEntity];
         foreach (Entity pole in Poles)
         {
-            var type = TypeLookup[pole];
+            var type = Identities[pole];
             if (!BuildingConfigLookupUtility.TryGetConfig(configs, type.BuildingId, out var config))
             {
                 // 선택 순서의 같은 위치에서 미준비로 남기도록 실패 행을 유지한다.
@@ -97,7 +97,7 @@ internal struct BuildPowerPoleSelectionInputsJob : IJob
             Inputs.Add(new PowerPoleSelectionInput
             {
                 Pole = pole, Position = PositionLookup[pole].Value,
-                SupplyRange = config.Power.SupplyRange, IsConfigured = true
+                SupplyRange = config.Power.Grid.SupplyRange, IsConfigured = true
             });
         }
         Ready.Value = true;

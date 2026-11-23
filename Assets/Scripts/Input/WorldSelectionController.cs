@@ -76,7 +76,11 @@ public sealed class WorldSelectionController : MonoBehaviour
 
         if (selected == Entity.Null)
         {
-            using var query = manager.CreateEntityQuery(typeof(BuildingType), typeof(GridPosition), typeof(BuildingFootprint), typeof(Direction));
+            using var query = manager.CreateEntityQuery(new EntityQueryDesc
+            {
+                All = new[] { ComponentType.ReadOnly<GridPosition>(), ComponentType.ReadOnly<BuildingFootprint>(), ComponentType.ReadOnly<Direction>() },
+                Any = new[] { ComponentType.ReadOnly<BuildingIdentity>(), ComponentType.ReadOnly<ConstructionSite>() }
+            });
             using var buildings = query.ToEntityArray(Allocator.Temp);
             foreach (Entity building in buildings)
             {
@@ -128,7 +132,7 @@ public sealed class WorldSelectionController : MonoBehaviour
             return false;
         }
         bool item = manager.HasComponent<ItemIdentity>(entity) && !DroneSchedulingUtility.HasDestroy(manager, entity);
-        if (!manager.HasComponent<BuildingType>(entity) && !manager.HasComponent<DroneWorker>(entity) && !item)
+        if (!manager.HasComponent<BuildingIdentity>(entity) && !manager.HasComponent<ConstructionSite>(entity) && !manager.HasComponent<DroneWorker>(entity) && !item)
         {
             return false;
         }
@@ -210,13 +214,13 @@ public sealed class WorldSelectionController : MonoBehaviour
         {
             using var query = manager.CreateEntityQuery(new EntityQueryDesc
             {
-                All = new[] { ComponentType.ReadOnly<BuildingType>(), ComponentType.ReadOnly<GridPosition>(), ComponentType.ReadOnly<PlacementStamp>() },
+                All = new[] { ComponentType.ReadOnly<BuildingIdentity>(), ComponentType.ReadOnly<GridPosition>(), ComponentType.ReadOnly<PlacementStamp>() },
                 None = new[] { ComponentType.ReadOnly<ConstructionSite>() }
             });
             using var buildings = query.ToEntityArray(Allocator.Temp);
             foreach (Entity building in buildings)
             {
-                if (manager.GetComponentData<BuildingType>(building).BuildingId == _siteBuildingId &&
+                if (manager.GetComponentData<BuildingIdentity>(building).BuildingId == _siteBuildingId &&
                     manager.GetComponentData<GridPosition>(building).Value.Equals(_sitePosition) &&
                     manager.GetComponentData<PlacementStamp>(building).Equals(_siteStamp))
                 {

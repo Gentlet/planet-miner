@@ -35,7 +35,7 @@ public partial struct DroneTaskDecisionSystem : ISystem
         _taskRequests = state.GetEntityQuery(typeof(DroneTaskRequest), typeof(DroneTaskRequestDecision));
         _tasks = state.GetEntityQuery(ComponentType.ReadOnly<DroneLogisticsTask>());
         _sites = state.GetEntityQuery(ComponentType.ReadOnly<ConstructionSite>(), ComponentType.ReadOnly<GridPosition>());
-        _storages = state.GetEntityQuery(ComponentType.ReadOnly<BuildingType>(), ComponentType.ReadOnly<Storage>(),
+        _storages = state.GetEntityQuery(ComponentType.ReadOnly<BuildingIdentity>(), ComponentType.ReadOnly<Storage>(),
             ComponentType.ReadOnly<StorageSlotElement>(), ComponentType.ReadOnly<GridPosition>());
         _workers = state.GetEntityQuery(ComponentType.ReadOnly<DroneWorker>(), ComponentType.ReadOnly<DroneWorkerObservation>(),
             ComponentType.ReadOnly<DroneWorkerAssignment>(), ComponentType.ReadOnly<DroneCargoState>());
@@ -1068,11 +1068,11 @@ public partial struct DroneTaskDecisionSystem : ISystem
                 Entity building = task.Target;
                 if (manager.HasBuffer<StorageSlotElement>(building))
                 {
-                    using var quantities = new NativeHashMap<int, int>(8, Allocator.Temp);
-                    foreach (var slot in manager.GetBuffer<StorageSlotElement>(building, true))
-                        AddDemolitionQuantity(quantities, slot.ItemType, slot.Quantity);
-                    AppendDemolitionExports(tasks, decisions, root, building,
-                        DroneDemolitionUtility.StorageArea(manager, building), quantities);
+                    var area = DroneDemolitionUtility.StorageArea(manager, building);
+                    var slots = manager.GetBuffer<StorageSlotElement>(building, true);
+                    AppendStorageDemolitionExports(manager, tasks, decisions, root, building, area, slots);
+                    if (area == DroneTransportAreaEnum.GeneralStorage && manager.HasComponent<FuelStorageSlots>(building))
+                        AppendStorageDemolitionExports(manager, tasks, decisions, root, building, DroneTransportAreaEnum.Input, slots);
                 }
 
                 if (manager.HasBuffer<ProductSlotElement>(building))
@@ -1111,6 +1111,17 @@ public partial struct DroneTaskDecisionSystem : ISystem
         {
             if (beltItems.IsCreated) beltItems.Dispose();
         }
+    }
+
+    private static void AppendStorageDemolitionExports(EntityManager manager, NativeArray<DroneLogisticsTask> tasks,
+        DynamicBuffer<DroneTaskCreationDecisionElement> decisions, Entity root, Entity building,
+        DroneTransportAreaEnum area, in DynamicBuffer<StorageSlotElement> slots)
+    {
+        DroneTransportEndpointUtility.ReadInventoryRange(manager, building, area, slots.Length, out int start, out int end);
+        using var quantities = new NativeHashMap<int, int>(8, Allocator.Temp);
+        for (int i = start; i < end; i++)
+            AddDemolitionQuantity(quantities, slots[i].ItemType, slots[i].Quantity);
+        AppendDemolitionExports(tasks, decisions, root, building, area, quantities);
     }
 
     private static void AddDemolitionQuantity(NativeHashMap<int, int> quantities, ItemTypeEnum type, int amount)

@@ -70,7 +70,7 @@ internal static class GameDroneSaveValidation
                 throw new InvalidDataException("정박 기록에 유효한 정거장 보관 슬롯이 없습니다.");
             }
             occupiedSlots.Clear();
-            int slotCount = manager.GetComponentData<Storage>(station).SlotCount;
+            int slotCount = StationStorageUtility.NonFuelSlotCount(manager, station, manager.GetComponentData<Storage>(station).SlotCount);
             var items = manager.GetBuffer<StorageSlotElement>(station, true);
             foreach (var entry in docks)
             {

@@ -38,7 +38,8 @@ public struct BuildingItemInputDecision : IComponentData, IEnableableComponent
 /// <summary>
 /// 역할·목적: 보관/생산 건물에서 이번 틱 벨트로 내보낼 실물 하나와 대상 벨트를 전달한다.
 /// 부착 엔티티: StorageSlotElement 또는 ProductSlotElement를 가진 완공 건물 엔티티다.
-/// 생성: BuildingLifecycleUtility가 비활성으로 준비하고 StorageItemOutputDecisionSystem/ProductItemOutputDecisionSystem(Decision)이 출고 후보를 작성한다.
+/// 생성: BuildingLifecycleUtility가 비활성으로 준비한다. 생산품 버퍼가 있는 건물의 출고 후보는 ProductItemOutputDecisionSystem만 작성한다.
+/// 생산품과 연구 입력이 없는 보관 건물의 후보는 StorageItemOutputDecisionSystem이 작성한다. 채굴기의 별도 보관 구간은 생산품이 없을 때 사용한다.
 /// 이용: BeltDestinationReservationSystem(Reservation)이 목적지 경합을 중재하고 BuildingItemStorageApplySystem(StateApply)이 실물 버퍼 제거·벨트 위치·Transfer 요청을 반영한다.
 /// 제거: Apply 후 비활성화하며 컴포넌트는 건물 삭제까지 유지한다. 월드 실물과 출고는 EndBuilding에서 공개한다.
 /// </summary>

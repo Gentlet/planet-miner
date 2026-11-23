@@ -36,7 +36,7 @@ public partial struct SplitterDecisionSystem : ISystem
 
         _splitterQuery = SystemAPI.QueryBuilder()
             .WithAllRW<RoutingTransferDecision>()
-            .WithAll<BuildingType, SplitterRoutingState, GridPosition>()
+            .WithAll<SplitterRoutingState, GridPosition>()
             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState)
             .Build();
     }
@@ -109,7 +109,6 @@ public partial struct SplitterDecisionJob : IJobEntity
         Entity entity,
         ref RoutingTransferDecision decision,
         EnabledRefRW<RoutingTransferDecision> decisionEnabled,
-        in BuildingType buildingType,
         in SplitterRoutingState routingState,
         in GridPosition gridPos)
     {
@@ -122,11 +121,6 @@ public partial struct SplitterDecisionJob : IJobEntity
             return;
         }
 
-        if (buildingType.Type != BuildingTypeEnum.Splitter)
-        {
-            decisionEnabled.ValueRW = false;
-            return;
-        }
 
         int2 splitterPos = gridPos.Value;
 

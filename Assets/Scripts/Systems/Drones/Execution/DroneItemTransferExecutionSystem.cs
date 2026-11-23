@@ -164,12 +164,13 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
         }
 
         var storage = manager.GetBuffer<StorageSlotElement>(source, true);
-        int count = DroneSchedulingUtility.IsTransportKind(task.Kind) && assignment.SourceArea == DroneTransportAreaEnum.GeneralStorage
-            ? storage.Length - StationStorageUtility.ReadDedicatedCount(manager, source)
-            : storage.Length;
+        int start = 0;
+        int count = StationStorageUtility.NonFuelSlotCount(manager, source, storage.Length);
+        if (DroneSchedulingUtility.IsTransportKind(task.Kind))
+            DroneTransportEndpointUtility.ReadInventoryRange(manager, source, assignment.SourceArea, storage.Length, out start, out count);
         bool recoveryOnly = task.Purpose == DroneTransportPurposeEnum.ResearchRecovery;
         var recovery = recoveryOnly ? manager.GetBuffer<ResearchRecoveryElement>(source, true) : default;
-        for (int index = 0; index < count; index++)
+        for (int index = start; index < count; index++)
         {
             var slot = storage[index];
             if (slot.ItemType != type || slot.Quantity <= 0) continue;
@@ -223,8 +224,7 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
                 ItemType = currentType,
                 ItemCount = count
             });
-            bool allowed = StationStorageUtility.IsItemSlotAllowed(slot, slotCount,
-                storageRead.DedicatedSlotCount, type) &&
+            bool allowed = storageRead.AllowsTransport(assignment.DestinationArea, type, slot) &&
                 !storageRead.IsDockOccupied(slot);
             if (hasInputSlots)
             {

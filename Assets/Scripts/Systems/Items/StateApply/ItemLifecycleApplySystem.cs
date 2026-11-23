@@ -80,6 +80,7 @@ public partial struct ItemLifecycleApplySystem : ISystem
                 PrefabDbEntity = prefabDbEntity,
                 ItemPrefabBufferLookup = _itemPrefabBufferLookup,
                 Items = items,
+                FuelSlots = SystemAPI.GetComponentLookup<FuelStorageSlots>(true),
                 DedicatedSlots = SystemAPI.GetComponentLookup<DroneStationStorage>(true),
                 InputSlots = SystemAPI.GetBufferLookup<BuildingInputSlotElement>(true),
                 Docks = SystemAPI.GetBufferLookup<DockedDroneElement>(true),
@@ -154,6 +155,7 @@ public partial struct SpawnItemApplyJob : IJobChunk
     [ReadOnly] public NativeArray<ConstructionSiteWorldItemUtility.Footprint> ConstructionFootprints;
     [ReadOnly] public DynamicBuffer<ItemConfigElement> Items;
     [ReadOnly] public ComponentLookup<DroneStationStorage> DedicatedSlots;
+    [ReadOnly] public ComponentLookup<FuelStorageSlots> FuelSlots;
     [ReadOnly] public BufferLookup<BuildingInputSlotElement> InputSlots;
     [ReadOnly] public BufferLookup<DockedDroneElement> Docks;
     [ReadOnly] public BufferLookup<DroneStationReservedSlotElement> Reserved;
@@ -201,7 +203,16 @@ public partial struct SpawnItemApplyJob : IJobChunk
         if (request.Destination != ItemSpawnDestination.Storage ||
             !StoredBufferLookup.TryGetBuffer(owner, out var storage)) return;
         int dedicated = DedicatedSlots.TryGetComponent(owner, out var station) ? station.DedicatedSlotCount : 0;
-        if (!StationStorageUtility.IsItemSlotAllowed(slot, storage.Length, dedicated, type)) return;
+        bool hasFuel = FuelSlots.TryGetComponent(owner, out var fuel);
+        int nonFuelCount = hasFuel ? fuel.Start : storage.Length;
+        if (slot >= nonFuelCount)
+        {
+            if (!fuel.Allows(type) || slot >= fuel.Start + fuel.Count) return;
+        }
+        else if (!StationStorageUtility.IsItemSlotAllowed(slot, nonFuelCount, dedicated, type))
+        {
+            return;
+        }
         if (Preparing.HasComponent(owner)) return;
         if (InputSlots.TryGetBuffer(owner, out var inputs) &&
             ((uint)slot >= (uint)inputs.Length || inputs[slot].ItemType != type)) return;

@@ -3,7 +3,7 @@ using Unity.Mathematics;
 
 /// <summary>
 /// 역할·목적: 채굴 속도와 미처리 누적 채굴 작업량의 영속 원본이다.
-/// 부착 엔티티: BuildingType=Miner인 완공 채굴기 건물이다.
+/// 부착 엔티티: BuildingIdentity=Miner인 완공 채굴기 건물이다.
 /// 생성: BuildingLifecycleUtility가 설정 속도와 초기 Progress=0으로 붙인다.
 /// 이용: MinerDecisionSystem(Decision)이 채굴 자격을 판단하고 MinerExecutionSystem(Execution)이 실행 가능한 틱의 작업량을 누적하여 최대 한 번 1을 차감한다.
 /// 제거: 채굴 완료는 누적량 일부 소비이며 컴포넌트는 유지한다. 건물 철거/삭제 시 함께 제거한다.

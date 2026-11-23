@@ -220,7 +220,7 @@ internal static class DroneStationAutomationUtility
     {
         var items = manager.GetBuffer<StorageSlotElement>(station, true);
         var docks = manager.GetBuffer<DockedDroneElement>(station, true);
-        int slotCount = manager.GetComponentData<Storage>(station).SlotCount;
+        int slotCount = StationStorageUtility.NonFuelSlotCount(manager, station, manager.GetComponentData<Storage>(station).SlotCount);
         bool hasReservations = slotCount > 0 && manager.HasBuffer<DroneStationReservedSlotElement>(station);
         var reservations = hasReservations ? manager.GetBuffer<DroneStationReservedSlotElement>(station, true) : default;
         for (int slot = 0; slot < slotCount; slot++)

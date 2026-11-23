@@ -25,7 +25,7 @@ public sealed class WorldPowerOverlayView : PeriodicWorldView
         public Entity Entity;
         public Entity Grid;
         public int2 Position;
-        public BuildingPowerConfig Power;
+        public BuildingPowerGridConfig Power;
         public PlacementStamp Stamp;
         public bool HasStamp;
     }
@@ -171,8 +171,8 @@ public sealed class WorldPowerOverlayView : PeriodicWorldView
         }
         foreach (var config in manager.GetBuffer<BuildingConfigElement>(query.GetSingletonEntity(), true))
         {
-            if (config.BuildingType is BuildingTypeEnum.PowerPole or BuildingTypeEnum.MainFacility or BuildingTypeEnum.DroneStation ||
-                config.Power.MaximumGeneration > 0f || config.Power.MaximumConsumption > 0f)
+            if (config.Power.Grid.IsPresent || config.DroneCharging ||
+                config.Power.Generation.MaximumGeneration > 0f || config.Power.Work.MaximumConsumption > 0f)
             {
                 _definitions.Add(config.BuildingId, config);
             }
@@ -225,14 +225,14 @@ public sealed class WorldPowerOverlayView : PeriodicWorldView
         _poles.Clear();
         using var query = manager.CreateEntityQuery(new EntityQueryDesc
         {
-            All = new[] { ComponentType.ReadOnly<PowerPole>(), ComponentType.ReadOnly<BuildingType>(),
+            All = new[] { ComponentType.ReadOnly<PowerPole>(), ComponentType.ReadOnly<BuildingIdentity>(),
                 ComponentType.ReadOnly<GridPosition>(), ComponentType.ReadOnly<PowerGridConnection>() },
             None = new[] { ComponentType.ReadOnly<PendingBuildingDemolition>() }
         });
         using var entities = query.ToEntityArray(Allocator.Temp);
         foreach (Entity entity in entities)
         {
-            int buildingId = manager.GetComponentData<BuildingType>(entity).BuildingId;
+            int buildingId = manager.GetComponentData<BuildingIdentity>(entity).BuildingId;
             if (!_definitions.TryGetValue(buildingId, out var config))
             {
                 continue;
@@ -243,7 +243,7 @@ public sealed class WorldPowerOverlayView : PeriodicWorldView
                 Entity = entity,
                 Grid = manager.GetComponentData<PowerGridConnection>(entity).Grid,
                 Position = manager.GetComponentData<GridPosition>(entity).Value,
-                Power = config.Power,
+                Power = config.Power.Grid,
                 HasStamp = hasStamp,
                 Stamp = hasStamp ? manager.GetComponentData<PlacementStamp>(entity) : default
             });
@@ -266,10 +266,10 @@ public sealed class WorldPowerOverlayView : PeriodicWorldView
             var candidate = item.Candidate;
             var config = _definitions[candidate.BuildingId];
             valid++;
-            if (config.BuildingType == BuildingTypeEnum.PowerPole)
+            if (config.Power.Grid.IsPresent)
             {
                 placesPole = true;
-                if (DrawProposedPole(candidate.OriginPosition, config.Power))
+                if (DrawProposedPole(candidate.OriginPosition, config.Power.Grid))
                 {
                     connected++;
                 }
@@ -298,7 +298,7 @@ public sealed class WorldPowerOverlayView : PeriodicWorldView
         }
     }
 
-    private bool DrawProposedPole(int2 position, BuildingPowerConfig power)
+    private bool DrawProposedPole(int2 position, BuildingPowerGridConfig power)
     {
         DrawSupplyRange(position, power.SupplyRange, focused: true);
         DrawConnectionRange(position, power.ConnectionRange);

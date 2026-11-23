@@ -78,7 +78,7 @@ internal static class DroneStationLifecycleUtility
     }
 
     public static int ReserveSlot(in DroneStationRequest request, int preferred, int maxStack,
-        ComponentLookup<Storage> storages, ComponentLookup<DroneStationStorage> dedicated,
+        ComponentLookup<Storage> storages, ComponentLookup<DroneStationStorage> dedicated, ComponentLookup<FuelStorageSlots> fuelSlots,
         BufferLookup<StorageSlotElement> items, BufferLookup<DockedDroneElement> docked,
         NativeParallelHashMap<Entity, DroneStationSlotRange> ranges, NativeList<DroneStationSlot> slots,
         BufferLookup<DroneStationReservedSlotElement> reserved)
@@ -90,7 +90,7 @@ internal static class DroneStationLifecycleUtility
         {
             range = new DroneStationSlotRange
             {
-                Start = slots.Length, Count = storages[station].SlotCount, Dedicated = dedicated[station].DedicatedSlotCount
+                Start = slots.Length, Count = fuelSlots.TryGetComponent(station, out var fuel) ? fuel.Start : storages[station].SlotCount, Dedicated = dedicated[station].DedicatedSlotCount
             };
             for (int index = 0; index < range.Count; index++)
             {
@@ -120,6 +120,8 @@ internal static class DroneStationLifecycleUtility
         for (int index = 0; index < range.Count; index++)
         {
             int candidate = preferred >= 0 ? preferred : StationStorageUtility.SearchSlot(index, range.Count, range.Dedicated, ItemTypeEnum.Drone);
+            if ((uint)candidate >= (uint)range.Count)
+                return -1;
             var slot = slots[range.Start + candidate];
             if (hasReservations && DroneStationRelocationUtility.IsReserved(reservations, candidate, request.RelocationTask, request.RelocationMemberIndex))
             {

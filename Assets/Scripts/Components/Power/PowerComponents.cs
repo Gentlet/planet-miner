@@ -19,7 +19,7 @@ public struct PowerGridConnection : IComponentData
     public Entity Grid;
 }
 
-/// <summary>연료 종류·소비처에 독립적인 영속 에너지 잔량. 연료 처리 소유자가 관리하고 석탄 수량은 StorageSlotElement가 소유한다.</summary>
+/// <summary>연료 종류·소비처에 독립적인 영속 에너지 잔량. 연료 처리 소유자가 관리하고 연료 실물 수량은 StorageSlotElement가 소유한다.</summary>
 public struct FuelEnergyState : IComponentData
 {
     public float RemainingEnergy;
@@ -44,7 +44,6 @@ public struct PowerGeneratorSupplyPlan : IComponentData, IEnableableComponent
     public float AvailableEnergy;
     public float AllocatedEnergy;
     public float ExpectedFuelEnergy;
-    public int FuelItemCount;
     public float RemainingEnergyAfterConsumption;
 }
 
@@ -59,3 +58,12 @@ public struct PowerSupplyReservation : IComponentData, IEnableableComponent
     public float AllocatedEnergy;
 }
 
+
+/// <summary>Reservation이 작성하는 이번 틱 슬롯별 연료 계획. Execution이 전체 검증 후 차감한다.</summary>
+[InternalBufferCapacity(0)]
+public struct PowerFuelSpend : IBufferElementData
+{
+    public int Slot;
+    public ItemTypeEnum ItemType;
+    public int Quantity;
+}

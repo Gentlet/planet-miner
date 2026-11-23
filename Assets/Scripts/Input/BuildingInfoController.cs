@@ -69,7 +69,11 @@ public sealed class BuildingInfoController : PeriodicWorldView
     public string Title { get; private set; }
     public string Details { get; private set; }
     public string Feedback { get; private set; }
-    public BuildingTypeEnum Type { get; private set; }
+    public bool HasCrafting { get; private set; }
+    public bool HasEditableFilter { get; private set; }
+    public bool HasGeneralStorage { get; private set; }
+    public bool HasInput { get; private set; }
+    public bool HasProductOutput { get; private set; }
     public bool HasSelection { get; private set; }
     public int SelectedRecipe { get; private set; }
     public bool CanEditRecipe { get; private set; }
@@ -123,7 +127,11 @@ public sealed class BuildingInfoController : PeriodicWorldView
         Drones.Clear();
         ItemTypes.Clear();
         RecipeIds.Clear();
-        Type = BuildingTypeEnum.None;
+        HasCrafting = false;
+        HasEditableFilter = false;
+        HasGeneralStorage = false;
+        HasInput = false;
+        HasProductOutput = false;
         CanEditRecipe = false;
         HasSelection = CanSubmit();
         if (!HasSelection)
@@ -137,15 +145,21 @@ public sealed class BuildingInfoController : PeriodicWorldView
         var manager = _world.EntityManager;
         Entity entity = _selection.Selected;
         _text.Clear();
-        if (manager.HasComponent<BuildingType>(entity))
+        HasCrafting = manager.HasComponent<CrafterState>(entity);
+        HasEditableFilter = manager.HasComponent<EditableStorageFilter>(entity);
+        HasGeneralStorage = DroneTransportEndpointUtility.IsArea(manager, entity, DroneTransportAreaEnum.GeneralStorage);
+        HasInput = DroneTransportEndpointUtility.IsArea(manager, entity, DroneTransportAreaEnum.Input);
+        HasProductOutput = DroneTransportEndpointUtility.IsArea(manager, entity, DroneTransportAreaEnum.Product);
+        bool site = manager.HasComponent<ConstructionSite>(entity);
+        if (site || manager.HasComponent<BuildingIdentity>(entity))
         {
-            var building = manager.GetComponentData<BuildingType>(entity);
-            Type = building.Type;
-            Title = building.Type + " T" + building.Tier;
+            int buildingId = site ? manager.GetComponentData<ConstructionSite>(entity).TargetBuildingId
+                : manager.GetComponentData<BuildingIdentity>(entity).BuildingId;
+            Title = site ? "공사 현장" : "건물 " + buildingId;
             using var configs = manager.CreateEntityQuery(typeof(BuildingConfig), typeof(BuildingConfigElement));
             if (configs.CalculateEntityCount() == 1 &&
                 BuildingConfigLookupUtility.TryGetConfig(manager.GetBuffer<BuildingConfigElement>(configs.GetSingletonEntity(), true),
-                    building.BuildingId, out var config))
+                    buildingId, out var config))
             {
                 Title = config.DisplayName.ToString() + " T" + config.Tier;
             }
@@ -315,17 +329,19 @@ public sealed class BuildingInfoController : PeriodicWorldView
         if (manager.HasBuffer<StorageSlotElement>(entity))
         {
             bool general = DroneSchedulingUtility.IsStorage(manager, entity);
-            int generalSlots = manager.HasComponent<Storage>(entity) ? manager.GetComponentData<Storage>(entity).SlotCount - StationStorageUtility.ReadDedicatedCount(manager, entity) : int.MaxValue;
             var inventory = manager.GetBuffer<StorageSlotElement>(entity, true);
+            int nonFuel = StationStorageUtility.NonFuelSlotCount(manager, entity, inventory.Length);
+            int generalSlots = nonFuel - StationStorageUtility.ReadDedicatedCount(manager, entity);
             for (int index = 0; index < inventory.Length; index++)
             {
                 var item = inventory[index];
-                if (item.Quantity <= 0 || (general && index >= generalSlots))
+                if (item.Quantity <= 0 || (index >= generalSlots && index < nonFuel && manager.HasComponent<DroneStationStorage>(entity)))
                 {
                     continue;
                 }
 
-                var key = (general ? DroneTransportAreaEnum.GeneralStorage : DroneTransportAreaEnum.Input, item.ItemType);
+                var area = index < generalSlots && general ? DroneTransportAreaEnum.GeneralStorage : DroneTransportAreaEnum.Input;
+                var key = (area, item.ItemType);
                 counts.TryGetValue(key, out int count);
                 counts[key] = count + item.Quantity;
             }

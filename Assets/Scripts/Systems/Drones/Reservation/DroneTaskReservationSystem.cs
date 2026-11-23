@@ -37,7 +37,7 @@ public partial struct DroneTaskReservationSystem : ISystem
         _destinationClaims = state.GetEntityQuery(ComponentType.ReadWrite<DroneStationReservedSlotElement>());
         _demolitions = state.GetEntityQuery(ComponentType.ReadOnly<DroneDemolitionProgress>());
         _automaticRequests = state.GetEntityQuery(ComponentType.ReadOnly<DroneStationRequest>(), ComponentType.ReadOnly<DroneAutomaticStationRequest>());
-        _storages = state.GetEntityQuery(ComponentType.ReadOnly<BuildingType>(), ComponentType.ReadOnly<Storage>(),
+        _storages = state.GetEntityQuery(ComponentType.ReadOnly<BuildingIdentity>(), ComponentType.ReadOnly<Storage>(),
             ComponentType.ReadOnly<StorageSlotElement>(), ComponentType.ReadOnly<GridPosition>());
         _networks = state.GetEntityQuery(ComponentType.ReadOnly<DroneStation>(), ComponentType.ReadOnly<DroneStationNetworkDecision>());
         _transportOwners = state.GetEntityQuery(ComponentType.ReadWrite<DroneTransportReservation>());

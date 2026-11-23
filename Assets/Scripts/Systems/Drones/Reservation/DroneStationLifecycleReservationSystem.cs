@@ -38,6 +38,7 @@ public partial struct DroneStationLifecycleReservationSystem : ISystem
             PendingLookup = SystemAPI.GetBufferLookup<DroneTaskPendingPublicationElement>(true),
             TransportPendingLookup = SystemAPI.GetBufferLookup<DroneTransportPendingReservationElement>(true),
             ActionLookup = SystemAPI.GetComponentLookup<DroneActionReadyRequest>(true),
+            FuelSlots = SystemAPI.GetComponentLookup<FuelStorageSlots>(true),
             Storages = SystemAPI.GetComponentLookup<Storage>(true), Dedicated = SystemAPI.GetComponentLookup<DroneStationStorage>(true),
             Items = SystemAPI.GetBufferLookup<StorageSlotElement>(true), Docked = SystemAPI.GetBufferLookup<DockedDroneElement>(true),
             Docks = SystemAPI.GetComponentLookup<DroneDocked>(true),
@@ -60,6 +61,7 @@ internal struct DroneStationLifecycleReservationJob : IJob
     [ReadOnly] public BufferLookup<DroneTransportPendingReservationElement> TransportPendingLookup;
     [ReadOnly] public ComponentLookup<DroneActionReadyRequest> ActionLookup;
     [ReadOnly] public ComponentLookup<Storage> Storages;
+    [ReadOnly] public ComponentLookup<FuelStorageSlots> FuelSlots;
     [ReadOnly] public ComponentLookup<DroneStationStorage> Dedicated;
     [ReadOnly] public BufferLookup<StorageSlotElement> Items;
     [ReadOnly] public BufferLookup<DockedDroneElement> Docked;
@@ -113,7 +115,7 @@ internal struct DroneStationLifecycleReservationJob : IJob
             {
                 int preferred = Docks.TryGetComponent(request.Drone, out var dock) ? dock.SlotIndex : -1;
                 decision.SlotIndex = DroneStationLifecycleUtility.ReserveSlot(request, preferred, MaximumStack,
-                    Storages, Dedicated, Items, Docked, ranges, slots, Reserved);
+                    Storages, Dedicated, FuelSlots, Items, Docked, ranges, slots, Reserved);
                 decision.Approved = decision.SlotIndex >= 0;
                 if (!decision.Approved)
                 {

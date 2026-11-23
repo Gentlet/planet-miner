@@ -21,7 +21,7 @@ public partial struct DroneStationNetworkDecisionSystem : ISystem
     {
         _allStations = SystemAPI.QueryBuilder().WithAll<DroneStation, DroneStationNetworkDecision>()
             .WithOptions(EntityQueryOptions.IncludeDisabledEntities | EntityQueryOptions.IgnoreComponentEnabledState).Build();
-        _activeStations = SystemAPI.QueryBuilder().WithAll<DroneStation, BuildingType, GridPosition, Direction, BuildingFootprint>()
+        _activeStations = SystemAPI.QueryBuilder().WithAll<DroneStation, BuildingIdentity, GridPosition, Direction, BuildingFootprint>()
             .WithAll<DroneStationNetworkDecision>().WithNone<PendingBuildingDemolition>()
             .WithOptions(EntityQueryOptions.IgnoreComponentEnabledState).Build();
         state.RequireForUpdate<BuildingConfig>();
@@ -39,7 +39,7 @@ public partial struct DroneStationNetworkDecisionSystem : ISystem
             Stations = stations.AsDeferredJobArray(), Bounds = bounds, Parents = parents,
             Config = SystemAPI.GetSingletonEntity<BuildingConfig>(),
             ConfigLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
-            TypeLookup = SystemAPI.GetComponentLookup<BuildingType>(true),
+            TypeLookup = SystemAPI.GetComponentLookup<BuildingIdentity>(true),
             PositionLookup = SystemAPI.GetComponentLookup<GridPosition>(true),
             DirectionLookup = SystemAPI.GetComponentLookup<Direction>(true),
             FootprintLookup = SystemAPI.GetComponentLookup<BuildingFootprint>(true),
@@ -71,7 +71,7 @@ internal struct DecideDroneStationNetworkJob : IJob
     public NativeList<int> Parents;
     public Entity Config;
     [ReadOnly] public BufferLookup<BuildingConfigElement> ConfigLookup;
-    [ReadOnly] public ComponentLookup<BuildingType> TypeLookup;
+    [ReadOnly] public ComponentLookup<BuildingIdentity> TypeLookup;
     [ReadOnly] public ComponentLookup<GridPosition> PositionLookup;
     [ReadOnly] public ComponentLookup<Direction> DirectionLookup;
     [ReadOnly] public ComponentLookup<BuildingFootprint> FootprintLookup;
@@ -99,7 +99,7 @@ internal struct DecideDroneStationNetworkJob : IJob
             Parents[i] = i;
             int2 position = PositionLookup[station].Value;
             Bounds[i] = DroneStationRangeUtility.GetActivityBounds(position,
-                FootprintLookup[station].Size, DirectionLookup[station].dir, config.DroneStationRangeInChunks);
+                FootprintLookup[station].Size, DirectionLookup[station].dir, config.DroneStation.RangeInChunks);
         }
         for (int i = 0; i < Stations.Length; i++)
         {

@@ -27,7 +27,7 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
             .WithAll<DroneCargoState, DroneActivityState, LocalTransform>().Build();
         _tasks = SystemAPI.QueryBuilder().WithAll<DroneLogisticsTask>().Build();
         _sites = SystemAPI.QueryBuilder().WithAll<ConstructionSite, GridPosition>().Build();
-        _storages = SystemAPI.QueryBuilder().WithAll<BuildingType, Storage, StorageSlotElement, GridPosition>().Build();
+        _storages = SystemAPI.QueryBuilder().WithAll<BuildingIdentity, Storage, StorageSlotElement, GridPosition>().Build();
         _assignments = SystemAPI.QueryBuilder().WithAll<DroneTaskAssignment>().Build();
         _requests = SystemAPI.QueryBuilder().WithAll<DroneStationRequest>().Build();
         _results = SystemAPI.QueryBuilder().WithAll<DroneAutomaticStationRequest, DroneStationResult>().Build();
@@ -146,7 +146,7 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
             slotPreview.Clear();
             int preferred = docked ? manager.GetComponentData<DroneDocked>(worker).SlotIndex : -1;
             if (DroneStationLifecycleUtility.ReserveSlot(request, preferred, maximumStack,
-                eligibility.Storages, dedicated, storageLookup, eligibility.Docked, slotRanges, slotPreview, eligibility.Reserved) < 0) continue;
+                eligibility.Storages, dedicated, eligibility.FuelSlots, storageLookup, eligibility.Docked, slotRanges, slotPreview, eligibility.Reserved) < 0) continue;
             intents.Add(new DroneStationAutomationIntent { Drone = request.Drone, Station = request.Station, Operation = request.Operation });
         }
         if (tasks.Length > 0)

@@ -4,9 +4,9 @@ using Unity.Entities;
 using Unity.Mathematics;
 
 /// <summary>
-/// 역할·목적: Decision에서 생산품을 외향 벨트로 내보낼 후보를 찾는다.
-/// 입력·생성자: ItemLifecycleApplySystem의 ProductSlotElement, 회전 footprint와 Synchronization의 벨트/월드 실물 인덱스.
-/// 출력·소유권: 건물의 BuildingItemOutputDecision만 갱신하며 슬롯 0 주생산품을 우선, 없으면 첫 생산품을 고른다.
+/// 역할·목적: Decision에서 생산 건물이 외향 벨트로 내보낼 실물 하나를 선택한다.
+/// 입력·생성자: 생산품 버퍼, 복합 채굴기의 보관 버퍼, 회전 footprint와 최종 공간 인덱스.
+/// 출력·소유권: 생산품 버퍼가 있는 건물의 BuildingItemOutputDecision을 단독 작성한다. 생산품이 없으면 채굴기의 보관 구간을 확인한다.
 /// 이용·정리: BeltDestinationReservationSystem이 목적지 경합을 중재하고 BuildingItemStorageApplySystem이 인계/결정 소비를 수행한다.
 /// 철거 승인 건물/벨트는 제외한다. 생산 버퍼·소유권 원본 및 ECB는 변경하지 않는다.
 /// </summary>
@@ -61,7 +61,12 @@ public partial struct ProductItemOutputDecisionSystem : ISystem
             ItemMap = itemIndex.Map,
             BeltMovementStateLookup = _beltMovementStateLookup,
             DestroyItemRequestLookup = _destroyRequestLookup,
-            PendingDemolitionLookup = _pendingDemolitionLookup
+            PendingDemolitionLookup = _pendingDemolitionLookup,
+            PreparingDemolition = SystemAPI.GetComponentLookup<PreparingStationDemolition>(true),
+            Miners = SystemAPI.GetComponentLookup<MinerState>(true),
+            StationStorage = SystemAPI.GetComponentLookup<DroneStationStorage>(true),
+            FuelSlots = SystemAPI.GetComponentLookup<FuelStorageSlots>(true),
+            StoredItems = SystemAPI.GetBufferLookup<StorageSlotElement>(true)
         };
 
         var readDep = Unity.Jobs.JobHandle.CombineDependencies(beltFence.State.GetReaderDependency(), itemFence.State.GetReaderDependency());
@@ -97,6 +102,11 @@ public partial struct ProductItemOutputDecisionJob : IJobEntity
 
     [ReadOnly]
     public ComponentLookup<PendingBuildingDemolition> PendingDemolitionLookup;
+    [ReadOnly] public ComponentLookup<PreparingStationDemolition> PreparingDemolition;
+    [ReadOnly] public ComponentLookup<MinerState> Miners;
+    [ReadOnly] public ComponentLookup<DroneStationStorage> StationStorage;
+    [ReadOnly] public ComponentLookup<FuelStorageSlots> FuelSlots;
+    [ReadOnly] public BufferLookup<StorageSlotElement> StoredItems;
 
     public void Execute(
         Entity building,
@@ -107,44 +117,49 @@ public partial struct ProductItemOutputDecisionJob : IJobEntity
         in GridPosition gridPos,
         in Direction dir)
     {
-        if (PendingDemolitionLookup.HasComponent(building))
+        outputDecision = default;
+        outputDecisionEnabled.ValueRW = false;
+        if (PendingDemolitionLookup.HasComponent(building) || PreparingDemolition.HasComponent(building))
         {
-            outputDecision.CanOutput = false;
-            outputDecision.ItemType = ItemTypeEnum.None;
-            outputDecision.TargetBeltPosition = int2.zero;
-            outputDecisionEnabled.ValueRW = false;
             return;
         }
 
-        // 1. 생산물 버퍼에 아이템이 전혀 없으면 방출 불가 및 비활성화
-        if (productItems.Length == 0)
+        bool fromProduct = !productItems.IsEmpty;
+        ItemTypeEnum itemType;
+        int slotIndex;
+        if (fromProduct)
         {
-            outputDecision.CanOutput = false;
-            outputDecision.ItemType = ItemTypeEnum.None;
-            outputDecision.TargetBeltPosition = int2.zero;
-            outputDecisionEnabled.ValueRW = false;
-            return;
+            var product = productItems[0];
+            itemType = product.ItemType;
+            slotIndex = product.SlotIndex;
+        }
+        else
+        {
+            // 제작기의 보관 버퍼는 레시피 입력이다. 채굴기의 별도 보관 구간만 출고 후보로 쓴다.
+            if (!Miners.HasComponent(building) || !StoredItems.TryGetBuffer(building, out var storedItems))
+            {
+                return;
+            }
+
+            FuelSlots.TryGetComponent(building, out var fuel);
+            slotIndex = BeltEntryUtility.FindStorageOutputSlot(storedItems, StationStorage.HasComponent(building), fuel);
+            if (slotIndex < 0)
+            {
+                return;
+            }
+            itemType = storedItems[slotIndex].ItemType;
         }
 
         if (BeltEntryUtility.TryFindBuildingOutputBelt(gridPos.Value, footprint.GetEffectiveSize(dir.dir),
                 BeltMap, ItemMap, Directions, PendingDemolitionLookup, DestroyItemRequestLookup, BeltMovementStateLookup,
                 out int2 foundBeltPos))
         {
-            var selected = productItems[0];
-            outputDecision.CanOutput = true;
-            outputDecision.ItemType = selected.ItemType;
-            outputDecision.SourceSlotIndex = selected.SlotIndex;
-            outputDecision.FromProduct = true;
-            outputDecision.TargetBeltPosition = foundBeltPos;
+            outputDecision = new BuildingItemOutputDecision(true, itemType, foundBeltPos)
+            {
+                SourceSlotIndex = slotIndex,
+                FromProduct = fromProduct
+            };
             outputDecisionEnabled.ValueRW = true;
-        }
-        else
-        {
-            // 외향 벨트가 없거나 여유 공간 미확보: 방출 대기
-            outputDecision.CanOutput = false;
-            outputDecision.ItemType = ItemTypeEnum.None;
-            outputDecision.TargetBeltPosition = int2.zero;
-            outputDecisionEnabled.ValueRW = false;
         }
     }
 }
