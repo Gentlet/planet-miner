@@ -3,6 +3,7 @@ using Unity.Burst.Intrinsics;
 using Unity.Collections;
 using Unity.Entities;
 using Unity.Mathematics;
+using Unity.Transforms;
 
 /// <summary>
 /// 역할·목적: 남은 현장의 바닥 정리 상태와 실제 도착 자재로 완공 여부를 판단한다. 취소는 Command에서 먼저 확정된다.
@@ -89,6 +90,7 @@ public partial struct ConstructionLifecycleApplySystem : ISystem
             StampLookup = _stampLookup,
             PrefabBufferLookup = _prefabBufferLookup,
             ConfigBufferLookup = _configBufferLookup,
+            PrefabPostTransforms = SystemAPI.GetComponentLookup<PostTransformMatrix>(true),
             PlannedSettings = SystemAPI.GetComponentLookup<PlannedBuildingSettings>(true),
             OccupiedCells = occupiedCells,
             ItemCount = itemCount
@@ -177,6 +179,8 @@ public partial struct ConstructionCompletionApplyJob : IJobChunk
     [ReadOnly]
     public BufferLookup<BuildingConfigElement> ConfigBufferLookup;
 
+    [ReadOnly] public ComponentLookup<PostTransformMatrix> PrefabPostTransforms;
+
     private void ExecuteEntity(
         Entity siteEntity,
         ref ConstructionSite site,
@@ -223,6 +227,7 @@ public partial struct ConstructionCompletionApplyJob : IJobChunk
             ConfigEntity,
             in PrefabBufferLookup,
             in ConfigBufferLookup,
+            in PrefabPostTransforms,
             ref registryRead.Spawn
         );
 

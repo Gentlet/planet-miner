@@ -3,6 +3,7 @@ using Unity.Collections;
 using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
+using Unity.Transforms;
 
 /// <summary>
 /// 완공 건물/시작 실물의 공통 생성 API를 사용하며, 검증이 끝난 전체 지급만 같은 EndBuilding에 기록한다.
@@ -68,6 +69,7 @@ public partial struct GameBootstrapApplySystem : ISystem
             ItemConfigs = SystemAPI.GetBufferLookup<ItemConfigElement>(true),
             Definitions = SystemAPI.GetBufferLookup<StartingItemConfigElement>(true),
             BuildingPrefabs = SystemAPI.GetBufferLookup<BuildingPrefabElement>(true),
+            PrefabPostTransforms = SystemAPI.GetComponentLookup<PostTransformMatrix>(true),
             ItemPrefabs = SystemAPI.GetBufferLookup<ItemPrefabElement>(true),
             ConfigEntity = SystemAPI.GetSingletonEntity<BuildingConfig>(),
             ItemConfigEntity = SystemAPI.GetSingletonEntity<ItemRegistry>(),
@@ -107,6 +109,7 @@ public struct ApplyGameBootstrapJob : IJob
     [ReadOnly] public BufferLookup<ItemConfigElement> ItemConfigs;
     [ReadOnly] public BufferLookup<StartingItemConfigElement> Definitions;
     [ReadOnly] public BufferLookup<BuildingPrefabElement> BuildingPrefabs;
+    [ReadOnly] public ComponentLookup<PostTransformMatrix> PrefabPostTransforms;
     [ReadOnly] public BufferLookup<ItemPrefabElement> ItemPrefabs;
     public Entity ConfigEntity;
     public Entity ItemConfigEntity;
@@ -168,7 +171,7 @@ public struct ApplyGameBootstrapJob : IJob
 
         Entity main = BuildingLifecycleUtility.SpawnConfiguredBuilding(ref ECB, int2.zero,
             DirectionEnum.Up, RequestData[request].Stamp,
-            BuildingDatabase, config, BuildingPrefabs);
+            BuildingDatabase, config, BuildingPrefabs, PrefabPostTransforms);
         if (main == Entity.Null)
         {
             ECB.DestroyEntity(request);

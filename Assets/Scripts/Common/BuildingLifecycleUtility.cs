@@ -48,6 +48,7 @@ public static class BuildingLifecycleUtility
         Entity configEntity,
         in BufferLookup<BuildingPrefabElement> prefabBufferLookup,
         in BufferLookup<BuildingConfigElement> configBufferLookup,
+        in ComponentLookup<PostTransformMatrix> prefabPostTransforms,
         ref SpawnRegistryReadContext registryRead)
     {
         if (buildingId == 0)
@@ -70,7 +71,7 @@ public static class BuildingLifecycleUtility
         }
 
         return SpawnConfiguredBuilding(ref ecb, position, direction, footprintSize,
-            stamp, prefabDbEntity, config, prefabBufferLookup, ref registryRead);
+            stamp, prefabDbEntity, config, prefabBufferLookup, prefabPostTransforms, ref registryRead);
     }
 
     // 같은 실행에서 검증한 설정의 크기로 생성한다. 별도 승인 크기가 있는 요청은 SpawnBuilding에서 대조한다.
@@ -81,11 +82,12 @@ public static class BuildingLifecycleUtility
         PlacementStamp stamp,
         Entity prefabDbEntity,
         in BuildingConfigElement config,
-        in BufferLookup<BuildingPrefabElement> prefabBufferLookup)
+        in BufferLookup<BuildingPrefabElement> prefabBufferLookup,
+        in ComponentLookup<PostTransformMatrix> prefabPostTransforms)
     {
         var registryRead = new SpawnRegistryReadContext();
         return SpawnConfiguredBuilding(ref ecb, position, direction, int2.zero,
-            stamp, prefabDbEntity, config, prefabBufferLookup, ref registryRead);
+            stamp, prefabDbEntity, config, prefabBufferLookup, prefabPostTransforms, ref registryRead);
     }
 
     private static Entity SpawnConfiguredBuilding(
@@ -97,6 +99,7 @@ public static class BuildingLifecycleUtility
         Entity prefabDbEntity,
         in BuildingConfigElement config,
         in BufferLookup<BuildingPrefabElement> prefabBufferLookup,
+        in ComponentLookup<PostTransformMatrix> prefabPostTransforms,
         ref SpawnRegistryReadContext registryRead)
     {
         // Config가 유일한 크기 원본이다. 전달 크기는 승인된 현장/요청의 일치 확인용이며 덮어쓰기 입력이 아니다.
@@ -120,19 +123,27 @@ public static class BuildingLifecycleUtility
         {
             return RejectMissingDefinition(ref ecb, config.BuildingId, (FixedString32Bytes)"prefab");
         }
-        return SpawnConfiguredBuilding(ref ecb, position, direction, stamp, config, buffer);
+        return SpawnConfiguredBuilding(ref ecb, position, direction, stamp, config, buffer, prefabPostTransforms);
     }
 
     // 준비된 설정과 프리팹으로 생성할 때 역할과 월드 수명의 초기화를 공유한다.
-    internal static Entity SpawnConfiguredBuilding(ref EntityCommandBuffer ecb, int2 position,
+    private static Entity SpawnConfiguredBuilding(ref EntityCommandBuffer ecb, int2 position,
         DirectionEnum direction, PlacementStamp stamp, in BuildingConfigElement config,
-        in DynamicBuffer<BuildingPrefabElement> prefabs)
+        in DynamicBuffer<BuildingPrefabElement> prefabs, in ComponentLookup<PostTransformMatrix> prefabPostTransforms)
     {
         if (!PrefabLookupUtility.TryGetBuildingPrefab(prefabs, config.BuildingId, out Entity prefabEntity))
         {
             return RejectMissingDefinition(ref ecb, config.BuildingId, (FixedString32Bytes)"prefab");
         }
 
+        return InstantiateConfiguredBuilding(ref ecb, position, direction, stamp, config, prefabEntity,
+            prefabPostTransforms.HasComponent(prefabEntity));
+    }
+
+    internal static Entity InstantiateConfiguredBuilding(ref EntityCommandBuffer ecb, int2 position,
+        DirectionEnum direction, PlacementStamp stamp, in BuildingConfigElement config, Entity prefabEntity,
+        bool hasAuthoredPostTransform)
+    {
         float3 spawnPosition = new float3(position.x, position.y, 0f);
 
         // 프리팹 확보 전에는 건물 생성 명령을 기록하지 않는다. 공사 완료 호출자는 Null을 보고 현장/자재를 보존할 수 있다.
@@ -145,6 +156,16 @@ public static class BuildingLifecycleUtility
         ecb.AddComponent(newBuilding, new Direction(direction));
         ecb.AddComponent(newBuilding, stamp);
         ecb.SetComponent(newBuilding, LocalTransform.FromPosition(spawnPosition));
+
+        // 단위 메시의 표시 중심만 옮긴다. 격자 원점과 프리팹에 작성된 표시 변환은 유지한다.
+        int2 effectiveSize = BuildingFootprintUtility.GetEffectiveSize(config.Footprint, direction);
+        if (math.any(effectiveSize > 1) && !hasAuthoredPostTransform)
+        {
+            ecb.AddComponent(newBuilding, new PostTransformMatrix
+            {
+                Value = BuildingFootprintUtility.GetVisualTransform(effectiveSize)
+            });
+        }
 
         int totalStorageCapacity = config.BuildingType is BuildingTypeEnum.MainFacility or BuildingTypeEnum.DroneStation
             ? config.StorageCapacity + config.DroneStationStorageCapacity

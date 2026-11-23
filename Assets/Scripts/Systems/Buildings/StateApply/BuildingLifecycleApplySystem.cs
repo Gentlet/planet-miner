@@ -56,7 +56,8 @@ public partial struct BuildingLifecycleApplySystem : ISystem
             PrefabDbEntity = _buildingPrefabDbQuery.IsEmptyIgnoreFilter ? Entity.Null : _buildingPrefabDbQuery.GetSingletonEntity(),
             ConfigEntity = config,
             PrefabBufferLookup = SystemAPI.GetBufferLookup<BuildingPrefabElement>(true),
-            ConfigBufferLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true)
+            ConfigBufferLookup = SystemAPI.GetBufferLookup<BuildingConfigElement>(true),
+            PrefabPostTransforms = SystemAPI.GetComponentLookup<PostTransformMatrix>(true)
         };
         state.Dependency = spawnJob.Schedule(_spawnQuery, state.Dependency);
         ecbSystem.AddJobHandleForProducer(state.Dependency);
@@ -143,6 +144,7 @@ public partial struct SpawnBuildingApplyJob : IJobChunk
                 ConfigEntity,
                 in PrefabBufferLookup,
                 in ConfigBufferLookup,
+                in PrefabPostTransforms,
                 ref registryRead.Spawn
             );
 
@@ -154,6 +156,7 @@ public partial struct SpawnBuildingApplyJob : IJobChunk
     public EntityCommandBuffer ECB;
     public Entity PrefabDbEntity;
     public Entity ConfigEntity;
+    [ReadOnly] public ComponentLookup<PostTransformMatrix> PrefabPostTransforms;
 
     [ReadOnly]
     public BufferLookup<BuildingPrefabElement> PrefabBufferLookup;

@@ -151,11 +151,12 @@ internal static class GameWorldRestore
             }
 
             var stamp = new PlacementStamp(building.Stamp.Tick, building.Stamp.Order, building.Stamp.Receipt);
-            Entity instance = BuildingLifecycleUtility.SpawnConfiguredBuilding(ref ecb, origin, building.Direction, stamp, config, prefabs);
-            if (instance == Entity.Null)
+            if (!PrefabLookupUtility.TryGetBuildingPrefab(prefabs, config.BuildingId, out Entity prefab))
             {
                 throw new InvalidDataException("복원할 건물 프리팹을 찾을 수 없습니다.");
             }
+            Entity instance = BuildingLifecycleUtility.InstantiateConfiguredBuilding(ref ecb, origin, building.Direction,
+                stamp, config, prefab, manager.HasComponent<PostTransformMatrix>(prefab));
             taskTargets.Add(building.Id, new SavedTaskTarget(instance, config.BuildingType));
             if (building.Disabled)
             {

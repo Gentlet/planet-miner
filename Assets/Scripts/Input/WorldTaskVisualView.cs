@@ -44,6 +44,7 @@ public sealed class WorldTaskVisualView : PeriodicWorldView
     {
         public readonly List<Mesh> Meshes = new List<Mesh>();
         public readonly List<Matrix4x4> Transforms = new List<Matrix4x4>();
+        public bool HasAuthoredPostTransform;
     }
     private sealed class Visual
     {
@@ -267,8 +268,11 @@ public sealed class WorldTaskVisualView : PeriodicWorldView
         {
             return;
         }
-        // 공통 건물 생성은 셀 원점과 기본 회전/크기를 사용한다. 그래픽은 표시 깊이만 앞당기고 방향/영역은 윤곽에 반영한다.
         Matrix4x4 root = Matrix4x4.Translate(new Vector3(record.Position.x, record.Position.y, -0.3f));
+        if (!template.HasAuthoredPostTransform)
+        {
+            root *= (Matrix4x4)BuildingFootprintUtility.GetVisualTransform(size);
+        }
         for (int i = 0; i < visual.Parts.Count; i++)
         {
             Matrix4x4 matrix = root * template.Transforms[i];
@@ -296,7 +300,7 @@ public sealed class WorldTaskVisualView : PeriodicWorldView
         {
             return null;
         }
-        var template = new GhostTemplate();
+        var template = new GhostTemplate { HasAuthoredPostTransform = manager.HasComponent<PostTransformMatrix>(prefab) };
         var entities = new List<Entity> { prefab };
         if (manager.HasBuffer<LinkedEntityGroup>(prefab))
         {
@@ -344,7 +348,7 @@ public sealed class WorldTaskVisualView : PeriodicWorldView
                 relative = matrix * relative;
                 current = manager.GetComponentData<Parent>(current).Value;
             }
-            if (manager.HasComponent<PostTransformMatrix>(prefab))
+            if (template.HasAuthoredPostTransform)
             {
                 relative = (Matrix4x4)manager.GetComponentData<PostTransformMatrix>(prefab).Value * relative;
             }
