@@ -43,6 +43,7 @@ public static class ItemLifecycleUtility
     private static void InitializeItemRole(ref EntityCommandBuffer ecb, Entity item, ItemTypeEnum itemType,
         int2 gridPosition, float3 worldPosition)
     {
+        RuntimeEntityDebugNames.SetItem(ecb, item, itemType);
         ecb.AddComponent(item, new ItemIdentity(itemType));
         ecb.AddComponent(item, new GridPosition(gridPosition));
         ecb.AddComponent(item, LocalTransform.FromPosition(worldPosition));

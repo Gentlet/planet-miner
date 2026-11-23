@@ -132,6 +132,7 @@ public static class StartingItemConfigLoader
                 buffer.Add(definitions[i]);
             }
 
+            RuntimeEntityDebugNames.SetConfig(manager, created, "Config / Starting Items");
             return created;
         }
         catch

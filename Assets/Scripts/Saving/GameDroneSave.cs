@@ -267,7 +267,14 @@ internal static class GameDroneSave
         });
         foreach (var row in snapshot.Entities)
         {
-            GameDroneSaveSchema.Record(ecb, entities[row.Id], row, references);
+            Entity entity = entities[row.Id];
+            GameDroneSaveSchema.Record(ecb, entity, row, references);
+#if UNITY_EDITOR
+            if (row.Kind == SavedDroneKindEnum.Task && row.TryGet(out DroneLogisticsTask task))
+            {
+                RuntimeEntityDebugNames.SetDroneTask(ecb, entity, task.Kind);
+            }
+#endif
         }
         foreach (Entity tombstone in removed)
         {

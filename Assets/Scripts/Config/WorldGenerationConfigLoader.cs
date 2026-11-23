@@ -600,6 +600,7 @@ public static class WorldGenerationConfigLoader
                 DynamicBuffer<FloorVariantElement> variants = entityManager.AddBuffer<FloorVariantElement>(entity);
                 foreach (FloorVariantElement variant in floor.Variants) variants.Add(variant);
             }
+            RuntimeEntityDebugNames.SetConfig(entityManager, entity, "Config / World Generation");
             return entity;
         }
         catch

@@ -322,6 +322,7 @@ namespace PlanetMiner.Config
                     outputs.Add(output);
                 }
 
+                RuntimeEntityDebugNames.SetConfig(entityManager, registryEntity, "Config / Recipes");
                 return registryEntity;
             }
             catch

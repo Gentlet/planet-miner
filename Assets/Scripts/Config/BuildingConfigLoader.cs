@@ -445,6 +445,7 @@ public static class BuildingConfigLoader
                     materialBuffer.Add(materials[i]);
                 }
             }
+            RuntimeEntityDebugNames.SetConfig(entityManager, entity, "Config / Buildings");
             return entity;
         }
         catch

@@ -204,6 +204,7 @@ public static class ResourceGenerationUtility
     internal static void SpawnResourceNode(ref EntityCommandBuffer ecb, Entity prefab, int2 cell, ItemTypeEnum type, int amount)
     {
         Entity entity = RuntimePrefabLifecycleUtility.Instantiate(ref ecb, prefab);
+        RuntimeEntityDebugNames.SetResource(ecb, entity, type);
         ecb.SetComponent(entity, LocalTransform.FromPosition(new float3(cell.x, cell.y, 0f)));
         ecb.AddComponent(entity, new GridPosition(cell));
         ecb.AddComponent(entity, new ResourceNode(type, amount));

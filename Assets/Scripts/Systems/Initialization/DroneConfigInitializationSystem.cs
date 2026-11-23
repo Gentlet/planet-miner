@@ -124,21 +124,25 @@ public partial class DroneConfigInitializationSystem : SystemBase
             {
                 createdCapacity = manager.CreateEntity(typeof(DroneCapacityState));
                 manager.SetComponentData(createdCapacity, new DroneCapacityState { CarryingCapacity = (int)capacity });
+                RuntimeEntityDebugNames.SetConfig(manager, createdCapacity, "Config / Drone Capacity");
             }
             if (batteryCount == 0)
             {
                 createdBattery = manager.CreateEntity(typeof(DroneBatteryConfig));
                 manager.SetComponentData(createdBattery, new DroneBatteryConfig { MaximumCharge = maximumBattery });
+                RuntimeEntityDebugNames.SetConfig(manager, createdBattery, "Config / Drone Battery");
             }
             if (movementCount == 0)
             {
                 createdMovement = manager.CreateEntity(typeof(DroneMovementConfig));
                 manager.SetComponentData(createdMovement, movementConfig);
+                RuntimeEntityDebugNames.SetConfig(manager, createdMovement, "Config / Drone Movement");
             }
             if (chargingCount == 0)
             {
                 createdCharging = manager.CreateEntity(typeof(DroneChargingConfig));
                 manager.SetComponentData(createdCharging, chargingConfig);
+                RuntimeEntityDebugNames.SetConfig(manager, createdCharging, "Config / Drone Charging");
             }
             return true;
         }

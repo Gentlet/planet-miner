@@ -184,6 +184,7 @@ public static class DroneSpawnUtility
     /// <summary>자격/입력 검사가 끝난 같은 Entity의 역할만 기록한다. 위치/표시와 양쪽 보관 참조는 호출자 책임이다.</summary>
     internal static void RecordWorkerRole(ref EntityCommandBuffer ecb, Entity drone, float3 position, float charge, bool hasBattery)
     {
+        RuntimeEntityDebugNames.SetDrone(ecb, drone);
         ecb.AddComponent<DroneWorker>(drone);
         ecb.AddComponent(drone, new DroneWorkerObservation { Position = position, Revision = 1, CanAcceptTask = false });
         ecb.AddComponent<DroneWorkerAssignment>(drone);

@@ -142,6 +142,7 @@ public static class ResearchConfigLoader
                 progress.Add(new ResearchProgressElement { ResearchId = definition.StableId });
             }
             ResearchRewardUtility.InitializeFromProgress(manager, created);
+            RuntimeEntityDebugNames.SetConfig(manager, created, "Config / Research");
             return created;
         }
         catch

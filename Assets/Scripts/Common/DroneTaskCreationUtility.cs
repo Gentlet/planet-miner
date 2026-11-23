@@ -89,6 +89,7 @@ public static class DroneTaskCreationUtility
             RecoveryReason = recoveryReason,
             HasExplicitRecoveryIntent = hasExplicitRecoveryIntent
         });
+        RuntimeEntityDebugNames.SetDroneTask(ecb, task, kind);
         if (kind == DroneLogisticsTaskKindEnum.BuildingDemolition)
             ecb.AddBuffer<DroneStationRelocationMemberElement>(task);
         return task;

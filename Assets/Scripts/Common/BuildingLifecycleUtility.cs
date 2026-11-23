@@ -16,6 +16,7 @@ public static class BuildingLifecycleUtility
         DirectionEnum direction, in ConstructionSite state, in PlacementStamp stamp, in PlannedBuildingSettings settings)
     {
         Entity site = ecb.CreateEntity();
+        RuntimeEntityDebugNames.SetConstructionSite(ecb, site, state.TargetBuildingType);
         ecb.AddComponent(site, new BuildingType(BuildingTypeEnum.ConstructionSite, 0));
         ecb.AddComponent(site, new BuildingFootprint(baseSize));
         ecb.AddComponent(site, new GridPosition(origin));
@@ -136,6 +137,7 @@ public static class BuildingLifecycleUtility
 
         // 프리팹 확보 전에는 건물 생성 명령을 기록하지 않는다. 공사 완료 호출자는 Null을 보고 현장/자재를 보존할 수 있다.
         Entity newBuilding = RuntimePrefabLifecycleUtility.Instantiate(ref ecb, prefabEntity);
+        RuntimeEntityDebugNames.SetBuilding(ecb, newBuilding, config.BuildingType, config.Tier);
 
         ecb.AddComponent(newBuilding, new BuildingType(config.BuildingType, config.Tier, config.BuildingId));
         ecb.AddComponent(newBuilding, new BuildingFootprint(config.Footprint));

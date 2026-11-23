@@ -102,6 +102,7 @@ public partial class ItemConfigInitSystem : SystemBase
                 {
                     buffer.Add(item);
                 }
+                RuntimeEntityDebugNames.SetConfig(entityManager, registryEntity, "Config / Items");
                 return registryEntity;
             }
             catch
