@@ -9,7 +9,7 @@ using UnityEngine;
 /// <summary>
 /// 역할·목적: 외부 배치 요청을 검증해 현장과 자재 요구량을 만들고 기존 벨트의 방향 변경을 처리한다.
 /// 처리 단계: Command. 입력은 BuildingPlacementRequest/후보 버퍼, 건물 설정과 직전 Synchronization의 공간 인덱스다.
-/// 출력·소유권: 현장 생성, PlacementStamp와 요구/보관 버퍼 초기화, 벨트 Direction 변경만 EndCommand에 기록한다.
+/// 출력·소유권: 현장 생성, PlacementStamp와 요구/보관 버퍼 초기화, 벨트 방향과 표시 회전을 EndCommand에 기록한다.
 /// StrictAllOrNothing은 요청 묶음 전체를 거부하고 부분 배치 정책은 승인 후보만 기록한다. 드론 작업/순번 생성은 담당하지 않는다.
 /// 요청 간 중재: Submit의 ReceiptSequence 순서로 처리하고 최종 승인 후보의 셀만 임시 공유한다. 기존 벨트 방향 변경도 첫 승인 우선이다.
 /// 정리·가시화: 처리한 요청/후보는 EndCommand에서 삭제하고 생성 현장도 이때 실체화한다. 공간 점유 등록은 Synchronization까지 기다린다.
@@ -98,6 +98,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
 
         var rawMaterials = state.EntityManager.GetBuffer<BuildingConstructionMaterialElement>(configEntity);
         materials = rawMaterials.ToNativeArray(Allocator.Temp);
+        SystemAPI.TryGetSingletonBuffer<BuildingPrefabElement>(out var buildingPrefabs, true);
 
         // 쿼리/Entity 순서는 접수 순서가 아니다. 후보 버퍼는 구조 변경 없이 처리 직전에 다시 얻는다.
         using var orderedRequests = new NativeList<PendingPlacement>(Allocator.Temp);
@@ -186,7 +187,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                 {
                     // 승인에 사용한 같은 인덱스의 원점 벨트를 EndCommand에서 변경한다.
                     var existingBelt = buildingMap[candidate.OriginPosition];
-                    ecb.SetComponent(existingBelt.Entity, new Direction(candidate.Direction));
+                    RecordBeltDirection(ref ecb, state.EntityManager, existingBelt.Entity, candidate, buildingPrefabs);
                     BuildingPlacementValidationUtility.ClaimApprovedPlacement(candidate, approvedCells);
                     continue;
                 }
@@ -226,6 +227,23 @@ public partial struct BuildingPlacementCommandSystem : ISystem
         }
 
         BuildingPlacementRequestUtility.AdvanceTick(state.EntityManager);
+    }
+
+    private static void RecordBeltDirection(ref EntityCommandBuffer ecb, EntityManager manager, Entity belt,
+        in PlacementCandidate candidate, in DynamicBuffer<BuildingPrefabElement> buildingPrefabs)
+    {
+        ecb.SetComponent(belt, new Direction(candidate.Direction));
+        if (!manager.HasComponent<LocalTransform>(belt))
+        {
+            return;
+        }
+
+        // 프리팹에 자체 보정이 없을 때만 새 방향에 맞춰 단위 메시의 크기와 중심을 보정한다.
+        bool fitFootprint = buildingPrefabs.IsCreated &&
+            PrefabLookupUtility.TryGetBuildingPrefab(buildingPrefabs, candidate.BuildingId, out Entity prefab) &&
+            !manager.HasComponent<PostTransformMatrix>(prefab);
+        BuildingLifecycleUtility.RecordVisualTransform(ref ecb, belt, manager.GetComponentData<LocalTransform>(belt),
+            candidate.FootprintSize, candidate.Direction, fitFootprint);
     }
 
     private static bool HasDuplicateReceipt(NativeArray<PendingPlacement> requests, int index)

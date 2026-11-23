@@ -155,17 +155,8 @@ public static class BuildingLifecycleUtility
         ecb.AddComponent(newBuilding, new GridPosition(position));
         ecb.AddComponent(newBuilding, new Direction(direction));
         ecb.AddComponent(newBuilding, stamp);
-        ecb.SetComponent(newBuilding, LocalTransform.FromPosition(spawnPosition));
-
-        // 단위 메시의 표시 중심만 옮긴다. 격자 원점과 프리팹에 작성된 표시 변환은 유지한다.
-        int2 effectiveSize = BuildingFootprintUtility.GetEffectiveSize(config.Footprint, direction);
-        if (math.any(effectiveSize > 1) && !hasAuthoredPostTransform)
-        {
-            ecb.AddComponent(newBuilding, new PostTransformMatrix
-            {
-                Value = BuildingFootprintUtility.GetVisualTransform(effectiveSize)
-            });
-        }
+        RecordVisualTransform(ref ecb, newBuilding, LocalTransform.FromPosition(spawnPosition), config.Footprint,
+            direction, fitFootprint: !hasAuthoredPostTransform);
 
         int totalStorageCapacity = config.BuildingType is BuildingTypeEnum.MainFacility or BuildingTypeEnum.DroneStation
             ? config.StorageCapacity + config.DroneStationStorageCapacity
@@ -179,6 +170,21 @@ public static class BuildingLifecycleUtility
         }
 
         return newBuilding;
+    }
+
+    // 생성과 승인된 벨트 방향 변경은 격자 원점을 그대로 두고 같은 표시 변환을 기록한다.
+    internal static void RecordVisualTransform(ref EntityCommandBuffer ecb, Entity building, LocalTransform transform,
+        int2 footprint, DirectionEnum direction, bool fitFootprint)
+    {
+        transform.Rotation = direction.ToWorldRotation();
+        ecb.SetComponent(building, transform);
+        if (fitFootprint && math.any(footprint > 1))
+        {
+            ecb.AddComponent(building, new PostTransformMatrix
+            {
+                Value = BuildingFootprintUtility.GetVisualPostTransform(footprint, direction)
+            });
+        }
     }
 
     private static Entity RejectMissingDefinition(ref EntityCommandBuffer ecb, int buildingId, FixedString32Bytes definitionName)

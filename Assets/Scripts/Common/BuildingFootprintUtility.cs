@@ -29,11 +29,12 @@ public static class BuildingFootprintUtility
         return GetEffectiveSize(footprint.Size, direction);
     }
 
-    // 원점은 좌하단 셀의 중심이다. 중앙 피벗의 단위 메시를 점유 영역 가운데에 맞춘다.
-    public static float4x4 GetVisualTransform(int2 effectiveSize)
+    // 렌더 회전 전 메시 축으로 중심 오프셋을 되돌려 격자 원점과 회전 후 점유 영역을 맞춘다.
+    public static float4x4 GetVisualPostTransform(int2 footprint, DirectionEnum direction)
     {
-        float2 centerOffset = ((float2)effectiveSize - 1f) * 0.5f;
-        return math.mul(float4x4.Translate(new float3(centerOffset, 0f)),
-            float4x4.Scale(effectiveSize.x, effectiveSize.y, 1f));
+        int2 effectiveSize = GetEffectiveSize(footprint, direction);
+        float3 centerOffset = new float3(((float2)effectiveSize - 1f) * 0.5f, 0f);
+        float3 localOffset = math.rotate(math.inverse(direction.ToWorldRotation()), centerOffset);
+        return float4x4.TRS(localOffset, quaternion.identity, new float3(footprint.x, footprint.y, 1f));
     }
 }

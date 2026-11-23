@@ -268,10 +268,11 @@ public sealed class WorldTaskVisualView : PeriodicWorldView
         {
             return;
         }
-        Matrix4x4 root = Matrix4x4.Translate(new Vector3(record.Position.x, record.Position.y, -0.3f));
+        Matrix4x4 root = Matrix4x4.TRS(new Vector3(record.Position.x, record.Position.y, -0.3f),
+            record.Direction.ToWorldRotation(), Vector3.one);
         if (!template.HasAuthoredPostTransform)
         {
-            root *= (Matrix4x4)BuildingFootprintUtility.GetVisualTransform(size);
+            root *= (Matrix4x4)BuildingFootprintUtility.GetVisualPostTransform(record.Footprint, record.Direction);
         }
         for (int i = 0; i < visual.Parts.Count; i++)
         {

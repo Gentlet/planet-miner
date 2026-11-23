@@ -1,7 +1,7 @@
 using Unity.Mathematics;
 
 /// <summary>
-/// 역할·목적: 방향 enum을 인접 격자 셀을 찾기 위한 int2 오프셋으로 변환한다.
+/// 역할·목적: 방향 enum을 인접 격자 셀 오프셋과 건물 표시 회전으로 변환한다.
 /// 이용: 벨트 이동·건물 입출고·라우팅의 방향 계산에서 호출한다. Up/Right/Down/Left 이외 값은 int2.zero를 반환한다.
 /// 수명·소유권: 값만 반환하는 순수 확장 함수이며 ECS 상태나 메모리 수명을 소유하지 않는다.
 /// </summary>
@@ -25,5 +25,17 @@ public static class DirectionExtensions
             default:
                 return int2.zero;
         }
+    }
+
+    // 건물 이미지는 Up(+Y)을 기준으로 작성한다.
+    public static quaternion ToWorldRotation(this DirectionEnum direction)
+    {
+        return direction switch
+        {
+            DirectionEnum.Right => quaternion.RotateZ(-math.PI / 2f),
+            DirectionEnum.Down => quaternion.RotateZ(math.PI),
+            DirectionEnum.Left => quaternion.RotateZ(math.PI / 2f),
+            _ => quaternion.identity
+        };
     }
 }
