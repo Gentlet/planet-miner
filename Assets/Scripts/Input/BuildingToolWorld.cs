@@ -184,12 +184,17 @@ public static class BuildingToolWorld
         }
     }
 
-    public static void RequestRange(EntityManager manager, int2 first, int2 last)
+    public static void RequestBuildingRemoval(EntityManager manager, int2 first, int2 last)
     {
         foreach (Entity entity in Select(manager, first, last))
         {
             RequestTarget(manager, entity);
         }
+    }
+
+    public static void RequestRange(EntityManager manager, int2 first, int2 last)
+    {
+        RequestBuildingRemoval(manager, first, last);
         foreach (Entity request in DroneTaskRequestUtility.SubmitRecoveryRange(manager, first, last))
         {
             manager.AddComponent<WorldUiRequestOwner>(request);

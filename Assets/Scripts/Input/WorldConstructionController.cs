@@ -34,9 +34,9 @@ public sealed class WorldConstructionController : MonoBehaviour
     public int CatalogVersion { get; private set; }
     public IReadOnlyList<BuildingToolCatalogEntry> Catalog => _catalog;
     public IReadOnlyList<BuildingToolPreviewItem> Preview => _preview;
-    public bool HasSelectionRectangle => _dragging && (Mode == BuildingToolModeEnum.CopyRange || Mode == BuildingToolModeEnum.DemolitionRange);
+    public bool HasSelectionRectangle => _dragging && Mode is BuildingToolModeEnum.None or BuildingToolModeEnum.CopyRange or BuildingToolModeEnum.DemolitionRange;
     public int2 SelectionFirst => _start;
-    public int2 SelectionLast => _pointer;
+    public int2 SelectionLast => Mode == BuildingToolModeEnum.None ? BuildingToolGeometry.GetLineEnd(_start, _pointer) : _pointer;
     public event Action Changed;
 
     private void OnEnable()
@@ -201,17 +201,18 @@ public sealed class WorldConstructionController : MonoBehaviour
         {
             if (frame.Construction.SettingsModifier)
             {
+                if (Mode == BuildingToolModeEnum.None && _dragging && frame.Secondary.HasFlag(WorldPointerButtonStateEnum.Released))
+                {
+                    ProcessGesture(WorldPointerButtonStateEnum.Released);
+                }
                 CopySettings();
+                return;
             }
-            else if (Mode != BuildingToolModeEnum.None)
+            if (Mode != BuildingToolModeEnum.None)
             {
                 CancelTool();
+                return;
             }
-            else
-            {
-                BuildingToolWorld.RequestTarget(_world.EntityManager, BuildingToolWorld.TargetAt(_world.EntityManager, _pointer));
-            }
-            return;
         }
         if (frame.Primary.HasFlag(WorldPointerButtonStateEnum.Pressed))
         {
@@ -221,7 +222,8 @@ public sealed class WorldConstructionController : MonoBehaviour
                 return;
             }
         }
-        ProcessPrimaryGesture(frame.Primary);
+        // 모드 없음은 우클릭 철거, 선택 도구는 좌클릭 제스처를 소유한다.
+        ProcessGesture(Mode == BuildingToolModeEnum.None ? frame.Secondary : frame.Primary);
     }
 
     internal bool HandleFrame(WorldInputFrame frame)
@@ -252,8 +254,9 @@ public sealed class WorldConstructionController : MonoBehaviour
         Changed?.Invoke();
     }
 
-    private void ProcessPrimaryGesture(WorldPointerButtonStateEnum buttons)
+    private void ProcessGesture(WorldPointerButtonStateEnum buttons)
     {
+        bool usesSecondary = Mode == BuildingToolModeEnum.None;
         bool released = buttons.HasFlag(WorldPointerButtonStateEnum.Released);
         bool pressed = buttons.HasFlag(WorldPointerButtonStateEnum.Pressed);
         bool held = buttons.HasFlag(WorldPointerButtonStateEnum.Held);
@@ -264,7 +267,8 @@ public sealed class WorldConstructionController : MonoBehaviour
             CompleteGesture();
             _dragging = false;
         }
-        if (pressed && Mode != BuildingToolModeEnum.None)
+        // 빈 복사를 끝내 도구가 해제되면 같은 좌클릭으로 우클릭 철거를 시작할 수 없다.
+        if (pressed && usesSecondary == (Mode == BuildingToolModeEnum.None))
         {
             _start = _pointer;
             _dragging = true;
@@ -323,7 +327,11 @@ public sealed class WorldConstructionController : MonoBehaviour
 
     private void CompleteGesture()
     {
-        if (Mode == BuildingToolModeEnum.CopyRange)
+        if (Mode == BuildingToolModeEnum.None)
+        {
+            BuildingToolWorld.RequestBuildingRemoval(_world.EntityManager, SelectionFirst, SelectionLast);
+        }
+        else if (Mode == BuildingToolModeEnum.CopyRange)
         {
             _blueprint = BuildingToolWorld.Copy(_world.EntityManager, _start, _pointer);
             Mode = _blueprint.Count > 0 ? BuildingToolModeEnum.Blueprint : BuildingToolModeEnum.None;

@@ -19,6 +19,15 @@ public static class BuildingToolGeometry
             (long)origin.x + size.x - 1 >= min.x && (long)origin.y + size.y - 1 >= min.y;
     }
 
+    public static int2 GetLineEnd(int2 first, int2 pointer)
+    {
+        long dx = (long)pointer.x - first.x;
+        long dy = (long)pointer.y - first.y;
+        return System.Math.Abs(dx) >= System.Math.Abs(dy)
+            ? new int2(pointer.x, first.y)
+            : new int2(first.x, pointer.y);
+    }
+
     public static bool TryLine(PlacementRequestCandidateElement template, int2 first, int2 last,
         int maximumCandidates, List<PlacementRequestCandidateElement> result)
     {
@@ -28,17 +37,16 @@ public static class BuildingToolGeometry
         {
             return false;
         }
-        long dx = (long)last.x - first.x;
-        long dy = (long)last.y - first.y;
-        bool horizontal = System.Math.Abs(dx) >= System.Math.Abs(dy);
-        long distance = horizontal ? System.Math.Abs(dx) : System.Math.Abs(dy);
+        int2 end = GetLineEnd(first, last);
+        bool horizontal = end.y == first.y;
+        long offset = horizontal ? (long)end.x - first.x : (long)end.y - first.y;
         int step = horizontal ? size.x : size.y;
-        long count = distance / step + 1;
+        long count = System.Math.Abs(offset) / step + 1;
         if (count > maximumCandidates)
         {
             return false;
         }
-        int sign = (horizontal ? dx : dy) < 0 ? -1 : 1;
+        int sign = offset < 0 ? -1 : 1;
         for (int i = 0; i < count; i++)
         {
             var candidate = template;
