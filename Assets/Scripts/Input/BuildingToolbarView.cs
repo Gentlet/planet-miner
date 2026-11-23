@@ -8,6 +8,7 @@ public sealed class BuildingToolbarView : MonoBehaviour
 {
     private WorldConstructionController _tools;
     private WorldInputController _input;
+    private WorldPowerOverlayView _powerOverlay;
     private GameObject _rootObject;
     [SerializeField] private PanelSettings _panelSettings;
     private VisualElement _buttons;
@@ -25,6 +26,7 @@ public sealed class BuildingToolbarView : MonoBehaviour
 
         _tools = GetComponent<WorldConstructionController>();
         _input = GetComponent<WorldInputController>();
+        _powerOverlay = GetComponent<WorldPowerOverlayView>();
         _rootObject = new GameObject("Construction toolbar") { hideFlags = HideFlags.DontSave };
         _rootObject.SetActive(false);
         _rootObject.transform.SetParent(transform, false);
@@ -61,6 +63,10 @@ public sealed class BuildingToolbarView : MonoBehaviour
         _status.style.fontSize = 14;
         bar.Add(_status);
         _tools.Changed += Refresh;
+        if (_powerOverlay != null)
+        {
+            _powerOverlay.StatusChanged += RefreshStatus;
+        }
         _catalogVersion = -1;
         Refresh();
     }
@@ -88,7 +94,17 @@ public sealed class BuildingToolbarView : MonoBehaviour
             AddButton(Key("RangeDemolish") + " 범위 작업", _tools.BeginDemolitionRange);
             AddButton(Key("Cancel") + " 해제", _tools.CancelTool);
         }
-        _status.text = _tools.Status + "    " + Key("Rotate") + " 회전 / " + Key("SettingsModifier") + "+우/좌클릭 설정 복사/붙이기";
+        RefreshStatus();
+    }
+
+    private void RefreshStatus()
+    {
+        string status = _tools.Status;
+        if (_powerOverlay != null && !string.IsNullOrEmpty(_powerOverlay.Status))
+        {
+            status += " / " + _powerOverlay.Status;
+        }
+        _status.text = status + "    " + Key("Rotate") + " 회전 / " + Key("SettingsModifier") + "+우/좌클릭 설정 복사/붙이기";
     }
 
     private string Key(string action)
@@ -145,6 +161,10 @@ public sealed class BuildingToolbarView : MonoBehaviour
         if (_tools != null)
         {
             _tools.Changed -= Refresh;
+        }
+        if (_powerOverlay != null)
+        {
+            _powerOverlay.StatusChanged -= RefreshStatus;
         }
         _buttons = null;
         _status = null;

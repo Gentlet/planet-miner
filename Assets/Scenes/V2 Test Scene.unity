@@ -147,6 +147,7 @@ GameObject:
   - component: {fileID: 446882981}
   - component: {fileID: 446882982}
   - component: {fileID: 446882983}
+  - component: {fileID: 446882984}
   m_Layer: 0
   m_Name: Main Camera
   m_TagString: MainCamera
@@ -481,6 +482,18 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::GameSessionStartView
   _panelSettings: {fileID: 11400000, guid: bb186cb6d07118d42a96d88d898699ee, type: 2}
   _prefabSubScene: {fileID: 1562192956}
+--- !u!114 &446882984
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 446882963}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8cdfc0d01e426284ba1bc9ef7175e820, type: 3}
+  m_Name:
+  m_EditorClassIdentifier: Assembly-CSharp::WorldPowerOverlayView
 --- !u!1 &966265738
 GameObject:
   m_ObjectHideFlags: 0
