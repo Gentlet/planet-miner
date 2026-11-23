@@ -51,6 +51,24 @@ public class ItemPrefabDatabaseAuthoring : MonoBehaviour
         Prefabs.AddRange(DiscoverResourcePrefabs());
     }
 
+    /// <summary>Editor 도구와 Baker가 선택한 로드 모드의 원형 등록 입력을 공유한다.</summary>
+    public IEnumerable<ItemPrefabEntry> GetRegisteredPrefabs()
+    {
+        var entries = LoadMode == ItemPrefabLoadMode.ResourcesAutoLoad ? DiscoverResourcePrefabs() : Prefabs;
+        foreach (var entry in entries)
+        {
+            if (entry.Prefab == null)
+            {
+                continue;
+            }
+
+            if (entry.Type != ItemTypeEnum.None)
+            {
+                yield return entry;
+            }
+        }
+    }
+
     private static IEnumerable<ItemPrefabEntry> DiscoverResourcePrefabs()
     {
         var loadedPrefabs = Resources.LoadAll<GameObject>("Prefabs/Item");
@@ -78,25 +96,10 @@ public class ItemPrefabDatabaseAuthoring : MonoBehaviour
             AddComponent<ItemPrefabDatabase>(entity);
             var buffer = AddBuffer<ItemPrefabElement>(entity);
 
-            if (authoring.LoadMode == ItemPrefabLoadMode.ResourcesAutoLoad)
+            foreach (var entry in authoring.GetRegisteredPrefabs())
             {
-                foreach (var entry in DiscoverResourcePrefabs())
-                {
-                    Entity prefabEntity = GetEntity(entry.Prefab, TransformUsageFlags.Dynamic);
-                    buffer.Add(new ItemPrefabElement(entry.Type, prefabEntity));
-                }
-            }
-            else
-            {
-                for (int i = 0; i < authoring.Prefabs.Count; i++)
-                {
-                    var entry = authoring.Prefabs[i];
-                    if (entry.Prefab != null && entry.Type != ItemTypeEnum.None)
-                    {
-                        Entity prefabEntity = GetEntity(entry.Prefab, TransformUsageFlags.Dynamic);
-                        buffer.Add(new ItemPrefabElement(entry.Type, prefabEntity));
-                    }
-                }
+                Entity prefabEntity = GetEntity(entry.Prefab, TransformUsageFlags.Dynamic);
+                buffer.Add(new ItemPrefabElement(entry.Type, prefabEntity));
             }
         }
     }

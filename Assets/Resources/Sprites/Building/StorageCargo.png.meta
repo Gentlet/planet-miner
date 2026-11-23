@@ -1,0 +1,743 @@
+fileFormatVersion: 2
+guid: a5cd65af5f5f17a419ee56ec99a3e8b0
+TextureImporter:
+  internalIDToNameTable:
+  - first:
+      213: 4753775929781452429
+    second: StorageCargo_0
+  - first:
+      213: -3215889540103665067
+    second: StorageCargo_1
+  - first:
+      213: 1123635495502924310
+    second: StorageCargo_2
+  - first:
+      213: -5591917913147741580
+    second: StorageCargo_3
+  - first:
+      213: -1827351467442244299
+    second: StorageCargo_4
+  - first:
+      213: 7649485515165200300
+    second: StorageCargo_5
+  - first:
+      213: 90993309729781885
+    second: StorageCargo_6
+  - first:
+      213: -8148715247148315917
+    second: StorageCargo_7
+  - first:
+      213: 5281022258472288895
+    second: StorageCargo_8
+  - first:
+      213: -2002660063803933001
+    second: StorageCargo_9
+  - first:
+      213: -8428670416606458949
+    second: StorageCargo_10
+  - first:
+      213: 3610117520974983049
+    second: StorageCargo_11
+  - first:
+      213: -1260917794094169815
+    second: StorageCargo_12
+  - first:
+      213: -2198993370615488831
+    second: StorageCargo_13
+  - first:
+      213: -6359346124277224299
+    second: StorageCargo_14
+  - first:
+      213: 6000211661731415643
+    second: StorageCargo_15
+  - first:
+      213: -205770110403851824
+    second: StorageCargo_16
+  - first:
+      213: -2347562987880841600
+    second: StorageCargo_17
+  - first:
+      213: -968302349371300015
+    second: StorageCargo_18
+  - first:
+      213: 3471419520512959571
+    second: StorageCargo_19
+  - first:
+      213: -6079680957252673719
+    second: StorageCargo_20
+  - first:
+      213: 5936930266934505448
+    second: StorageCargo_21
+  - first:
+      213: 3161048279936428877
+    second: StorageCargo_22
+  - first:
+      213: 4599377079184660343
+    second: StorageCargo_23
+  externalObjects: {}
+  serializedVersion: 13
+  mipmaps:
+    mipMapMode: 0
+    enableMipMap: 0
+    sRGBTexture: 1
+    linearTexture: 0
+    fadeOut: 0
+    borderMipMap: 0
+    mipMapsPreserveCoverage: 0
+    alphaTestReferenceValue: 0.5
+    mipMapFadeDistanceStart: 1
+    mipMapFadeDistanceEnd: 3
+  bumpmap:
+    convertToNormalMap: 0
+    externalNormalMap: 0
+    heightScale: 0.25
+    normalMapFilter: 0
+    flipGreenChannel: 0
+  isReadable: 0
+  streamingMipmaps: 0
+  streamingMipmapsPriority: 0
+  vTOnly: 0
+  ignoreMipmapLimit: 0
+  grayScaleToAlpha: 0
+  generateCubemap: 6
+  cubemapConvolution: 0
+  seamlessCubemap: 0
+  textureFormat: 1
+  maxTextureSize: 2048
+  textureSettings:
+    serializedVersion: 2
+    filterMode: 1
+    aniso: 1
+    mipBias: 0
+    wrapU: 1
+    wrapV: 1
+    wrapW: 1
+  nPOTScale: 0
+  lightmap: 0
+  compressionQuality: 50
+  spriteMode: 1
+  spriteExtrude: 1
+  spriteMeshType: 1
+  alignment: 0
+  spritePivot: {x: 0.5, y: 0.5}
+  spritePixelsToUnits: 100
+  spriteBorder: {x: 0, y: 0, z: 0, w: 0}
+  spriteGenerateFallbackPhysicsShape: 1
+  alphaUsage: 1
+  alphaIsTransparency: 1
+  spriteTessellationMethod: 0
+  spriteTessellationDetail: -1
+  spriteGeometrySubdivision: -1
+  textureType: 8
+  textureShape: 1
+  singleChannelComponent: 0
+  flipbookRows: 1
+  flipbookColumns: 1
+  maxTextureSizeSet: 0
+  compressionQualitySet: 0
+  textureFormatSet: 0
+  ignorePngGamma: 0
+  applyGammaDecoding: 0
+  swizzle: 50462976
+  cookieLightType: 0
+  platformSettings:
+  - serializedVersion: 4
+    buildTarget: DefaultTexturePlatform
+    maxTextureSize: 128
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  - serializedVersion: 4
+    buildTarget: Standalone
+    maxTextureSize: 2048
+    resizeAlgorithm: 0
+    textureFormat: -1
+    textureCompression: 1
+    compressionQuality: 50
+    crunchedCompression: 0
+    allowsAlphaSplitting: 0
+    overridden: 0
+    ignorePlatformSupport: 0
+    androidETC2FallbackOverride: 0
+    forceMaximumCompressionQuality_BC6H_BC7: 0
+  spriteSheet:
+    serializedVersion: 2
+    sprites:
+    - serializedVersion: 2
+      name: StorageCargo_0
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 0
+        width: 1252
+        height: 1254
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: d8efc64850ec8f140800000000000000
+      internalID: 4753775929781452429
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_1
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 1223
+        width: 20
+        height: 31
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 55a0a35708dde53d0800000000000000
+      internalID: -3215889540103665067
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_2
+      rect:
+        serializedVersion: 2
+        x: 85
+        y: 1239
+        width: 29
+        height: 15
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 61ac876a784f79f00800000000000000
+      internalID: 1123635495502924310
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_3
+      rect:
+        serializedVersion: 2
+        x: 121
+        y: 1249
+        width: 13
+        height: 5
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 47a6fa509448562b0800000000000000
+      internalID: -5591917913147741580
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_4
+      rect:
+        serializedVersion: 2
+        x: 187
+        y: 1243
+        width: 23
+        height: 11
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 535f057a581f3a6e0800000000000000
+      internalID: -1827351467442244299
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_5
+      rect:
+        serializedVersion: 2
+        x: 258
+        y: 1249
+        width: 17
+        height: 5
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: cafeaed1c8e682a60800000000000000
+      internalID: 7649485515165200300
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_6
+      rect:
+        serializedVersion: 2
+        x: 460
+        y: 1223
+        width: 25
+        height: 31
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: d78716fdee5434100800000000000000
+      internalID: 90993309729781885
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_7
+      rect:
+        serializedVersion: 2
+        x: 487
+        y: 1237
+        width: 14
+        height: 17
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 3fa4aed08a2f9ee80800000000000000
+      internalID: -8148715247148315917
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_8
+      rect:
+        serializedVersion: 2
+        x: 506
+        y: 1247
+        width: 8
+        height: 6
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: f720c2793c5f94940800000000000000
+      internalID: 5281022258472288895
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_9
+      rect:
+        serializedVersion: 2
+        x: 760
+        y: 1245
+        width: 15
+        height: 9
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 7befa13584f1534e0800000000000000
+      internalID: -2002660063803933001
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_10
+      rect:
+        serializedVersion: 2
+        x: 1037
+        y: 1239
+        width: 42
+        height: 15
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: bbb0451c9e8570b80800000000000000
+      internalID: -8428670416606458949
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_11
+      rect:
+        serializedVersion: 2
+        x: 1127
+        y: 1247
+        width: 38
+        height: 7
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 98fa02312c6b91230800000000000000
+      internalID: 3610117520974983049
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_12
+      rect:
+        serializedVersion: 2
+        x: 137
+        y: 1237
+        width: 9
+        height: 10
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 9214c0862f1508ee0800000000000000
+      internalID: -1260917794094169815
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_13
+      rect:
+        serializedVersion: 2
+        x: 506
+        y: 1229
+        width: 8
+        height: 7
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 1ce56012e2b9b71e0800000000000000
+      internalID: -2198993370615488831
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_14
+      rect:
+        serializedVersion: 2
+        x: 522
+        y: 1229
+        width: 8
+        height: 7
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 59ce2baa4601fb7a0800000000000000
+      internalID: -6359346124277224299
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_15
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 994
+        width: 16
+        height: 43
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: b5648a247b8054350800000000000000
+      internalID: 6000211661731415643
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_16
+      rect:
+        serializedVersion: 2
+        x: 1238
+        y: 935
+        width: 14
+        height: 18
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 0d94cffbc25f42df0800000000000000
+      internalID: -205770110403851824
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_17
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 477
+        width: 9
+        height: 25
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 08ef18386e7cb6fd0800000000000000
+      internalID: -2347562987880841600
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_18
+      rect:
+        serializedVersion: 2
+        x: 1226
+        y: 310
+        width: 7
+        height: 8
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 1572c8eb426ef82f0800000000000000
+      internalID: -968302349371300015
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_19
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 262
+        width: 7
+        height: 31
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 354288a59a5fc2030800000000000000
+      internalID: 3471419520512959571
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_20
+      rect:
+        serializedVersion: 2
+        x: 1236
+        y: 262
+        width: 18
+        height: 21
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 94f5f338162a0aba0800000000000000
+      internalID: -6079680957252673719
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_21
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 208
+        width: 6
+        height: 23
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 8ef65e06f96346250800000000000000
+      internalID: 5936930266934505448
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_22
+      rect:
+        serializedVersion: 2
+        x: 0
+        y: 158
+        width: 5
+        height: 20
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: d4b6873a9ac4edb20800000000000000
+      internalID: 3161048279936428877
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    - serializedVersion: 2
+      name: StorageCargo_23
+      rect:
+        serializedVersion: 2
+        x: 17
+        y: 17
+        width: 14
+        height: 12
+      alignment: 0
+      pivot: {x: 0, y: 0}
+      border: {x: 0, y: 0, z: 0, w: 0}
+      customData: 
+      outline: []
+      physicsShape: []
+      tessellationDetail: -1
+      bones: []
+      spriteID: 77710e0c51544df30800000000000000
+      internalID: 4599377079184660343
+      vertices: []
+      indices: 
+      edges: []
+      weights: []
+    outline: []
+    customData: 
+    physicsShape: []
+    bones: []
+    spriteID: 5e97eb03825dee720800000000000000
+    internalID: 0
+    vertices: []
+    indices: 
+    edges: []
+    weights: []
+    secondaryTextures: []
+    spriteCustomMetadata:
+      entries: []
+    nameFileIdTable:
+      StorageCargo_0: 4753775929781452429
+      StorageCargo_1: -3215889540103665067
+      StorageCargo_10: -8428670416606458949
+      StorageCargo_11: 3610117520974983049
+      StorageCargo_12: -1260917794094169815
+      StorageCargo_13: -2198993370615488831
+      StorageCargo_14: -6359346124277224299
+      StorageCargo_15: 6000211661731415643
+      StorageCargo_16: -205770110403851824
+      StorageCargo_17: -2347562987880841600
+      StorageCargo_18: -968302349371300015
+      StorageCargo_19: 3471419520512959571
+      StorageCargo_2: 1123635495502924310
+      StorageCargo_20: -6079680957252673719
+      StorageCargo_21: 5936930266934505448
+      StorageCargo_22: 3161048279936428877
+      StorageCargo_23: 4599377079184660343
+      StorageCargo_3: -5591917913147741580
+      StorageCargo_4: -1827351467442244299
+      StorageCargo_5: 7649485515165200300
+      StorageCargo_6: 90993309729781885
+      StorageCargo_7: -8148715247148315917
+      StorageCargo_8: 5281022258472288895
+      StorageCargo_9: -2002660063803933001
+  mipmapLimitGroupName: 
+  pSDRemoveMatte: 0
+  userData: 
+  assetBundleName: 
+  assetBundleVariant: 
