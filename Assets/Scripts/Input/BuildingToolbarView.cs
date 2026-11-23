@@ -9,6 +9,7 @@ public sealed class BuildingToolbarView : MonoBehaviour
     private WorldConstructionController _tools;
     private WorldInputController _input;
     private WorldPowerOverlayView _powerOverlay;
+    private WorldDroneCoverageView _droneCoverage;
     private GameObject _rootObject;
     [SerializeField] private PanelSettings _panelSettings;
     private VisualElement _buttons;
@@ -27,6 +28,7 @@ public sealed class BuildingToolbarView : MonoBehaviour
         _tools = GetComponent<WorldConstructionController>();
         _input = GetComponent<WorldInputController>();
         _powerOverlay = GetComponent<WorldPowerOverlayView>();
+        _droneCoverage = GetComponent<WorldDroneCoverageView>();
         _rootObject = new GameObject("Construction toolbar") { hideFlags = HideFlags.DontSave };
         _rootObject.SetActive(false);
         _rootObject.transform.SetParent(transform, false);
@@ -67,6 +69,10 @@ public sealed class BuildingToolbarView : MonoBehaviour
         {
             _powerOverlay.StatusChanged += RefreshStatus;
         }
+        if (_droneCoverage != null)
+        {
+            _droneCoverage.StatusChanged += RefreshStatus;
+        }
         _catalogVersion = -1;
         Refresh();
     }
@@ -103,6 +109,11 @@ public sealed class BuildingToolbarView : MonoBehaviour
         if (_powerOverlay != null && !string.IsNullOrEmpty(_powerOverlay.Status))
         {
             status += " / " + _powerOverlay.Status;
+        }
+        string droneStatus = _droneCoverage != null ? _droneCoverage.Status : string.Empty;
+        if (!string.IsNullOrEmpty(droneStatus))
+        {
+            status += " / " + droneStatus;
         }
         _status.text = status + "    " + Key("Rotate") + " 회전 / " + Key("SettingsModifier") + "+우/좌클릭 설정 복사/붙이기";
     }
@@ -165,6 +176,10 @@ public sealed class BuildingToolbarView : MonoBehaviour
         if (_powerOverlay != null)
         {
             _powerOverlay.StatusChanged -= RefreshStatus;
+        }
+        if (_droneCoverage != null)
+        {
+            _droneCoverage.StatusChanged -= RefreshStatus;
         }
         _buttons = null;
         _status = null;

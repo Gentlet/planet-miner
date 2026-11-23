@@ -38,7 +38,7 @@ public sealed class WorldPowerOverlayView : PeriodicWorldView
     private WorldSelectionController _selection;
     private Camera _camera;
     private World _world;
-    private PowerOverlayMesh _mesh;
+    private WorldOverlayMesh _mesh;
     private bool _hasPoleSnapshot;
     private bool _hasTool;
 
@@ -58,7 +58,7 @@ public sealed class WorldPowerOverlayView : PeriodicWorldView
         _tools = GetComponent<WorldConstructionController>();
         _selection = GetComponent<WorldSelectionController>();
         _camera = GetComponent<Camera>();
-        _mesh = new PowerOverlayMesh(shader);
+        _mesh = new WorldOverlayMesh(shader, "Power overlay", 1500);
         _tools.Changed += OnToolChanged;
         _selection.Changed += Refresh;
         Refresh();
@@ -195,17 +195,10 @@ public sealed class WorldPowerOverlayView : PeriodicWorldView
                 _placements.Add(item);
                 changed = true;
             }
-            else
+            else if (!_placements[count].MatchesPlacement(item))
             {
-                var previous = _placements[count];
-                if (previous.Candidate.BuildingId != candidate.BuildingId ||
-                    !previous.Candidate.OriginPosition.Equals(candidate.OriginPosition) ||
-                    !previous.Candidate.FootprintSize.Equals(candidate.FootprintSize) ||
-                    previous.Candidate.Direction != candidate.Direction || previous.Validation.IsValid != item.Validation.IsValid)
-                {
-                    _placements[count] = item;
-                    changed = true;
-                }
+                _placements[count] = item;
+                changed = true;
             }
             count++;
         }
@@ -445,10 +438,7 @@ public sealed class WorldPowerOverlayView : PeriodicWorldView
     private void DrawSupplyRange(int2 position, int range, bool focused)
     {
         GetRangeBounds(position, range, out var min, out var max);
-        Vector2 center = (min + max) * 0.5f;
-        Vector2 size = max - min;
-        if (!GeometryUtility.TestPlanesAABB(_viewFrustum,
-                new Bounds(new Vector3(center.x, center.y, PowerOverlayMesh.Depth), new Vector3(size.x, size.y, 0.1f))))
+        if (!WorldOverlayMesh.IsVisible(_viewFrustum, min, max))
         {
             return;
         }
@@ -466,14 +456,14 @@ public sealed class WorldPowerOverlayView : PeriodicWorldView
 
     private static void GetRangeBounds(int2 center, int range, out Vector2 min, out Vector2 max)
     {
-        min = new Vector2((long)center.x - range - 0.5f, (long)center.y - range - 0.5f);
-        max = new Vector2((long)center.x + range + 0.5f, (long)center.y + range + 0.5f);
+        WorldOverlayMesh.GetCellBounds((long)center.x - range, (long)center.y - range,
+            (long)center.x + range, (long)center.y + range, out min, out max);
     }
 
     private static void GetFootprintBounds(int2 origin, int2 size, out Vector2 min, out Vector2 max)
     {
-        min = new Vector2(origin.x - 0.5f, origin.y - 0.5f);
-        max = new Vector2((long)origin.x + size.x - 0.5f, (long)origin.y + size.y - 0.5f);
+        WorldOverlayMesh.GetCellBounds(origin.x, origin.y, (long)origin.x + size.x - 1,
+            (long)origin.y + size.y - 1, out min, out max);
     }
 
     private void Hide()

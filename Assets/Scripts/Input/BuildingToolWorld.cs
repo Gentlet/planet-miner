@@ -21,6 +21,12 @@ public readonly struct BuildingToolPreviewItem
         Candidate = candidate;
         Validation = validation;
     }
+
+    internal bool MatchesPlacement(in BuildingToolPreviewItem other) =>
+        Candidate.BuildingId == other.Candidate.BuildingId &&
+        Candidate.OriginPosition.Equals(other.Candidate.OriginPosition) &&
+        Candidate.FootprintSize.Equals(other.Candidate.FootprintSize) &&
+        Candidate.Direction == other.Candidate.Direction && Validation.IsValid == other.Validation.IsValid;
 }
 
 /// <summary>입력/표시용 읽기와 공개 요청 접수만 담당한다. UI는 점유나 소유권 원본을 쓰지 않는다.</summary>

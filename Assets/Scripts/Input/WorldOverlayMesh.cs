@@ -2,10 +2,10 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.Rendering;
 
-/// <summary>월드 전력 오버레이의 면과 선을 한 메시로 그리며 자신이 생성한 렌더 리소스를 회수한다.</summary>
-internal sealed class PowerOverlayMesh
+/// <summary>월드 오버레이의 면과 선을 한 메시로 그리며 자신이 생성한 렌더 리소스를 회수한다.</summary>
+internal sealed class WorldOverlayMesh
 {
-    internal const float Depth = -0.16f;
+    private const float Depth = -0.16f;
     private readonly List<Vector3> _vertices = new();
     private readonly List<Color32> _colors = new();
     private readonly List<int> _indices = new();
@@ -14,19 +14,33 @@ internal sealed class PowerOverlayMesh
     private readonly Material _material;
     private readonly MeshRenderer _renderer;
 
-    public PowerOverlayMesh(Shader shader)
+    public WorldOverlayMesh(Shader shader, string name, int sortingOrder)
     {
-        _root = new GameObject("Power overlay") { hideFlags = HideFlags.DontSave, layer = 2 };
-        _mesh = new Mesh { name = "Power overlay geometry", hideFlags = HideFlags.HideAndDontSave, indexFormat = IndexFormat.UInt32 };
+        _root = new GameObject(name) { hideFlags = HideFlags.DontSave, layer = 2 };
+        _mesh = new Mesh { name = name, hideFlags = HideFlags.HideAndDontSave, indexFormat = IndexFormat.UInt32 };
         _mesh.MarkDynamic();
         _material = new Material(shader) { hideFlags = HideFlags.HideAndDontSave };
         _root.AddComponent<MeshFilter>().sharedMesh = _mesh;
         _renderer = _root.AddComponent<MeshRenderer>();
         _renderer.sharedMaterial = _material;
-        _renderer.sortingOrder = 1500;
+        _renderer.sortingOrder = sortingOrder;
         _renderer.shadowCastingMode = ShadowCastingMode.Off;
         _renderer.receiveShadows = false;
         _renderer.enabled = false;
+    }
+
+    public static void GetCellBounds(long minX, long minY, long maxX, long maxY, out Vector2 min, out Vector2 max)
+    {
+        min = new Vector2(minX - 0.5f, minY - 0.5f);
+        max = new Vector2(maxX + 0.5f, maxY + 0.5f);
+    }
+
+    public static bool IsVisible(Plane[] frustum, Vector2 min, Vector2 max)
+    {
+        Vector2 center = (min + max) * 0.5f;
+        Vector2 size = max - min;
+        return GeometryUtility.TestPlanesAABB(frustum,
+            new Bounds(new Vector3(center.x, center.y, Depth), new Vector3(size.x, size.y, 0.1f)));
     }
 
     public void Begin()
