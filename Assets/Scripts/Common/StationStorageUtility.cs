@@ -1,9 +1,9 @@
 using Unity.Entities;
 
-/// <summary>일반 슬롯 뒤의 드론 전용 구간과 활성 정박 점유를 공통 해석한다. 소유권/예약을 변경하지 않는다.</summary>
+/// <summary>일반 슬롯 뒤의 드론 전용 구간과 보관 자격을 공통 해석한다.</summary>
 public static class StationStorageUtility
 {
-    public static bool IsItemSlotAllowed(int slot, int total, int dedicated, ItemTypeEnum type, bool beltInput = false)
+    public static bool IsItemSlotAllowed(int slot, int total, int dedicated, ItemTypeEnum type)
     {
         if (slot < 0 || slot >= total)
         {
@@ -14,11 +14,34 @@ public static class StationStorageUtility
         {
             return true;
         }
-        if (type != ItemTypeEnum.Drone)
+        return type == ItemTypeEnum.Drone ? slot >= general : slot < general;
+    }
+
+    internal static bool IsDroneStorageSlot(int slot, int nonFuelCount, int dedicated) =>
+        (uint)slot < (uint)nonFuelCount && slot >= nonFuelCount - dedicated;
+
+    internal static bool CanStoreDrone(in DynamicBuffer<StorageSlotElement> items,
+        in DynamicBuffer<DroneStationReservedSlotElement> reservations, int nonFuelCount, int dedicated, int maxStack)
+    {
+        for (int index = nonFuelCount - dedicated; index < nonFuelCount; index++)
         {
-            return slot < general;
+            if (FreeDroneQuantity(items[index], reservations, index, maxStack) > 0)
+            {
+                return true;
+            }
         }
-        return !beltInput || slot >= general;
+        return false;
+    }
+
+    internal static int FreeDroneQuantity(in StorageSlotElement item,
+        in DynamicBuffer<DroneStationReservedSlotElement> reservations, int slot, int maxStack,
+        Entity relocationTask = default, int memberIndex = -1)
+    {
+        int free = InventorySlotUtility.FreeQuantity(item, ItemTypeEnum.Drone, maxStack);
+        return reservations.IsCreated && free > 0
+            ? DroneDemolitionStorageUtility.FreeQuantity(reservations, slot, ItemTypeEnum.Drone, free,
+                Entity.Null, relocationTask, memberIndex)
+            : free;
     }
 
     public static int NonFuelSlotCount(EntityManager manager, Entity owner, int total)
@@ -55,42 +78,10 @@ public static class StationStorageUtility
         return index < dedicated ? total - dedicated + index : index - dedicated;
     }
 
-    public static bool IsDockOccupied(EntityManager manager, Entity station, int slot, Entity except = default)
+    internal static bool MatchesDockedWorker(EntityManager manager, Entity station, Entity worker)
     {
-        if (!manager.HasBuffer<DockedDroneElement>(station))
-        {
-            return false;
-        }
-        return IsDockOccupied(manager.GetBuffer<DockedDroneElement>(station, true), slot, except);
-    }
-
-    internal static bool IsDockOccupied(DynamicBuffer<DockedDroneElement> docks, int slot, Entity except = default)
-    {
-        foreach (var entry in docks)
-        {
-            if (entry.SlotIndex == slot && entry.Drone != except)
-            {
-                return true;
-            }
-        }
-        return false;
-    }
-
-    // 정박 중인 드론은 빈 보관 슬롯 하나를 점유하며, 수행자도 같은 정거장과 슬롯을 가리킨다.
-    internal static bool MatchesDockedWorker(EntityManager manager, Entity station, DockedDroneElement entry,
-        int slotCount, DynamicBuffer<StorageSlotElement> items)
-    {
-        if ((uint)entry.SlotIndex >= (uint)slotCount || (uint)entry.SlotIndex >= (uint)items.Length)
-        {
-            return false;
-        }
-        if (items[entry.SlotIndex].Quantity != 0 || !manager.HasComponent<DroneWorker>(entry.Drone) ||
-            manager.HasComponent<ItemIdentity>(entry.Drone) || !manager.HasComponent<DroneDocked>(entry.Drone))
-        {
-            return false;
-        }
-        var dock = manager.GetComponentData<DroneDocked>(entry.Drone);
-        return dock.Station == station && dock.SlotIndex == entry.SlotIndex;
+        return manager.HasComponent<DroneWorker>(worker) && !manager.HasComponent<ItemIdentity>(worker) &&
+            manager.HasComponent<DroneDocked>(worker) && manager.GetComponentData<DroneDocked>(worker).Station == station;
     }
 
     // 읽기 전용 탐색 한 번의 고정 메타데이터/버퍼만 공유한다. 슬롯 점유 판단은 매번 수행한다.
@@ -98,11 +89,10 @@ public static class StationStorageUtility
     {
         private EntityManager _manager;
         private Entity _storage;
-        private bool _readSlots, _readDedicated, _readStored, _readDocks, _readReservations, _readInputPresence, _readInputs;
+        private bool _readSlots, _readDedicated, _readStored, _readReservations, _readInputPresence, _readInputs;
         private int _slots, _dedicated;
-        private bool _hasDocks, _hasReservations, _hasInputs;
+        private bool _hasReservations, _hasInputs;
         private DynamicBuffer<StorageSlotElement> _stored;
-        private DynamicBuffer<DockedDroneElement> _docks;
         private DynamicBuffer<DroneStationReservedSlotElement> _reservations;
         private DynamicBuffer<BuildingInputSlotElement> _inputs;
 
@@ -153,26 +143,6 @@ public static class StationStorageUtility
                 }
                 return _stored;
             }
-        }
-
-        internal bool IsDockOccupied(int slot)
-        {
-            if (!_readDocks)
-            {
-                _hasDocks = _manager.HasBuffer<DockedDroneElement>(_storage);
-                if (_hasDocks)
-                {
-                    _docks = _manager.GetBuffer<DockedDroneElement>(_storage, true);
-                }
-                _readDocks = true;
-            }
-            return _hasDocks && StationStorageUtility.IsDockOccupied(_docks, slot);
-        }
-
-        internal bool IsReserved(int slot)
-        {
-            ReadReservations();
-            return _hasReservations && DroneStationRelocationUtility.IsReserved(_reservations, slot);
         }
 
         internal int FreeAfterReservations(int slot, ItemTypeEnum type, int free, Entity worker = default)

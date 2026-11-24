@@ -134,8 +134,8 @@ public static class DroneDemolitionUtility
     }
 
     internal static bool CanDrain(EntityManager manager, in DroneLogisticsTask task) =>
-        !manager.HasComponent<PreparingStationDemolition>(task.Target) ||
-        DroneStationRelocationUtility.IsComplete(manager, task.Target);
+        (!manager.HasComponent<PreparingStationDemolition>(task.Target) ||
+            DroneStationRelocationUtility.IsComplete(manager, task.Target));
 
     internal static DroneTransportAreaEnum StorageArea(EntityManager manager, Entity source)
     {

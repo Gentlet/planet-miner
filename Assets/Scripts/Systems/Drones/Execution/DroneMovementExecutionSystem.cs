@@ -142,9 +142,11 @@ public partial struct DroneMovementExecutionSystem : ISystem
             float speed = emergency && battery.CurrentCharge <= 0f ? Config.EmergencySpeed : Config.Speed;
             float step = math.min(distance, math.max(0f, DeltaTime) * speed);
             bool consumesEnergy = !emergency || battery.CurrentCharge > 0f;
+            float poweredDistance = math.max(0f, battery.CurrentCharge) / Config.EnergyPerDistance;
+            bool exhaustsReturnCharge = normalReturn && step > 0f && poweredDistance <= step;
             if (consumesEnergy)
             {
-                step = math.min(step, math.max(0f, battery.CurrentCharge) / Config.EnergyPerDistance);
+                step = math.min(step, poweredDistance);
             }
             float2 next = distance <= step ? decision.Target : origin + (decision.Target - origin) * (step / distance);
             double cellX = math.floor((double)next.x);
@@ -161,7 +163,9 @@ public partial struct DroneMovementExecutionSystem : ISystem
             float moved = math.distance(origin, next);
             if (consumesEnergy)
             {
-                battery.CurrentCharge = math.max(0f, battery.CurrentCharge - moved * Config.EnergyPerDistance);
+                // 전력을 모두 써야 할 구간에 좌표 반올림으로 미세 잔량이 남으면 비상 귀환을 시작하지 못한다.
+                battery.CurrentCharge = exhaustsReturnCharge ? 0f :
+                    math.max(0f, battery.CurrentCharge - moved * Config.EnergyPerDistance);
             }
             transform.Position = new float3(next, transform.Position.z);
             position.Value = new int2((int)cellX, (int)cellY);

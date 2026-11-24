@@ -4,7 +4,7 @@ using Unity.Entities;
 using Unity.Jobs;
 using Unity.Mathematics;
 
-/// <summary>접수 순서와 공유 슬롯 예산을 단일 Burst Job에서 중재한다. 새 출고 공간을 같은 계획에 재사용하지 않는다.</summary>
+/// <summary>접수 순서에 따라 수행자 전환과 전용 수납/출고 예산을 중재한다. 정박은 슬롯을 확보하지 않는다.</summary>
 [UpdateInGroup(typeof(DroneReservationGroup))]
 [UpdateAfter(typeof(DroneTaskReservationSystem))]
 public partial struct DroneStationLifecycleReservationSystem : ISystem
@@ -40,8 +40,7 @@ public partial struct DroneStationLifecycleReservationSystem : ISystem
             ActionLookup = SystemAPI.GetComponentLookup<DroneActionReadyRequest>(true),
             FuelSlots = SystemAPI.GetComponentLookup<FuelStorageSlots>(true),
             Storages = SystemAPI.GetComponentLookup<Storage>(true), Dedicated = SystemAPI.GetComponentLookup<DroneStationStorage>(true),
-            Items = SystemAPI.GetBufferLookup<StorageSlotElement>(true), Docked = SystemAPI.GetBufferLookup<DockedDroneElement>(true),
-            Docks = SystemAPI.GetComponentLookup<DroneDocked>(true),
+            Items = SystemAPI.GetBufferLookup<StorageSlotElement>(true),
             Reserved = SystemAPI.GetBufferLookup<DroneStationReservedSlotElement>(true),
             MaximumStack = ItemRegistry.GetMaxStack(SystemAPI.GetSingletonBuffer<ItemConfigElement>(true), ItemTypeEnum.Drone)
         }.Schedule(JobHandle.CombineDependencies(state.Dependency, dependency));
@@ -64,8 +63,6 @@ internal struct DroneStationLifecycleReservationJob : IJob
     [ReadOnly] public ComponentLookup<FuelStorageSlots> FuelSlots;
     [ReadOnly] public ComponentLookup<DroneStationStorage> Dedicated;
     [ReadOnly] public BufferLookup<StorageSlotElement> Items;
-    [ReadOnly] public BufferLookup<DockedDroneElement> Docked;
-    [ReadOnly] public ComponentLookup<DroneDocked> Docks;
     [ReadOnly] public BufferLookup<DroneStationReservedSlotElement> Reserved;
     public int MaximumStack;
 
@@ -107,15 +104,15 @@ internal struct DroneStationLifecycleReservationJob : IJob
             {
                 decision.Status = DroneStationRequestStatus.Busy;
             }
-            else if (request.Operation == DroneStationOperation.Activate)
+            else if (request.Operation is DroneStationOperation.Activate or DroneStationOperation.Dock)
             {
                 decision.Approved = true;
+                decision.SlotIndex = -1;
             }
             else if (MaximumStack > 0)
             {
-                int preferred = Docks.TryGetComponent(request.Drone, out var dock) ? dock.SlotIndex : -1;
-                decision.SlotIndex = DroneStationLifecycleUtility.ReserveSlot(request, preferred, MaximumStack,
-                    Storages, Dedicated, FuelSlots, Items, Docked, ranges, slots, Reserved);
+                decision.SlotIndex = DroneStationLifecycleUtility.ReserveSlot(request, -1, MaximumStack,
+                    Storages, Dedicated, FuelSlots, Items, ranges, slots, Reserved);
                 decision.Approved = decision.SlotIndex >= 0;
                 if (!decision.Approved)
                 {

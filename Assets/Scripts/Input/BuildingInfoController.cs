@@ -6,19 +6,6 @@ using Unity.Entities;
 using Unity.Mathematics;
 using UnityEngine;
 
-public readonly struct BuildingInfoItemRow
-{
-    public readonly DroneTransportAreaEnum Area;
-    public readonly ItemTypeEnum Type;
-    public readonly int Count;
-    public BuildingInfoItemRow(DroneTransportAreaEnum area, ItemTypeEnum type, int count)
-    {
-        Area = area;
-        Type = type;
-        Count = count;
-    }
-}
-
 public readonly struct BuildingInfoTaskRow
 {
     public readonly Entity Task;
@@ -32,26 +19,9 @@ public readonly struct BuildingInfoTaskRow
     }
 }
 
-public readonly struct BuildingInfoDroneRow
-{
-    public readonly Entity Drone;
-    public readonly string Text;
-    public readonly bool Stored;
-    public readonly bool Docked;
-    public readonly int SlotIndex;
-    public BuildingInfoDroneRow(Entity drone, string text, bool stored, bool docked, int slotIndex = -1)
-    {
-        Drone = drone;
-        Text = text;
-        Stored = stored;
-        Docked = docked;
-        SlotIndex = slotIndex;
-    }
-}
-
-/// <summary>선택 원본의 화면 투영/편집 초안/요청 접수만 담당한다. 재고와 작업 상태는 ECS에 유지한다.</summary>
+/// <summary>선택 원본의 화면 투영과 요청 접수를 담당한다. 재고와 작업 상태는 ECS에 유지한다.</summary>
 [RequireComponent(typeof(WorldSelectionController))]
-public sealed class BuildingInfoController : PeriodicWorldView
+public sealed partial class BuildingInfoController : PeriodicWorldView
 {
     private WorldSelectionController _selection;
     private World _world;
@@ -61,11 +31,8 @@ public sealed class BuildingInfoController : PeriodicWorldView
     private float _resetNoticeUntil;
     private ResearchCycleResetReasonEnum _resetReason;
     private readonly StringBuilder _text = new StringBuilder();
-    public readonly List<BuildingInfoItemRow> Items = new List<BuildingInfoItemRow>();
     public readonly List<BuildingInfoTaskRow> Tasks = new List<BuildingInfoTaskRow>();
-    public readonly List<BuildingInfoDroneRow> Drones = new List<BuildingInfoDroneRow>();
     public readonly List<ItemTypeEnum> ItemTypes = new List<ItemTypeEnum>();
-    public readonly List<int> RecipeIds = new List<int>();
     public string Title { get; private set; }
     public string Details { get; private set; }
     public string Feedback { get; private set; }
@@ -78,6 +45,10 @@ public sealed class BuildingInfoController : PeriodicWorldView
     public int SelectedRecipe { get; private set; }
     public bool CanEditRecipe { get; private set; }
     public StorageFilter Filter { get; private set; }
+    internal float? MiningProgress { get; private set; }
+    internal float? CraftingProgress { get; private set; }
+    internal string CraftingStatus { get; private set; }
+    internal FuelEnergyState? FuelProgress { get; private set; }
 
     public event Action Changed;
     public event Action SelectionChanged;
@@ -122,17 +93,19 @@ public sealed class BuildingInfoController : PeriodicWorldView
             _feedbackToken = WorldUiRequestFeedbackRelay.Register(_world, ReceiveFeedback);
         }
 
-        Items.Clear();
+        ResetBuildingDisplay();
         Tasks.Clear();
-        Drones.Clear();
         ItemTypes.Clear();
-        RecipeIds.Clear();
         HasCrafting = false;
         HasEditableFilter = false;
         HasGeneralStorage = false;
         HasInput = false;
         HasProductOutput = false;
         CanEditRecipe = false;
+        MiningProgress = null;
+        CraftingProgress = null;
+        CraftingStatus = string.Empty;
+        FuelProgress = null;
         HasSelection = CanSubmit();
         if (!HasSelection)
         {
@@ -150,6 +123,7 @@ public sealed class BuildingInfoController : PeriodicWorldView
         HasGeneralStorage = DroneTransportEndpointUtility.IsArea(manager, entity, DroneTransportAreaEnum.GeneralStorage);
         HasInput = DroneTransportEndpointUtility.IsArea(manager, entity, DroneTransportAreaEnum.Input);
         HasProductOutput = DroneTransportEndpointUtility.IsArea(manager, entity, DroneTransportAreaEnum.Product);
+        BuildingConfigElement buildingConfig = default;
         bool site = manager.HasComponent<ConstructionSite>(entity);
         if (site || manager.HasComponent<BuildingIdentity>(entity))
         {
@@ -161,6 +135,7 @@ public sealed class BuildingInfoController : PeriodicWorldView
                 BuildingConfigLookupUtility.TryGetConfig(manager.GetBuffer<BuildingConfigElement>(configs.GetSingletonEntity(), true),
                     buildingId, out var config))
             {
+                buildingConfig = config;
                 Title = config.DisplayName.ToString() + " T" + config.Tier;
             }
         }
@@ -181,7 +156,15 @@ public sealed class BuildingInfoController : PeriodicWorldView
             var state = manager.GetComponentData<CrafterState>(entity);
             SelectedRecipe = state.SelectedRecipeId;
             CanEditRecipe = BuildingSettingsUtility.IsEditableCrafter(manager, entity);
-            _text.AppendLine(state.Status + " / " + (state.Progress * 100f).ToString("F0") + "%");
+            CraftingProgress = state.Progress;
+            CraftingStatus = state.Status switch
+            {
+                CrafterStatusEnum.NoRecipe => "레시피 미선택",
+                CrafterStatusEnum.WaitingForInput => "재료 대기",
+                CrafterStatusEnum.WaitingForOutput => "출력 공간 대기",
+                CrafterStatusEnum.WaitingForByproductOutput => "기존 생산품 배출 대기",
+                _ => string.Empty
+            };
         }
 
         if (manager.HasComponent<PlannedBuildingSettings>(entity))
@@ -211,7 +194,7 @@ public sealed class BuildingInfoController : PeriodicWorldView
         if (manager.HasComponent<MinerState>(entity))
         {
             var state = manager.GetComponentData<MinerState>(entity);
-            _text.AppendLine("채굴 진행 " + (state.Progress * 100f).ToString("F0") + "%");
+            MiningProgress = state.Progress;
         }
 
         if (manager.HasComponent<PowerDemand>(entity))
@@ -235,7 +218,7 @@ public sealed class BuildingInfoController : PeriodicWorldView
 
         if (manager.HasComponent<FuelEnergyState>(entity))
         {
-            _text.AppendLine("연료 잔여 에너지 " + manager.GetComponentData<FuelEnergyState>(entity).RemainingEnergy.ToString("F2"));
+            FuelProgress = manager.GetComponentData<FuelEnergyState>(entity);
         }
 
         if (manager.HasComponent<StorageFilter>(entity))
@@ -243,10 +226,14 @@ public sealed class BuildingInfoController : PeriodicWorldView
             Filter = manager.GetComponentData<StorageFilter>(entity);
         }
 
-        ReadItems(manager, entity);
+        ReadInventorySlots(manager, entity);
         ReadTasks(manager, entity);
         ReadCatalog(manager);
-        ReadStation(manager, entity);
+        HasPowerGridSection = manager.HasComponent<PowerPole>(entity);
+        if (HasPowerGridSection)
+        {
+            GridDisplay = BuildingInfoPowerGrid.Read(_world, entity);
+        }
         if (manager.HasBuffer<ConstructionMaterialRequirementElement>(entity))
         {
             foreach (var material in manager.GetBuffer<ConstructionMaterialRequirementElement>(entity, true))
@@ -283,6 +270,7 @@ public sealed class BuildingInfoController : PeriodicWorldView
 
     private void ReadDrone(EntityManager manager, Entity drone)
     {
+        FindDroneStation(manager, drone);
         if (manager.HasComponent<DroneBatteryState>(drone))
         {
             using var maximum = manager.CreateEntityQuery(typeof(DroneBatteryConfig));
@@ -321,48 +309,6 @@ public sealed class BuildingInfoController : PeriodicWorldView
         {
             _text.AppendLine("실제 적재 " + manager.GetComponentData<DroneCargoState>(drone).Quantity + "개");
         }
-    }
-
-    private void ReadItems(EntityManager manager, Entity entity)
-    {
-        var counts = new Dictionary<(DroneTransportAreaEnum, ItemTypeEnum), int>();
-        if (manager.HasBuffer<StorageSlotElement>(entity))
-        {
-            bool general = DroneSchedulingUtility.IsStorage(manager, entity);
-            var inventory = manager.GetBuffer<StorageSlotElement>(entity, true);
-            int nonFuel = StationStorageUtility.NonFuelSlotCount(manager, entity, inventory.Length);
-            int generalSlots = nonFuel - StationStorageUtility.ReadDedicatedCount(manager, entity);
-            for (int index = 0; index < inventory.Length; index++)
-            {
-                var item = inventory[index];
-                if (item.Quantity <= 0 || (index >= generalSlots && index < nonFuel && manager.HasComponent<DroneStationStorage>(entity)))
-                {
-                    continue;
-                }
-
-                var area = index < generalSlots && general ? DroneTransportAreaEnum.GeneralStorage : DroneTransportAreaEnum.Input;
-                var key = (area, item.ItemType);
-                counts.TryGetValue(key, out int count);
-                counts[key] = count + item.Quantity;
-            }
-        }
-
-        if (manager.HasBuffer<ProductSlotElement>(entity))
-        {
-            foreach (var item in manager.GetBuffer<ProductSlotElement>(entity, true))
-            {
-                var key = (DroneTransportAreaEnum.Product, item.ItemType);
-                counts.TryGetValue(key, out int count);
-                counts[key] = count + item.Quantity;
-            }
-        }
-
-        foreach (var entry in counts)
-        {
-            Items.Add(new BuildingInfoItemRow(entry.Key.Item1, entry.Key.Item2, entry.Value));
-        }
-
-        Items.Sort((a, b) => a.Area != b.Area ? a.Area.CompareTo(b.Area) : a.Type.CompareTo(b.Type));
     }
 
     private void ReadBelt(EntityManager manager, Entity entity)
@@ -466,86 +412,7 @@ public sealed class BuildingInfoController : PeriodicWorldView
             }
         }
 
-        RecipeIds.Add(0);
-        using var recipes = manager.CreateEntityQuery(typeof(RecipeRegistry), typeof(RecipeConfigElement));
-        if (recipes.CalculateEntityCount() != 1)
-        {
-            return;
-        }
-
-        foreach (var recipe in manager.GetBuffer<RecipeConfigElement>(recipes.GetSingletonEntity(), true))
-        {
-            if (recipe.IsUnlocked)
-            {
-                RecipeIds.Add(recipe.Id);
-            }
-        }
-    }
-
-    private void ReadStation(EntityManager manager, Entity entity)
-    {
-        if (!manager.HasComponent<DroneStation>(entity))
-        {
-            return;
-        }
-
-        int dedicated = StationStorageUtility.ReadDedicatedCount(manager, entity);
-        if (manager.HasComponent<DroneStationNetwork>(entity))
-        {
-            _text.AppendLine("공개 네트워크 " + manager.GetComponentData<DroneStationNetwork>(entity).RepresentativeStation);
-        }
-
-        _text.AppendLine("일반 슬롯 " + (manager.GetComponentData<Storage>(entity).SlotCount - dedicated) + " / 드론 전용 " + dedicated);
-        if (manager.HasBuffer<DockedDroneElement>(entity))
-        {
-            int charging = 0;
-            int waiting = 0;
-            int docked = 0;
-            foreach (var entry in manager.GetBuffer<DockedDroneElement>(entity, true))
-            {
-                if (!manager.HasComponent<DroneActivityState>(entry.Drone))
-                {
-                    continue;
-                }
-                docked++;
-                var activity = manager.GetComponentData<DroneActivityState>(entry.Drone).Activity;
-                if (activity == DroneActivityKind.Charging)
-                {
-                    charging++;
-                }
-                if (activity == DroneActivityKind.WaitingForCharge)
-                {
-                    waiting++;
-                }
-            }
-            int stored = InventorySlotUtility.Count(manager.GetBuffer<StorageSlotElement>(entity, true), ItemTypeEnum.Drone);
-            _text.AppendLine("수납 " + stored + " / 정박 " + docked + " / 충전 " + charging + " / 충전 대기 " + waiting);
-        }
-        var slots = manager.GetBuffer<StorageSlotElement>(entity, true);
-        for (int index = 0; index < slots.Length; index++)
-        {
-            var slot = slots[index];
-            if (slot.ItemType == ItemTypeEnum.Drone && slot.Quantity > 0)
-                Drones.Add(new BuildingInfoDroneRow(Entity.Null, $"슬롯 {index} / 수납 드론 {slot.Quantity}기", true, false, index));
-        }
-
-        using var query = manager.CreateEntityQuery(typeof(DroneWorker), typeof(GridPosition));
-        using var workers = query.ToEntityArray(Allocator.Temp);
-        var origin = manager.GetComponentData<GridPosition>(entity).Value;
-        var size = manager.GetComponentData<BuildingFootprint>(entity).GetEffectiveSize(manager.GetComponentData<Direction>(entity).dir);
-        foreach (Entity worker in workers)
-        {
-            bool docked = manager.HasComponent<DroneDocked>(worker) && manager.GetComponentData<DroneDocked>(worker).Station == entity;
-            var position = manager.GetComponentData<GridPosition>(worker).Value;
-            bool inside = position.x >= origin.x && position.y >= origin.y && (long)position.x < (long)origin.x + size.x && (long)position.y < (long)origin.y + size.y;
-            if (!docked && !inside)
-            {
-                continue;
-            }
-
-            string label = docked ? "정박 드론" : "정거장 범위 내 드론";
-            Drones.Add(new BuildingInfoDroneRow(worker, label, false, docked));
-        }
+        ReadRecipeChoices(manager);
     }
 
     public void RequestTransport(DroneLogisticsTaskKindEnum kind, DroneTransportAreaEnum area, ItemTypeEnum type, int quantity)
@@ -574,14 +441,37 @@ public sealed class BuildingInfoController : PeriodicWorldView
         Changed?.Invoke();
     }
 
-    public void RequestStation(Entity drone, DroneStationOperation operation, int sourceSlotIndex = -1)
+    internal void ActivateStoredDrone(int sourceSlotIndex)
     {
         if (!CanSubmit())
         {
             return;
         }
+        if (!_world.EntityManager.HasComponent<DroneStation>(_selection.Selected))
+        {
+            return;
+        }
 
-        Entity request = DroneStationRequestUtility.Submit(_world.EntityManager, drone, _selection.Selected, operation, sourceSlotIndex);
+        SubmitStationRequest(Entity.Null, _selection.Selected, DroneStationOperation.ActivateStored, sourceSlotIndex);
+    }
+
+    internal void RequestDroneStation(DroneStationOperation operation)
+    {
+        if (!CanSubmit())
+        {
+            return;
+        }
+        if (!TryGetDroneStation(_world.EntityManager, _selection.Selected, out var station, out _))
+        {
+            return;
+        }
+
+        SubmitStationRequest(_selection.Selected, station, operation);
+    }
+
+    private void SubmitStationRequest(Entity drone, Entity station, DroneStationOperation operation, int sourceSlotIndex = -1)
+    {
+        Entity request = DroneStationRequestUtility.Submit(_world.EntityManager, drone, station, operation, sourceSlotIndex);
         WorldUiRequestFeedbackRelay.Track(_world.EntityManager, _feedbackToken, request);
         Feedback = "요청 접수 대기";
         Changed?.Invoke();

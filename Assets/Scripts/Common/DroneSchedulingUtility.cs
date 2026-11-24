@@ -379,10 +379,6 @@ public static class DroneSchedulingUtility
         {
             return 0;
         }
-        if (storageRead.IsDockOccupied(slot))
-        {
-            return 0;
-        }
         var items = storageRead.StoredItems;
         if (storageRead.HasInputSlots)
         {

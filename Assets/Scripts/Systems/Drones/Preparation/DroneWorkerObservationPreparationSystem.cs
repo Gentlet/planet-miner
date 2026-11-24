@@ -35,7 +35,8 @@ public partial struct DroneWorkerObservationPreparationSystem : ISystem
         {
             bool canAccept = battery.CurrentCharge > 0f && link.Assignment == Entity.Null &&
                 (movement.IsNormalReturn || (movement.ChargingStation == Entity.Null && movement.ReturnStation == Entity.Null)) &&
-                cargo.Origin == DroneCargoOriginEnum.None && cargo.Quantity == 0 && !Docks.HasComponent(entity) && !Relocations.HasComponent(entity);
+                cargo.Origin == DroneCargoOriginEnum.None && cargo.Quantity == 0 && !Docks.HasComponent(entity) &&
+                !Relocations.HasComponent(entity);
             if (math.any(observation.Position != transform.Position) || observation.CanAcceptTask != canAccept)
             {
                 // 정지 중 매 틱 revision을 바꾸면 아직 평가 중인 같은 경로가 계속 무효화된다.

@@ -27,13 +27,15 @@ public partial class PowerValidationInitializationSystem : SystemBase
         _jobs = new ResetPowerValidationJob { Validation = _validation }.Schedule(_jobs);
     }
 
-    internal bool CompleteAndTryConsumeFailure(out FixedString128Bytes message)
+    internal bool CompleteAndTryConsumeFailure(out FixedString128Bytes message, out bool supplyCommitted)
     {
         _jobs.Complete();
         _jobs = default;
-        if (_validation.Value.HasError && !_failurePublished)
+        var result = _validation.Value;
+        supplyCommitted = result.SupplyCommitted && !result.HasError;
+        if (result.HasError && !_failurePublished)
         {
-            message = _validation.Value.Message;
+            message = result.Message;
             _failurePublished = true;
             return true;
         }
@@ -61,6 +63,8 @@ public partial class PowerValidationInitializationSystem : SystemBase
 internal struct PowerValidationResult
 {
     public FixedString128Bytes Message;
+    // 공급 확정 Job이 연료와 소비를 기록한 뒤 설정하며 EndPower가 Job 완료 후 읽는다.
+    public bool SupplyCommitted;
     public bool HasError => Message.Length > 0;
 }
 

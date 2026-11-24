@@ -224,8 +224,7 @@ public partial struct DroneItemTransferExecutionSystem : ISystem
                 ItemType = currentType,
                 ItemCount = count
             });
-            bool allowed = storageRead.AllowsTransport(assignment.DestinationArea, type, slot) &&
-                !storageRead.IsDockOccupied(slot);
+            bool allowed = storageRead.AllowsTransport(assignment.DestinationArea, type, slot);
             if (hasInputSlots)
             {
                 var inputs = storageRead.InputSlots;

@@ -23,6 +23,8 @@ public struct PowerGridConnection : IComponentData
 public struct FuelEnergyState : IComponentData
 {
     public float RemainingEnergy;
+    // Execution이 새 연료를 변환한 뒤 갱신한다. HUD가 마지막 연료 한 개의 기준 에너지로 사용한다.
+    public float ActiveFuelCapacity;
 }
 
 /// <summary>Preparation이 초기화/작성한다. 활성은 수요 준비 완료이며 수요 0도 준비 완료다.</summary>
@@ -45,6 +47,8 @@ public struct PowerGeneratorSupplyPlan : IComponentData, IEnableableComponent
     public float AllocatedEnergy;
     public float ExpectedFuelEnergy;
     public float RemainingEnergyAfterConsumption;
+    // Reservation이 계획한 마지막 변환 연료의 에너지. Execution이 실제 차감 전에 대조한다.
+    public float ConvertedFuelCapacity;
 }
 
 

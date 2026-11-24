@@ -16,6 +16,7 @@ public sealed class WorldPowerOverlayView : PeriodicWorldView
     private static readonly Color FocusedEdge = new(0.42f, 0.77f, 1f, 0.9f);
     private static readonly Color ConnectionRange = new(1f, 0.69f, 0.28f, 0.86f);
     private static readonly Color Connected = new(0.48f, 1f, 0.78f, 0.95f);
+    private static readonly Color GenerationLink = new(1f, 0.82f, 0.43f, 0.98f);
     private static readonly Color OverlapFill = new(0.48f, 1f, 0.78f, 0.32f);
     private static readonly Color Disconnected = new(1f, 0.47f, 0.38f, 0.90f);
 
@@ -364,7 +365,7 @@ public sealed class WorldPowerOverlayView : PeriodicWorldView
         var connection = manager.GetComponentData<PowerGridConnection>(selected);
         if (manager.HasComponent<PowerPole>(selected))
         {
-            DrawSelectedPole(selected, connection.Grid);
+            DrawSelectedPole(manager, selected, connection.Grid);
             return;
         }
 
@@ -398,7 +399,7 @@ public sealed class WorldPowerOverlayView : PeriodicWorldView
         return false;
     }
 
-    private void DrawSelectedPole(Entity entity, Entity grid)
+    private void DrawSelectedPole(EntityManager manager, Entity entity, Entity grid)
     {
         if (!TryGetPole(entity, grid, out var selected))
         {
@@ -418,10 +419,37 @@ public sealed class WorldPowerOverlayView : PeriodicWorldView
                     _mesh.Line(Cell(selected.Position), Cell(other.Position), Connected);
                 }
             }
+            DrawGeneratorConnections(manager, selected);
         }
         long supplyWidth = 2L * selected.Power.SupplyRange + 1;
         long connectionWidth = 2L * selected.Power.ConnectionRange + 1;
         SetStatus($"공급 {supplyWidth}×{supplyWidth}칸 / 연결 {connectionWidth}×{connectionWidth}칸");
+    }
+
+    private void DrawGeneratorConnections(EntityManager manager, in Pole selected)
+    {
+        using var generators = manager.CreateEntityQuery(new EntityQueryDesc
+        {
+            All = new[] { ComponentType.ReadOnly<PowerGenerator>(), ComponentType.ReadOnly<PowerGridConnection>(),
+                ComponentType.ReadOnly<GridPosition>(), ComponentType.ReadOnly<BuildingFootprint>(), ComponentType.ReadOnly<Direction>() },
+            None = new[] { ComponentType.ReadOnly<PowerPole>(), ComponentType.ReadOnly<PendingBuildingDemolition>() },
+            Options = EntityQueryOptions.IgnoreComponentEnabledState
+        });
+        using var entities = generators.ToEntityArray(Allocator.Temp);
+        foreach (Entity generator in entities)
+        {
+            var connection = manager.GetComponentData<PowerGridConnection>(generator);
+            if (connection.Grid != selected.Grid || connection.PowerPole != selected.Entity)
+            {
+                continue;
+            }
+
+            var origin = manager.GetComponentData<GridPosition>(generator).Value;
+            var footprint = manager.GetComponentData<BuildingFootprint>(generator);
+            var direction = manager.GetComponentData<Direction>(generator);
+            GetFootprintBounds(origin, footprint.GetEffectiveSize(direction.dir), out var min, out var max);
+            _mesh.Line((min + max) * 0.5f, Cell(selected.Position), GenerationLink, thickness: 0.085f);
+        }
     }
 
     private void DrawExistingRanges(Entity focus, Entity grid)

@@ -21,7 +21,6 @@ internal struct DroneStationSlot
 {
     public ItemTypeEnum Type;
     public int Count;
-    public Entity Docked;
 }
 
 /// <summary>요청 순서를 정하고 작업 경합과 호출별 슬롯 예산을 중재한다.</summary>
@@ -79,13 +78,11 @@ internal static class DroneStationLifecycleUtility
 
     public static int ReserveSlot(in DroneStationRequest request, int preferred, int maxStack,
         ComponentLookup<Storage> storages, ComponentLookup<DroneStationStorage> dedicated, ComponentLookup<FuelStorageSlots> fuelSlots,
-        BufferLookup<StorageSlotElement> items, BufferLookup<DockedDroneElement> docked,
+        BufferLookup<StorageSlotElement> items,
         NativeParallelHashMap<Entity, DroneStationSlotRange> ranges, NativeList<DroneStationSlot> slots,
         BufferLookup<DroneStationReservedSlotElement> reserved)
     {
         Entity station = request.Station;
-        Entity drone = request.Drone;
-        bool docking = request.Operation == DroneStationOperation.Dock;
         if (!ranges.TryGetValue(station, out var range))
         {
             range = new DroneStationSlotRange
@@ -102,44 +99,30 @@ internal static class DroneStationLifecycleUtility
                 var item = inventory[index];
                 slots[range.Start + index] = new DroneStationSlot { Type = item.ItemType, Count = item.Quantity };
             }
-            foreach (var dock in docked[station])
-            {
-                if (dock.SlotIndex >= 0 && dock.SlotIndex < range.Count)
-                {
-                    int index = range.Start + dock.SlotIndex;
-                    var slot = slots[index];
-                    slot.Docked = dock.Drone;
-                    slots[index] = slot;
-                }
-            }
             ranges.Add(station, range);
         }
         bool hasReservations = reserved.TryGetBuffer(station, out var reservations);
         int promised = hasReservations ? DroneStationRelocationUtility.ReservedSlot(reservations, request.RelocationTask, request.RelocationMemberIndex) : -1;
+        if (request.RelocationTask != Entity.Null && promised < 0) return -1;
         if (promised >= 0) preferred = promised;
-        for (int index = 0; index < range.Count; index++)
+        int first = preferred >= 0 ? preferred : range.Count - range.Dedicated;
+        int end = preferred >= 0 ? preferred + 1 : range.Count;
+        for (int candidate = first; candidate < end; candidate++)
         {
-            int candidate = preferred >= 0 ? preferred : StationStorageUtility.SearchSlot(index, range.Count, range.Dedicated, ItemTypeEnum.Drone);
-            if ((uint)candidate >= (uint)range.Count)
+            if (!StationStorageUtility.IsDroneStorageSlot(candidate, range.Count, range.Dedicated))
                 return -1;
             var slot = slots[range.Start + candidate];
-            if (hasReservations && DroneStationRelocationUtility.IsReserved(reservations, candidate, request.RelocationTask, request.RelocationMemberIndex))
+            int free = StationStorageUtility.FreeDroneQuantity(new StorageSlotElement(slot.Type, slot.Count),
+                reservations, candidate, maxStack, request.RelocationTask, request.RelocationMemberIndex);
+            if (free <= 0) continue;
+            // 이관 Store는 이미 차감한 예약 한 개분을 사용한다. 일반 Store만 임시 점유량을 늘린다.
+            if (promised < 0)
             {
-                continue;
-            }
-            if ((slot.Docked == Entity.Null || slot.Docked == drone) &&
-                (slot.Count == 0 || (!docking && slot.Type == ItemTypeEnum.Drone && slot.Count < maxStack)))
-            {
-                slot.Docked = docking ? drone : Entity.Null;
                 slot.Type = ItemTypeEnum.Drone;
-                slot.Count += docking ? 0 : 1;
+                slot.Count++;
                 slots[range.Start + candidate] = slot;
-                return candidate;
             }
-            if (preferred >= 0)
-            {
-                break;
-            }
+            return candidate;
         }
         return -1;
     }

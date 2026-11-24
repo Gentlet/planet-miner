@@ -83,7 +83,6 @@ public partial struct ItemLifecycleApplySystem : ISystem
                 FuelSlots = SystemAPI.GetComponentLookup<FuelStorageSlots>(true),
                 DedicatedSlots = SystemAPI.GetComponentLookup<DroneStationStorage>(true),
                 InputSlots = SystemAPI.GetBufferLookup<BuildingInputSlotElement>(true),
-                Docks = SystemAPI.GetBufferLookup<DockedDroneElement>(true),
                 Reserved = SystemAPI.GetBufferLookup<DroneStationReservedSlotElement>(true),
                 Demolition = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true),
                 Preparing = SystemAPI.GetComponentLookup<PreparingStationDemolition>(true),
@@ -157,7 +156,6 @@ public partial struct SpawnItemApplyJob : IJobChunk
     [ReadOnly] public ComponentLookup<DroneStationStorage> DedicatedSlots;
     [ReadOnly] public ComponentLookup<FuelStorageSlots> FuelSlots;
     [ReadOnly] public BufferLookup<BuildingInputSlotElement> InputSlots;
-    [ReadOnly] public BufferLookup<DockedDroneElement> Docks;
     [ReadOnly] public BufferLookup<DroneStationReservedSlotElement> Reserved;
     [ReadOnly] public ComponentLookup<PendingBuildingDemolition> Demolition;
     [ReadOnly] public ComponentLookup<PreparingStationDemolition> Preparing;
@@ -216,7 +214,6 @@ public partial struct SpawnItemApplyJob : IJobChunk
         if (Preparing.HasComponent(owner)) return;
         if (InputSlots.TryGetBuffer(owner, out var inputs) &&
             ((uint)slot >= (uint)inputs.Length || inputs[slot].ItemType != type)) return;
-        if (Docks.TryGetBuffer(owner, out var docks) && StationStorageUtility.IsDockOccupied(docks, slot)) return;
         if ((uint)slot >= (uint)storage.Length) return;
         if (Reserved.TryGetBuffer(owner, out var claims) &&
             DroneDemolitionStorageUtility.FreeQuantity(claims, slot, type,

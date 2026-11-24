@@ -98,6 +98,7 @@ internal static class GameWorldBinaryLayout
         archive.Maybe(ref value.MiningProgress, (GameSnapshotArchive item, ref float entry) => item.Value(ref entry));
         archive.OptionalRecord(ref value.Crafting, Fields);
         archive.Maybe(ref value.RemainingFuelEnergy, (GameSnapshotArchive item, ref float entry) => item.Value(ref entry));
+        archive.Maybe(ref value.ActiveFuelCapacity, (GameSnapshotArchive item, ref float entry) => item.Value(ref entry));
         archive.OptionalRecord(ref value.ResearchCycle, Fields);
         bool hasProducts = value.Products != null;
         archive.Value(ref hasProducts);

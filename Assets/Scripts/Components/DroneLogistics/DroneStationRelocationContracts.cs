@@ -50,7 +50,7 @@ public struct DroneStationRelocationMemberElement : IBufferElementData
 }
 
 /// <summary>
-/// 정거장 이관은 작업/멤버 인덱스로 슬롯 전체를 확보한다.
+/// 정거장 이관은 작업/멤버 인덱스로 전용 슬롯의 드론 한 개분을 확보한다.
 /// 철거 운반은 TransportWorker의 품목과 수량만 확보하며 목적지 슬롯의 다른 입고 예산에서 제외한다.
 /// </summary>
 [InternalBufferCapacity(0)]
@@ -59,7 +59,7 @@ public struct DroneStationReservedSlotElement : IBufferElementData
     public Entity Task;
     public int MemberIndex;
     public int SlotIndex;
-    // 정거장 이관은 슬롯 전체, 철거 화물은 수행자와 품목별 수량을 확보한다.
+    // 아래 세 필드는 철거 화물에만 사용한다. 이관 멤버는 행 하나가 드론 한 개분이다.
     public Entity TransportWorker;
     public ItemTypeEnum ItemType;
     public int Quantity;

@@ -1,6 +1,6 @@
 using Unity.Entities;
 
-/// <summary>드론 데이터의 바이너리 필드 순서를 버전 1에 고정한다.</summary>
+/// <summary>드론 데이터의 바이너리 필드 순서를 정의한다.</summary>
 internal static class GameDroneBinaryLayout
 {
     internal static void Fields(GameSnapshotArchive archive, ref DroneBatteryState value)

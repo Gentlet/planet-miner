@@ -58,9 +58,8 @@ internal static class GameSaveContainer
         }
         file.Position = HeaderSize;
         using var compressed = new GZipStream(file, CompressionMode.Decompress, leaveOpen: true);
-        GameWorldSnapshot snapshot = GameWorldBinarySnapshot.Read(compressed, out savedAt);
         identity = Convert.ToBase64String(actual);
-        return snapshot;
+        return GameWorldBinarySnapshot.Read(compressed, out savedAt);
     }
 
     // 이후 컨테이너 버전도 이 헤더 검증 방식으로 손상과 미지원 버전을 구분할 수 있게 한다.

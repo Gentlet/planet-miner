@@ -202,35 +202,35 @@ internal static class DroneStationAutomationUtility
         public DroneLogisticsTask Task;
     }
 
-    public static void BuildStations(EntityManager manager, NativeArray<Entity> owners, NativeList<DroneFlightStation> flights)
+    public static void BuildStations(EntityManager manager, NativeArray<Entity> owners, NativeList<DroneFlightStation> flights,
+        int maximumStack = 0)
     {
         foreach (Entity station in owners)
         {
             if (!DroneTargetPointUtility.TryGetTargetPoint(manager, station, out float2 point, out int2 anchor)) continue;
             var network = manager.GetComponentData<DroneStationNetworkDecision>(station);
             bool hasStamp = manager.HasComponent<PlacementStamp>(station);
+            bool canDock = CanDockAtStation(manager, station);
             flights.Add(new DroneFlightStation { Entity = station, Position = point, Network = network.RepresentativeStation,
                 Bounds = network.ActivityBounds, Anchor = anchor,
-                CanDock = CanDockAtStation(manager, station), HasStamp = hasStamp,
+                CanDock = canDock, CanStore = canDock && maximumStack > 0 && CanStoreAtStation(manager, station, maximumStack),
+                HasStamp = hasStamp,
                 Stamp = hasStamp ? manager.GetComponentData<PlacementStamp>(station) : default });
         }
     }
 
-    internal static bool CanDockAtStation(EntityManager manager, Entity station)
+    internal static bool CanDockAtStation(EntityManager manager, Entity station) =>
+        manager.HasBuffer<DockedDroneElement>(station) && !manager.HasComponent<PreparingStationDemolition>(station) &&
+        !manager.HasComponent<PendingBuildingDemolition>(station);
+
+    private static bool CanStoreAtStation(EntityManager manager, Entity station, int maximumStack)
     {
         var items = manager.GetBuffer<StorageSlotElement>(station, true);
-        var docks = manager.GetBuffer<DockedDroneElement>(station, true);
         int slotCount = StationStorageUtility.NonFuelSlotCount(manager, station, manager.GetComponentData<Storage>(station).SlotCount);
-        bool hasReservations = slotCount > 0 && manager.HasBuffer<DroneStationReservedSlotElement>(station);
+        int dedicated = StationStorageUtility.ReadDedicatedCount(manager, station);
+        bool hasReservations = manager.HasBuffer<DroneStationReservedSlotElement>(station);
         var reservations = hasReservations ? manager.GetBuffer<DroneStationReservedSlotElement>(station, true) : default;
-        for (int slot = 0; slot < slotCount; slot++)
-        {
-            bool occupied = hasReservations && DroneStationRelocationUtility.IsReserved(reservations, slot);
-            occupied |= items[slot].Quantity > 0;
-            foreach (var dock in docks) occupied |= dock.SlotIndex == slot;
-            if (!occupied) return !manager.HasComponent<PreparingStationDemolition>(station);
-        }
-        return false;
+        return StationStorageUtility.CanStoreDrone(items, reservations, slotCount, dedicated, maximumStack);
     }
 
     /// <summary>수행자 우선권, 정박 재개 후보와 새 경로 평가 때문에 출고를 보류할 대상을 모은다.</summary>

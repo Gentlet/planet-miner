@@ -264,18 +264,7 @@ public partial struct DroneStationRelocationDecisionSystem : ISystem
             if (destinationValid && station.Entity == relocation.Destination) station.CanDock = true;
             if (station.Entity == relocation.Source)
             {
-                var sourceStorage = StationStorageUtility.StorageReadContext.Create(manager, station.Entity);
-                int slotCount = sourceStorage.SlotCount;
-                for (int slot = 0; slot < slotCount; slot++)
-                {
-                    bool occupied = sourceStorage.IsDockOccupied(slot) || sourceStorage.IsReserved(slot);
-                    occupied |= sourceStorage.StoredItems[slot].Quantity > 0;
-                    if (!occupied)
-                    {
-                        station.CanDock = true;
-                        break;
-                    }
-                }
+                station.CanDock = true;
             }
             flights.Add(station);
         }
@@ -299,7 +288,7 @@ public partial struct DroneStationRelocationDecisionSystem : ISystem
             {
                 return;
             }
-            int fallback = DroneFlightPlanningUtility.PlanReturn(position, flights, charge, maximum,
+            int fallback = DroneFlightPlanningUtility.PlanChargingReturn(position, flights, charge, maximum,
                 config.EnergyPerDistance, out var returnPlan);
             if (fallback >= 0)
                 manager.SetComponentData(drone, new DroneMovementDecision

@@ -8,10 +8,10 @@ using UnityEngine;
 [RequireComponent(typeof(Camera), typeof(WorldConstructionController))]
 public sealed class WorldDroneCoverageView : PeriodicWorldView
 {
-    private static readonly Color CoverageFill = new(0.14f, 0.82f, 0.64f, 0.06f);
-    private static readonly Color CoverageEdge = new(0.26f, 0.86f, 0.67f, 0.54f);
-    private static readonly Color ProposedFill = new(1f, 0.70f, 0.28f, 0.11f);
-    private static readonly Color ProposedEdge = new(1f, 0.76f, 0.33f, 0.90f);
+    private static readonly Color CoverageFill = new(0.12f, 0.76f, 0.57f, 0.22f);
+    private static readonly Color CoverageEdge = new(0.38f, 0.96f, 0.73f, 0.95f);
+    private static readonly Color ProposedFill = new(1f, 0.66f, 0.22f, 0.24f);
+    private static readonly Color ProposedEdge = new(1f, 0.59f, 0.16f, 1f);
     private static readonly Color CoveredCell = new(0.23f, 1f, 0.75f, 0.34f);
     private static readonly Color UncoveredFootprint = new(1f, 0.58f, 0.32f, 0.19f);
 
@@ -196,7 +196,7 @@ public sealed class WorldDroneCoverageView : PeriodicWorldView
             if (WorldOverlayMesh.IsVisible(_viewFrustum, min, max))
             {
                 _mesh.Fill(min, max, CoverageFill);
-                _mesh.Outline(min, max, CoverageEdge);
+                _mesh.Outline(min, max, CoverageEdge, thickness: 0.085f);
             }
         }
     }
@@ -251,7 +251,8 @@ public sealed class WorldDroneCoverageView : PeriodicWorldView
     {
         WorldOverlayMesh.GetCellBounds(bounds.MinX, bounds.MinY, bounds.MaxX, bounds.MaxY, out var min, out var max);
         _mesh.Fill(min, max, ProposedFill);
-        _mesh.Outline(min, max, ProposedEdge, dashed: true);
+        _mesh.Outline(min, max, new Color(0.34f, 0.16f, 0.04f, 0.94f), dashed: true, thickness: 0.17f);
+        _mesh.Outline(min, max, ProposedEdge, dashed: true, thickness: 0.11f);
         foreach (var existing in _stationBounds)
         {
             if (existing.Overlaps(bounds))

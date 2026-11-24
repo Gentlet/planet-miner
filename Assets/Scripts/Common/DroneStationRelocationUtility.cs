@@ -9,7 +9,8 @@ public static class DroneStationRelocationUtility
     {
         for (int i = reservations.Length - 1; i >= 0; i--)
         {
-            if (reservations[i].Task == task && reservations[i].MemberIndex == memberIndex)
+            if (reservations[i].TransportWorker == Entity.Null && reservations[i].Task == task &&
+                reservations[i].MemberIndex == memberIndex)
             {
                 reservations.RemoveAt(i);
             }
@@ -37,25 +38,10 @@ public static class DroneStationRelocationUtility
         return task.CreationSequence < manager.GetComponentData<DroneLogisticsTask>(preparation.Task).CreationSequence;
     }
 
-    public static bool IsReserved(EntityManager manager, Entity station, int slot, Entity exceptTask = default, int exceptMember = -1)
-    {
-        if (!manager.HasBuffer<DroneStationReservedSlotElement>(station)) return false;
-        return IsReserved(manager.GetBuffer<DroneStationReservedSlotElement>(station, true), slot, exceptTask, exceptMember);
-    }
-
     public static int ReservedSlot(EntityManager manager, Entity station, Entity task, int memberIndex)
     {
         if (!manager.HasBuffer<DroneStationReservedSlotElement>(station)) return -1;
         return ReservedSlot(manager.GetBuffer<DroneStationReservedSlotElement>(station, true), task, memberIndex);
-    }
-
-    public static bool IsReserved(BufferLookup<DroneStationReservedSlotElement> reservations, Entity station, int slot, Entity exceptTask = default, int exceptMember = -1)
-    {
-        if (!reservations.TryGetBuffer(station, out var buffer))
-        {
-            return false;
-        }
-        return IsReserved(buffer, slot, exceptTask, exceptMember);
     }
 
     public static int ReservedSlot(BufferLookup<DroneStationReservedSlotElement> reservations, Entity station, Entity task, int memberIndex)
@@ -67,20 +53,22 @@ public static class DroneStationRelocationUtility
         return ReservedSlot(buffer, task, memberIndex);
     }
 
-    internal static bool IsReserved(DynamicBuffer<DroneStationReservedSlotElement> reservations, int slot, Entity exceptTask = default, int exceptMember = -1)
+    internal static int CountReservedDrones(DynamicBuffer<DroneStationReservedSlotElement> reservations, int slot)
     {
+        int count = 0;
         foreach (var row in reservations)
         {
-            if (row.SlotIndex == slot && (exceptTask == Entity.Null || row.Task != exceptTask || row.MemberIndex != exceptMember)) return true;
+            if (row.TransportWorker == Entity.Null && row.SlotIndex == slot) count++;
         }
-        return false;
+        return count;
     }
 
     internal static int ReservedSlot(DynamicBuffer<DroneStationReservedSlotElement> reservations, Entity task, int memberIndex)
     {
         foreach (var row in reservations)
         {
-            if (task != Entity.Null && row.Task == task && row.MemberIndex == memberIndex) return row.SlotIndex;
+            if (task != Entity.Null && row.TransportWorker == Entity.Null && row.Task == task && row.MemberIndex == memberIndex)
+                return row.SlotIndex;
         }
         return -1;
     }

@@ -10,13 +10,15 @@ public struct DroneStationStorage : IComponentData
 public struct DockedDroneElement : IBufferElementData
 {
     public Entity Drone;
+    // 정박은 수납 슬롯을 사용하지 않으므로 -1을 기록한다.
     public int SlotIndex;
 }
 
-/// <summary>활성 드론의 정박 장소와 슬롯 원본. 활성 정박은 해당 슬롯 전체를 점유한다.</summary>
+/// <summary>활성 드론의 정박 장소. 충전과 대기는 보관 재고와 독립적이다.</summary>
 public struct DroneDocked : IComponentData
 {
     public Entity Station;
+    // 정박은 수납 슬롯을 사용하지 않으므로 -1을 기록한다.
     public int SlotIndex;
 }
 

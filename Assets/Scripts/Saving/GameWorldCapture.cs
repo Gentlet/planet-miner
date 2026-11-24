@@ -243,7 +243,9 @@ internal static class GameWorldCapture
         }
         if (manager.HasComponent<FuelEnergyState>(entity))
         {
-            production.RemainingFuelEnergy = manager.GetComponentData<FuelEnergyState>(entity).RemainingEnergy;
+            var fuel = manager.GetComponentData<FuelEnergyState>(entity);
+            production.RemainingFuelEnergy = fuel.RemainingEnergy;
+            production.ActiveFuelCapacity = fuel.ActiveFuelCapacity;
         }
         if (manager.HasComponent<ResearchCycleState>(entity))
         {

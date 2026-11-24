@@ -6,7 +6,7 @@ using Unity.Mathematics;
 using Unity.Rendering;
 using Unity.Transforms;
 
-/// <summary>정거장 요청의 전환 Job을 등록해 수행자, 보관 슬롯과 결과를 EndSimulation에서 함께 공개한다.</summary>
+/// <summary>정박 관계 또는 수납/출고 재고의 변경과 요청 결과를 EndSimulation에 함께 공개한다.</summary>
 [UpdateInGroup(typeof(DroneStateApplyGroup), OrderLast = true)]
 [UpdateAfter(typeof(DroneTaskAssignmentPublishSystem))]
 public partial struct DroneStationLifecycleApplySystem : ISystem
@@ -23,7 +23,7 @@ public partial struct DroneStationLifecycleApplySystem : ISystem
 
     public void OnCreate(ref SystemState state)
     {
-        _requests = state.GetEntityQuery(ComponentType.ReadOnly<DroneStationRequest>(), ComponentType.ReadOnly<DroneStationDecision>());
+        _requests = SystemAPI.QueryBuilder().WithAll<DroneStationRequest, DroneStationDecision>().Build();
         _relocationDocks = state.GetEntityQuery(ComponentType.ReadOnly<DroneStationRelocation>(),
             ComponentType.ReadOnly<DroneDocked>(), ComponentType.ReadOnly<DroneWorker>());
         _pending = state.GetEntityQuery(ComponentType.ReadOnly<DroneTaskPendingPublicationElement>());
@@ -150,17 +150,17 @@ internal struct DroneStationLifecycleApplyJob : IJob
                 {
                     status = DroneStationRequestStatus.Busy;
                 }
-                if (status == DroneStationRequestStatus.Applied && (request.Operation is DroneStationOperation.Dock or DroneStationOperation.Store))
+                if (status == DroneStationRequestStatus.Applied && request.Operation == DroneStationOperation.Store)
                 {
                     if (DroneStationLifecycleUtility.ReserveSlot(request, decision.SlotIndex, MaximumStack,
-                        Eligibility.Storages, Dedicated, Eligibility.FuelSlots, Storage, Eligibility.Docked, ranges, slots, Eligibility.Reserved) < 0)
+                        Eligibility.Storages, Dedicated, Eligibility.FuelSlots, Storage, ranges, slots, Eligibility.Reserved) < 0)
                     {
                         status = DroneStationRequestStatus.NoSpace;
                     }
                 }
                 if (status == DroneStationRequestStatus.Applied)
                 {
-                    if (RecordTransition(request, decision.SlotIndex, out drone))
+                    if (RecordTransition(request, out drone))
                     {
                         changes.Add(new DroneStationAppliedChange { Request = request, SlotIndex = decision.SlotIndex });
                         stations.Add(request.Station);
@@ -187,13 +187,13 @@ internal struct DroneStationLifecycleApplyJob : IJob
         RecordInventories(stations, changes, removedDocks);
     }
 
-    private bool RecordTransition(in DroneStationRequest request, int slot, out Entity drone)
+    private bool RecordTransition(in DroneStationRequest request, out Entity drone)
     {
         drone = request.Drone;
         switch (request.Operation)
         {
             case DroneStationOperation.Dock:
-                ECB.AddComponent(drone, new DroneDocked { Station = request.Station, SlotIndex = slot });
+                ECB.AddComponent(drone, new DroneDocked { Station = request.Station, SlotIndex = -1 });
                 return true;
             case DroneStationOperation.Activate:
                 ECB.RemoveComponent<DroneDocked>(drone);
@@ -243,11 +243,25 @@ internal struct DroneStationLifecycleApplyJob : IJob
             // 앞선 화물 인계가 반영한 최신 수량을 복사하고 드론 역할 전환과 함께 공개한다.
             var inventory = ECB.SetBuffer<StorageSlotElement>(station);
             inventory.CopyFrom(Storage[station]);
+            DynamicBuffer<DroneStationReservedSlotElement> remainingReservations = default;
             foreach (var change in changes)
             {
                 if (change.Request.Station != station) continue;
                 if (change.Request.Operation == DroneStationOperation.Store)
+                {
                     InventorySlotUtility.TryAdd(inventory, change.SlotIndex, ItemTypeEnum.Drone, 1, MaximumStack);
+                    if (change.Request.RelocationTask != Entity.Null)
+                    {
+                        if (!remainingReservations.IsCreated)
+                        {
+                            // 먼저 정산된 이전 결과와 취소를 보존하고 이번 수납의 예약만 재고와 함께 해제한다.
+                            remainingReservations = ECB.SetBuffer<DroneStationReservedSlotElement>(station);
+                            remainingReservations.CopyFrom(Eligibility.Reserved[station]);
+                        }
+                        DroneStationRelocationUtility.ReleaseSlots(remainingReservations, change.Request.RelocationTask,
+                            change.Request.RelocationMemberIndex);
+                    }
+                }
                 else if (change.Request.Operation == DroneStationOperation.ActivateStored)
                     InventorySlotUtility.Take(inventory, change.SlotIndex, ItemTypeEnum.Drone, 1);
             }
@@ -263,7 +277,7 @@ internal struct DroneStationLifecycleApplyJob : IJob
             {
                 if (change.Request.Station == station && change.Request.Operation == DroneStationOperation.Dock)
                 {
-                    docked.Add(new DockedDroneElement { Drone = change.Request.Drone, SlotIndex = change.SlotIndex });
+                    docked.Add(new DockedDroneElement { Drone = change.Request.Drone, SlotIndex = -1 });
                 }
             }
         }

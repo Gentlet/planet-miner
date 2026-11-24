@@ -21,6 +21,10 @@ internal sealed class SavedProduction
 #endif
     public float? RemainingFuelEnergy;
 #if UNITY_EDITOR
+    [JsonProperty("activeFuelCapacity", NullValueHandling = NullValueHandling.Ignore)]
+#endif
+    public float? ActiveFuelCapacity;
+#if UNITY_EDITOR
     [JsonProperty("researchCycle", Required = Required.AllowNull)]
 #endif
     public SavedResearchCycle ResearchCycle;

@@ -115,7 +115,8 @@ internal struct ValidatePowerConsumptionJob : IJob
                 plan.AllocatedEnergy > plan.AvailableEnergy || remaining != plan.ExpectedFuelEnergy ||
                 !FuelSpends.TryGetBuffer(generator, out var spends) ||
                 !PowerFuelUtility.TryPlan(remaining, plan.AllocatedEnergy, Stored[generator], range, config,
-                    out var expected, out var after) || after != plan.RemainingEnergyAfterConsumption ||
+                    out var expected, out var after, out var convertedCapacity) || after != plan.RemainingEnergyAfterConsumption ||
+                convertedCapacity != plan.ConvertedFuelCapacity ||
                 spends.Length != expected.Length)
             {
                 PowerValidationUtility.Fail(Validation, "[PowerSupplyExecutionSystem] Invalid fuel consumption plan or item.");
@@ -141,7 +142,7 @@ internal struct CommitPowerSupplyJob : IJob
 {
     [ReadOnly] public NativeArray<Entity> Generators;
     [ReadOnly] public NativeArray<Entity> Consumers;
-    [ReadOnly] public NativeReference<PowerValidationResult> Validation;
+    public NativeReference<PowerValidationResult> Validation;
     [ReadOnly] public NativeReference<bool> Ready;
     [ReadOnly] public ComponentLookup<PowerGeneratorSupplyPlan> Plans;
     [ReadOnly] public ComponentLookup<FuelStorageSlots> FuelSlots;
@@ -167,7 +168,13 @@ internal struct CommitPowerSupplyJob : IJob
             var stored = Stored[generator];
             foreach (var spend in FuelSpends[generator])
                 InventorySlotUtility.Take(stored, spend.Slot, spend.ItemType, spend.Quantity);
-            Fuel[generator] = new FuelEnergyState { RemainingEnergy = plan.RemainingEnergyAfterConsumption };
+            var fuel = Fuel[generator];
+            fuel.RemainingEnergy = plan.RemainingEnergyAfterConsumption;
+            if (plan.ConvertedFuelCapacity > 0f)
+            {
+                fuel.ActiveFuelCapacity = plan.ConvertedFuelCapacity;
+            }
+            Fuel[generator] = fuel;
         }
         foreach (Entity consumer in Consumers)
         {
@@ -178,5 +185,9 @@ internal struct CommitPowerSupplyJob : IJob
                 AllocatedEnergy = reservation.AllocatedEnergy
             };
         }
+
+        var result = Validation.Value;
+        result.SupplyCommitted = true;
+        Validation.Value = result;
     }
 }

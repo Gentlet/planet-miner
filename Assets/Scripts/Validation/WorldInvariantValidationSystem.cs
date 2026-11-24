@@ -561,8 +561,7 @@ public partial class WorldInvariantValidationSystem : SystemBase
             {
                 var assignment = EntityManager.GetComponentData<DroneTaskAssignment>(link);
                 valid = assignment.Worker == worker && assignment.Destination == owner && assignment.Task == claim.Task &&
-                    assignment.ItemType == claim.ItemType && !DroneSchedulingUtility.IsTerminal(assignment.State) &&
-                    !storageRead.IsDockOccupied(claim.SlotIndex);
+                    assignment.ItemType == claim.ItemType && !DroneSchedulingUtility.IsTerminal(assignment.State);
             }
             if (valid && hasRegistry)
             {
@@ -581,6 +580,8 @@ public partial class WorldInvariantValidationSystem : SystemBase
     /// </summary>
     private void ValidateDroneStationInvariants()
     {
+        bool hasItems = SystemAPI.TryGetSingletonBuffer<ItemConfigElement>(out var itemConfig, true);
+        int maximumStack = hasItems ? ItemRegistry.GetMaxStack(itemConfig, ItemTypeEnum.Drone) : 0;
         foreach (var (_, station) in SystemAPI.Query<RefRO<DroneStation>>()
                      .WithOptions(EntityQueryOptions.IncludeDisabledEntities).WithEntityAccess())
         {
@@ -608,11 +609,16 @@ public partial class WorldInvariantValidationSystem : SystemBase
             }
             if (EntityManager.HasBuffer<DroneStationReservedSlotElement>(station))
             {
-                using var reservedSlots = new NativeHashSet<int>(math.max(1, total), Allocator.Temp);
-                foreach (var entry in EntityManager.GetBuffer<DroneStationReservedSlotElement>(station, true))
+                var reservations = EntityManager.GetBuffer<DroneStationReservedSlotElement>(station, true);
+                using var reservedMembers = new NativeHashSet<int3>(math.max(1, reservations.Length), Allocator.Temp);
+                using var quantityStorage = new NativeArray<int>(items.Length, Allocator.Temp);
+                var reservedQuantities = quantityStorage;
+                foreach (var entry in reservations)
                 {
                     if (entry.TransportWorker != Entity.Null) continue;
-                    bool validReservation = (uint)entry.SlotIndex < (uint)math.min(total, items.Length) && reservedSlots.Add(entry.SlotIndex) &&
+                    bool validReservation = StationStorageUtility.IsDroneStorageSlot(entry.SlotIndex, total, dedicated) &&
+                        entry.SlotIndex < items.Length &&
+                        reservedMembers.Add(new int3(entry.Task.Index, entry.Task.Version, entry.MemberIndex)) &&
                         EntityManager.HasBuffer<DroneStationRelocationMemberElement>(entry.Task);
                     if (validReservation)
                     {
@@ -620,19 +626,18 @@ public partial class WorldInvariantValidationSystem : SystemBase
                         validReservation = (uint)entry.MemberIndex < (uint)roster.Length &&
                             !roster[entry.MemberIndex].Finished && roster[entry.MemberIndex].Destination == station &&
                             roster[entry.MemberIndex].SlotIndex == entry.SlotIndex;
-                        if (validReservation && items[entry.SlotIndex].Quantity > 0)
+                        if (validReservation && hasItems)
                         {
-                            var member = roster[entry.MemberIndex];
-                            validReservation = member.Request != Entity.Null &&
-                                EntityManager.HasComponent<DroneStationResult>(member.Request) &&
-                                EntityManager.GetComponentData<DroneStationResult>(member.Request).Operation == DroneStationOperation.Store;
+                            int slot = entry.SlotIndex;
+                            int reserved = reservedQuantities[slot] + 1;
+                            reservedQuantities[slot] = reserved;
+                            validReservation = reserved <= InventorySlotUtility.FreeQuantity(items[slot], ItemTypeEnum.Drone, maximumStack);
                         }
                     }
                     if (!validReservation)
                         ReportViolation("DroneStationInvariant", "Relocation reservation is inconsistent.", station);
                 }
             }
-            var slots = new HashSet<int>();
             foreach (var entry in docked)
             {
                 if (!registered.Add(entry.Drone))
@@ -640,14 +645,9 @@ public partial class WorldInvariantValidationSystem : SystemBase
                     ReportViolation("DroneStationInvariant", "Duplicate docked actor.", station);
                     continue;
                 }
-                if (!slots.Add(entry.SlotIndex))
+                if (!StationStorageUtility.MatchesDockedWorker(EntityManager, station, entry.Drone))
                 {
-                    ReportViolation("DroneStationInvariant", "Duplicate docked slot.", station);
-                    continue;
-                }
-                if (!StationStorageUtility.MatchesDockedWorker(EntityManager, station, entry, total, items))
-                {
-                    ReportViolation("DroneStationInvariant", "Docked actor/slot ownership is inconsistent.", station);
+                    ReportViolation("DroneStationInvariant", "Docked actor ownership is inconsistent.", station);
                 }
             }
         }

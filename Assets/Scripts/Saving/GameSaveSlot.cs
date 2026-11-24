@@ -109,7 +109,8 @@ public sealed class GameSaveSlot
         {
             using var writeLock = OpenWriteLock();
             var existing = ReadFile(_primaryPath);
-            if (existing.Status is GameSaveStatusEnum.Incompatible or GameSaveStatusEnum.IoError)
+            if (existing.Status == GameSaveStatusEnum.IoError ||
+                (existing.Status == GameSaveStatusEnum.Incompatible && existing.Identity == null))
             {
                 return existing.Status;
             }
@@ -172,11 +173,17 @@ public sealed class GameSaveSlot
 
     private static GameWorldReadResult ReadFile(string path)
     {
+        string identity = null;
         try
         {
             using var file = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
-            GameWorldSnapshot snapshot = GameSaveContainer.Read(file, out DateTimeOffset savedAt, out string identity);
+            GameWorldSnapshot snapshot = GameSaveContainer.Read(file, out DateTimeOffset savedAt, out identity);
             return new GameWorldReadResult(GameSaveStatusEnum.Success, snapshot, savedAt, identity);
+        }
+        catch (RetiredSaveSchemaException)
+        {
+            // 확인된 이전 파일의 해시를 기존 덮어쓰기 확인에 사용한다.
+            return new GameWorldReadResult(GameSaveStatusEnum.Incompatible, identity: identity);
         }
         catch (Exception error) when (TryFileStatus(error, out var status))
         {

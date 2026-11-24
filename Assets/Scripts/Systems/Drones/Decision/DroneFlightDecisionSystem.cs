@@ -31,6 +31,8 @@ public partial struct DroneFlightDecisionSystem : ISystem
         var siteOwners = _sites.ToEntityListAsync(Allocator.TempJob, state.Dependency, out var siteOwnersReady);
         var stations = new NativeList<DroneFlightStation>(Allocator.TempJob);
         var sites = new NativeList<DroneFlightSite>(Allocator.TempJob);
+        int maximumStack = SystemAPI.TryGetSingletonBuffer<ItemConfigElement>(out var items, true)
+            ? ItemRegistry.GetMaxStack(items, ItemTypeEnum.Drone) : 0;
         var build = new BuildFlightGeometryJob
         {
             StationOwners = stationOwners.AsDeferredJobArray(), SiteOwners = siteOwners.AsDeferredJobArray(),
@@ -45,7 +47,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
             Stamps = SystemAPI.GetComponentLookup<PlacementStamp>(true),
             Construction = SystemAPI.GetComponentLookup<ConstructionSite>(true),
             FuelSlots = SystemAPI.GetComponentLookup<FuelStorageSlots>(true),
-            Storages = SystemAPI.GetComponentLookup<Storage>(true),
+            Dedicated = SystemAPI.GetComponentLookup<DroneStationStorage>(true), MaximumStack = maximumStack,
             Items = SystemAPI.GetBufferLookup<StorageSlotElement>(true), Docks = SystemAPI.GetBufferLookup<DockedDroneElement>(true)
         }.Schedule(JobHandle.CombineDependencies(state.Dependency, stationOwnersReady, siteOwnersReady));
         var config = SystemAPI.GetSingleton<DroneMovementConfig>();
@@ -89,7 +91,8 @@ public partial struct DroneFlightDecisionSystem : ISystem
         [ReadOnly] public BufferLookup<DroneStationReservedSlotElement> Reserved;
         [ReadOnly] public ComponentLookup<PlacementStamp> Stamps;
         [ReadOnly] public ComponentLookup<ConstructionSite> Construction;
-        [ReadOnly] public ComponentLookup<Storage> Storages;
+        [ReadOnly] public ComponentLookup<DroneStationStorage> Dedicated;
+        public int MaximumStack;
         [ReadOnly] public ComponentLookup<FuelStorageSlots> FuelSlots;
         [ReadOnly] public BufferLookup<StorageSlotElement> Items;
         [ReadOnly] public BufferLookup<DockedDroneElement> Docks;
@@ -109,31 +112,14 @@ public partial struct DroneFlightDecisionSystem : ISystem
                 {
                     position += (float2)footprint.GetEffectiveSize(direction.dir) * 0.5f;
                 }
-                bool canDock = false;
-                if (Storages.TryGetComponent(entity, out var storage) && Items.TryGetBuffer(entity, out var items) &&
-                    Docks.TryGetBuffer(entity, out var docks) &&
-                    !Preparing.HasComponent(entity))
+                bool canDock = Docks.HasBuffer(entity) && !Preparing.HasComponent(entity);
+                bool canStore = false;
+                if (canDock && MaximumStack > 0 && Dedicated.TryGetComponent(entity, out var dedicated) &&
+                    Items.TryGetBuffer(entity, out var items))
                 {
-                    int slotCount = FuelSlots.TryGetComponent(entity, out var fuel) ? fuel.Start : storage.SlotCount;
-                    DynamicBuffer<DroneStationReservedSlotElement> reservations = default;
-                    if (slotCount > 0)
-                    {
-                        Reserved.TryGetBuffer(entity, out reservations);
-                    }
-                    for (int slot = 0; slot < slotCount; slot++)
-                    {
-                        bool occupied = reservations.IsCreated && DroneStationRelocationUtility.IsReserved(reservations, slot);
-                        occupied |= items[slot].Quantity > 0;
-                        for (int dock = 0; dock < docks.Length; dock++)
-                        {
-                            occupied |= docks[dock].SlotIndex == slot;
-                        }
-                        if (!occupied)
-                        {
-                            canDock = true;
-                            break;
-                        }
-                    }
+                    int total = FuelSlots.TryGetComponent(entity, out var fuel) ? fuel.Start : items.Length;
+                    Reserved.TryGetBuffer(entity, out var reservations);
+                    canStore = StationStorageUtility.CanStoreDrone(items, reservations, total, dedicated.DedicatedSlotCount, MaximumStack);
                 }
                 var network = Networks[entity];
                 bool hasStamp = Stamps.TryGetComponent(entity, out var stamp);
@@ -142,7 +128,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
                     Entity = entity, Network = network.RepresentativeStation,
                     Bounds = network.ActivityBounds, Position = position, Anchor = anchor,
                     HasStamp = hasStamp, Stamp = stamp,
-                    CanDock = canDock
+                    CanDock = canDock, CanStore = canStore
                 });
             }
             for (int i = 0; i < SiteOwners.Length; i++)
@@ -314,7 +300,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
                 assignment.State == DroneTaskAssignmentStateEnum.Retargeting || DroneSchedulingUtility.IsTerminal(assignment.State)))
             {
                 // 작업 선택보다 앞선 순수 fallback이다. Reservation이 배정/경로 대기와 경합을 중재한다.
-                PrepareNormalReturn(transform.Position.xy, battery.CurrentCharge, ref decision);
+                PrepareNormalReturn(transform.Position.xy, battery.CurrentCharge, movement.ReturnStation, ref decision);
                 return;
             }
             bool needsReturn = (!movement.IsNormalReturn && movement.ReturnStation != Entity.Null) ||
@@ -329,7 +315,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
                         if (!Stations[i].CanDock && (!hasAssignment ||
                             assignment.State == DroneTaskAssignmentStateEnum.Retargeting || DroneSchedulingUtility.IsTerminal(assignment.State)))
                         {
-                            // 미정박 귀환의 만석은 대체 정거장을 찾는다. 진행 중 작업의 계획된 충전 대기와 구분한다.
+                            // 새 정박을 받지 않는 정거장으로 미정박 귀환을 이어가지 않는다.
                             break;
                         }
                         chargingStationActive = true;
@@ -355,7 +341,8 @@ public partial struct DroneFlightDecisionSystem : ISystem
             }
             if (needsReturn)
             {
-                PrepareReturn(transform.Position.xy, battery.CurrentCharge, link.Assignment, assignment, previous, ref decision);
+                PrepareReturn(transform.Position.xy, battery.CurrentCharge, link.Assignment, assignment, previous, ref decision,
+                    movement.ReturnStation);
                 return;
             }
             if (!hasAssignment)
@@ -421,13 +408,22 @@ public partial struct DroneFlightDecisionSystem : ISystem
             decision.Purpose = plan.ChargingStation == Entity.Null ? DroneFlightPurposeEnum.Task : DroneFlightPurposeEnum.ChargingStop;
         }
 
-        private void PrepareNormalReturn(float2 origin, float charge, ref DroneMovementDecision decision)
+        private void PrepareNormalReturn(float2 origin, float charge, Entity previousStation,
+            ref DroneMovementDecision decision)
         {
             int stationIndex = DroneFlightPlanningUtility.PlanReturn(origin, Stations, charge, Maximum,
                 Config.EnergyPerDistance, out var plan);
             if (stationIndex < 0)
             {
-                decision.Purpose = DroneFlightPurposeEnum.WaitingForStation;
+                // 완충 기체가 정박 정거장에는 도달할 수 있다면 수납 공간을 기다린다.
+                if (charge >= Maximum && DroneFlightPlanningUtility.PlanChargingReturn(origin, Stations,
+                        charge, Maximum, Config.EnergyPerDistance, out _) >= 0)
+                {
+                    decision.Purpose = DroneFlightPurposeEnum.WaitingForStation;
+                    return;
+                }
+                int recoveryStation = DroneFlightPlanningUtility.FindReturnStation(origin, Stations, previousStation);
+                SetDirectReturn(recoveryStation, DroneFlightPurposeEnum.NormalReturn, ref decision);
                 return;
             }
             decision.Purpose = DroneFlightPurposeEnum.NormalReturn;
@@ -436,7 +432,7 @@ public partial struct DroneFlightDecisionSystem : ISystem
         }
 
         private void PrepareReturn(float2 origin, float charge, Entity assignmentEntity, in DroneTaskAssignment assignment,
-            in DroneMovementResult previous, ref DroneMovementDecision decision)
+            in DroneMovementResult previous, ref DroneMovementDecision decision, Entity previousStation = default)
         {
             if (assignmentEntity != Entity.Null)
             {
@@ -455,15 +451,20 @@ public partial struct DroneFlightDecisionSystem : ISystem
                 decision.Purpose = DroneFlightPurposeEnum.None;
                 return;
             }
-            int station = DroneFlightPlanningUtility.FindReturnStation(origin, Stations);
-            if (station < 0)
+            int station = DroneFlightPlanningUtility.FindReturnStation(origin, Stations, previousStation);
+            SetDirectReturn(station, DroneFlightPurposeEnum.EmergencyReturn, ref decision);
+        }
+
+        private void SetDirectReturn(int stationIndex, DroneFlightPurposeEnum purpose, ref DroneMovementDecision decision)
+        {
+            if (stationIndex < 0)
             {
                 decision.Purpose = DroneFlightPurposeEnum.WaitingForStation;
                 return;
             }
-            decision.Purpose = DroneFlightPurposeEnum.EmergencyReturn;
-            decision.Station = Stations[station].Entity;
-            decision.Target = Stations[station].Position;
+            decision.Purpose = purpose;
+            decision.Station = Stations[stationIndex].Entity;
+            decision.Target = Stations[stationIndex].Position;
         }
     }
 }

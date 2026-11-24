@@ -64,14 +64,16 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
             SystemAPI.GetComponentLookup<DroneWorkerObservation>(true), excludedWorkers, dockedRetargets, evaluatingTargets);
         var targetsUnderEvaluation = evaluatingTargets.AsReadOnly();
         using var flights = new NativeList<DroneFlightStation>(Allocator.TempJob);
-        DroneStationAutomationUtility.BuildStations(manager, stations, flights);
+        Entity registry = _registry.GetSingletonEntity();
+        int maximumStack = ItemRegistry.GetMaxStack(manager.GetBuffer<ItemConfigElement>(registry, true), ItemTypeEnum.Drone);
+        DroneStationAutomationUtility.BuildStations(manager, stations, flights, maximumStack);
         using var plans = new NativeList<DroneStationActivationPlan>(Allocator.TempJob);
         Entity demolitionConfig = _demolitionConfig.IsEmptyIgnoreFilter ? Entity.Null : _demolitionConfig.GetSingletonEntity();
         using var intents = new NativeList<DroneStationAutomationIntent>(Allocator.Temp);
+        using var storageDiversions = new NativeList<DroneStationAutomationIntent>(Allocator.Temp);
         float maximum = SystemAPI.GetSingleton<DroneBatteryConfig>().MaximumCharge;
         int capacity = SystemAPI.GetSingleton<DroneCapacityState>().CarryingCapacity;
         var config = SystemAPI.GetSingleton<DroneMovementConfig>();
-        Entity registry = _registry.GetSingletonEntity();
         _eligibility.Update(ref state);
         var eligibility = _eligibility;
         using var dockFootprints = new NativeList<DroneStationDockFootprint>(stations.Length, Allocator.Temp);
@@ -82,7 +84,6 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
         }
         var dedicated = SystemAPI.GetComponentLookup<DroneStationStorage>(true);
         var storageLookup = SystemAPI.GetBufferLookup<StorageSlotElement>(true);
-        int maximumStack = ItemRegistry.GetMaxStack(manager.GetBuffer<ItemConfigElement>(registry, true), ItemTypeEnum.Drone);
         using var slotRanges = new NativeParallelHashMap<Entity, DroneStationSlotRange>(1, Allocator.Temp);
         using var slotPreview = new NativeList<DroneStationSlot>(Allocator.Temp);
         bool hasReadInvalidations = false;
@@ -98,6 +99,17 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
             Entity station = DroneStationAutomationUtility.FindCurrentStation(manager, worker, dockFootprints, eligibility);
             if (station == Entity.Null) continue;
             bool docked = manager.HasComponent<DroneDocked>(worker);
+            if (!docked && manager.GetComponentData<DroneBatteryState>(worker).CurrentCharge == maximum &&
+                manager.HasComponent<DroneMovementDecision>(worker))
+            {
+                // 만석에서 정박 해제한 기체의 출발을 원점의 새 Dock 요청으로 다시 막지 않는다.
+                var departure = manager.GetComponentData<DroneMovementDecision>(worker);
+                if (departure.Ready && departure.Purpose == DroneFlightPurposeEnum.NormalReturn &&
+                    departure.Station != station)
+                {
+                    continue;
+                }
+            }
             Entity assignment = manager.GetComponentData<DroneWorkerAssignment>(worker).Assignment;
             bool linked = assignment != Entity.Null && manager.Exists(assignment);
             bool invalidated = false;
@@ -115,13 +127,13 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
             if (cancellationPlanned) continue;
             if (invalidated)
             {
-                if (!docked) continue;
                 if (!linked) continue;
-                // Retargeting의 반복 정리 의도는 보존된 화물의 정박 해제/재배정을 막지 않는다.
+                // 화물이 보존된 Retargeting의 반복 정리는 공개된 충전 도착과 이후 재배정을 막지 않는다.
                 if (manager.GetComponentData<DroneTaskAssignment>(assignment).State != DroneTaskAssignmentStateEnum.Retargeting)
                 {
                     continue;
                 }
+                if (!docked && manager.GetComponentData<DroneMovementState>(worker).ChargingStation != station) continue;
             }
             if (docked && linked && manager.GetComponentData<DroneBatteryState>(worker).CurrentCharge > 0f)
             {
@@ -134,20 +146,38 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
                     endpointReads, targetsUnderEvaluation, networks, registry, capacity, maximum, plans, demolitionConfig: demolitionConfig);
             }
             var request = new DroneStationRequest { Drone = worker, Station = station, Operation = DroneStationOperation.Store };
-            if (eligibility.Validate(request, maximum, true) != DroneStationRequestStatus.Applied)
+            bool canStore = eligibility.Validate(request, maximum, true) == DroneStationRequestStatus.Applied;
+            if (canStore)
             {
-                if (docked) continue;
-                request.Operation = DroneStationOperation.Dock;
-                if (eligibility.Validate(request, maximum, true) != DroneStationRequestStatus.Applied) continue;
+                slotRanges.Clear();
+                slotPreview.Clear();
+                if (DroneStationLifecycleUtility.ReserveSlot(request, -1, maximumStack,
+                    eligibility.Storages, dedicated, eligibility.FuelSlots, storageLookup, slotRanges, slotPreview, eligibility.Reserved) >= 0)
+                {
+                    intents.Add(new DroneStationAutomationIntent { Drone = worker, Station = station, Operation = request.Operation });
+                    continue;
+                }
+
+                if (docked)
+                {
+                    var origin = manager.GetComponentData<LocalTransform>(worker).Position.xy;
+                    var depart = new DroneStationRequest { Drone = worker, Station = station, Operation = DroneStationOperation.Activate };
+                    int target = DroneFlightPlanningUtility.PlanReturn(origin, flights, maximum, maximum,
+                        config.EnergyPerDistance, out _, station, allowChargingOnlyFallback: false);
+                    if (target >= 0 && flights[target].Entity != station &&
+                        eligibility.Validate(depart, maximum, true) == DroneStationRequestStatus.Applied)
+                    {
+                        storageDiversions.Add(new DroneStationAutomationIntent { Drone = worker, Station = station, Operation = DroneStationOperation.Activate });
+                    }
+                }
             }
-            // 만석 정거장에 실패 요청을 매 틱 만들면 귀환 재선택을 계속 막는다.
-            // 한 수행자의 자격만 확인하고 실제 공유 공간 중재는 기존 Reservation에 맡긴다.
-            slotRanges.Clear();
-            slotPreview.Clear();
-            int preferred = docked ? manager.GetComponentData<DroneDocked>(worker).SlotIndex : -1;
-            if (DroneStationLifecycleUtility.ReserveSlot(request, preferred, maximumStack,
-                eligibility.Storages, dedicated, eligibility.FuelSlots, storageLookup, eligibility.Docked, slotRanges, slotPreview, eligibility.Reserved) < 0) continue;
-            intents.Add(new DroneStationAutomationIntent { Drone = request.Drone, Station = request.Station, Operation = request.Operation });
+
+            if (docked) continue;
+            request.Operation = DroneStationOperation.Dock;
+            if (eligibility.Validate(request, maximum, true) == DroneStationRequestStatus.Applied)
+            {
+                intents.Add(new DroneStationAutomationIntent { Drone = worker, Station = station, Operation = request.Operation });
+            }
         }
         if (tasks.Length > 0)
         {
@@ -253,6 +283,10 @@ public partial struct DroneStationAutomationDecisionSystem : ISystem
         }
         plannedStock.Dispose();
         plannedDemand.Dispose();
+        foreach (var diversion in storageDiversions)
+        {
+            if (!activated.Contains(diversion.Drone)) intents.Add(diversion);
+        }
         // 요청 접수의 구조 변경 전에 모든 원본/Lookup 읽기를 끝낸다.
         foreach (var intent in intents)
         {

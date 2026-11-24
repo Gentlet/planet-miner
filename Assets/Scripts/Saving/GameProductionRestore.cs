@@ -83,7 +83,7 @@ internal sealed class GameProductionRestore
         }
         if (isLegacyFormat || isMiner != saved.MiningProgress.HasValue || isCrafter != (saved.Crafting != null) ||
             storesFuelEnergy != saved.RemainingFuelEnergy.HasValue || isResearchFacility != (saved.ResearchCycle != null) ||
-            hasProducts != (saved.Products != null))
+            hasProducts != (saved.Products != null) || storesFuelEnergy != saved.ActiveFuelCapacity.HasValue)
         {
             throw new InvalidDataException("작업 상태 기록이 건물 역할과 일치하지 않습니다.");
         }
@@ -100,9 +100,15 @@ internal sealed class GameProductionRestore
         }
         if (storesFuelEnergy)
         {
+            float remaining = ReadNonnegative(saved.RemainingFuelEnergy.Value, "남은 연료 에너지");
+            float capacity = ReadNonnegative(saved.ActiveFuelCapacity.Value, "연료 에너지 최대치");
+            if (capacity < remaining)
+            {
+                throw new InvalidDataException("연료 에너지 최대치가 잔량보다 작습니다.");
+            }
             _manager.SetComponentData(building, new FuelEnergyState
             {
-                RemainingEnergy = ReadNonnegative(saved.RemainingFuelEnergy.Value, "남은 연료 에너지")
+                RemainingEnergy = remaining, ActiveFuelCapacity = capacity
             });
         }
         if (isResearchFacility)

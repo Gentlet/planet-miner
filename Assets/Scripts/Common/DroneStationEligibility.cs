@@ -36,6 +36,7 @@ internal struct DroneStationEligibility
     [ReadOnly] public ComponentLookup<DroneWorkerAssignment> Assignments;
     [ReadOnly] public ComponentLookup<DroneCargoState> Cargo;
     [ReadOnly] public ComponentLookup<DroneDocked> Docks;
+    [ReadOnly] public ComponentLookup<DroneStationStorage> Dedicated;
     [ReadOnly] public ComponentLookup<DroneMovementState> Movements;
     private int NonFuelSlotCount(Entity station)
     {
@@ -80,6 +81,7 @@ internal struct DroneStationEligibility
             Assignments = state.GetComponentLookup<DroneWorkerAssignment>(true),
             Cargo = state.GetComponentLookup<DroneCargoState>(true),
             Docks = state.GetComponentLookup<DroneDocked>(true),
+            Dedicated = state.GetComponentLookup<DroneStationStorage>(true),
             Movements = state.GetComponentLookup<DroneMovementState>(true),
             Storages = state.GetComponentLookup<Storage>(true),
             FuelSlots = state.GetComponentLookup<FuelStorageSlots>(true),
@@ -104,6 +106,7 @@ internal struct DroneStationEligibility
         Assignments.Update(ref state);
         Cargo.Update(ref state);
         Docks.Update(ref state);
+        Dedicated.Update(ref state);
         Movements.Update(ref state);
         Storages.Update(ref state);
         FuelSlots.Update(ref state);
@@ -127,7 +130,8 @@ internal struct DroneStationEligibility
             !StationRoles.HasComponent(station)) return DroneStationRequestStatus.Rejected;
         if (request.Operation == DroneStationOperation.ActivateStored)
         {
-            if ((uint)request.SourceSlotIndex >= (uint)NonFuelSlotCount(station)) return DroneStationRequestStatus.Rejected;
+            if (!StationStorageUtility.IsDroneStorageSlot(request.SourceSlotIndex, NonFuelSlotCount(station),
+                Dedicated[station].DedicatedSlotCount)) return DroneStationRequestStatus.Rejected;
             if (relocationRequest)
             {
                 if (!Preparing.TryGetComponent(station, out var preparation) || !preparation.Started ||
@@ -219,12 +223,12 @@ internal struct DroneStationEligibility
             int matches = 0;
             foreach (var entry in Docked[station])
             {
-                if (entry.Drone == drone && entry.SlotIndex == dock.SlotIndex)
+                if (entry.Drone == drone)
                 {
                     matches++;
                 }
             }
-            if (dock.Station != station || dock.SlotIndex < 0 || dock.SlotIndex >= NonFuelSlotCount(station) || matches != 1)
+            if (dock.Station != station || matches != 1)
             {
                 return DroneStationRequestStatus.Rejected;
             }

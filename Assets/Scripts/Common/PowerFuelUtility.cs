@@ -21,10 +21,11 @@ public static class PowerFuelUtility
     // 슬롯 자체가 선택 순서를 소유한다. 설정의 품목 목록은 에너지 조회에만 사용한다.
     internal static bool TryPlan(float remaining, float allocated, in DynamicBuffer<StorageSlotElement> stored,
         in FuelStorageSlots range, in BuildingConfigElement config, out FixedList4096Bytes<PowerFuelSpend> spends,
-        out float afterConsumption)
+        out float afterConsumption, out float convertedFuelCapacity)
     {
         spends = default;
         afterConsumption = 0f;
+        convertedFuelCapacity = 0f;
         if (!math.isfinite(remaining) || remaining < 0f || !math.isfinite(allocated) || allocated < 0f ||
             range.Start < 0 || range.Count <= 0 || range.Count > stored.Length - range.Start)
             return false;
@@ -41,6 +42,7 @@ public static class PowerFuelUtility
 
             int take = (int)Math.Min(item.Quantity, Math.Ceiling(((double)allocated - energy) / energyPerItem));
             spends.Add(new PowerFuelSpend { Slot = slot, ItemType = item.ItemType, Quantity = take });
+            convertedFuelCapacity = energyPerItem;
             energy += take * (double)energyPerItem;
         }
         double remainder = energy - allocated;

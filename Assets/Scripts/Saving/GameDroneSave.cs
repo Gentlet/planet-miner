@@ -149,10 +149,10 @@ internal static class GameDroneSave
         ValidateDockReferences(snapshot);
     }
 
-    // 양쪽 ID의 일치 여부는 슬롯 선택 전에 확인한다. 실제 슬롯 범위는 복원 World에서 검사한다.
+    // 정박의 양방향 참조와 유일성을 드론 ID와 정거장 ID로 검사한다.
     private static void ValidateDockReferences(SavedDroneWorld snapshot)
     {
-        var occupants = new Dictionary<(string Station, int Slot), string>();
+        var occupants = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var row in snapshot.Entities)
         {
             if (row.Kind != SavedDroneKindEnum.Building || !row.TryGet<List<DockedDroneElement>>(out var docks))
@@ -161,13 +161,18 @@ internal static class GameDroneSave
             }
             foreach (var dock in docks)
             {
-                if (dock.SlotIndex < 0)
+                if (dock.SlotIndex != -1)
                 {
-                    throw new InvalidDataException("정거장의 정박 슬롯 번호가 음수입니다.");
+                    throw new InvalidDataException("정박 기록에는 수납 슬롯을 지정할 수 없습니다.");
                 }
-                if (!occupants.TryAdd((row.Id, dock.SlotIndex), ReadReferenceId(snapshot, dock.Drone)))
+                string droneId = ReadReferenceId(snapshot, dock.Drone);
+                if (string.IsNullOrEmpty(droneId))
                 {
-                    throw new InvalidDataException("정거장의 정박 슬롯 번호가 중복됩니다.");
+                    throw new InvalidDataException("정박 기록에 드론 참조가 없습니다.");
+                }
+                if (!occupants.TryAdd(droneId, row.Id))
+                {
+                    throw new InvalidDataException("정박한 드론이 중복 등록되어 있습니다.");
                 }
             }
         }
@@ -177,16 +182,15 @@ internal static class GameDroneSave
             {
                 continue;
             }
-            var key = (ReadReferenceId(snapshot, dock.Station), dock.SlotIndex);
-            if (!occupants.TryGetValue(key, out string worker) || worker != row.Id)
+            if (dock.SlotIndex != -1 || !occupants.Remove(row.Id, out var station) ||
+                station != ReadReferenceId(snapshot, dock.Station))
             {
-                throw new InvalidDataException("드론의 정박 기록이 정거장 슬롯과 일치하지 않습니다.");
+                throw new InvalidDataException("드론의 정박 기록이 정거장의 정박 기록과 일치하지 않습니다.");
             }
-            occupants.Remove(key);
         }
         if (occupants.Count != 0)
         {
-            throw new InvalidDataException("정거장 슬롯에 대응하는 드론 정박 기록이 없습니다.");
+            throw new InvalidDataException("정거장에 등록된 드론의 정박 기록이 없습니다.");
         }
     }
 

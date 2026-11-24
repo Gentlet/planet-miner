@@ -8,7 +8,7 @@ using Unity.Entities;
 internal static class GameWorldBinarySnapshot
 {
     private const uint Magic = 0x56534d50; // PMSV
-    private const ushort SchemaVersion = 2;
+    internal const ushort CurrentSchemaVersion = 4;
     private const int MaxSectionBytes = 128 * 1024 * 1024;
 
     private enum Section : byte
@@ -24,7 +24,7 @@ internal static class GameWorldBinarySnapshot
         ValidateSnapshot(snapshot);
         using var writer = new BinaryWriter(destination, Encoding.UTF8, leaveOpen: true);
         writer.Write(Magic);
-        writer.Write(SchemaVersion);
+        writer.Write(CurrentSchemaVersion);
         writer.Write(savedAt.UtcDateTime.Ticks);
         TransferContentVersions(new GameSnapshotArchive(writer));
         WriteSection(writer, Section.World, snapshot, GameWorldBinaryLayout.World);
@@ -41,7 +41,11 @@ internal static class GameWorldBinarySnapshot
             throw new InvalidDataException("바이너리 스냅샷 식별자가 올바르지 않습니다.");
         }
         ushort version = reader.ReadUInt16();
-        if (version != 1 && version != SchemaVersion)
+        if (version >= 1 && version < CurrentSchemaVersion)
+        {
+            throw new RetiredSaveSchemaException();
+        }
+        if (version != CurrentSchemaVersion)
         {
             throw new NotSupportedException("지원하지 않는 바이너리 저장 버전입니다.");
         }
@@ -52,7 +56,7 @@ internal static class GameWorldBinarySnapshot
         }
         savedAt = new DateTimeOffset(utcTicks, TimeSpan.Zero);
         TransferContentVersions(new GameSnapshotArchive(reader));
-        var snapshot = new GameWorldSnapshot { AllowsLegacyBeltSpacing = version == 1 };
+        var snapshot = new GameWorldSnapshot();
         ReadSection(reader, Section.World, snapshot, GameWorldBinaryLayout.World);
         ReadSection(reader, Section.BuildingsAndItems, snapshot, GameWorldBinaryLayout.BuildingsAndItems);
         ReadSection(reader, Section.ResearchAndConstruction, snapshot, GameWorldBinaryLayout.ResearchAndConstruction);
@@ -263,4 +267,9 @@ internal static class GameWorldBinarySnapshot
             throw new InvalidDataException("월드 저장 ID가 중복됩니다.");
         }
     }
+}
+
+internal sealed class RetiredSaveSchemaException : NotSupportedException
+{
+    public RetiredSaveSchemaException() : base("이전 바이너리 저장 버전입니다.") { }
 }

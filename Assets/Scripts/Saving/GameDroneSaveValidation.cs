@@ -56,7 +56,6 @@ internal static class GameDroneSaveValidation
         });
         using var stationEntities = stations.ToEntityArray(Allocator.Temp);
         var registeredWorkers = new HashSet<Entity>();
-        var occupiedSlots = new HashSet<int>();
         foreach (Entity station in stationEntities)
         {
             var docks = manager.GetBuffer<DockedDroneElement>(station, true);
@@ -69,22 +68,19 @@ internal static class GameDroneSaveValidation
             {
                 throw new InvalidDataException("정박 기록에 유효한 정거장 보관 슬롯이 없습니다.");
             }
-            occupiedSlots.Clear();
-            int slotCount = StationStorageUtility.NonFuelSlotCount(manager, station, manager.GetComponentData<Storage>(station).SlotCount);
-            var items = manager.GetBuffer<StorageSlotElement>(station, true);
             foreach (var entry in docks)
             {
                 if (!registeredWorkers.Add(entry.Drone))
                 {
-                    throw new InvalidDataException("드론이 둘 이상의 정박 슬롯에 등록되어 있습니다.");
+                    throw new InvalidDataException("드론이 둘 이상의 정박 관계에 등록되어 있습니다.");
                 }
-                if (!occupiedSlots.Add(entry.SlotIndex))
+                if (!StationStorageUtility.MatchesDockedWorker(manager, station, entry.Drone))
                 {
-                    throw new InvalidDataException("같은 정거장 슬롯에 드론이 중복 등록되어 있습니다.");
+                    throw new InvalidDataException("정거장과 드론의 정박 관계가 일치하지 않습니다.");
                 }
-                if (!StationStorageUtility.MatchesDockedWorker(manager, station, entry, slotCount, items))
+                if (entry.SlotIndex != -1 || manager.GetComponentData<DroneDocked>(entry.Drone).SlotIndex != -1)
                 {
-                    throw new InvalidDataException("정거장의 정박 슬롯과 드론의 소유 기록이 일치하지 않습니다.");
+                    throw new InvalidDataException("정박 기록에는 수납 슬롯을 지정할 수 없습니다.");
                 }
             }
         }
@@ -98,7 +94,7 @@ internal static class GameDroneSaveValidation
         {
             if (!registeredWorkers.Contains(worker))
             {
-                throw new InvalidDataException("정박한 드론이 정거장 슬롯에 등록되어 있지 않습니다.");
+                throw new InvalidDataException("정박한 드론이 정거장에 등록되어 있지 않습니다.");
             }
         }
     }

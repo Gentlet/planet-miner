@@ -6,7 +6,7 @@ using Unity.Mathematics;
 internal static class DroneDemolitionStorageUtility
 {
     internal static int FreeQuantity(DynamicBuffer<DroneStationReservedSlotElement> slots, int index,
-        ItemTypeEnum type, int free, Entity worker)
+        ItemTypeEnum type, int free, Entity worker, Entity relocationTask = default, int memberIndex = -1)
     {
         bool hasClaim = false;
         int own = 0;
@@ -15,12 +15,21 @@ internal static class DroneDemolitionStorageUtility
             bool owned = worker != Entity.Null && slot.TransportWorker == worker;
             hasClaim |= owned;
             if (slot.SlotIndex != index) continue;
-            if (slot.TransportWorker == Entity.Null || slot.ItemType != type) return 0;
-            if (owned) own += slot.Quantity;
-            else free -= slot.Quantity;
+            if (ReservedType(slot) != type) return 0;
+            if (slot.TransportWorker == Entity.Null && relocationTask != Entity.Null &&
+                slot.Task == relocationTask && slot.MemberIndex == memberIndex) continue;
+            int reserved = ReservedQuantity(slot);
+            if (owned) own += reserved;
+            else free -= reserved;
         }
         return math.max(0, hasClaim ? math.min(free, own) : free);
     }
+
+    internal static ItemTypeEnum ReservedType(in DroneStationReservedSlotElement slot) =>
+        slot.TransportWorker == Entity.Null ? ItemTypeEnum.Drone : slot.ItemType;
+
+    internal static int ReservedQuantity(in DroneStationReservedSlotElement slot) =>
+        slot.TransportWorker == Entity.Null ? 1 : slot.Quantity;
 
     private struct RefundNeed
     {

@@ -135,9 +135,13 @@ public static class DroneTransportEndpointUtility
     {
         var area = DestinationArea(task);
         int space = DroneSchedulingUtility.CountStorageSpace(manager, destination, task.ItemType, registry, wanted, area,
-            generalOnly: area == DroneTransportAreaEnum.GeneralStorage, deliveryAssignment: deliveryAssignment);
+            generalOnly: UsesGeneralStorageSlots(manager, destination, area, task.ItemType), deliveryAssignment: deliveryAssignment);
         return area == DroneTransportAreaEnum.Input ? math.min(space, InputRemaining(manager, destination, task.ItemType)) : space;
     }
+
+    internal static bool UsesGeneralStorageSlots(EntityManager manager, Entity destination, DroneTransportAreaEnum area,
+        ItemTypeEnum type) => area == DroneTransportAreaEnum.GeneralStorage &&
+        (type != ItemTypeEnum.Drone || !manager.HasComponent<DroneStationStorage>(destination));
 
     /// <summary>현재 공개 연구가 없거나 회수 대기이면 0이다. EndBuilding 뒤에는 준비 단계의 오래된 한도를 사용하지 않는다.</summary>
     public static int InputMaximum(EntityManager manager, Entity owner, ItemTypeEnum type)

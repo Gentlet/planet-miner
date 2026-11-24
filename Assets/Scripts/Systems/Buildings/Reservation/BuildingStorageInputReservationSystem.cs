@@ -18,7 +18,6 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
 {
     private ComponentLookup<Storage> _storageLookup;
     private ComponentLookup<DroneStationStorage> _stationStorageLookup;
-    private BufferLookup<DockedDroneElement> _dockedLookup;
     private BufferLookup<StorageSlotElement> _storedBufferLookup;
     private BufferLookup<BuildingInputSlotElement> _inputSlotLookup;
     private BufferLookup<ItemConfigElement> _itemConfigLookup;
@@ -30,7 +29,6 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
     {
         _storageLookup = state.GetComponentLookup<Storage>(true);
         _stationStorageLookup = state.GetComponentLookup<DroneStationStorage>(true);
-        _dockedLookup = state.GetBufferLookup<DockedDroneElement>(true);
         _storedBufferLookup = state.GetBufferLookup<StorageSlotElement>(true);
         _inputSlotLookup = state.GetBufferLookup<BuildingInputSlotElement>(true);
         _itemConfigLookup = state.GetBufferLookup<ItemConfigElement>(true);
@@ -47,7 +45,6 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
     {
         _storageLookup.Update(ref state);
         _stationStorageLookup.Update(ref state);
-        _dockedLookup.Update(ref state);
         _storedBufferLookup.Update(ref state);
         _inputSlotLookup.Update(ref state);
         _itemConfigLookup.Update(ref state);
@@ -72,7 +69,6 @@ public partial struct BuildingStorageInputReservationSystem : ISystem
             StorageFilters = SystemAPI.GetComponentLookup<StorageFilter>(true),
             FuelSlots = SystemAPI.GetComponentLookup<FuelStorageSlots>(true),
             StationStorageLookup = _stationStorageLookup,
-            DockedLookup = _dockedLookup,
             ReservedLookup = SystemAPI.GetBufferLookup<DroneStationReservedSlotElement>(true),
             PreparingLookup = SystemAPI.GetComponentLookup<PreparingStationDemolition>(true),
             StoredBufferLookup = _storedBufferLookup,
@@ -134,7 +130,6 @@ public partial struct BuildingStorageInputReservationJob : IJobChunk
     [ReadOnly] public ComponentLookup<DroneStationStorage> StationStorageLookup;
     [ReadOnly] public ComponentLookup<FuelStorageSlots> FuelSlots;
     [ReadOnly] public ComponentLookup<StorageFilter> StorageFilters;
-    [ReadOnly] public BufferLookup<DockedDroneElement> DockedLookup;
     [ReadOnly] public BufferLookup<DroneStationReservedSlotElement> ReservedLookup;
     [ReadOnly] public ComponentLookup<PreparingStationDemolition> PreparingLookup;
 
@@ -234,18 +229,6 @@ public partial struct BuildingStorageInputReservationJob : IJobChunk
             }
         }
 
-        // 적재 가능 슬롯 탐색
-        if (DockedLookup.TryGetBuffer(building, out var dockedDrones))
-        {
-            foreach (var docked in dockedDrones)
-            {
-                if (docked.SlotIndex >= 0 && docked.SlotIndex < safeSlotCount)
-                {
-                    slotOccupancy[docked.SlotIndex] = maxStack;
-                    slotTypes[docked.SlotIndex] = ItemTypeEnum.Drone;
-                }
-            }
-        }
         if (PreparingLookup.HasComponent(building))
         {
             inputDecision.CanDeposit = false;
@@ -260,16 +243,11 @@ public partial struct BuildingStorageInputReservationJob : IJobChunk
                 if (reserved.SlotIndex >= 0 && reserved.SlotIndex < safeSlotCount)
                 {
                     int slot = reserved.SlotIndex;
-                    if (reserved.TransportWorker == Entity.Null || reserved.ItemType != itemType)
-                    {
-                        slotOccupancy[slot] = maxStack;
-                        slotTypes[slot] = reserved.TransportWorker == Entity.Null ? ItemTypeEnum.Drone : reserved.ItemType;
-                    }
-                    else
-                    {
-                        slotOccupancy[slot] = math.min(maxStack, slotOccupancy[slot] + reserved.Quantity);
-                        slotTypes[slot] = reserved.ItemType;
-                    }
+                    ItemTypeEnum reservedType = DroneDemolitionStorageUtility.ReservedType(reserved);
+                    int quantity = DroneDemolitionStorageUtility.ReservedQuantity(reserved);
+                    slotOccupancy[slot] = reservedType == itemType
+                        ? math.min(maxStack, slotOccupancy[slot] + quantity) : maxStack;
+                    slotTypes[slot] = reservedType;
                 }
             }
         }
@@ -344,7 +322,7 @@ public partial struct BuildingStorageInputReservationJob : IJobChunk
         int firstEmpty = -1;
         for (int slot = start; slot < end; slot++)
         {
-            if (!StationStorageUtility.IsItemSlotAllowed(slot, end, dedicated, itemType, true) ||
+            if (!StationStorageUtility.IsItemSlotAllowed(slot, end, dedicated, itemType) ||
                 (hasInputs && inputs[slot].ItemType != itemType))
                 continue;
             if (quantities[slot] == 0)

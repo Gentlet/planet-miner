@@ -1,9 +1,10 @@
 using Unity.Entities;
 using Unity.Transforms;
 
-/// <summary>공개된 역할 전환 결과의 단계/완료와 예약 해제를 소유한다. 실제 수납 전에는 완료 수를 늘리지 않는다.</summary>
+/// <summary>공개된 역할 전환 결과로 단계와 완료를 정산하고 취소 등에서 남은 예약을 반환한다.</summary>
 [UpdateInGroup(typeof(DroneStateApplyGroup), OrderLast = true)]
-[UpdateAfter(typeof(DroneStationLifecycleApplySystem))]
+[UpdateAfter(typeof(DroneTaskAssignmentPublishSystem))]
+[UpdateBefore(typeof(DroneStationLifecycleApplySystem))]
 public partial struct DroneStationRelocationApplySystem : ISystem
 {
     private Entity _candidates;

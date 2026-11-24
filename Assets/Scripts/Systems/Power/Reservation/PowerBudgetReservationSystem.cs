@@ -151,7 +151,7 @@ internal struct AllocatePowerBudgetsJob : IJob
                 plan.ExpectedFuelEnergy = FuelLookup[generator].RemainingEnergy;
                 if (BuildingConfigLookupUtility.TryGetConfig(configs, Identities[generator].BuildingId, out var config) &&
                     PowerFuelUtility.TryPlan(plan.ExpectedFuelEnergy, plan.AllocatedEnergy, Stored[generator],
-                        fuelSlots, config, out var planned, out plan.RemainingEnergyAfterConsumption))
+                        fuelSlots, config, out var planned, out plan.RemainingEnergyAfterConsumption, out plan.ConvertedFuelCapacity))
                 {
                     foreach (var spend in planned)
                         spends.Add(spend);

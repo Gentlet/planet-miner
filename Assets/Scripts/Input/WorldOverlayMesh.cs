@@ -55,17 +55,17 @@ internal sealed class WorldOverlayMesh
         Quad(min, new Vector2(max.x, min.y), max, new Vector2(min.x, max.y), color);
     }
 
-    public void Outline(Vector2 min, Vector2 max, Color color, bool dashed = false)
+    public void Outline(Vector2 min, Vector2 max, Color color, bool dashed = false, float thickness = 0.06f)
     {
         var bottomRight = new Vector2(max.x, min.y);
         var topLeft = new Vector2(min.x, max.y);
-        Line(min, bottomRight, color, dashed);
-        Line(bottomRight, max, color, dashed);
-        Line(max, topLeft, color, dashed);
-        Line(topLeft, min, color, dashed);
+        Line(min, bottomRight, color, dashed, thickness);
+        Line(bottomRight, max, color, dashed, thickness);
+        Line(max, topLeft, color, dashed, thickness);
+        Line(topLeft, min, color, dashed, thickness);
     }
 
-    public void Line(Vector2 start, Vector2 end, Color color, bool dashed = false)
+    public void Line(Vector2 start, Vector2 end, Color color, bool dashed = false, float thickness = 0.06f)
     {
         Vector2 offset = end - start;
         float distance = offset.magnitude;
@@ -73,7 +73,7 @@ internal sealed class WorldOverlayMesh
         {
             return;
         }
-        Vector2 normal = new Vector2(-offset.y, offset.x) * (0.03f / distance);
+        Vector2 normal = new Vector2(-offset.y, offset.x) * (thickness * 0.5f / distance);
         int segments = dashed ? Mathf.CeilToInt(Mathf.Clamp(distance / 0.55f, 1f, 48f)) : 1;
         for (int i = 0; i < segments; i++)
         {

@@ -12,6 +12,7 @@ internal struct DroneFlightStation
     public PlacementStamp Stamp;
     public bool HasStamp;
     public bool CanDock;
+    public bool CanStore;
 }
 
 internal struct DroneFlightSite
@@ -208,19 +209,43 @@ internal static class DroneFlightPlanningUtility
         return best;
     }
 
-    public static int FindReturnStation(float2 origin, NativeList<DroneFlightStation> stations)
+    public static int FindReturnStation(float2 origin, NativeList<DroneFlightStation> stations,
+        Entity previousStation = default)
     {
-        return SelectReturnStation(origin, stations, false, 0f, 0f, 0f, out _);
+        if (previousStation != Entity.Null)
+        {
+            for (int index = 0; index < stations.Length; index++)
+            {
+                if (stations[index].Entity == previousStation && stations[index].CanDock)
+                {
+                    return index;
+                }
+            }
+        }
+        return SelectReturnStation(origin, stations, false, false, Entity.Null, 0f, 0f, 0f, out _);
     }
 
+    internal static int PlanChargingReturn(float2 origin, NativeList<DroneFlightStation> stations,
+        float charge, float maximum, float energyPerDistance, out DroneFlightPlan plan) =>
+        SelectReturnStation(origin, stations, true, false, Entity.Null, charge, maximum, energyPerDistance, out plan);
+
     public static int PlanReturn(float2 origin, NativeList<DroneFlightStation> stations,
-        float charge, float maximum, float energyPerDistance, out DroneFlightPlan plan)
+        float charge, float maximum, float energyPerDistance, out DroneFlightPlan plan,
+        Entity excludedDestination = default, bool allowChargingOnlyFallback = true)
     {
-        return SelectReturnStation(origin, stations, true, charge, maximum, energyPerDistance, out plan);
+        int destination = SelectReturnStation(origin, stations, true, true, excludedDestination,
+            charge, maximum, energyPerDistance, out plan);
+        if (destination < 0 && allowChargingOnlyFallback && charge < maximum)
+        {
+            destination = SelectReturnStation(origin, stations, true, false, excludedDestination,
+                charge, maximum, energyPerDistance, out plan);
+        }
+        return destination;
     }
 
     private static int SelectReturnStation(float2 origin, NativeList<DroneFlightStation> stations,
-        bool evaluateEnergy, float charge, float maximum, float energyPerDistance, out DroneFlightPlan selectedPlan)
+        bool evaluateEnergy, bool requireStorage, Entity excludedDestination, float charge, float maximum,
+        float energyPerDistance, out DroneFlightPlan selectedPlan)
     {
         Entity network = Entity.Null;
         int2 cell = (int2)math.floor(origin);
@@ -236,19 +261,19 @@ internal static class DroneFlightPlanningUtility
         if (network != Entity.Null)
         {
             int sameNetworkStation = SelectReturnCandidate(origin, stations, network, selectSameNetwork: true, evaluateEnergy,
-                charge, maximum, energyPerDistance, out selectedPlan);
+                requireStorage, excludedDestination, charge, maximum, energyPerDistance, out selectedPlan);
             if (sameNetworkStation >= 0)
             {
                 return sameNetworkStation;
             }
         }
         return SelectReturnCandidate(origin, stations, network, selectSameNetwork: false, evaluateEnergy,
-            charge, maximum, energyPerDistance, out selectedPlan);
+            requireStorage, excludedDestination, charge, maximum, energyPerDistance, out selectedPlan);
     }
 
     private static int SelectReturnCandidate(float2 origin, NativeList<DroneFlightStation> stations,
-        Entity network, bool selectSameNetwork, bool evaluateEnergy, float charge, float maximum, float energyPerDistance,
-        out DroneFlightPlan selectedPlan)
+        Entity network, bool selectSameNetwork, bool evaluateEnergy, bool requireStorage, Entity excludedDestination,
+        float charge, float maximum, float energyPerDistance, out DroneFlightPlan selectedPlan)
     {
         selectedPlan = default;
         int selected = -1;
@@ -257,7 +282,8 @@ internal static class DroneFlightPlanningUtility
         {
             var station = stations[i];
             bool sameNetwork = network != Entity.Null && station.Network == network;
-            if (!station.CanDock || sameNetwork != selectSameNetwork)
+            if (!station.CanDock || (requireStorage && !station.CanStore) || station.Entity == excludedDestination ||
+                sameNetwork != selectSameNetwork)
             {
                 continue;
             }

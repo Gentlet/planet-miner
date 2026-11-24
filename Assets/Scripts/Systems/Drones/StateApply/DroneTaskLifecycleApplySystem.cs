@@ -723,7 +723,8 @@ public partial struct DroneTaskLifecycleApplySystem : ISystem
         }
 
         var storage = manager.GetBuffer<StorageSlotElement>(assignment.Destination);
-        bool generalOnly = assignment.DestinationArea == DroneTransportAreaEnum.GeneralStorage && hasTransportReservation;
+        bool generalOnly = hasTransportReservation && DroneTransportEndpointUtility.UsesGeneralStorageSlots(
+            manager, assignment.Destination, assignment.DestinationArea, assignment.ItemType);
         var limits = new StoreCargoStorageLimits();
         int moved = 0;
         while (moved < maximum)
