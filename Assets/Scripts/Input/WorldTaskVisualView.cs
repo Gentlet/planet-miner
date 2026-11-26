@@ -45,6 +45,7 @@ public sealed class WorldTaskVisualView : PeriodicWorldView
         public readonly List<Mesh> Meshes = new List<Mesh>();
         public readonly List<Matrix4x4> Transforms = new List<Matrix4x4>();
         public bool HasAuthoredPostTransform;
+        public float TextureHeightToWidth;
     }
     private sealed class Visual
     {
@@ -272,7 +273,8 @@ public sealed class WorldTaskVisualView : PeriodicWorldView
             record.Direction.ToWorldRotation(), Vector3.one);
         if (!template.HasAuthoredPostTransform)
         {
-            root *= (Matrix4x4)BuildingFootprintUtility.GetVisualPostTransform(record.Footprint, record.Direction);
+            root *= (Matrix4x4)BuildingFootprintUtility.GetVisualPostTransform(
+                record.Footprint, record.Direction, template.TextureHeightToWidth);
         }
         for (int i = 0; i < visual.Parts.Count; i++)
         {
@@ -297,11 +299,15 @@ public sealed class WorldTaskVisualView : PeriodicWorldView
             return null;
         }
         if (!PrefabLookupUtility.TryGetBuildingPrefab(manager.GetBuffer<BuildingPrefabElement>(database.GetSingletonEntity(), true),
-                buildingId, out Entity prefab))
+                buildingId, out Entity prefab, out float textureHeightToWidth))
         {
             return null;
         }
-        var template = new GhostTemplate { HasAuthoredPostTransform = manager.HasComponent<PostTransformMatrix>(prefab) };
+        var template = new GhostTemplate
+        {
+            HasAuthoredPostTransform = manager.HasComponent<PostTransformMatrix>(prefab),
+            TextureHeightToWidth = textureHeightToWidth
+        };
         var entities = new List<Entity> { prefab };
         if (manager.HasBuffer<LinkedEntityGroup>(prefab))
         {

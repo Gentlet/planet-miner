@@ -13,10 +13,10 @@ public struct BuildingPrefabDatabase : IComponentData
 }
 
 /// <summary>
-/// 역할·목적: BuildingId별 프리팹 매핑을 제공한다. 역할과 티어는 초기화에서 정의와 대조한다.
+/// 역할: BuildingId별 프리팹 참조와 표시용 이미지 비율을 제공한다.
 /// 부착 엔티티: BuildingPrefabDatabase 태그가 있는 DB 엔티티의 버퍼다.
-/// 생성: BuildingPrefabDatabaseAuthoring.Baker가 각 항목의 Prefab 참조를 등록한다.
-/// 이용: Initialization이 ID와 설정의 대응 및 프리팹을 검증하고 공통 건물 생성이 정의 ID로 조회하여 인스턴스화한다.
+/// 생성: BuildingPrefabDatabaseBaker가 각 항목의 Prefab 참조와 텍스처 높이 / 너비를 등록한다.
+/// 이용: Initialization이 매핑을 검증한다. 생성, 복원, 벨트 회전, 공사 표시가 같은 비율을 읽는다.
 /// 제거: 인스턴스 생성/삭제 때 매핑을 소비하지 않는다. 검증 후 변경하지 않으며 DB 엔티티/World 수명을 따른다.
 /// </summary>
 [InternalBufferCapacity(16)]
@@ -24,10 +24,15 @@ public struct BuildingPrefabElement : IBufferElementData
 {
     public int BuildingId;
     public Entity Prefab;
-    public BuildingPrefabElement(Entity prefab, int buildingId)
+
+    // 0이면 텍스처 비율을 얻지 못해 footprint의 높이를 사용한다.
+    public float TextureHeightToWidth;
+
+    public BuildingPrefabElement(Entity prefab, int buildingId, float textureHeightToWidth = 0f)
     {
         BuildingId = buildingId;
         Prefab = prefab;
+        TextureHeightToWidth = textureHeightToWidth;
     }
 
 }

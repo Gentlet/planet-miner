@@ -130,18 +130,19 @@ public static class BuildingLifecycleUtility
         DirectionEnum direction, PlacementStamp stamp, in BuildingConfigElement config,
         in DynamicBuffer<BuildingPrefabElement> prefabs, in ComponentLookup<PostTransformMatrix> prefabPostTransforms)
     {
-        if (!PrefabLookupUtility.TryGetBuildingPrefab(prefabs, config.BuildingId, out Entity prefabEntity))
+        if (!PrefabLookupUtility.TryGetBuildingPrefab(prefabs, config.BuildingId, out Entity prefabEntity,
+                out float textureHeightToWidth))
         {
             return RejectMissingDefinition(ref ecb, config.BuildingId, (FixedString32Bytes)"prefab");
         }
 
         return InstantiateConfiguredBuilding(ref ecb, position, direction, stamp, config, prefabEntity,
-            prefabPostTransforms.HasComponent(prefabEntity));
+            prefabPostTransforms.HasComponent(prefabEntity), textureHeightToWidth);
     }
 
     internal static Entity InstantiateConfiguredBuilding(ref EntityCommandBuffer ecb, int2 position,
         DirectionEnum direction, PlacementStamp stamp, in BuildingConfigElement config, Entity prefabEntity,
-        bool hasAuthoredPostTransform)
+        bool hasAuthoredPostTransform, float textureHeightToWidth)
     {
         float3 spawnPosition = new float3(position.x, position.y, 0f);
 
@@ -155,7 +156,7 @@ public static class BuildingLifecycleUtility
         ecb.AddComponent(newBuilding, new Direction(direction));
         ecb.AddComponent(newBuilding, stamp);
         RecordVisualTransform(ref ecb, newBuilding, LocalTransform.FromPosition(spawnPosition), config.Footprint,
-            direction, fitFootprint: !hasAuthoredPostTransform);
+            direction, textureHeightToWidth, fitFootprint: !hasAuthoredPostTransform);
 
         AttachConfiguredFeatures(ref ecb, newBuilding, config, direction);
 
@@ -164,15 +165,16 @@ public static class BuildingLifecycleUtility
 
     // 생성과 승인된 벨트 방향 변경은 격자 원점을 그대로 두고 같은 표시 변환을 기록한다.
     internal static void RecordVisualTransform(ref EntityCommandBuffer ecb, Entity building, LocalTransform transform,
-        int2 footprint, DirectionEnum direction, bool fitFootprint)
+        int2 footprint, DirectionEnum direction, float textureHeightToWidth, bool fitFootprint)
     {
         transform.Rotation = direction.ToWorldRotation();
         ecb.SetComponent(building, transform);
-        if (fitFootprint && math.any(footprint > 1))
+        bool nonSquareTexture = textureHeightToWidth > 0f && textureHeightToWidth != 1f;
+        if (fitFootprint && (math.any(footprint > 1) || nonSquareTexture))
         {
             ecb.AddComponent(building, new PostTransformMatrix
             {
-                Value = BuildingFootprintUtility.GetVisualPostTransform(footprint, direction)
+                Value = BuildingFootprintUtility.GetVisualPostTransform(footprint, direction, textureHeightToWidth)
             });
         }
     }

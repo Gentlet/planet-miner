@@ -4,7 +4,7 @@ using UnityEngine;
 using UnityEngine.Serialization;
 
 /// <summary>
-/// BuildingId별 프리팹을 명시적으로 등록한다. 크기와 표시 이름은 건물 설정 테이블이 소유한다.
+/// BuildingId별 프리팹을 명시적으로 등록한다. 점유 크기와 표시 이름은 건물 설정 테이블이 소유한다.
 /// Baker는 별도 DB 엔티티를 만들며 Initialization이 설정과의 대응·중복·원형을 검증한다.
 /// 런타임 매핑은 World 동안 불변이다. 프리팹 이름으로 종류나 티어를 추론하지 않는다.
 /// </summary>
@@ -24,6 +24,8 @@ public class BuildingPrefabDatabaseAuthoring : MonoBehaviour
 
     public class BuildingPrefabDatabaseBaker : Baker<BuildingPrefabDatabaseAuthoring>
     {
+        private const string BaseMap = "_BaseMap";
+
         public override void Bake(BuildingPrefabDatabaseAuthoring authoring)
         {
             var entity = GetEntity(TransformUsageFlags.None);
@@ -35,8 +37,38 @@ public class BuildingPrefabDatabaseAuthoring : MonoBehaviour
                 Entity prefabEntity = entry.Prefab == null
                     ? Entity.Null
                     : GetEntity(entry.Prefab, TransformUsageFlags.Renderable);
-                buffer.Add(new BuildingPrefabElement(prefabEntity, entry.BuildingId));
+                float textureHeightToWidth = entry.Prefab == null ? 0f : ReadTextureHeightToWidth(entry.Prefab);
+                buffer.Add(new BuildingPrefabElement(prefabEntity, entry.BuildingId, textureHeightToWidth));
             }
+        }
+
+        private float ReadTextureHeightToWidth(GameObject prefab)
+        {
+            var renderers = GetComponentsInChildren<MeshRenderer>(prefab);
+            if (renderers.Length != 1)
+            {
+                return 0f;
+            }
+
+            var materials = renderers[0].sharedMaterials;
+            if (materials.Length != 1)
+            {
+                return 0f;
+            }
+
+            Material material = DependsOn(materials[0]);
+            if (material == null)
+            {
+                return 0f;
+            }
+
+            if (!material.HasProperty(BaseMap))
+            {
+                return 0f;
+            }
+
+            var texture = DependsOn(material.GetTexture(BaseMap) as Texture2D);
+            return texture != null ? (float)texture.height / texture.width : 0f;
         }
     }
 }

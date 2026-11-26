@@ -15,6 +15,16 @@ public static class PrefabLookupUtility
         int buildingId,
         out Entity prefab)
     {
+        return TryGetBuildingPrefab(buffer, buildingId, out prefab, out _);
+    }
+
+    public static bool TryGetBuildingPrefab(
+        in DynamicBuffer<BuildingPrefabElement> buffer,
+        int buildingId,
+        out Entity prefab,
+        out float textureHeightToWidth)
+    {
+        textureHeightToWidth = 0f;
         if (buildingId <= 0)
         {
             prefab = Entity.Null;
@@ -27,7 +37,13 @@ public static class PrefabLookupUtility
             if (entry.BuildingId == buildingId)
             {
                 prefab = entry.Prefab;
-                return prefab != Entity.Null;
+                if (prefab == Entity.Null)
+                {
+                    return false;
+                }
+
+                textureHeightToWidth = entry.TextureHeightToWidth;
+                return true;
             }
         }
         prefab = Entity.Null;

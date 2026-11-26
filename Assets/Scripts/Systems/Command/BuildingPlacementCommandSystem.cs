@@ -240,11 +240,13 @@ public partial struct BuildingPlacementCommandSystem : ISystem
         }
 
         // 프리팹에 자체 보정이 없을 때만 새 방향에 맞춰 단위 메시의 크기와 중심을 보정한다.
+        float textureHeightToWidth = 0f;
         bool fitFootprint = buildingPrefabs.IsCreated &&
-            PrefabLookupUtility.TryGetBuildingPrefab(buildingPrefabs, candidate.BuildingId, out Entity prefab) &&
+            PrefabLookupUtility.TryGetBuildingPrefab(buildingPrefabs, candidate.BuildingId, out Entity prefab,
+                out textureHeightToWidth) &&
             !manager.HasComponent<PostTransformMatrix>(prefab);
         BuildingLifecycleUtility.RecordVisualTransform(ref ecb, belt, manager.GetComponentData<LocalTransform>(belt),
-            candidate.FootprintSize, candidate.Direction, fitFootprint);
+            candidate.FootprintSize, candidate.Direction, textureHeightToWidth, fitFootprint);
     }
 
     private static bool HasDuplicateReceipt(NativeArray<PendingPlacement> requests, int index)
