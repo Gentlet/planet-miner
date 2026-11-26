@@ -115,7 +115,8 @@ public sealed class BuildingToolbarView : MonoBehaviour
         {
             status += " / " + droneStatus;
         }
-        _status.text = status + "    " + Key("Rotate") + " 회전 / " + Key("SettingsModifier") + "+우/좌클릭 설정 복사/붙이기";
+        string rotateHint = _tools.CanRotate ? Key("Rotate") + " 회전 / " : string.Empty;
+        _status.text = status + "    " + rotateHint + Key("SettingsModifier") + "+우/좌클릭 설정 복사/붙이기";
     }
 
     private string Key(string action)

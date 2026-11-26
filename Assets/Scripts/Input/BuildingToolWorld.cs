@@ -66,7 +66,7 @@ public static class BuildingToolWorld
             candidate = default;
             return false;
         }
-        return TryCapture(manager, entity, definitions, out candidate);
+        return TryCapture(manager, entity, definitions, out candidate, out _);
     }
 
     private static bool TryReadDefinitions(EntityManager manager, out DynamicBuffer<BuildingConfigElement> definitions)
@@ -82,9 +82,10 @@ public static class BuildingToolWorld
     }
 
     private static bool TryCapture(EntityManager manager, Entity entity, in DynamicBuffer<BuildingConfigElement> definitions,
-        out PlacementRequestCandidateElement candidate)
+        out PlacementRequestCandidateElement candidate, out BuildingConfigElement definition)
     {
         candidate = default;
+        definition = default;
         if (!manager.Exists(entity))
         {
             return false;
@@ -131,7 +132,7 @@ public static class BuildingToolWorld
             }
         }
 
-        if (!BuildingConfigLookupUtility.TryGetConfig(definitions, buildingId, out var definition) || definition.Placement.BootstrapOnly)
+        if (!BuildingConfigLookupUtility.TryGetConfig(definitions, buildingId, out definition) || definition.Placement.BootstrapOnly)
         {
             return false;
         }
@@ -161,7 +162,7 @@ public static class BuildingToolWorld
         using var entities = query.ToEntityArray(Allocator.Temp);
         foreach (Entity entity in entities)
         {
-            if (!TryCapture(manager, entity, definitions, out var candidate))
+            if (!TryCapture(manager, entity, definitions, out var candidate, out _))
             {
                 continue;
             }
@@ -190,7 +191,7 @@ public static class BuildingToolWorld
         int2 pivot = math.min(first, last);
         foreach (Entity entity in Select(manager, first, last, definitions))
         {
-            if (!TryCapture(manager, entity, definitions, out var candidate))
+            if (!TryCapture(manager, entity, definitions, out var candidate, out var definition))
             {
                 continue;
             }
@@ -200,7 +201,12 @@ public static class BuildingToolWorld
                 return new List<BuildingBlueprintElement>();
             }
             candidate.OriginPosition = int2.zero;
-            result.Add(new BuildingBlueprintElement { Candidate = candidate, Offset = offset });
+            bool isBelt = definition.BeltTransport.IsPresent;
+            if (!isBelt)
+            {
+                candidate.Direction = DirectionEnum.Up;
+            }
+            result.Add(new BuildingBlueprintElement { Candidate = candidate, Offset = offset, IsBelt = isBelt });
         }
         return result;
     }

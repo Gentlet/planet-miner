@@ -29,6 +29,11 @@ public static class BuildingPlacementValidationUtility
             return new PlacementValidationResult(PlacementValidationCode.BlockedByResearch);
         }
 
+        if (!config.BeltTransport.IsPresent && candidate.Direction != DirectionEnum.Up)
+        {
+            return new PlacementValidationResult(PlacementValidationCode.InvalidBuildingDirection);
+        }
+
         if (config.Tier <= 0 || candidate.FootprintSize.x <= 0 || candidate.FootprintSize.y <= 0)
         {
             return new PlacementValidationResult(PlacementValidationCode.InvalidFootprint);

@@ -5,6 +5,7 @@ public struct BuildingBlueprintElement
 {
     public int2 Offset;
     public PlacementRequestCandidateElement Candidate;
+    public bool IsBelt;
 }
 
 /// <summary>UI가 소유한 배치 정보만 계산한다. 점유/실물/예약을 변경하지 않는다.</summary>
@@ -94,7 +95,10 @@ public static class BuildingToolGeometry
             {
                 return false;
             }
-            value.Candidate.Direction = (DirectionEnum)(((int)value.Candidate.Direction + 1) % (int)DirectionEnum.Count);
+            if (value.IsBelt)
+            {
+                value.Candidate.Direction = RoutingDirectionUtility.RotateQuarterTurns(value.Candidate.Direction, 1);
+            }
             rotated.Add(value);
         }
         blueprint.Clear();

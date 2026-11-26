@@ -72,7 +72,8 @@ public enum PlacementValidationCode : byte
     NotPlayerBuildable = 8,
     InvalidBuildingSettings = 9,
     UnknownBuildingId = 10,
-    InsufficientBeltSpacing = 11
+    InsufficientBeltSpacing = 11,
+    InvalidBuildingDirection = 12
 }
 
 /// <summary>

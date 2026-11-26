@@ -22,6 +22,7 @@ public sealed class WorldConstructionController : MonoBehaviour
     private readonly List<PlacementRequestCandidateElement> _candidates = new List<PlacementRequestCandidateElement>();
     private readonly List<BuildingToolPreviewItem> _preview = new List<BuildingToolPreviewItem>();
     private PlacementRequestCandidateElement _selected;
+    private bool _selectedIsBelt;
     private PlannedBuildingSettings _copiedSettings;
     private bool _dragging;
     private bool _hasPointer;
@@ -31,6 +32,8 @@ public sealed class WorldConstructionController : MonoBehaviour
     public BuildingToolModeEnum Mode { get; private set; }
     public string Status { get; private set; } = "건물을 선택하세요";
     public int CatalogVersion { get; private set; }
+    public bool CanRotate => Mode == BuildingToolModeEnum.Blueprint ||
+        (Mode == BuildingToolModeEnum.Building && _selectedIsBelt);
     public IReadOnlyList<BuildingToolCatalogEntry> Catalog => _catalog;
     public IReadOnlyList<BuildingToolPreviewItem> Preview => _preview;
     public bool HasSelectionRectangle => _dragging && Mode is BuildingToolModeEnum.None or BuildingToolModeEnum.CopyRange or BuildingToolModeEnum.DemolitionRange;
@@ -83,7 +86,8 @@ public sealed class WorldConstructionController : MonoBehaviour
             var a = next[i].Config;
             var b = _catalog[i].Config;
             same = a.BuildingId == b.BuildingId && a.Tier == b.Tier &&
-                a.DisplayName == b.DisplayName && a.Footprint.Equals(b.Footprint);
+                a.DisplayName == b.DisplayName && a.Footprint.Equals(b.Footprint) &&
+                a.BeltTransport.IsPresent == b.BeltTransport.IsPresent;
         }
         if (!same)
         {
@@ -116,6 +120,7 @@ public sealed class WorldConstructionController : MonoBehaviour
                 return;
             }
             _selected = new PlacementRequestCandidateElement(buildingId, config.Footprint, int2.zero);
+            _selectedIsBelt = config.BeltTransport.IsPresent;
             Mode = BuildingToolModeEnum.Building;
             _dragging = false;
             Status = config.DisplayName.ToString() + " T" + config.Tier;
@@ -283,11 +288,15 @@ public sealed class WorldConstructionController : MonoBehaviour
 
     private void Rotate()
     {
+        if (!CanRotate)
+        {
+            return;
+        }
         if (Mode == BuildingToolModeEnum.Building)
         {
-            _selected.Direction = (DirectionEnum)(((int)_selected.Direction + 1) % (int)DirectionEnum.Count);
+            _selected.Direction = RoutingDirectionUtility.RotateQuarterTurns(_selected.Direction, 1);
         }
-        if (Mode == BuildingToolModeEnum.Blueprint && !BuildingToolGeometry.TryRotate(_blueprint))
+        else if (!BuildingToolGeometry.TryRotate(_blueprint))
         {
             Status = "회전할 수 없는 좌표 범위입니다";
         }
