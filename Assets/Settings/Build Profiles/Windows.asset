@@ -18,6 +18,8 @@ MonoBehaviour:
   m_PlatformId: 4e3c793746204150860bf175a9a41a05
   m_PlatformBuildProfile:
     rid: 6737764491422072912
+  m_ActivePlatformGuid: 
+  m_AdditionalPlatformBuildSettings: []
   m_OverrideGlobalSceneList: 1
   m_Scenes:
   - m_enabled: 1
@@ -29,7 +31,7 @@ MonoBehaviour:
     m_Settings:
     - line: '| PlayerSettings:'
     - line: '|   m_ObjectHideFlags: 0'
-    - line: '|   serializedVersion: 28'
+    - line: '|   serializedVersion: 30'
     - line: '|   productGUID: 1b7005073397d5a4b813b327509d38fd'
     - line: '|   AndroidProfiler: 0'
     - line: '|   AndroidFilterTouchesWhenObscured: 0'
@@ -42,8 +44,7 @@ MonoBehaviour:
     - line: '|   productName: planet miner'
     - line: '|   defaultCursor: {instanceID: 0}'
     - line: '|   cursorHotspot: {x: 0, y: 0}'
-    - line: '|   m_SplashScreenBackgroundColor: {r: 0.13725491, g: 0.12156863, b:
-        0.1254902, a: 1}'
+    - line: '|   m_SplashScreenBackgroundColor: {r: 0.13725491, g: 0.12156863, b: 0.1254902, a: 1}'
     - line: '|   m_ShowUnitySplashScreen: 1'
     - line: '|   m_ShowUnitySplashLogo: 1'
     - line: '|   m_SplashScreenOverlayOpacity: 1'
@@ -81,7 +82,7 @@ MonoBehaviour:
     - line: '|   mipStripping: 0'
     - line: '|   numberOfMipsStripped: 0'
     - line: '|   numberOfMipsStrippedPerMipmapLimitGroup: {}'
-    - line: '|   m_StackTraceTypes: 010000000100000001000000010000000100000001000000'
+    - line: '|   m_StackTraceTypes: 010000000100000001000000010000000100000001000000i'
     - line: '|   iosShowActivityIndicatorOnLoading: -1'
     - line: '|   androidShowActivityIndicatorOnLoading: -1'
     - line: '|   iosUseCustomAppBackgroundBehavior: 0'
@@ -92,10 +93,15 @@ MonoBehaviour:
     - line: '|   useOSAutorotation: 1'
     - line: '|   use32BitDisplayBuffer: 1'
     - line: '|   preserveFramebufferAlpha: 0'
+    - line: '|   adjustIOSFPSUsingThermalState: 1'
+    - line: '|   thermalStateSeriousIOSFPS: 30'
+    - line: '|   thermalStateCriticalIOSFPS: 15'
     - line: '|   disableDepthAndStencilBuffers: 0'
     - line: '|   androidStartInFullscreen: 1'
     - line: '|   androidRenderOutsideSafeArea: 1'
     - line: '|   androidUseSwappy: 1'
+    - line: '|   androidRequestedVisibleInsets: 0'
+    - line: '|   androidSystemBarsBehavior: 2'
     - line: '|   androidDisplayOptions: 1'
     - line: '|   androidBlitType: 0'
     - line: '|   androidResizeableActivity: 1'
@@ -110,6 +116,7 @@ MonoBehaviour:
     - line: '|   defaultIsNativeResolution: 1'
     - line: '|   macRetinaSupport: 1'
     - line: '|   runInBackground: 1'
+    - line: '|   callOnDisableOnAssetBundleUnload: 1'
     - line: '|   muteOtherAudioSources: 0'
     - line: '|   Prepare IOS For Recording: 0'
     - line: '|   Force IOS Speakers When Recording: 0'
@@ -172,8 +179,7 @@ MonoBehaviour:
     - line: '|   tvOSBundleVersion: 1.0'
     - line: '|   bundleVersion: 0.1'
     - line: '|   preloadedAssets:'
-    - line: '|   - {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100,
-        type: 3}'
+    - line: '|   - {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}'
     - line: '|   metroInputSource: 0'
     - line: '|   wsaTransparentSwapchain: 0'
     - line: '|   xboxOneDisableKinectGpuReservation: 1'
@@ -185,7 +191,7 @@ MonoBehaviour:
     - line: '|   allowHDRDisplaySupport: 0'
     - line: '|   useHDRDisplay: 0'
     - line: '|   hdrBitDepth: 0'
-    - line: '|   m_ColorGamuts: 00000000'
+    - line: '|   m_ColorGamuts: 00000000i'
     - line: '|   targetPixelDensity: 30'
     - line: '|   resolutionScalingMode: 0'
     - line: '|   resetResolutionOnWindowResize: 0'
@@ -201,7 +207,7 @@ MonoBehaviour:
     - line: '|     tvOS: 0'
     - line: '|   overrideDefaultApplicationIdentifier: 1'
     - line: '|   AndroidBundleVersionCode: 1'
-    - line: '|   AndroidMinSdkVersion: 25'
+    - line: '|   AndroidMinSdkVersion: 26'
     - line: '|   AndroidTargetSdkVersion: 0'
     - line: '|   AndroidPreferredInstallLocation: 1'
     - line: '|   AndroidPreferredDataLocation: 1'
@@ -226,6 +232,7 @@ MonoBehaviour:
     - line: '|   tvOSTargetOSVersionString: 15.0'
     - line: '|   VisionOSSdkVersion: 0'
     - line: '|   VisionOSTargetOSVersionString: 1.0'
+    - line: '|   xcodeProjectType: 0'
     - line: '|   uIPrerenderedIcon: 0'
     - line: '|   uIRequiresPersistentWiFi: 0'
     - line: '|   uIRequiresFullScreen: 1'
@@ -293,7 +300,6 @@ MonoBehaviour:
     - line: '|   useCustomGradleSettingsTemplate: 0'
     - line: '|   useCustomProguardFile: 0'
     - line: '|   AndroidTargetArchitectures: 2'
-    - line: '|   AndroidAllowedArchitectures: -13'
     - line: '|   AndroidSplashScreenScale: 0'
     - line: '|   androidSplashScreen: {instanceID: 0}'
     - line: '|   AndroidKeystoreName: '
@@ -331,7 +337,6 @@ MonoBehaviour:
     - line: '|   m_BuildTargetGraphicsJobs: []'
     - line: '|   m_BuildTargetGraphicsJobMode: []'
     - line: '|   m_BuildTargetGraphicsAPIs: []'
-    - line: '|   m_BuildTargetVRSettings: []'
     - line: '|   m_DefaultShaderChunkSizeInMB: 16'
     - line: '|   m_DefaultShaderChunkCount: 0'
     - line: '|   openGLRequireES31: 0'
@@ -505,6 +510,8 @@ MonoBehaviour:
     - line: '|   switchMicroSleepForYieldTime: 25'
     - line: '|   switchRamDiskSpaceSize: 12'
     - line: '|   switchUpgradedPlayerSettingsToNMETA: 0'
+    - line: '|   switchCaStoreSource: 0'
+    - line: '|   switchCaStoreFilePath: '
     - line: '|   ps4NPAgeRating: 12'
     - line: '|   ps4NPTitleSecret: '
     - line: '|   ps4NPTrophyPackPath: '
@@ -613,7 +620,9 @@ MonoBehaviour:
     - line: '|   webGLCloseOnQuit: 0'
     - line: '|   webWasm2023: 0'
     - line: '|   webEnableSubmoduleStrippingCompatibility: 0'
+    - line: '|   webProgressiveAssetLoading: 0'
     - line: '|   scriptingDefineSymbols:'
+    - line: '|     Server: '
     - line: '|     Standalone: ARCHITECTURE_V2'
     - line: '|   additionalCompilerArguments: {}'
     - line: '|   platformArchitecture: {}'
@@ -621,6 +630,7 @@ MonoBehaviour:
     - line: '|     Android: 1'
     - line: '|   il2cppCompilerConfiguration: {}'
     - line: '|   il2cppCodeGeneration: {}'
+    - line: '|   il2cppLTOMode: {}'
     - line: '|   il2cppStacktraceInformation: {}'
     - line: '|   managedStrippingLevel: {}'
     - line: '|   incrementalIl2cppBuild: {}'
@@ -631,6 +641,7 @@ MonoBehaviour:
     - line: '|   scriptingRuntimeVersion: 1'
     - line: '|   gcIncremental: 1'
     - line: '|   gcWBarrierValidation: 0'
+    - line: '|   managedCodeVariant: {}'
     - line: '|   apiCompatibilityLevelPerPlatform: {}'
     - line: '|   editorAssembliesCompatibilityLevel: 1'
     - line: '|   m_RenderingPath: 1'
@@ -653,10 +664,8 @@ MonoBehaviour:
     - line: '|   metroLastRequiredScene: 0'
     - line: '|   metroDefaultTileSize: 1'
     - line: '|   metroTileForegroundText: 2'
-    - line: '|   metroTileBackgroundColor: {r: 0.13333334, g: 0.17254902, b: 0.21568628,
-        a: 0}'
-    - line: '|   metroSplashScreenBackgroundColor: {r: 0.12941177, g: 0.17254902,
-        b: 0.21568628, a: 1}'
+    - line: '|   metroTileBackgroundColor: {r: 0.13333334, g: 0.17254902, b: 0.21568628, a: 0}'
+    - line: '|   metroSplashScreenBackgroundColor: {r: 0.12941177, g: 0.17254902, b: 0.21568628, a: 1}'
     - line: '|   metroSplashScreenUseBackgroundColor: 0'
     - line: '|   syncCapabilities: 0'
     - line: '|   platformCapabilities: {}'
@@ -692,7 +701,6 @@ MonoBehaviour:
     - line: '|   XboxOneXTitleMemory: 8'
     - line: '|   XboxOneOverrideIdentityName: '
     - line: '|   XboxOneOverrideIdentityPublisher: '
-    - line: '|   vrEditorSettings: {}'
     - line: '|   cloudServicesEnabled: {}'
     - line: '|   luminIcon:'
     - line: '|     m_Name: '
@@ -731,8 +739,10 @@ MonoBehaviour:
     - line: '|   androidVulkanAllowFilterList: []'
     - line: '|   androidVulkanDeviceFilterListAsset: {instanceID: 0}'
     - line: '|   d3d12DeviceFilterListAsset: {instanceID: 0}'
+    - line: '|   webGPUDeviceFilterListAsset: {instanceID: 0}'
     - line: '|   allowedHttpConnections: 3'
     - line: '| '
+  requiredComponents: []
   references:
     version: 2
     RefIds:
@@ -742,6 +752,7 @@ MonoBehaviour:
         m_Development: 0
         m_ConnectProfiler: 0
         m_BuildWithDeepProfilingSupport: 0
+        m_BuildWithCodeCoverage: 0
         m_AllowDebugging: 0
         m_WaitForManagedDebugger: 0
         m_ManagedDebuggerFixedPort: 0
