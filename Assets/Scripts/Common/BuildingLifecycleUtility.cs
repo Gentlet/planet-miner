@@ -156,7 +156,8 @@ public static class BuildingLifecycleUtility
         ecb.AddComponent(newBuilding, new Direction(direction));
         ecb.AddComponent(newBuilding, stamp);
         RecordVisualTransform(ref ecb, newBuilding, LocalTransform.FromPosition(spawnPosition), config.Footprint,
-            direction, textureHeightToWidth, fitFootprint: !hasAuthoredPostTransform);
+            direction, textureHeightToWidth, fitFootprint: !hasAuthoredPostTransform,
+            overlapPerSide: BuildingFootprintUtility.GetVisualOverlapPerSide(config));
 
         AttachConfiguredFeatures(ref ecb, newBuilding, config, direction);
 
@@ -165,16 +166,17 @@ public static class BuildingLifecycleUtility
 
     // 생성과 승인된 벨트 방향 변경은 격자 원점을 그대로 두고 같은 표시 변환을 기록한다.
     internal static void RecordVisualTransform(ref EntityCommandBuffer ecb, Entity building, LocalTransform transform,
-        int2 footprint, DirectionEnum direction, float textureHeightToWidth, bool fitFootprint)
+        int2 footprint, DirectionEnum direction, float textureHeightToWidth, bool fitFootprint, float overlapPerSide = 0f)
     {
         transform.Rotation = direction.ToWorldRotation();
         ecb.SetComponent(building, transform);
         bool nonSquareTexture = textureHeightToWidth > 0f && textureHeightToWidth != 1f;
-        if (fitFootprint && (math.any(footprint > 1) || nonSquareTexture))
+        if (fitFootprint && (overlapPerSide > 0f || math.any(footprint > 1) || nonSquareTexture))
         {
             ecb.AddComponent(building, new PostTransformMatrix
             {
-                Value = BuildingFootprintUtility.GetVisualPostTransform(footprint, direction, textureHeightToWidth)
+                Value = BuildingFootprintUtility.GetVisualPostTransform(footprint, direction, textureHeightToWidth,
+                    overlapPerSide)
             });
         }
     }

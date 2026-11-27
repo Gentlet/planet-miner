@@ -46,6 +46,7 @@ public sealed class WorldTaskVisualView : PeriodicWorldView
         public readonly List<Matrix4x4> Transforms = new List<Matrix4x4>();
         public bool HasAuthoredPostTransform;
         public float TextureHeightToWidth;
+        public float OverlapPerSide;
     }
     private sealed class Visual
     {
@@ -274,7 +275,7 @@ public sealed class WorldTaskVisualView : PeriodicWorldView
         if (!template.HasAuthoredPostTransform)
         {
             root *= (Matrix4x4)BuildingFootprintUtility.GetVisualPostTransform(
-                record.Footprint, record.Direction, template.TextureHeightToWidth);
+                record.Footprint, record.Direction, template.TextureHeightToWidth, template.OverlapPerSide);
         }
         for (int i = 0; i < visual.Parts.Count; i++)
         {
@@ -303,10 +304,22 @@ public sealed class WorldTaskVisualView : PeriodicWorldView
         {
             return null;
         }
+        using var configs = manager.CreateEntityQuery(typeof(BuildingConfig), typeof(BuildingConfigElement));
+        if (configs.CalculateEntityCount() != 1)
+        {
+            return null;
+        }
+        var definitions = manager.GetBuffer<BuildingConfigElement>(configs.GetSingletonEntity(), true);
+        if (!BuildingConfigLookupUtility.TryGetConfig(definitions, buildingId, out var config))
+        {
+            return null;
+        }
+
         var template = new GhostTemplate
         {
             HasAuthoredPostTransform = manager.HasComponent<PostTransformMatrix>(prefab),
-            TextureHeightToWidth = textureHeightToWidth
+            TextureHeightToWidth = textureHeightToWidth,
+            OverlapPerSide = BuildingFootprintUtility.GetVisualOverlapPerSide(config)
         };
         var entities = new List<Entity> { prefab };
         if (manager.HasBuffer<LinkedEntityGroup>(prefab))

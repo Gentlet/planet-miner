@@ -9,6 +9,9 @@ using Unity.Mathematics;
 [BurstCompile]
 public static class BuildingFootprintUtility
 {
+    // 벨트와 건물 사이의 경계를 덮는 표시 전용 겹침 폭이다. 단위는 변당 월드 칸 수다.
+    public const float VisualOverlapPerSide = 0.2f;
+
     /// <summary>
     /// 각 축을 최소 1칸으로 정규화하고 Left / Right 방향이면 가로·세로를 교환한다.
     /// </summary>
@@ -27,7 +30,11 @@ public static class BuildingFootprintUtility
         return GetEffectiveSize(footprint.Size, direction);
     }
 
-    public static float4x4 GetVisualPostTransform(int2 footprint, DirectionEnum direction, float textureHeightToWidth)
+    public static float GetVisualOverlapPerSide(in BuildingConfigElement config) =>
+        config.BeltTransport.IsPresent ? 0f : math.max(0f, VisualOverlapPerSide);
+
+    public static float4x4 GetVisualPostTransform(int2 footprint, DirectionEnum direction, float textureHeightToWidth,
+        float overlapPerSide)
     {
         int2 effectiveSize = GetEffectiveSize(footprint, direction);
         float width = footprint.x;
@@ -37,11 +44,12 @@ public static class BuildingFootprintUtility
         float scaleToFitWidth = math.min(1f, effectiveSize.x / rotatedSize.x);
         float heightOverflow = math.max(0f, rotatedSize.y * scaleToFitWidth - effectiveSize.y);
 
-        // 월드 위쪽으로만 돌출되도록 중심을 올린 뒤 메시의 로컬 축으로 변환한다.
+        // 기본 이미지의 하단을 맞춘 뒤 같은 중심에서 각 변을 바깥쪽으로 늘린다.
         float3 centerOffset = new float3(((float2)effectiveSize - 1f) * 0.5f, 0f);
         centerOffset.y += heightOverflow * 0.5f;
         float3 localOffset = math.rotate(math.inverse(direction.ToWorldRotation()), centerOffset);
-        return float4x4.TRS(localOffset, quaternion.identity, new float3(localSize * scaleToFitWidth, 1f));
+        float2 visualSize = localSize * scaleToFitWidth + 2f * overlapPerSide;
+        return float4x4.TRS(localOffset, quaternion.identity, new float3(visualSize, 1f));
     }
 
     private static bool SwapsAxes(DirectionEnum direction) =>
