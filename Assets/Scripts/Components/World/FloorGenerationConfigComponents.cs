@@ -17,13 +17,30 @@ public struct FloorGenerationSettings : IComponentData
     public float BoundaryNoiseAmplitudeInCells;
     public float NearBiomePreferenceExponent;
     public int TransitionVariantCount;
+    public FloorBiomeCornerTiles CornerTiles;
+}
+
+/// <summary>
+/// 두 바이옴의 공통 꼭짓점에서 고른 경계 Sprite 구간이다. 잔디 꼭짓점은 왼쪽 아래부터 1/2/4/8이며
+/// 혼합 조합 1~14 순으로 저장한다. VariantStart가 0인 구성은 셀 단위 전이를 사용한다.
+/// </summary>
+public struct FloorBiomeCornerTiles
+{
+    public const int AllGrassMask = 15;
+    public const int MixedTileCount = AllGrassMask - 1;
+
+    public int GrassBiomeIndex;
+    public int DirtBiomeIndex;
+    public int VariantStart;
+
+    public readonly bool IsConfigured => VariantStart != 0;
 }
 
 /// <summary>
 /// 역할·목적: 바이옴 식별자·선택 가중치와 FloorVariantElement 안의 연속 변형 구간을 정의한다.
 /// 부착 엔티티: FloorGenerationSettings가 있는 World 설정 엔티티의 버퍼다.
 /// 생성: WorldGenerationConfigLoadSystem(Initialization)이 WorldGenerationConfigLoader로 구간 시작/개수를 확정하여 게시한다.
-/// 이용: FloorBiomeSampler가 가중치로 바이옴과 해당 변형 구간을 선택한다. 제품 바닥과 진단 색상 표시는 같은 선택 규칙을 사용한다.
+/// 이용: FloorBiomeSampler가 가중치로 바이옴과 해당 변형 구간을 선택한다.
 /// 제거: 샘플링으로 항목을 소비하지 않는다. 버퍼는 설정 엔티티/World 수명을 따른다.
 /// </summary>
 public struct FloorBiomeElement : IBufferElementData
@@ -37,8 +54,8 @@ public struct FloorBiomeElement : IBufferElementData
 /// <summary>
 /// 역할·목적: 바닥 스프라이트 Resources 경로와 구간 안의 선택 가중치를 저장한다.
 /// 부착 엔티티: FloorGenerationSettings/FloorBiomeElement가 있는 World 설정 엔티티의 버퍼다.
-/// 생성: WorldGenerationConfigLoadSystem(Initialization)이 전이 변형을 앞쪽에, 바이옴별 변형을 이후 연속 구간에 게시한다.
-/// 이용: FloorBiomeSampler가 전이/바이옴 구간의 변형을 선택한다. 표시 소유자는 경로의 Sprite로 메시를 구성하며 버퍼를 읽기만 한다.
+/// 생성: WorldGenerationConfigLoadSystem(Initialization)이 셀 단위 전이, 바이옴별 변형, 꼭짓점 경계 순으로 게시한다.
+/// 이용: FloorBiomeSampler는 가중 변형을, FloorChunkMeshBuilder는 꼭짓점 경계 Sprite를 고른다.
 /// 제거: 샘플링으로 항목을 소비하지 않는다. 버퍼는 설정 엔티티/World 수명을 따른다.
 /// </summary>
 public struct FloorVariantElement : IBufferElementData

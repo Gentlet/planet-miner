@@ -96,6 +96,26 @@
           }
         ]
       }
-    ]
+    ],
+    "cornerTiles": {
+      "grassBiomeId": 15000001,
+      "dirtBiomeId": 15000002,
+      "spriteResourcePaths": [
+        "Sprites/Floor/GrassDirt/GrassDirt_01_outer",
+        "Sprites/Floor/GrassDirt/GrassDirt_02_outer",
+        "Sprites/Floor/GrassDirt/GrassDirt_03_straight",
+        "Sprites/Floor/GrassDirt/GrassDirt_04_outer",
+        "Sprites/Floor/GrassDirt/GrassDirt_05_diagonal",
+        "Sprites/Floor/GrassDirt/GrassDirt_06_straight",
+        "Sprites/Floor/GrassDirt/GrassDirt_07_inner",
+        "Sprites/Floor/GrassDirt/GrassDirt_08_outer",
+        "Sprites/Floor/GrassDirt/GrassDirt_09_straight",
+        "Sprites/Floor/GrassDirt/GrassDirt_10_diagonal",
+        "Sprites/Floor/GrassDirt/GrassDirt_11_inner",
+        "Sprites/Floor/GrassDirt/GrassDirt_12_straight",
+        "Sprites/Floor/GrassDirt/GrassDirt_13_inner",
+        "Sprites/Floor/GrassDirt/GrassDirt_14_inner"
+      ]
+    }
   }
 }

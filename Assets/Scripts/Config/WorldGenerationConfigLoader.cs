@@ -60,6 +60,15 @@ public static class WorldGenerationConfigLoader
         public float nearBiomePreferenceExponent;
         public List<FloorVariantConfigData> transitionFloorVariants;
         public List<FloorBiomeConfigData> biomes;
+        public FloorCornerTileConfigData cornerTiles;
+    }
+
+    [Serializable]
+    public class FloorCornerTileConfigData
+    {
+        public int grassBiomeId;
+        public int dirtBiomeId;
+        public List<string> spriteResourcePaths;
     }
 
     /// <summary>바이옴 ID·가중치·바닥 변형의 파싱 입력. 게시 시 평탄한 변형 목록의 시작/길이로 변환한다.</summary>
@@ -71,7 +80,7 @@ public static class WorldGenerationConfigLoader
         public List<FloorVariantConfigData> floorVariants;
     }
 
-    /// <summary>바닥 Sprite Resources 경로와 가중치 DTO. Sprite 로드/실제 렌더링이 구현됐다는 뜻은 아니다.</summary>
+    /// <summary>가중 변형 구간에 들어가는 바닥 Sprite Resources 경로와 선택 가중치다.</summary>
     [Serializable]
     public class FloorVariantConfigData
     {
@@ -318,6 +327,11 @@ public static class WorldGenerationConfigLoader
         }
 
         settings.TransitionVariantCount = config.transitionFloorVariants.Count;
+        if (config.cornerTiles != null &&
+            !TryAddCornerTiles(config.cornerTiles, biomes, variants, out settings.CornerTiles))
+        {
+            return false;
+        }
         floor = new FloorGenerationDefinition
         {
             Settings = settings,
@@ -325,6 +339,43 @@ public static class WorldGenerationConfigLoader
             Variants = variants
         };
         return true;
+    }
+
+    private static bool TryAddCornerTiles(FloorCornerTileConfigData source, List<FloorBiomeElement> biomes,
+        List<FloorVariantElement> variants, out FloorBiomeCornerTiles cornerTiles)
+    {
+        cornerTiles = new FloorBiomeCornerTiles
+        {
+            GrassBiomeIndex = biomes.FindIndex(biome => biome.Id == source.grassBiomeId),
+            DirtBiomeIndex = biomes.FindIndex(biome => biome.Id == source.dirtBiomeId),
+            VariantStart = variants.Count
+        };
+        int tileCount = source.spriteResourcePaths?.Count ?? 0;
+        if (!HasValidCornerTileLayout(cornerTiles, biomes.Count, variants.Count + (long)tileCount))
+        {
+            Debug.LogError("[WorldGenerationConfigLoader] Floor corner tiles require two distinct biomes and 14 Sprite paths.");
+            return false;
+        }
+
+        foreach (string spritePath in source.spriteResourcePaths)
+        {
+            if (!IsValidFloorSpritePath(spritePath))
+            {
+                Debug.LogError($"[WorldGenerationConfigLoader] Invalid or missing floor corner Sprite: '{spritePath}'.");
+                return false;
+            }
+            variants.Add(new FloorVariantElement { SpriteResourcePath = spritePath, Weight = 1f });
+        }
+        return true;
+    }
+
+    private static bool HasValidCornerTileLayout(in FloorBiomeCornerTiles tiles, int biomeCount, long variantCount)
+    {
+        return !tiles.IsConfigured ||
+            (biomeCount == 2 && tiles.GrassBiomeIndex >= 0 && tiles.GrassBiomeIndex < biomeCount &&
+             tiles.DirtBiomeIndex >= 0 && tiles.DirtBiomeIndex < biomeCount &&
+             tiles.GrassBiomeIndex != tiles.DirtBiomeIndex && tiles.VariantStart > 0 &&
+             (long)tiles.VariantStart + FloorBiomeCornerTiles.MixedTileCount == variantCount);
     }
 
     private static bool TryAddVariants(List<FloorVariantConfigData> source, string owner, List<FloorVariantElement> target)
@@ -338,12 +389,14 @@ public static class WorldGenerationConfigLoader
         float totalWeight = 0f;
         foreach (FloorVariantConfigData variant in source)
         {
-            if (variant == null || string.IsNullOrWhiteSpace(variant.spriteResourcePath) ||
-                !IsPositiveFinite(variant.weight) ||
-                Encoding.UTF8.GetByteCount(variant.spriteResourcePath) > FixedString128Bytes.UTF8MaxLengthInBytes ||
-                Resources.Load<Sprite>(variant.spriteResourcePath) == null)
+            if (variant == null)
             {
-                Debug.LogError($"[WorldGenerationConfigLoader] Invalid floor variant or missing Sprite for {owner}: '{variant?.spriteResourcePath}'.");
+                Debug.LogError($"[WorldGenerationConfigLoader] Invalid floor variant or missing Sprite for {owner}: ''.");
+                return false;
+            }
+            if (!IsPositiveFinite(variant.weight) || !IsValidFloorSpritePath(variant.spriteResourcePath))
+            {
+                Debug.LogError($"[WorldGenerationConfigLoader] Invalid floor variant or missing Sprite for {owner}: '{variant.spriteResourcePath}'.");
                 return false;
             }
 
@@ -358,6 +411,10 @@ public static class WorldGenerationConfigLoader
         }
         return true;
     }
+
+    private static bool IsValidFloorSpritePath(string path) =>
+        !string.IsNullOrWhiteSpace(path) && Encoding.UTF8.GetByteCount(path) <= FixedString128Bytes.UTF8MaxLengthInBytes &&
+        Resources.Load<Sprite>(path) != null;
 
     private static bool IsPositiveFinite(float value) => value > 0f && !float.IsNaN(value) && !float.IsInfinity(value);
     private static bool IsNonNegativeFinite(float value) => value >= 0f && !float.IsNaN(value) && !float.IsInfinity(value);
@@ -396,6 +453,10 @@ public static class WorldGenerationConfigLoader
                         return false;
                 }
             }
+            if (floor["cornerTiles"] is JObject cornerTiles &&
+                (!TryValidateIntegerToken(cornerTiles["grassBiomeId"], "grassBiomeId", out error) ||
+                 !TryValidateIntegerToken(cornerTiles["dirtBiomeId"], "dirtBiomeId", out error)))
+                return false;
         }
 
         error = null;
@@ -506,7 +567,14 @@ public static class WorldGenerationConfigLoader
         if (!TryValidateFloorSettings(floorSettings, out error))
             return false;
 
-        int variantCount = variants.Length;
+        var cornerTiles = floorSettings.CornerTiles;
+        if (!HasValidCornerTileLayout(cornerTiles, biomes.Length, variants.Length))
+        {
+            error = "Pre-registered floor corner tiles have an invalid range or biome pair.";
+            return false;
+        }
+
+        int variantCount = cornerTiles.IsConfigured ? cornerTiles.VariantStart : variants.Length;
         if (floorSettings.TransitionVariantCount < 0 || floorSettings.TransitionVariantCount > variantCount ||
             (floorSettings.TransitionWidthInChunks > 0 && floorSettings.TransitionVariantCount == 0))
         {
@@ -579,6 +647,9 @@ public static class WorldGenerationConfigLoader
         {
             if (!TryValidateFloorSettings(floor.Settings, out string floorError))
                 throw new ArgumentException(floorError, nameof(floor));
+            if (floor.Settings.CornerTiles.IsConfigured &&
+                !HasValidCornerTileLayout(floor.Settings.CornerTiles, floor.Biomes.Count, floor.Variants.Count))
+                throw new ArgumentException("Floor corner tiles have an invalid range or biome pair.", nameof(floor));
         }
 
         Entity entity = entityManager.CreateEntity(typeof(ResourceGenerationSettings));

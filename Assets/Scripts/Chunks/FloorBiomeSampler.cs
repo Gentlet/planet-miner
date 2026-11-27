@@ -20,8 +20,8 @@ public struct FloorTileSelection
 }
 
 /// <summary>
-/// 역할·목적: 월드 셀에서 바이옴 경계/전이와 가중 바닥 변형을 시드 기반으로 결정한다.
-/// 입력·출력: 검증된 바닥 설정/바이옴/변형 버퍼를 읽어 FloorTileSelection 또는 선택 행을 반환한다.
+/// 역할·목적: 월드 위치의 바이옴과 셀의 가중 바닥 변형을 시드 기반으로 결정한다.
+/// 입력·출력: 바닥 설정과 변형 버퍼를 읽어 꼭짓점의 영역 바이옴 인덱스 또는 셀의 변형 선택을 반환한다.
 /// 이용: FloorChunkMeshBuilder는 제품 바닥 메시를, V2FloorBiomePreview는 진단 색상 텍스처를 구성할 때 호출한다.
 /// 수명·소유권: 전역 RNG/영속 캐시를 갱신하지 않는 순수 계산이다. 같은 시드·설정·셀은 호출 순서와 무관하게 같은 결과를 낸다.
 /// </summary>
@@ -89,6 +89,29 @@ public static class FloorBiomeSampler
         return variants[start + selection.VariantIndex];
     }
 
+    public static int SampleRegionBiome(
+        uint worldSeed,
+        in FloorGenerationSettings settings,
+        in DynamicBuffer<FloorBiomeElement> biomes,
+        float2 worldPosition)
+    {
+        float2 regionCoordinate = GetRegionCoordinate(worldSeed, settings, worldPosition);
+        return SelectBiomeIndex(worldSeed, biomes, (int2)math.floor(regionCoordinate));
+    }
+
+    public static FloorVariantElement SelectBiomeVariant(
+        uint worldSeed,
+        in FloorBiomeElement biome,
+        in DynamicBuffer<FloorVariantElement> variants,
+        int biomeIndex,
+        int2 worldCell)
+    {
+        uint salt = VariantSalt + (uint)biomeIndex;
+        float selection = HashToUnitFloat(Hash(worldSeed, worldCell.x, worldCell.y, salt));
+        int index = SelectVariantIndex(variants, biome.VariantStart, biome.VariantCount, selection);
+        return variants[biome.VariantStart + index];
+    }
+
     private static int SelectBiomeIndexForCell(
         uint worldSeed,
         in FloorGenerationSettings settings,
@@ -97,9 +120,7 @@ public static class FloorBiomeSampler
         out bool isInTransition,
         out float distanceRatio)
     {
-        float2 warpedCell = worldCell + GetBoundaryWarp(worldSeed, settings, worldCell);
-        float regionSizeInCells = settings.BiomeRegionSizeInChunks * (float)ChunkUtility.ChunkSize;
-        float2 regionCoordinate = warpedCell / regionSizeInCells;
+        float2 regionCoordinate = GetRegionCoordinate(worldSeed, settings, worldCell);
         float2 regionOrigin = math.floor(regionCoordinate);
         int2 currentRegion = (int2)regionOrigin;
         int currentBiomeIndex = SelectBiomeIndex(worldSeed, biomes, currentRegion);
@@ -109,6 +130,7 @@ public static class FloorBiomeSampler
         if (settings.TransitionWidthInChunks == 0) return currentBiomeIndex;
 
         float2 regionFraction = regionCoordinate - regionOrigin;
+        float regionSizeInCells = settings.BiomeRegionSizeInChunks * (float)ChunkUtility.ChunkSize;
         float2 distanceToBoundary = math.min(regionFraction, 1f - regionFraction) * regionSizeInCells;
         bool isVerticalBoundary = distanceToBoundary.x <= distanceToBoundary.y;
         float boundaryDistance = isVerticalBoundary ? distanceToBoundary.x : distanceToBoundary.y;
@@ -157,10 +179,17 @@ public static class FloorBiomeSampler
         return count - 1;
     }
 
-    private static float2 GetBoundaryWarp(uint worldSeed, in FloorGenerationSettings settings, int2 worldCell)
+    private static float2 GetRegionCoordinate(uint worldSeed, in FloorGenerationSettings settings, float2 worldPosition)
+    {
+        float2 warpedPosition = worldPosition + GetBoundaryWarp(worldSeed, settings, worldPosition);
+        float regionSizeInCells = settings.BiomeRegionSizeInChunks * (float)ChunkUtility.ChunkSize;
+        return warpedPosition / regionSizeInCells;
+    }
+
+    private static float2 GetBoundaryWarp(uint worldSeed, in FloorGenerationSettings settings, float2 worldPosition)
     {
         if (settings.BoundaryNoiseAmplitudeInCells <= 0f) return float2.zero;
-        float2 samplePosition = (float2)worldCell / settings.BoundaryNoiseScaleInCells;
+        float2 samplePosition = worldPosition / settings.BoundaryNoiseScaleInCells;
         float x = (SampleValueNoise(worldSeed, samplePosition, WarpXSalt) * 2f - 1f) * settings.BoundaryNoiseAmplitudeInCells;
         float y = (SampleValueNoise(worldSeed, samplePosition, WarpYSalt) * 2f - 1f) * settings.BoundaryNoiseAmplitudeInCells;
         return new float2(x, y);

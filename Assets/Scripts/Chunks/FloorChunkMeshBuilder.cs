@@ -12,6 +12,8 @@ using UnityEngine.Rendering;
 /// </summary>
 internal sealed class FloorChunkMeshBuilder : IDisposable
 {
+    private const int CornersPerSide = ChunkUtility.ChunkSize + 1;
+
     private sealed class Tile
     {
         public Vector2[] Vertices;
@@ -26,6 +28,7 @@ internal sealed class FloorChunkMeshBuilder : IDisposable
     private readonly List<Material> _chunkMaterials = new();
     private readonly List<Vector3> _vertices = new();
     private readonly List<Vector2> _uvs = new();
+    private readonly bool[] _grassCorners = new bool[CornersPerSide * CornersPerSide];
 
     public bool TryPrepare(Material template, DynamicBuffer<FloorVariantElement> variants, out string error)
     {
@@ -90,13 +93,21 @@ internal sealed class FloorChunkMeshBuilder : IDisposable
             triangles.Clear();
         }
 
+        var cornerTiles = settings.CornerTiles;
+        if (cornerTiles.IsConfigured)
+        {
+            SampleGrassCorners(minimumCell, seed, settings, biomes);
+        }
+
         for (int y = 0; y < ChunkUtility.ChunkSize; y++)
         {
             for (int x = 0; x < ChunkUtility.ChunkSize; x++)
             {
                 var cell = minimumCell + new int2(x, y);
-                var selection = FloorBiomeSampler.SelectFloor(seed, settings, biomes, variants, cell);
-                var variant = FloorBiomeSampler.GetVariant(biomes, variants, selection);
+                var variant = cornerTiles.IsConfigured
+                    ? SelectCornerTile(seed, cornerTiles, biomes, variants, cell, x, y)
+                    : FloorBiomeSampler.GetVariant(biomes, variants,
+                        FloorBiomeSampler.SelectFloor(seed, settings, biomes, variants, cell));
                 AppendTile(_tiles[variant.SpriteResourcePath], x, y);
             }
         }
@@ -131,6 +142,43 @@ internal sealed class FloorChunkMeshBuilder : IDisposable
             UnityObjectLifecycleUtility.DestroyOwned(mesh);
             throw;
         }
+    }
+
+    private void SampleGrassCorners(int2 minimumCell, uint seed, in FloorGenerationSettings settings,
+        in DynamicBuffer<FloorBiomeElement> biomes)
+    {
+        int grassBiomeIndex = settings.CornerTiles.GrassBiomeIndex;
+        for (int y = 0; y < CornersPerSide; y++)
+        {
+            for (int x = 0; x < CornersPerSide; x++)
+            {
+                // 정수 셀 중심 사이의 공통 꼭짓점을 샘플링한다. 월드 좌표 극단에서도
+                // 로컬 오프셋을 더한 다음 float로 좁혀 양쪽 청크가 같은 좌표를 읽게 한다.
+                var corner = new float2((float)((double)minimumCell.x + x - 0.5d),
+                    (float)((double)minimumCell.y + y - 0.5d));
+                _grassCorners[y * CornersPerSide + x] =
+                    FloorBiomeSampler.SampleRegionBiome(seed, settings, biomes, corner) == grassBiomeIndex;
+            }
+        }
+    }
+
+    private FloorVariantElement SelectCornerTile(uint seed, in FloorBiomeCornerTiles cornerTiles,
+        in DynamicBuffer<FloorBiomeElement> biomes, in DynamicBuffer<FloorVariantElement> variants,
+        int2 cell, int x, int y)
+    {
+        int bottomLeft = y * CornersPerSide + x;
+        int topLeft = bottomLeft + CornersPerSide;
+        int mask = (_grassCorners[bottomLeft] ? 1 : 0) |
+            (_grassCorners[bottomLeft + 1] ? 2 : 0) |
+            (_grassCorners[topLeft + 1] ? 4 : 0) |
+            (_grassCorners[topLeft] ? 8 : 0);
+        if (mask > 0 && mask < FloorBiomeCornerTiles.AllGrassMask)
+        {
+            return variants[cornerTiles.VariantStart + mask - 1];
+        }
+
+        int biomeIndex = mask == 0 ? cornerTiles.DirtBiomeIndex : cornerTiles.GrassBiomeIndex;
+        return FloorBiomeSampler.SelectBiomeVariant(seed, biomes[biomeIndex], variants, biomeIndex, cell);
     }
 
     private void AppendTile(Tile tile, int x, int y)
