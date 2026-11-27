@@ -15,9 +15,7 @@ public static class BuildingFootprintUtility
     public static int2 GetEffectiveSize(int2 footprintSize, DirectionEnum direction)
     {
         int2 normalized = math.max(footprintSize, new int2(1, 1));
-        return (direction == DirectionEnum.Left || direction == DirectionEnum.Right)
-            ? new int2(normalized.y, normalized.x)
-            : normalized;
+        return SwapsAxes(direction) ? normalized.yx : normalized;
     }
 
     public static bool Contains(int2 origin, int2 effectiveSize, int2 cell) =>
@@ -29,14 +27,23 @@ public static class BuildingFootprintUtility
         return GetEffectiveSize(footprint.Size, direction);
     }
 
-    // 렌더 회전 전 메시 축으로 중심 오프셋을 되돌려 격자 원점과 회전 후 점유 영역을 맞춘다.
     public static float4x4 GetVisualPostTransform(int2 footprint, DirectionEnum direction, float textureHeightToWidth)
     {
         int2 effectiveSize = GetEffectiveSize(footprint, direction);
-        float3 centerOffset = new float3(((float2)effectiveSize - 1f) * 0.5f, 0f);
-        float3 localOffset = math.rotate(math.inverse(direction.ToWorldRotation()), centerOffset);
         float width = footprint.x;
         float height = textureHeightToWidth > 0f ? width * textureHeightToWidth : footprint.y;
-        return float4x4.TRS(localOffset, quaternion.identity, new float3(width, height, 1f));
+        float2 localSize = new float2(width, height);
+        float2 rotatedSize = SwapsAxes(direction) ? localSize.yx : localSize;
+        float scaleToFitWidth = math.min(1f, effectiveSize.x / rotatedSize.x);
+        float heightOverflow = math.max(0f, rotatedSize.y * scaleToFitWidth - effectiveSize.y);
+
+        // 월드 위쪽으로만 돌출되도록 중심을 올린 뒤 메시의 로컬 축으로 변환한다.
+        float3 centerOffset = new float3(((float2)effectiveSize - 1f) * 0.5f, 0f);
+        centerOffset.y += heightOverflow * 0.5f;
+        float3 localOffset = math.rotate(math.inverse(direction.ToWorldRotation()), centerOffset);
+        return float4x4.TRS(localOffset, quaternion.identity, new float3(localSize * scaleToFitWidth, 1f));
     }
+
+    private static bool SwapsAxes(DirectionEnum direction) =>
+        direction == DirectionEnum.Left || direction == DirectionEnum.Right;
 }
