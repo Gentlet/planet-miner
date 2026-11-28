@@ -40,6 +40,7 @@ internal sealed class GameWorldSnapshot
 
     public bool IsLegacyFormat { get; private set; }
     internal bool AllowsLegacyBeltSpacing;
+    internal bool RecordsBeltEntryDirections;
 
 #if UNITY_EDITOR
     public JObject ToJson()
@@ -114,9 +115,11 @@ internal sealed class GameWorldSnapshot
 
 #endif
 
-    internal static void ValidateBeltSpacing(Dictionary<int2, DirectionEnum> belts, List<SavedWorldItem> items,
-        Dictionary<SavedWorldItem, float> restoredProgress = null)
+    internal static void ValidateBeltSpacing(SavedBeltPathCells beltCells, List<SavedWorldItem> items,
+        Dictionary<SavedWorldItem, float> restoredProgress = null, bool repairLegacySpacing = true,
+        bool useSavedEntryDirections = false)
     {
+        var belts = beltCells.Belts;
         var progresses = new Dictionary<int2, List<SavedWorldItem>>();
         foreach (var item in items)
         {
@@ -130,9 +133,14 @@ internal sealed class GameWorldSnapshot
             }
             int2 cell = ReadCell(item.Cell);
             float progress = item.BeltProgress.Value;
-            if (!belts.ContainsKey(cell) || !float.IsFinite(progress) || progress < 0f || progress > 1f)
+            if (!belts.TryGetValue(cell, out var exit) || !float.IsFinite(progress) || progress < 0f || progress > 1f)
             {
                 throw new System.IO.InvalidDataException("벨트 아이템의 위치나 진행도가 유효하지 않습니다.");
+            }
+            if (useSavedEntryDirections && progress < 0.5f && item.Direction.HasValue &&
+                BeltPathUtility.IsHeadOn(item.Direction.Value, exit))
+            {
+                throw new System.IO.InvalidDataException("벨트 아이템의 진입 방향이 유효하지 않습니다.");
             }
             if (!progresses.TryGetValue(cell, out var entries))
             {
@@ -162,18 +170,22 @@ internal sealed class GameWorldSnapshot
         while (remaining.Count > 0)
         {
             int2 origin = remaining.Dequeue();
-            int2 next = origin + belts[origin].ToInt2();
-            if (!progresses.TryGetValue(next, out var ahead))
+            DirectionEnum direction = belts[origin];
+            int2 next = origin + direction.ToInt2();
+            if (!progresses.TryGetValue(next, out var ahead) ||
+                BeltPathUtility.GetEntryDirection(next, belts[next], beltCells) != direction)
             {
                 continue;
             }
             var behind = progresses[origin];
             float exit = Progress(behind[behind.Count - 1]);
-            if (BeltEntryUtility.HasBoundarySpacing(exit, Progress(ahead[0])))
+            int firstInLane = ahead.FindIndex(item => !useSavedEntryDirections || !item.Direction.HasValue ||
+                Progress(item) >= 0.5f || item.Direction.Value == direction);
+            if (firstInLane < 0 || BeltEntryUtility.HasBoundarySpacing(exit, Progress(ahead[firstInLane])))
             {
                 continue;
             }
-            if (restoredProgress == null)
+            if (restoredProgress == null || !repairLegacySpacing)
             {
                 throw new System.IO.InvalidDataException("인접 벨트 칸의 아이템 간격이 유효하지 않습니다.");
             }
@@ -188,6 +200,53 @@ internal sealed class GameWorldSnapshot
                 }
             }
             remaining.Enqueue(next);
+        }
+
+        if (restoredProgress != null)
+        {
+            foreach (var (cell, itemsOnBelt) in progresses)
+            {
+                DirectionEnum direction = belts[cell];
+                int2 opposite = cell + direction.ToInt2();
+                if (!progresses.TryGetValue(opposite, out var opposingItems) ||
+                    !BeltPathUtility.IsHeadOn(direction, belts[opposite]) ||
+                    BeltPathUtility.HasHeadOnSpacing(Progress(itemsOnBelt[itemsOnBelt.Count - 1]),
+                        Progress(opposingItems[opposingItems.Count - 1])))
+                {
+                    continue;
+                }
+
+                // 오래된 저장에서 양쪽 끝이 겹치면 두 선두를 정지선 뒤로 당긴다.
+                // 상류의 실물도 셀과 순서를 유지하면서 좁아진 간격만 되돌린다.
+                RetreatQueue(cell);
+                RetreatQueue(opposite);
+            }
+        }
+
+        void RetreatQueue(int2 current)
+        {
+            float limit = BeltPathUtility.HeadOnStopProgress;
+            while (progresses.TryGetValue(current, out var queue) && Progress(queue[queue.Count - 1]) > limit)
+            {
+                for (int i = queue.Count - 1; i >= 0; i--)
+                {
+                    var item = queue[i];
+                    float progress = Progress(item);
+                    if (progress > limit)
+                    {
+                        restoredProgress[item] = limit;
+                        progress = limit;
+                    }
+                    limit = progress - minimumGap;
+                }
+                DirectionEnum entry = BeltPathUtility.GetEntryDirection(current, belts[current], beltCells);
+                current -= entry.ToInt2();
+                if (!beltCells.PointsToward(current, entry))
+                {
+                    break;
+                }
+                limit = 1f - minimumGap + Progress(queue[0]);
+            }
         }
 
         float Progress(SavedWorldItem item)

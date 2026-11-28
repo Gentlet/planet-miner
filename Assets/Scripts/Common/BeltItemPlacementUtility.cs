@@ -19,15 +19,12 @@ internal static class BeltItemPlacementUtility
         }
         if (movement.HasComponent(item))
         {
-            movement[item] = new BeltMovementState(0.0f);
+            movement[item] = new BeltMovementState(0f, direction);
             movement.SetComponentEnabled(item, true);
         }
         if (transforms.HasComponent(item))
         {
-            float2 center = new float2(position.x, position.y);
-            int2 directionVector = direction.ToInt2();
-            float2 visualPosition = center + new float2(directionVector.x, directionVector.y) * -0.5f;
-            transforms[item] = LocalTransform.FromPosition(new float3(visualPosition.x, visualPosition.y, 0f));
+            transforms[item] = LocalTransform.FromPosition(BeltPathUtility.Position(position, 0f, direction, direction));
         }
     }
 }

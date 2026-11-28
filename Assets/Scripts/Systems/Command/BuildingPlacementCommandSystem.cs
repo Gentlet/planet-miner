@@ -112,6 +112,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
         orderedRequests.AsArray().Sort(new ReceiptComparer());
         // 묶음 내부의 임시 선점과 구분한다. 최종 승인 뒤에만 쓰므로 Strict 실패가 후속 요청을 막지 않는다.
         using var approvedCells = new NativeParallelHashSet<int2>(16, Allocator.Temp);
+        using var approvedRedirects = new NativeParallelHashMap<int2, DirectionEnum>(16, Allocator.Temp);
         var settingsRead = new BuildingSettingsUtility.SettingsReadContext(state.EntityManager);
         ulong currentTick = 0;
         bool currentTickRead = false;
@@ -163,7 +164,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                 itemMap.AsReadOnly(),
                 results,
                 configs,
-                approvedCells: approvedCells, settingsRejections: settingsRejections);
+                approvedCells: approvedCells, settingsRejections: settingsRejections, approvedRedirects: approvedRedirects);
 
             // 후보의 명시 Tick을 우선하되 버퍼 순서를 유지한다. 이 Stamp가 이후 최초 공급 우선순위의 근거가 된다.
             ulong defaultTick = request.RequestTick;
@@ -188,6 +189,7 @@ public partial struct BuildingPlacementCommandSystem : ISystem
                     // 승인에 사용한 같은 인덱스의 원점 벨트를 EndCommand에서 변경한다.
                     var existingBelt = buildingMap[candidate.OriginPosition];
                     RecordBeltDirection(ref ecb, state.EntityManager, existingBelt.Entity, candidate, buildingPrefabs);
+                    approvedRedirects.Add(candidate.OriginPosition, candidate.Direction);
                     BuildingPlacementValidationUtility.ClaimApprovedPlacement(candidate, approvedCells);
                     continue;
                 }

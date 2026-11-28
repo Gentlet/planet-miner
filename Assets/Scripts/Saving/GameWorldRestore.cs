@@ -49,10 +49,10 @@ internal static class GameWorldRestore
         var ecb = new EntityCommandBuffer(Allocator.Temp);
         try
         {
-            var belts = RecordBuildings(ref ecb, manager, snapshot, occupied, taskTargets, out savedBuildings);
+            savedBuildings = RecordBuildings(ref ecb, manager, snapshot, occupied, taskTargets);
             GameConstructionSave.Record(ref ecb, manager, snapshot.ConstructionSites, occupied, itemTypes, taskTargets);
             RecordResources(ref ecb, manager, savedWorld.ResourceNodes, generatedChunks, itemTypes);
-            RecordWorldItems(ref ecb, manager, snapshot, belts, itemTypes, taskTargets);
+            RecordWorldItems(ref ecb, manager, snapshot, itemTypes, taskTargets);
             ecb.Playback(manager);
         }
         finally
@@ -146,16 +146,15 @@ internal static class GameWorldRestore
         return result;
     }
 
-    private static Dictionary<int2, DirectionEnum> RecordBuildings(ref EntityCommandBuffer ecb,
+    private static Dictionary<string, SavedBuilding> RecordBuildings(ref EntityCommandBuffer ecb,
         EntityManager manager, GameWorldSnapshot snapshot, HashSet<int2> occupied,
-        Dictionary<string, int> taskTargets, out Dictionary<string, SavedBuilding> savedBuildings)
+        Dictionary<string, int> taskTargets)
     {
         using var configQuery = manager.CreateEntityQuery(typeof(BuildingConfig), typeof(BuildingConfigElement));
         var configs = manager.GetBuffer<BuildingConfigElement>(configQuery.GetSingletonEntity(), true);
         using var prefabQuery = manager.CreateEntityQuery(typeof(BuildingPrefabDatabase), typeof(BuildingPrefabElement));
         var prefabs = manager.GetBuffer<BuildingPrefabElement>(prefabQuery.GetSingletonEntity(), true);
-        var belts = new Dictionary<int2, DirectionEnum>();
-        savedBuildings = new Dictionary<string, SavedBuilding>(StringComparer.Ordinal);
+        var savedBuildings = new Dictionary<string, SavedBuilding>(StringComparer.Ordinal);
         bool hasMainFacility = false;
 
         foreach (var building in snapshot.Buildings)
@@ -192,10 +191,6 @@ internal static class GameWorldRestore
                 hasMainFacility = true;
             }
             AddFootprint(occupied, origin, BuildingFootprintUtility.GetEffectiveSize(config.Footprint, building.Direction));
-            if (config.BeltTransport.IsPresent && !building.Disabled)
-            {
-                belts.Add(origin, building.Direction);
-            }
 
             var stamp = new PlacementStamp(building.Stamp.Tick, building.Stamp.Order, building.Stamp.Receipt);
             if (!PrefabLookupUtility.TryGetBuildingPrefab(prefabs, config.BuildingId, out Entity prefab,
@@ -219,7 +214,7 @@ internal static class GameWorldRestore
         {
             throw new InvalidDataException("저장 파일에 주 시설이 없습니다.");
         }
-        return belts;
+        return savedBuildings;
     }
 
     internal static void AddFootprint(HashSet<int2> occupied, int2 origin, int2 size)
@@ -264,13 +259,14 @@ internal static class GameWorldRestore
     }
 
     private static void RecordWorldItems(ref EntityCommandBuffer ecb, EntityManager manager,
-        GameWorldSnapshot snapshot, Dictionary<int2, DirectionEnum> belts, IReadOnlyDictionary<int, ItemTypeEnum> itemTypes,
-        Dictionary<string, int> taskTargets)
+        GameWorldSnapshot snapshot, IReadOnlyDictionary<int, ItemTypeEnum> itemTypes, Dictionary<string, int> taskTargets)
     {
         using var prefabQuery = manager.CreateEntityQuery(typeof(ItemPrefabDatabase), typeof(ItemPrefabElement));
         var prefabs = manager.GetBuffer<ItemPrefabElement>(prefabQuery.GetSingletonEntity(), true);
-        var corrections = snapshot.AllowsLegacyBeltSpacing ? new Dictionary<SavedWorldItem, float>() : null;
-        GameWorldSnapshot.ValidateBeltSpacing(belts, snapshot.WorldItems, corrections);
+        var corrections = new Dictionary<SavedWorldItem, float>();
+        var beltCells = SavedBeltPathCells.FromSnapshot(manager, snapshot);
+        GameWorldSnapshot.ValidateBeltSpacing(beltCells, snapshot.WorldItems, corrections,
+            snapshot.AllowsLegacyBeltSpacing, snapshot.RecordsBeltEntryDirections);
         foreach (var item in snapshot.WorldItems)
         {
             if (item == null)
@@ -306,15 +302,17 @@ internal static class GameWorldRestore
                 continue;
             }
             float progress = item.BeltProgress.Value;
-            if (corrections != null && corrections.TryGetValue(item, out float corrected))
+            if (corrections.TryGetValue(item, out float corrected))
             {
                 progress = corrected;
             }
-            DirectionEnum direction = belts[cell];
-            ecb.SetComponent(instance, new BeltMovementState(progress));
+            DirectionEnum direction = beltCells.Belts[cell];
+            DirectionEnum entry = snapshot.RecordsBeltEntryDirections && item.Direction.HasValue
+                ? item.Direction.Value
+                : BeltPathUtility.GetEntryDirection(cell, direction, beltCells);
+            ecb.SetComponent(instance, new BeltMovementState(progress, entry));
             ecb.SetComponentEnabled<BeltMovementState>(instance, true);
-            float2 position = (float2)cell + (float2)direction.ToInt2() * (progress - 0.5f);
-            ecb.SetComponent(instance, LocalTransform.FromPosition(new float3(position.x, position.y, 0f)));
+            ecb.SetComponent(instance, LocalTransform.FromPosition(BeltPathUtility.Position(cell, progress, entry, direction)));
         }
     }
 

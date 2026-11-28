@@ -113,10 +113,9 @@ public partial struct BuildingItemOutputApplyJob : IJobEntity
         int2 position = approved.TargetBeltPosition;
         Entity item = ItemLifecycleUtility.SpawnPrefabItem(ref ECB, prefab, approved.ItemType, position);
         ECB.AddComponent(item, new Direction(belt.Direction));
-        ECB.SetComponent(item, new BeltMovementState(0f));
+        ECB.SetComponent(item, new BeltMovementState(0f, belt.Direction));
         ECB.SetComponentEnabled<BeltMovementState>(item, true);
-        float2 visualPosition = (float2)position - (float2)belt.Direction.ToInt2() * 0.5f;
-        ECB.SetComponent(item, LocalTransform.FromPosition(new float3(visualPosition, 0f)));
+        ECB.SetComponent(item, LocalTransform.FromPosition(BeltPathUtility.Position(position, 0f, belt.Direction, belt.Direction)));
     }
 
     private bool TryReadOutputPrefab(ItemTypeEnum type, out Entity prefab)

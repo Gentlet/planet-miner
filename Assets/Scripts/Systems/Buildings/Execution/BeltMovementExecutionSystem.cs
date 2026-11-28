@@ -7,9 +7,9 @@ using Unity.Transforms;
 
 /// <summary>
 /// 역할·목적: Execution에서 Decision의 전진 계획을 활성 월드 실물의 실제 이동 상태에 반영한다.
-/// 입력·생성자: BeltMovementDecisionSystem의 PlannedProgress와 Synchronization의 벨트 인덱스.
+/// 입력·생성자: BeltMovementDecisionSystem의 PlannedProgress와 Synchronization의 벨트/건물 인덱스.
 /// 출력·소유권: BeltMovementState.Progress, GridPosition과 LocalTransform을 함께 갱신한다. 소유권/렌더 태그는 쓰지 않는다.
-/// 정리: PlannedProgress는 적용 전에 0으로 소비하여 같은 계획을 반복 실행하지 않는다. 다음 셀에 벨트가 없으면 종단에서 멈춘다.
+/// 정리: PlannedProgress는 적용 전에 0으로 소비하여 같은 계획을 반복 실행하지 않는다. 다음 셀의 입구가 이어질 때 경계를 넘고 남은 이동량을 이월한다.
 /// 가시화: 값은 Job 완료 후 Reader에 보이며 아이템 인덱스는 Synchronization에서 재구축한다. ECB 구조 변경은 없다.
 /// </summary>
 [UpdateInGroup(typeof(BuildingExecutionGroup))]
@@ -20,7 +20,8 @@ public partial struct BeltMovementExecutionSystem : ISystem
     [BurstCompile]
     public void OnUpdate(ref SystemState state)
     {
-        if (!SystemAPI.HasSingleton<BeltSpatialIndex>() || !SystemAPI.HasSingleton<BeltSpatialIndexFence>())
+        if (!SystemAPI.HasSingleton<BeltSpatialIndex>() || !SystemAPI.HasSingleton<BeltSpatialIndexFence>() ||
+            !SystemAPI.HasSingleton<BuildingSpatialIndex>() || !SystemAPI.HasSingleton<BuildingSpatialIndexFence>())
         {
             return;
         }
@@ -28,18 +29,36 @@ public partial struct BeltMovementExecutionSystem : ISystem
         var beltIndex = SystemAPI.GetSingleton<BeltSpatialIndex>();
         ref var beltFence = ref SystemAPI.GetSingletonRW<BeltSpatialIndexFence>().ValueRW;
 
+        var buildingIndex = SystemAPI.GetSingleton<BuildingSpatialIndex>();
+        ref var buildingFence = ref SystemAPI.GetSingletonRW<BuildingSpatialIndexFence>().ValueRW;
+
         var job = new BeltMovementExecutionJob
         {
-            Directions = SystemAPI.GetComponentLookup<Direction>(true),
-            BeltMap = beltIndex.Map
+            Cells = new RuntimeBeltPathCells
+            {
+                RoutingBelts = new RuntimeRoutingBeltCells
+                {
+                    Belts = beltIndex.Map,
+                    Directions = SystemAPI.GetComponentLookup<Direction>(true),
+                    PlacementStamps = SystemAPI.GetComponentLookup<PlacementStamp>(true),
+                    PendingDemolitions = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true)
+                },
+                Buildings = buildingIndex.Map,
+                OutputDecisions = SystemAPI.GetComponentLookup<BuildingItemOutputDecision>(true),
+                Splitters = SystemAPI.GetComponentLookup<SplitterRoutingState>(true),
+                Mergers = SystemAPI.GetComponentLookup<MergerRoutingState>(true)
+            },
+            PendingDemolitions = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true)
         };
 
         // Reader 의존성: 마지막 Writer가 끝난 뒤 읽기 실행
-        var jobDep = JobHandle.CombineDependencies(state.Dependency, beltFence.State.GetReaderDependency());
+        var jobDep = JobHandle.CombineDependencies(state.Dependency, beltFence.State.GetReaderDependency(),
+            buildingFence.State.GetReaderDependency());
         var jobHandle = job.ScheduleParallel(jobDep);
 
         // Fence에 Reader Handle 등록
         beltFence.State.AddReader(jobHandle);
+        buildingFence.State.AddReader(jobHandle);
 
         state.Dependency = jobHandle;
     }
@@ -52,9 +71,8 @@ public partial struct BeltMovementExecutionSystem : ISystem
 [WithNone(typeof(DestroyItemRequest))]
 public partial struct BeltMovementExecutionJob : IJobEntity
 {
-    [ReadOnly]
-    public NativeParallelHashMap<int2, BeltInfo> BeltMap;
-    [ReadOnly] public ComponentLookup<Direction> Directions;
+    internal RuntimeBeltPathCells Cells;
+    [ReadOnly] public ComponentLookup<PendingBuildingDemolition> PendingDemolitions;
 
     public void Execute(
         Entity entity,
@@ -63,58 +81,58 @@ public partial struct BeltMovementExecutionJob : IJobEntity
         ref LocalTransform transform,
         ref BeltMovementDecision decision)
     {
-        // 2. 현재 타일에 벨트가 존재하는지 확인
-        if (!BeltEntryUtility.TryGetDirectedBelt(gridPos.Value, BeltMap, Directions, out BeltInfo currentBelt))
+        float planned = decision.PlannedProgress;
+        decision.PlannedProgress = 0f;
+        if (!Cells.TryGetBelt(gridPos.Value, out BeltInfo currentBelt))
         {
-            decision.PlannedProgress = 0.0f;
             return;
         }
 
-        float planned = decision.PlannedProgress;
-        // Consume-on-Execution: 이번 프레임의 이동 계획 소비
-        decision.PlannedProgress = 0.0f;
-
-        int2 currentDir = currentBelt.Direction.ToInt2();
-
-        // 3. 이동 계획이 있는 경우 Progress 전진 및 타일 횡단 처리 (큰 DeltaTime 대응 다중 홉 방어 루프)
-        if (planned > 0.0f)
+        if (planned > 0f)
         {
-            float newProgress = state.Progress + planned;
-            int hopCount = 0;
-
-            while (newProgress >= 1.0f && hopCount < GameConstants.MaxTileHopsPerFrame)
+            float progress = state.Progress + planned;
+            for (int hop = 0; hop < GameConstants.MaxTileHopsPerFrame; hop++)
             {
-                int2 nextPos = gridPos.Value + currentDir;
-                if (BeltEntryUtility.TryGetDirectedBelt(nextPos, BeltMap, Directions, out BeltInfo nextBelt))
+                int2 nextPos = gridPos.Value + currentBelt.Direction.ToInt2();
+                if (!Cells.TryGetBelt(nextPos, out BeltInfo nextBelt))
                 {
-                    // 다음 타일에 벨트가 있으므로 다음 타일로 인계 및 잔여 진행도 이월
-                    gridPos.Value = nextPos;
-                    newProgress -= 1.0f;
-                    currentBelt = nextBelt;
-                    currentDir = nextBelt.Direction.ToInt2();
-                    hopCount++;
-                }
-                else
-                {
-                    // 다음 타일에 벨트가 없는 종단: 현재 타일 출구(1.0f)에 정지
-                    newProgress = 1.0f;
                     break;
                 }
+                if (BeltPathUtility.IsHeadOn(currentBelt.Direction, nextBelt.Direction))
+                {
+                    float stopProgress = hop == 0
+                        ? math.max(state.Progress, BeltPathUtility.HeadOnStopProgress)
+                        : BeltPathUtility.HeadOnStopProgress;
+                    progress = math.min(progress, stopProgress);
+                    break;
+                }
+                if (progress < 1f || PendingDemolitions.HasComponent(nextBelt.Entity))
+                {
+                    break;
+                }
+
+                if (BeltPathUtility.GetEntryDirection(nextPos, nextBelt.Direction, Cells) != currentBelt.Direction)
+                {
+                    progress = math.min(progress, hop == 0
+                        ? math.max(state.Progress, 1f - GameConstants.ItemSpacing)
+                        : 1f - GameConstants.ItemSpacing);
+                    break;
+                }
+
+                state.EntryDirection = currentBelt.Direction;
+                gridPos.Value = nextPos;
+                currentBelt = nextBelt;
+                progress -= 1f;
             }
 
-            // 최종 진행도 확정 (최대 홉 수 도달 시 또는 종단 처리 시 Invariant 위반 방지를 위해 1.0f 상한 클램핑)
-            state.Progress = math.min(newProgress, 1.0f);
+            state.Progress = math.min(progress, 1f);
         }
 
-        // 4. LocalTransform.Position 갱신
-        // 타일 중심 = (gridPos.x, gridPos.y)
-        // Progress == 0.0f -> 입구 (center - dir * 0.5f)
-        // Progress == 0.5f -> 타일 중심 (center)
-        // Progress == 1.0f -> 출구 (center + dir * 0.5f)
-        float2 center = new float2(gridPos.Value.x, gridPos.Value.y);
-        float2 dirFloat = new float2(currentDir.x, currentDir.y);
-        float2 visualPos = center + dirFloat * (state.Progress - 0.5f);
-
-        transform.Position = new float3(visualPos.x, visualPos.y, 0f);
+        if (state.Progress < 0.5f && (state.EntryDirection == DirectionEnum.Count ||
+            BeltPathUtility.IsHeadOn(state.EntryDirection, currentBelt.Direction)))
+        {
+            state.EntryDirection = BeltPathUtility.GetEntryDirection(gridPos.Value, currentBelt.Direction, Cells);
+        }
+        transform.Position = BeltPathUtility.Position(gridPos.Value, state.Progress, state.EntryDirection, currentBelt.Direction);
     }
 }

@@ -9,7 +9,10 @@ internal static class GameWorldBinaryLayout
     internal static void BuildingsAndItems(GameSnapshotArchive archive, ref GameWorldSnapshot value)
     {
         archive.List(ref value.Buildings, (GameSnapshotArchive item, ref SavedBuilding entry) => item.Record(ref entry, Fields));
-        archive.List(ref value.WorldItems, (GameSnapshotArchive item, ref SavedWorldItem entry) => item.Record(ref entry, Fields));
+        bool recordsBeltEntryDirections = value.RecordsBeltEntryDirections;
+        archive.List(ref value.WorldItems, (GameSnapshotArchive item, ref SavedWorldItem entry) =>
+            item.Record(ref entry, (GameSnapshotArchive fields, ref SavedWorldItem row) =>
+                WorldItem(fields, ref row, recordsBeltEntryDirections)));
     }
 
     internal static void ResearchAndConstruction(GameSnapshotArchive archive, ref GameWorldSnapshot value)
@@ -84,13 +87,19 @@ internal static class GameWorldBinaryLayout
         archive.Value(ref value.Cursor);
     }
 
-    internal static void Fields(GameSnapshotArchive archive, ref SavedWorldItem value)
+    private static void WorldItem(GameSnapshotArchive archive, ref SavedWorldItem value, bool recordsBeltEntryDirections)
     {
         archive.Value(ref value.Id);
         archive.Cell(ref value.Cell);
         archive.Value(ref value.ItemId);
         archive.Maybe(ref value.BeltProgress, (GameSnapshotArchive item, ref float entry) => item.Value(ref entry));
-        archive.Maybe(ref value.Direction, (GameSnapshotArchive item, ref DirectionEnum entry) => item.EnumValue(ref entry));
+        // 스키마 5에서는 벨트 실물만 기존 Direction 필드에 실제 진입 방향을 담는다.
+        DirectionEnum? direction = recordsBeltEntryDirections || !value.BeltProgress.HasValue ? value.Direction : null;
+        archive.Maybe(ref direction, (GameSnapshotArchive item, ref DirectionEnum entry) => item.EnumValue(ref entry));
+        if (archive.Reading)
+        {
+            value.Direction = direction;
+        }
     }
 
     internal static void Fields(GameSnapshotArchive archive, ref SavedProduction value)

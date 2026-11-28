@@ -8,7 +8,8 @@ using Unity.Entities;
 internal static class GameWorldBinarySnapshot
 {
     private const uint Magic = 0x56534d50; // PMSV
-    internal const ushort CurrentSchemaVersion = 4;
+    private const ushort PreviousSchemaVersion = 4;
+    internal const ushort CurrentSchemaVersion = 5;
     private const int MaxSectionBytes = 128 * 1024 * 1024;
 
     private enum Section : byte
@@ -41,11 +42,11 @@ internal static class GameWorldBinarySnapshot
             throw new InvalidDataException("바이너리 스냅샷 식별자가 올바르지 않습니다.");
         }
         ushort version = reader.ReadUInt16();
-        if (version >= 1 && version < CurrentSchemaVersion)
+        if (version >= 1 && version < PreviousSchemaVersion)
         {
             throw new RetiredSaveSchemaException();
         }
-        if (version != CurrentSchemaVersion)
+        if (version != CurrentSchemaVersion && version != PreviousSchemaVersion)
         {
             throw new NotSupportedException("지원하지 않는 바이너리 저장 버전입니다.");
         }
@@ -56,7 +57,7 @@ internal static class GameWorldBinarySnapshot
         }
         savedAt = new DateTimeOffset(utcTicks, TimeSpan.Zero);
         TransferContentVersions(new GameSnapshotArchive(reader));
-        var snapshot = new GameWorldSnapshot();
+        var snapshot = new GameWorldSnapshot { RecordsBeltEntryDirections = version == CurrentSchemaVersion };
         ReadSection(reader, Section.World, snapshot, GameWorldBinaryLayout.World);
         ReadSection(reader, Section.BuildingsAndItems, snapshot, GameWorldBinaryLayout.BuildingsAndItems);
         ReadSection(reader, Section.ResearchAndConstruction, snapshot, GameWorldBinaryLayout.ResearchAndConstruction);

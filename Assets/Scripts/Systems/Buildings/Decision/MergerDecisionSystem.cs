@@ -17,7 +17,6 @@ public partial struct MergerDecisionSystem : ISystem
 {
     private ComponentLookup<BeltMovementState> _beltMovementStateLookup;
     private ComponentLookup<DestroyItemRequest> _destroyRequestLookup;
-    private ComponentLookup<GridPosition> _gridPositionLookup;
     private ComponentLookup<Direction> _directionLookup;
     private ComponentLookup<PlacementStamp> _placementStampLookup;
     private ComponentLookup<PendingBuildingDemolition> _pendingBuildingDemolitionLookup;
@@ -29,7 +28,6 @@ public partial struct MergerDecisionSystem : ISystem
     {
         _beltMovementStateLookup = state.GetComponentLookup<BeltMovementState>(true);
         _destroyRequestLookup = state.GetComponentLookup<DestroyItemRequest>(true);
-        _gridPositionLookup = state.GetComponentLookup<GridPosition>(true);
         _directionLookup = state.GetComponentLookup<Direction>(true);
         _placementStampLookup = state.GetComponentLookup<PlacementStamp>(true);
         _pendingBuildingDemolitionLookup = state.GetComponentLookup<PendingBuildingDemolition>(true);
@@ -60,7 +58,6 @@ public partial struct MergerDecisionSystem : ISystem
 
         _beltMovementStateLookup.Update(ref state);
         _destroyRequestLookup.Update(ref state);
-        _gridPositionLookup.Update(ref state);
         _directionLookup.Update(ref state);
         _placementStampLookup.Update(ref state);
         _pendingBuildingDemolitionLookup.Update(ref state);
@@ -71,7 +68,6 @@ public partial struct MergerDecisionSystem : ISystem
             ItemMap = itemIndex.Map,
             BeltMovementStateLookup = _beltMovementStateLookup,
             DestroyItemRequestLookup = _destroyRequestLookup,
-            GridPositionLookup = _gridPositionLookup,
             DirectionLookup = _directionLookup,
             PlacementStampLookup = _placementStampLookup,
             PendingBuildingDemolitionLookup = _pendingBuildingDemolitionLookup
@@ -100,7 +96,6 @@ public partial struct MergerDecisionJob : IJobEntity
 
     [ReadOnly] public ComponentLookup<BeltMovementState> BeltMovementStateLookup;
     [ReadOnly] public ComponentLookup<DestroyItemRequest> DestroyItemRequestLookup;
-    [ReadOnly] public ComponentLookup<GridPosition> GridPositionLookup;
     [ReadOnly] public ComponentLookup<Direction> DirectionLookup;
     [ReadOnly] public ComponentLookup<PlacementStamp> PlacementStampLookup;
     [ReadOnly] public ComponentLookup<PendingBuildingDemolition> PendingBuildingDemolitionLookup;
@@ -124,49 +119,21 @@ public partial struct MergerDecisionJob : IJobEntity
 
         int2 mergerPos = gridPos.Value;
 
-        // 기준 출력/입력 커서는 실제 전달 성공 때만 Apply가 바꾼다. 경합 탈락이 포트 순서를 소비하지 않게 판단과 상태를 분리한다.
-        // 1. 기준 출력 벨트 결정
-        Entity outputBelt = routingState.OutputBelt;
-        int2 outputBeltPos = default;
-        bool hasOutputPosition = false;
-        DirectionEnum forwardDir = routingState.ForwardDirection;
-
-        if (PendingBuildingDemolitionLookup.HasComponent(outputBelt))
+        // Apply가 성공한 뒤에만 기준 출력과 입력 커서를 게시한다.
+        var routingBelts = new RuntimeRoutingBeltCells
         {
-            outputBelt = Entity.Null;
-        }
-
-        if (outputBelt == Entity.Null)
+            Belts = BeltMap,
+            Directions = DirectionLookup,
+            PlacementStamps = PlacementStampLookup,
+            PendingDemolitions = PendingBuildingDemolitionLookup
+        };
+        if (!routingBelts.TrySelectMergerOutput(mergerPos, routingState, out int2 outputBeltPos, out var output))
         {
-            outputBelt = BeltEntryUtility.FindRoutingBelt(mergerPos, BeltMap, DirectionLookup, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: false, out forwardDir);
-        }
-        else if (!GridPositionLookup.TryGetComponent(outputBelt, out var currentOutputPosition))
-        {
-            outputBelt = BeltEntryUtility.FindRoutingBelt(mergerPos, BeltMap, DirectionLookup, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: false, out forwardDir);
-        }
-        else
-        {
-            outputBeltPos = currentOutputPosition.Value;
-            hasOutputPosition = true;
-            if (!BeltEntryUtility.TryGetDirectedBelt(outputBeltPos, BeltMap, DirectionLookup, out BeltInfo currentOutputInfo) ||
-                !RoutingDirectionUtility.IsOutgoingBelt(mergerPos, outputBeltPos, currentOutputInfo.Direction))
-            {
-                outputBelt = BeltEntryUtility.FindRoutingBelt(mergerPos, BeltMap, DirectionLookup, PendingBuildingDemolitionLookup, PlacementStampLookup, incoming: false, out forwardDir);
-                hasOutputPosition = false;
-            }
-        }
-
-        if (outputBelt == Entity.Null)
-        {
-            decisionEnabled.ValueRW = false;
             return;
         }
+        Entity outputBelt = output.Entity;
+        DirectionEnum forwardDir = output.Direction;
 
-        // 2. 출력 벨트 수용 공간 사전 검사
-        if (!hasOutputPosition)
-        {
-            outputBeltPos = GridPositionLookup[outputBelt].Value;
-        }
         if (!BeltEntryUtility.HasEntrySpace(outputBeltPos, ItemMap, DestroyItemRequestLookup, BeltMovementStateLookup))
         {
             decisionEnabled.ValueRW = false;

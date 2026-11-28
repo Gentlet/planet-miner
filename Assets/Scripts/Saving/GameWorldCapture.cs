@@ -15,7 +15,7 @@ internal static class GameWorldCapture
 
         using var itemRegistry = manager.CreateEntityQuery(typeof(ItemRegistry), typeof(ItemConfigElement));
         var items = manager.GetBuffer<ItemConfigElement>(itemRegistry.GetSingletonEntity(), true);
-        var snapshot = new GameWorldSnapshot();
+        var snapshot = new GameWorldSnapshot { RecordsBeltEntryDirections = true };
         CaptureWorld(manager, snapshot.World, items);
         snapshot.Research = CaptureResearch(manager);
 
@@ -24,7 +24,6 @@ internal static class GameWorldCapture
             .WithOptions(EntityQueryOptions.IncludeDisabledEntities).Build(manager);
         using var buildingEntities = buildings.ToEntityArray(Allocator.Temp);
         var savedIds = new Dictionary<Entity, string>(buildingEntities.Length);
-        var activeBelts = new Dictionary<int2, DirectionEnum>();
         int buildingOrdinal = 0;
         int siteOrdinal = 0;
         foreach (Entity entity in buildingEntities)
@@ -35,10 +34,6 @@ internal static class GameWorldCapture
                 continue;
             }
             savedIds.Add(entity, SaveId("building-", buildingOrdinal++));
-            if (manager.HasComponent<BeltComponent>(entity) && !manager.HasComponent<Disabled>(entity))
-            {
-                activeBelts.Add(manager.GetComponentData<GridPosition>(entity).Value, manager.GetComponentData<Direction>(entity).dir);
-            }
         }
 
         using var bootstrap = manager.CreateEntityQuery(typeof(GameBootstrapState));
@@ -79,11 +74,14 @@ internal static class GameWorldCapture
                 Cell = GameWorldSnapshot.WriteCell(cell),
                 ItemId = ReadItemId(items, manager.GetComponentData<ItemIdentity>(entity).Type),
                 BeltProgress = isOnBelt ? movement.Progress : null,
-                Direction = manager.HasComponent<Direction>(entity) ? manager.GetComponentData<Direction>(entity).dir : null
+                Direction = isOnBelt
+                    ? movement.EntryDirection == DirectionEnum.Count ? null : movement.EntryDirection
+                    : manager.HasComponent<Direction>(entity) ? manager.GetComponentData<Direction>(entity).dir : null
             });
         }
-        GameWorldSnapshot.ValidateBeltSpacing(activeBelts, snapshot.WorldItems);
         snapshot.DroneLogistics = GameDroneSave.Capture(manager, savedIds);
+        var beltCells = SavedBeltPathCells.FromSnapshot(manager, snapshot);
+        GameWorldSnapshot.ValidateBeltSpacing(beltCells, snapshot.WorldItems, useSavedEntryDirections: true);
         return snapshot;
     }
 

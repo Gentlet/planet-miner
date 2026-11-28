@@ -6,10 +6,10 @@ using Unity.Mathematics;
 
 /// <summary>
 /// 역할·목적: Decision에서 활성 월드 아이템이 벨트 위에서 전진할 거리와 정체 여부를 계산한다.
-/// 입력·생성자: Synchronization의 벨트/아이템 인덱스, 이동 상태, 소유권과 Command의 철거 승인 상태.
+/// 입력·생성자: Synchronization의 벨트/건물/아이템 인덱스, 이동 상태, 소유권과 Command의 철거 승인 상태.
 /// 출력·소유권: 아이템의 BeltMovementDecision.PlannedProgress/IsBlocked만 갱신한다. 위치·진행도 원본은 쓰지 않는다.
 /// 이용·정리: BeltMovementExecutionSystem이 계획을 적용하고 PlannedProgress를 소비한다. 결정 컴포넌트는 실물에 남는다.
-/// 공간 인덱스 Reader를 Fence에 등록하며 다음 셀에 벨트가 없으면 현재 셀 끝까지만 전진한다. ECB 구조 변경은 없다.
+/// 공간 인덱스 Reader를 Fence에 등록하며 연결되지 않은 벨트에는 진입하지 않는다. ECB 구조 변경은 없다.
 /// </summary>
 [UpdateInGroup(typeof(BuildingDecisionGroup))]
 [BurstCompile]
@@ -33,6 +33,8 @@ public partial struct BeltMovementDecisionSystem : ISystem
     {
         if (!SystemAPI.HasSingleton<BeltSpatialIndex>() || 
             !SystemAPI.HasSingleton<BeltSpatialIndexFence>() || 
+            !SystemAPI.HasSingleton<BuildingSpatialIndex>() ||
+            !SystemAPI.HasSingleton<BuildingSpatialIndexFence>() ||
             !SystemAPI.HasSingleton<ItemSpatialIndex>() ||
             !SystemAPI.HasSingleton<ItemSpatialIndexFence>())
         {
@@ -47,6 +49,8 @@ public partial struct BeltMovementDecisionSystem : ISystem
 
         var beltIndex = SystemAPI.GetSingleton<BeltSpatialIndex>();
         ref var beltFence = ref SystemAPI.GetSingletonRW<BeltSpatialIndexFence>().ValueRW;
+        var buildingIndex = SystemAPI.GetSingleton<BuildingSpatialIndex>();
+        ref var buildingFence = ref SystemAPI.GetSingletonRW<BuildingSpatialIndexFence>().ValueRW;
         var itemIndex = SystemAPI.GetSingleton<ItemSpatialIndex>();
         ref var itemFence = ref SystemAPI.GetSingletonRW<ItemSpatialIndexFence>().ValueRW;
 
@@ -58,21 +62,35 @@ public partial struct BeltMovementDecisionSystem : ISystem
         {
             DeltaTime = dt,
             SpeedBonus = SystemAPI.GetSingleton<ResearchStatBonuses>().BeltSpeed,
-            Directions = SystemAPI.GetComponentLookup<Direction>(true),
-            BeltMap = beltIndex.Map,
+            Cells = new RuntimeBeltPathCells
+            {
+                RoutingBelts = new RuntimeRoutingBeltCells
+                {
+                    Belts = beltIndex.Map,
+                    Directions = SystemAPI.GetComponentLookup<Direction>(true),
+                    PlacementStamps = SystemAPI.GetComponentLookup<PlacementStamp>(true),
+                    PendingDemolitions = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true)
+                },
+                Buildings = buildingIndex.Map,
+                OutputDecisions = SystemAPI.GetComponentLookup<BuildingItemOutputDecision>(true),
+                Splitters = SystemAPI.GetComponentLookup<SplitterRoutingState>(true),
+                Mergers = SystemAPI.GetComponentLookup<MergerRoutingState>(true)
+            },
             ItemMap = itemIndex.Map,
             BeltMovementStateLookup = _beltMovementStateLookup,
             DestroyItemRequestLookup = _destroyRequestLookup,
             PendingBuildingDemolitionLookup = _pendingBuildingDemolitionLookup
         };
 
-        // Reader 의존성: Belt 및 Item의 마지막 Writer가 끝난 뒤 읽기 실행
-        var readersDep = JobHandle.CombineDependencies(beltFence.State.GetReaderDependency(), itemFence.State.GetReaderDependency());
+        // Reader 의존성: Belt, Building, Item의 마지막 Writer가 끝난 뒤 읽기 실행
+        var readersDep = JobHandle.CombineDependencies(beltFence.State.GetReaderDependency(),
+            buildingFence.State.GetReaderDependency(), itemFence.State.GetReaderDependency());
         var jobDep = JobHandle.CombineDependencies(state.Dependency, readersDep);
         var jobHandle = job.ScheduleParallel(jobDep);
 
         // Fence에 Reader Handle 등록
         beltFence.State.AddReader(jobHandle);
+        buildingFence.State.AddReader(jobHandle);
         itemFence.State.AddReader(jobHandle);
 
         state.Dependency = jobHandle;
@@ -89,9 +107,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
     public float DeltaTime;
     public double SpeedBonus;
 
-    [ReadOnly]
-    public NativeParallelHashMap<int2, BeltInfo> BeltMap;
-    [ReadOnly] public ComponentLookup<Direction> Directions;
+    internal RuntimeBeltPathCells Cells;
 
     [ReadOnly]
     public NativeParallelMultiHashMap<int2, Entity> ItemMap;
@@ -112,7 +128,7 @@ public partial struct BeltMovementDecisionJob : IJobEntity
         in GridPosition gridPos)
     {
         // 2. 현재 타일에 벨트가 존재하지 않으면 이동 불가 (바닥에 멈춤)
-        if (!BeltEntryUtility.TryGetDirectedBelt(gridPos.Value, BeltMap, Directions, out BeltInfo currentBelt))
+        if (!Cells.TryGetBelt(gridPos.Value, out BeltInfo currentBelt))
         {
             decision.PlannedProgress = 0.0f;
             decision.IsBlocked = true;
@@ -168,30 +184,33 @@ public partial struct BeltMovementDecisionJob : IJobEntity
             return;
         }
 
-        // 4. 같은 타일에 앞선 아이템이 없는 경우 (타일 내 선두 아이템)
         int2 nextPos = gridPos.Value + currentBelt.Direction.ToInt2();
-        if (!BeltMap.TryGetValue(nextPos, out BeltInfo nextBelt))
+        if (!Cells.TryGetBelt(nextPos, out BeltInfo nextBelt))
         {
-            // 다음 타일에 벨트가 없음 (벨트 종단 지점): 현재 타일 끝(1.0f)까지만 이동 허용 및 정체
-            float distanceToTileEnd = math.max(0.0f, 1.0f - state.Progress);
-            float planned = math.min(desiredMove, distanceToTileEnd);
-            decision.PlannedProgress = planned;
-            decision.IsBlocked = (planned < desiredMove - GameConstants.AlignmentEpsilon || distanceToTileEnd <= GameConstants.AlignmentEpsilon);
+            PlanStop(ref decision, state.Progress, desiredMove, 1f);
             return;
         }
 
-        if (PendingBuildingDemolitionLookup.HasComponent(nextBelt.Entity))
+        bool headOn = BeltPathUtility.IsHeadOn(currentBelt.Direction, nextBelt.Direction);
+        if (!headOn)
         {
-            // Execution은 인덱스의 벨트로 진행도 1에서 넘어가므로 경계 직전에 멈춘다.
-            float distanceBeforeBoundary = math.max(0.0f, (1.0f - GameConstants.AlignmentEpsilon) - state.Progress);
-            float planned = math.min(desiredMove, distanceBeforeBoundary);
-            decision.PlannedProgress = planned;
-            decision.IsBlocked = (planned < desiredMove - GameConstants.AlignmentEpsilon || distanceBeforeBoundary <= GameConstants.AlignmentEpsilon);
-            return;
+            if (PendingBuildingDemolitionLookup.HasComponent(nextBelt.Entity))
+            {
+                PlanStop(ref decision, state.Progress, desiredMove, 1f - GameConstants.AlignmentEpsilon);
+                return;
+            }
+
+            if (BeltPathUtility.GetEntryDirection(nextPos, nextBelt.Direction, Cells) != currentBelt.Direction)
+            {
+                // 이 입구가 다음 틱에 열려도 이미 진입한 아이템과 간격을 확보한다.
+                PlanStop(ref decision, state.Progress, desiredMove, 1f - GameConstants.ItemSpacing);
+                return;
+            }
         }
 
         // 5. 다음 타일에 벨트가 있는 경우, 다음 타일 내 선행 아이템들 검사
         float minNextProgress = float.MaxValue;
+        float opposingFront = 0f;
         bool hasNextItem = false;
         int nextItemCount = 0;
 
@@ -206,10 +225,18 @@ public partial struct BeltMovementDecisionJob : IJobEntity
                 {
                     float nextProg = nextState.Progress;
                     minNextProgress = math.min(minNextProgress, nextProg);
+                    opposingFront = math.max(opposingFront, nextProg);
                     hasNextItem = true;
                     nextItemCount++;
                 }
             } while (ItemMap.TryGetNextValue(out nextItem, ref nextIt));
+        }
+
+        if (headOn)
+        {
+            // 연결되기 전에 종단까지 도달한 아이템이 있으면 반대편이 그만큼 더 일찍 멈춘다.
+            PlanStop(ref decision, state.Progress, desiredMove, BeltPathUtility.GetHeadOnStopProgress(opposingFront));
+            return;
         }
 
         if (!hasNextItem)
@@ -240,5 +267,13 @@ public partial struct BeltMovementDecisionJob : IJobEntity
         plannedNext = math.min(plannedNext, 1.0f);
         decision.PlannedProgress = plannedNext;
         decision.IsBlocked = (plannedNext < desiredMove - GameConstants.AlignmentEpsilon);
+    }
+
+    private static void PlanStop(ref BeltMovementDecision decision, float progress, float desiredMove, float stopProgress)
+    {
+        float distanceToStop = math.max(0f, stopProgress - progress);
+        decision.PlannedProgress = math.min(desiredMove, distanceToStop);
+        decision.IsBlocked = decision.PlannedProgress < desiredMove - GameConstants.AlignmentEpsilon ||
+            distanceToStop <= GameConstants.AlignmentEpsilon;
     }
 }

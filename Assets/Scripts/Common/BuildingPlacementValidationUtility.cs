@@ -18,7 +18,9 @@ public static class BuildingPlacementValidationUtility
         in NativeParallelHashMap<int2, BuildingInfo>.ReadOnly buildingMap,
         in NativeParallelHashMap<int2, Entity>.ReadOnly resourceMap,
         in NativeParallelMultiHashMap<int2, Entity>.ReadOnly itemMap,
-        in BuildingConfigElement config)
+        in BuildingConfigElement config,
+        in NativeParallelHashMap<int2, DirectionEnum> batchRedirects,
+        in NativeParallelHashMap<int2, DirectionEnum> approvedRedirects)
     {
         if (config.Placement.BootstrapOnly)
         {
@@ -99,10 +101,8 @@ public static class BuildingPlacementValidationUtility
 
         if (beltToRedirect != Entity.Null)
         {
-            int2 next = candidate.OriginPosition + candidate.Direction.ToInt2();
-            if (originBuilding.Direction != candidate.Direction && buildingMap.TryGetValue(next, out var destination) &&
-                manager.HasComponent<BeltComponent>(destination.Entity) &&
-                !HasRedirectSpacing(manager, itemMap, candidate.OriginPosition, next))
+            if (manager.GetComponentData<Direction>(beltToRedirect).dir != candidate.Direction &&
+                !HasSafeBeltRedirect(manager, candidate, buildingMap, itemMap, batchRedirects, approvedRedirects))
             {
                 return new PlacementValidationResult(PlacementValidationCode.InsufficientBeltSpacing);
             }
@@ -112,9 +112,78 @@ public static class BuildingPlacementValidationUtility
         return new PlacementValidationResult(PlacementValidationCode.Success, hasGroundItems);
     }
 
+    private static bool HasSafeBeltRedirect(EntityManager manager, in PlacementCandidate candidate,
+        in NativeParallelHashMap<int2, BuildingInfo>.ReadOnly buildings,
+        in NativeParallelMultiHashMap<int2, Entity>.ReadOnly items,
+        in NativeParallelHashMap<int2, DirectionEnum> batchRedirects,
+        in NativeParallelHashMap<int2, DirectionEnum> approvedRedirects)
+    {
+        int2 origin = candidate.OriginPosition;
+        DirectionEnum exit = candidate.Direction;
+        if (items.TryGetFirstValue(origin, out Entity item, out var iterator))
+        {
+            do
+            {
+                if (manager.HasComponent<BeltMovementState>(item) && manager.IsComponentEnabled<BeltMovementState>(item))
+                {
+                    var movement = manager.GetComponentData<BeltMovementState>(item);
+                    // 중심에 닿기 전에 실제 입구를 출구로 바꾸면 진행도는 그대로인데 실물 위치가 반대쪽으로 튄다.
+                    if (movement.Progress < 0.5f && BeltPathUtility.IsHeadOn(movement.EntryDirection, exit))
+                    {
+                        return false;
+                    }
+                }
+            } while (items.TryGetNextValue(out item, ref iterator));
+        }
+
+        int2 next = origin + exit.ToInt2();
+        if (TryGetBeltDirection(manager, next, buildings, batchRedirects, approvedRedirects, out var nextExit) &&
+            !HasRedirectSpacing(manager, items, origin, next, BeltPathUtility.IsHeadOn(exit, nextExit)))
+        {
+            return false;
+        }
+
+        // 반대편 벨트가 이 셀을 향하고 있으면 회전으로 막혔던 입구가 열릴 수 있다.
+        for (int i = 0; i < (int)DirectionEnum.Count; i++)
+        {
+            var approach = (DirectionEnum)i;
+            int2 source = origin - approach.ToInt2();
+            if (source.Equals(next) ||
+                !TryGetBeltDirection(manager, source, buildings, batchRedirects, approvedRedirects, out var sourceExit) ||
+                sourceExit != approach)
+            {
+                continue;
+            }
+            if (!HasRedirectSpacing(manager, items, source, origin, headOn: false, inbound: approach))
+            {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    private static bool TryGetBeltDirection(EntityManager manager, int2 cell,
+        in NativeParallelHashMap<int2, BuildingInfo>.ReadOnly buildings,
+        in NativeParallelHashMap<int2, DirectionEnum> batchRedirects,
+        in NativeParallelHashMap<int2, DirectionEnum> approvedRedirects, out DirectionEnum direction)
+    {
+        direction = default;
+        if (!buildings.TryGetValue(cell, out var building) || !building.OriginPosition.Equals(cell) ||
+            !manager.HasComponent<BeltComponent>(building.Entity))
+        {
+            return false;
+        }
+        if (!batchRedirects.TryGetValue(cell, out direction) &&
+            !(approvedRedirects.IsCreated && approvedRedirects.TryGetValue(cell, out direction)))
+        {
+            direction = manager.GetComponentData<Direction>(building.Entity).dir;
+        }
+        return true;
+    }
+
     // 방향 변경은 실물 진행도를 보존하므로 새 출구/입구에 이미 있는 아이템 사이의 간격을 승인 전에 확인한다.
     private static bool HasRedirectSpacing(EntityManager manager, in NativeParallelMultiHashMap<int2, Entity>.ReadOnly items,
-        int2 origin, int2 next)
+        int2 origin, int2 next, bool headOn, DirectionEnum? inbound = null)
     {
         if (!items.TryGetFirstValue(origin, out Entity item, out var sourceIterator) ||
             !items.TryGetFirstValue(next, out Entity ahead, out var targetIterator))
@@ -131,10 +200,21 @@ public static class BuildingPlacementValidationUtility
         } while (items.TryGetNextValue(out item, ref sourceIterator));
         do
         {
-            if (manager.HasComponent<BeltMovementState>(ahead) && manager.IsComponentEnabled<BeltMovementState>(ahead) &&
-                !BeltEntryUtility.HasBoundarySpacing(maxSourceProgress, manager.GetComponentData<BeltMovementState>(ahead).Progress))
+            if (manager.HasComponent<BeltMovementState>(ahead) && manager.IsComponentEnabled<BeltMovementState>(ahead))
             {
-                return false;
+                var movement = manager.GetComponentData<BeltMovementState>(ahead);
+                bool onThisEntry = !inbound.HasValue || movement.Progress >= 0.5f ||
+                    movement.EntryDirection == DirectionEnum.Count || movement.EntryDirection == inbound.Value;
+                if (onThisEntry)
+                {
+                    bool spacingIsValid = headOn
+                        ? BeltPathUtility.HasHeadOnSpacing(maxSourceProgress, movement.Progress)
+                        : BeltEntryUtility.HasBoundarySpacing(maxSourceProgress, movement.Progress);
+                    if (!spacingIsValid)
+                    {
+                        return false;
+                    }
+                }
             }
         } while (items.TryGetNextValue(out ahead, ref targetIterator));
         return true;
@@ -154,9 +234,12 @@ public static class BuildingPlacementValidationUtility
         in NativeArray<BuildingConfigElement> configs,
         Allocator allocator = Allocator.Temp,
         NativeParallelHashSet<int2> approvedCells = default,
-        NativeArray<PlacementValidationCode> settingsRejections = default)
+        NativeArray<PlacementValidationCode> settingsRejections = default,
+        NativeParallelHashMap<int2, DirectionEnum> approvedRedirects = default)
     {
         var claimedCells = new NativeParallelHashSet<int2>(math.max(16, candidates.Length * 4), allocator);
+        // 같은 묶음에서 먼저 승인한 방향도 후속 후보의 인접 경계가 된다.
+        using var batchRedirects = new NativeParallelHashMap<int2, DirectionEnum>(candidates.Length, allocator);
         bool anyFailed = false;
 
         for (int i = 0; i < candidates.Length; i++)
@@ -188,7 +271,9 @@ public static class BuildingPlacementValidationUtility
                 buildingMap,
                 resourceMap,
                 itemMap,
-                config);
+                config,
+                batchRedirects,
+                approvedRedirects);
 
             if (!singleResult.IsValid)
             {
@@ -229,6 +314,10 @@ public static class BuildingPlacementValidationUtility
                 }
             }
 
+            if (singleResult.Code == PlacementValidationCode.BeltUpgradeAllowed)
+            {
+                batchRedirects.Add(candidate.OriginPosition, candidate.Direction);
+            }
             results[i] = singleResult;
         }
 

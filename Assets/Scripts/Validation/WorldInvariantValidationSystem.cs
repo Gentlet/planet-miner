@@ -269,6 +269,22 @@ public partial class WorldInvariantValidationSystem : SystemBase
             var progressList = new NativeList<float>(16, Allocator.Temp);
             var entityList = new NativeList<Entity>(16, Allocator.Temp);
 
+            SystemAPI.TryGetSingleton<BuildingSpatialIndex>(out var buildingIndex);
+            var beltCells = new RuntimeBeltPathCells
+            {
+                RoutingBelts = new RuntimeRoutingBeltCells
+                {
+                    Belts = beltIndex.Map,
+                    Directions = SystemAPI.GetComponentLookup<Direction>(true),
+                    PlacementStamps = SystemAPI.GetComponentLookup<PlacementStamp>(true),
+                    PendingDemolitions = SystemAPI.GetComponentLookup<PendingBuildingDemolition>(true)
+                },
+                Buildings = buildingIndex.Map,
+                OutputDecisions = SystemAPI.GetComponentLookup<BuildingItemOutputDecision>(true),
+                Splitters = SystemAPI.GetComponentLookup<SplitterRoutingState>(true),
+                Mergers = SystemAPI.GetComponentLookup<MergerRoutingState>(true)
+            };
+
             for (int i = 0; i < beltKvpArray.Length; i++)
             {
                 int2 beltPos = beltKvpArray.Keys[i];
@@ -338,41 +354,49 @@ public partial class WorldInvariantValidationSystem : SystemBase
 
                 // 4. 타일 경계(Boundary) 간격 침범 감시
                 int2 nextPos = beltPos + beltInfo.Direction.ToInt2();
-                if (beltIndex.TryGetBelt(nextPos, out BeltInfo nextBelt))
+                if (!beltCells.TryGetBelt(nextPos, out BeltInfo nextBelt))
                 {
-                    float minNextProgress = float.MaxValue;
-                    Entity nextTrailEntity = Entity.Null;
+                    continue;
+                }
+                bool headOn = BeltPathUtility.IsHeadOn(beltInfo.Direction, nextBelt.Direction);
+                if (!headOn && BeltPathUtility.GetEntryDirection(nextPos, nextBelt.Direction, beltCells) != beltInfo.Direction)
+                {
+                    continue;
+                }
+                float nextProgress = headOn ? float.NegativeInfinity : float.PositiveInfinity;
+                Entity nextNeighborEntity = Entity.Null;
 
-                    if (itemSpatialIndex.TryGetFirstItem(nextPos, out Entity nextItem, out var nextIt))
+                if (itemSpatialIndex.TryGetFirstItem(nextPos, out Entity nextItem, out var nextIt))
+                {
+                    do
                     {
-                        do
+                        if (itemIdentityLookup.HasComponent(nextItem) &&
+                            beltMovementLookup.TryGetComponent(nextItem, out var nextMovement) &&
+                            beltMovementLookup.IsComponentEnabled(nextItem))
                         {
-                            if (itemIdentityLookup.HasComponent(nextItem) &&
-                                beltMovementLookup.TryGetComponent(nextItem, out var nextMovement) &&
-                                beltMovementLookup.IsComponentEnabled(nextItem))
+                            float prog = nextMovement.Progress;
+                            bool onThisEntry = prog >= 0.5f || nextMovement.EntryDirection == DirectionEnum.Count ||
+                                nextMovement.EntryDirection == beltInfo.Direction;
+                            if (headOn ? prog > nextProgress : onThisEntry && prog < nextProgress)
                             {
-                                float prog = nextMovement.Progress;
-                                if (prog < minNextProgress)
-                                {
-                                    minNextProgress = prog;
-                                    nextTrailEntity = nextItem;
-                                }
+                                nextProgress = prog;
+                                nextNeighborEntity = nextItem;
                             }
-                        } while (itemSpatialIndex.TryGetNextItem(out nextItem, ref nextIt));
-                    }
-
-                    if (nextTrailEntity != Entity.Null)
-                    {
-                        float leadProgress = progressList[count - 1];
-                        float boundaryGap = (1.0f - leadProgress) + minNextProgress;
-                        if (boundaryGap < GameConstants.ItemSpacing - GameConstants.AlignmentEpsilon)
-                        {
-                            ReportViolation(
-                                "BeltInvariant",
-                                $"Belt boundary spacing violated between tile ({beltPos.x}, {beltPos.y}) and next tile ({nextPos.x}, {nextPos.y}): boundary gap is {boundaryGap:F4} < {GameConstants.ItemSpacing:F4} (lead progress: {leadProgress:F4}, next trail progress: {minNextProgress:F4}).",
-                                entityList[count - 1]
-                            );
                         }
+                    } while (itemSpatialIndex.TryGetNextItem(out nextItem, ref nextIt));
+                }
+
+                if (nextNeighborEntity != Entity.Null)
+                {
+                    float leadProgress = progressList[count - 1];
+                    float boundaryGap = (1f - leadProgress) + (headOn ? 1f - nextProgress : nextProgress);
+                    if (boundaryGap < GameConstants.ItemSpacing - GameConstants.AlignmentEpsilon)
+                    {
+                        ReportViolation(
+                            "BeltInvariant",
+                            $"Belt boundary spacing violated between tile ({beltPos.x}, {beltPos.y}) and next tile ({nextPos.x}, {nextPos.y}): boundary gap is {boundaryGap:F4} < {GameConstants.ItemSpacing:F4} (lead progress: {leadProgress:F4}, next progress: {nextProgress:F4}).",
+                            entityList[count - 1]
+                        );
                     }
                 }
             }
